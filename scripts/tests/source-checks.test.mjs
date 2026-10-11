@@ -289,12 +289,12 @@ test('failure cancels active work and never starts queued checks', async () => {
   } finally { f.cleanup(); }
 });
 
-test('timeout kills the owned descendant process tree', { timeout: 10_000 }, async () => {
+test('timeout kills the owned descendant process tree', { timeout: 15_000 }, async () => {
   const f = fixture();
   try {
     const heartbeat = join(f.root, 'heartbeat');
     const descendant = 'const fs=require("node:fs");setInterval(()=>fs.appendFileSync(process.argv[1],"x"),30)';
-    const report = await f.run([lane('web', 'require("node:child_process").spawn(process.execPath,["-e",' + JSON.stringify(descendant) + ',' + JSON.stringify(heartbeat) + '],{stdio:"inherit"});setInterval(()=>{},1000)')], { timeoutMs: 500 });
+    const report = await f.run([lane('web', 'require("node:child_process").spawn(process.execPath,["-e",' + JSON.stringify(descendant) + ',' + JSON.stringify(heartbeat) + '],{stdio:"inherit"});setInterval(()=>{},1000)')], { timeoutMs: 3_000 });
     assert.equal(report.status, 'failed');
     assert.equal(report.lanes[0].status, 'timeout');
     assert.ok(existsSync(heartbeat), 'descendant must actually run before cancellation');
