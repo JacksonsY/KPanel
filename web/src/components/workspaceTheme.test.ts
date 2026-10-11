@@ -118,7 +118,7 @@ describe('terminal and editor workspace theme', () => {
       expect(source).not.toContain('terminal-theme-scope')
     }
     expect(editorSource).not.toContain('terminal-theme-scope')
-    expect(diagnosticsSource).not.toContain('terminal-theme-scope')
+    expect(diagnosticsSource).toContain('<footer v-if="activeJob" :class="{ \'terminal-theme-scope\': activeJob.interactive }">')
     expect(filesSource).not.toContain('background: #111a2c')
     expect(dockerSource).not.toContain('background: #0b1020')
     expect(appsSource).not.toContain('background: #111827')

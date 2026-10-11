@@ -1277,7 +1277,7 @@ onBeforeUnmount(() => {
               <p v-else>选择左侧体检命令，点击“开始体检”后在这里查看实时输出。</p>
             </div>
             <pre v-else class="diagnostic-log" aria-live="polite" data-i18n-ignore @wheel="containLogWheel">{{ activeLog }}</pre>
-            <footer v-if="activeJob">
+            <footer v-if="activeJob" :class="{ 'terminal-theme-scope': activeJob.interactive }">
               <span><Activity :size="14" /> {{ activeJob.message }}</span>
               <span><Timer :size="14" /> {{ formatDateTime(activeJob.startedAt || activeJob.createdAt) }}</span>
               <a v-if="activeJob.sourceUrl" :href="activeJob.sourceUrl" target="_blank" rel="noopener noreferrer">
@@ -2736,8 +2736,11 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   min-height: 42px;
   padding: 12px 20px;
-  color: var(--text-tertiary);
+  border-top: 1px solid var(--terminal-shell-border);
+  color: var(--terminal-shell-text);
+  background: var(--terminal-shell-panel);
   font-size: 13px;
+  line-height: 1.5;
 }
 
 .diagnostic-result footer span,
@@ -2749,7 +2752,24 @@ onBeforeUnmount(() => {
 }
 
 .diagnostic-result footer a {
-  color: var(--primary);
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.diagnostic-result footer > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.diagnostic-result footer :deep(svg) {
+  flex-shrink: 0;
+}
+
+.diagnostic-result footer a:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
 }
 
 .impact-pill {
