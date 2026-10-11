@@ -164,11 +164,23 @@ describe('TerminalContextMenu', () => {
   it.each([
     { name: 'Ctrl+Shift+V', init: { key: 'v', ctrlKey: true, shiftKey: true } },
     { name: 'Shift+Insert', init: { key: 'Insert', shiftKey: true } },
-  ])('pastes with $name while leaving native Ctrl+V to the paste event', async ({ init }) => {
+  ])('pastes with $name while bypassing xterm for native Ctrl+V', async ({ init }) => {
     const menu = wrapper.vm as unknown as ExposedMenu
     const pasteEvent = new KeyboardEvent('keydown', { ...init, cancelable: true })
+    const nativePasteEvent = new KeyboardEvent('keydown', {
+      key: 'v',
+      ctrlKey: true,
+      cancelable: true,
+    })
 
-    expect(menu.handleKeyEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true }))).toBe(true)
+    expect(menu.handleKeyEvent(nativePasteEvent)).toBe(false)
+    expect(nativePasteEvent.defaultPrevented).toBe(false)
+    expect(nativePasteEvent.cancelBubble).toBe(false)
+    expect(readText).not.toHaveBeenCalled()
+    expect(terminal.paste).not.toHaveBeenCalled()
+    expect(menu.handleKeyEvent(new KeyboardEvent('keyup', { key: 'v', ctrlKey: true }))).toBe(true)
+    expect(menu.handleKeyEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, altKey: true }))).toBe(true)
+    expect(menu.handleKeyEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, metaKey: true }))).toBe(true)
     expect(menu.handleKeyEvent(pasteEvent)).toBe(false)
     await flushPromises()
 
@@ -196,6 +208,7 @@ describe('TerminalContextMenu', () => {
     })
 
     expect(menu.handleKeyEvent(pasteEvent)).toBe(true)
+    expect(menu.handleKeyEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true }))).toBe(true)
     expect(readText).not.toHaveBeenCalled()
     expect(pasteEvent.defaultPrevented).toBe(false)
   })

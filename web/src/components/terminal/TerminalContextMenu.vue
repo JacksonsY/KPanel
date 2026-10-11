@@ -165,6 +165,11 @@ function handleKeyEvent(event: KeyboardEvent): boolean {
     void copySelection()
     return false
   }
+  const isNativePaste = event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'v'
+  if (isNativePaste && props.canPaste) {
+    // Bypass xterm's Ctrl+V control character without canceling the browser paste event.
+    return false
+  }
   const isTerminalPaste = event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'v'
   const isInsertPaste = event.shiftKey && event.key === 'Insert'
   if ((isTerminalPaste || isInsertPaste) && props.canPaste) {
