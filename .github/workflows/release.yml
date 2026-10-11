@@ -344,6 +344,35 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Verify and upload modified-component provenance
+        id: backport_provenance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ steps.release.outputs.image }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/torrent-backport-provenance.mjs \
+            --candidate "$GITHUB_SHA" --version "$VERSION" \
+            --image "$IMAGE" --digest "$IMAGE_DIGEST" \
+            --output release/KPANEL_MODIFIED_COMPONENTS.json
+          gh api "repos/kejilion/KPanel/releases/tags/$GITHUB_REF_NAME" \
+            --jq '.draft' | grep -qx true
+          gh release upload "$GITHUB_REF_NAME" \
+            --repo kejilion/KPanel --clobber release/KPANEL_MODIFIED_COMPONENTS.json
+          asset_digest="sha256:$(sha256sum release/KPANEL_MODIFIED_COMPONENTS.json | awk '{print $1}')"
+          asset_size="$(wc -c < release/KPANEL_MODIFIED_COMPONENTS.json)"
+          gh api "repos/kejilion/KPanel/releases/tags/$GITHUB_REF_NAME" |
+            jq -e --arg tag "$GITHUB_REF_NAME" --arg digest "$asset_digest" --argjson size "$asset_size" '
+              .draft == true and .tag_name == $tag and
+              ([.assets[] | select(.name == "KPANEL_MODIFIED_COMPONENTS.json")] |
+                length == 1 and .[0].state == "uploaded" and
+                .[0].digest == $digest and .[0].size == $size)
+            ' >/dev/null
+          echo 'verified=true' >> "$GITHUB_OUTPUT"
+
       - name: Validate final release notes
         shell: bash
         env:
@@ -360,12 +389,14 @@ jobs:
       - name: Promote image to its release channel
         shell: bash
         env:
+          BACKPORT_PROVENANCE_VERIFIED: ${{ steps.backport_provenance.outputs.verified }}
           CHANNEL: ${{ steps.release.outputs.channel }}
           IMAGE: ${{ steps.release.outputs.image }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
+          test "$BACKPORT_PROVENANCE_VERIFIED" = true
           channel_tag=preview
           if [ "$CHANNEL" = stable ]; then
             channel_tag=latest
@@ -413,6 +444,7 @@ jobs:
       - name: Publish GitHub release
         shell: bash
         env:
+          BACKPORT_PROVENANCE_VERIFIED: ${{ steps.backport_provenance.outputs.verified }}
           GH_TOKEN: ${{ github.token }}
           IMAGE: ${{ steps.release.outputs.image }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
@@ -420,6 +452,7 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
+          test "$BACKPORT_PROVENANCE_VERIFIED" = true
           if [ "$STABLE" = true ]; then
             gh release edit "$GITHUB_REF_NAME" \
               --draft=false \
