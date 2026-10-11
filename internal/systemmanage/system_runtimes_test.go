@@ -3,11 +3,60 @@ package systemmanage
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestSystemRuntimeVersionPipeHelper(t *testing.T) {
+	if len(os.Args) < 3 || os.Args[len(os.Args)-2] != "runtime-pipe-parent" {
+		return
+	}
+	child := exec.Command("sleep", "3")
+	if runtime.GOOS == "windows" {
+		child = exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", "Start-Sleep -Seconds 3")
+	}
+	child.Stdout, child.Stderr = os.Stdout, os.Stderr
+	if err := child.Start(); err != nil {
+		os.Exit(2)
+	}
+	if err := os.WriteFile(os.Args[len(os.Args)-1], []byte(strconv.Itoa(child.Process.Pid)), 0600); err != nil {
+		os.Exit(3)
+	}
+	time.Sleep(10 * time.Second)
+	os.Exit(0)
+}
+
+func TestSystemRuntimeVersionBoundsInheritedOutputPipeWait(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+	t.Cleanup(func() {
+		if value, err := os.ReadFile(pidFile); err == nil {
+			if pid, err := strconv.Atoi(string(value)); err == nil {
+				if process, err := os.FindProcess(pid); err == nil {
+					_ = process.Kill()
+					_ = process.Release()
+				}
+			}
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	started := time.Now()
+	_, _, err := (commandRunner{}).RunRuntimeVersion(ctx, os.Args[0], "-test.run=^TestSystemRuntimeVersionPipeHelper$", "--", "runtime-pipe-parent", pidFile)
+	elapsed := time.Since(started)
+	if _, pidErr := os.ReadFile(pidFile); pidErr != nil {
+		t.Fatalf("helper failed to start descendant: %v (command error: %v)", pidErr, err)
+	}
+	if err == nil || elapsed > 2*time.Second {
+		t.Fatalf("deadline did not bound inherited pipe wait: elapsed=%s err=%v", elapsed, err)
+	}
+}
 
 type runtimeProbeRunner struct {
 	paths map[string]string
