@@ -1040,7 +1040,7 @@ function executeFile(entry: FileEntry, hostId = fileHostId.value): void {
   if (executionTarget.value || !canExecuteFile(entry)) return
   const host = fileHostInventory.value?.items.find((item) => item.id === (hostId || 'local'))
   executionOpener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
-  if (contextMenu.value) executionOpener = contextMenuOpener
+  if (contextMenu.value) executionOpener = contextMenuOpener || undefined
   contextMenu.value = undefined
   executionOpener?.focus({ preventScroll: true })
   executionTarget.value = { entry: { ...entry }, hostId, hostName: host?.name || hostId || phrase('本机') }
