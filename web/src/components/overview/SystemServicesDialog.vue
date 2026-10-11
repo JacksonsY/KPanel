@@ -67,7 +67,7 @@ function message(reason: unknown, fallback: string): string {
     system_services_busy: '服务操作正在执行，请稍后重试。',
     system_service_conflict: '服务状态已变化，请刷新后重试。',
     system_services_timeout: '服务操作超时，请刷新核对实际状态。',
-    system_services_unsupported: '当前主机不支持 systemd 服务管理。',
+    system_services_unsupported: '当前主机不支持该服务操作。',
     system_services_unavailable: '服务操作未能确认完成。',
     system_services_needs_attention: '服务操作未能确认完成。',
   }
@@ -213,52 +213,52 @@ onBeforeUnmount(abortReads)
 </script>
 
 <template>
-  <ModalDialog :open="open" title="systemd 服务管理" description="管理当前主机的系统服务，查看运行状态、开机自启和最近日志。" size="wide" @close="emit('close')">
+  <ModalDialog :open="open" :title="phrase('systemd 服务管理')" :description="phrase('管理当前主机的系统服务，查看运行状态、开机自启和最近日志。')" size="wide" @close="emit('close')">
     <div class="services-manager">
       <p v-if="!readable" class="services-notice" role="status">{{ unavailableReason || phrase('当前主机不支持 systemd 服务管理。') }}</p>
       <template v-else>
         <div class="services-toolbar">
-          <label class="services-search"><Search :size="18" aria-hidden="true" /><input v-model="search" aria-label="搜索服务" placeholder="搜索服务名称或描述" type="search" /></label>
-          <select v-model="filter" aria-label="筛选运行状态"><option value="all">全部状态</option><option value="active">运行中</option><option value="inactive">未运行</option><option value="failed">失败</option></select>
+          <label class="services-search"><Search :size="18" aria-hidden="true" /><input v-model="search" :aria-label="phrase('搜索服务')" :placeholder="phrase('搜索服务名称或描述')" type="search" /></label>
+          <select v-model="filter" :aria-label="phrase('筛选运行状态')"><option value="all">{{ phrase('全部状态') }}</option><option value="active">{{ phrase('运行中') }}</option><option value="inactive">{{ phrase('未运行') }}</option><option value="failed">{{ phrase('失败') }}</option></select>
           <button type="button" class="button button--secondary" :disabled="loading || running" @click="refresh"><RefreshCw :size="16" aria-hidden="true" />{{ loading ? phrase('刷新中') : phrase('刷新') }}</button>
         </div>
         <p v-if="error" class="services-error" role="alert">{{ error }}</p>
-        <LoadingState v-if="loading && !snapshot" title="正在读取系统服务" />
+        <LoadingState v-if="loading && !snapshot" :title="phrase('正在读取系统服务')" />
         <p v-else-if="snapshot && !snapshot.supported" class="services-notice" role="status">{{ snapshot.reason || phrase('当前主机不支持 systemd 服务管理。') }}</p>
         <template v-else-if="snapshot">
-          <p v-if="snapshot.truncated" class="services-notice" role="status">服务列表已达到显示上限，部分服务未显示。</p>
+          <p v-if="snapshot.truncated" class="services-notice" role="status">{{ phrase('服务列表已达到显示上限，部分服务未显示。') }}</p>
           <div class="services-layout">
-            <section class="services-list" aria-label="服务列表" :aria-busy="loading">
-              <p class="services-count">{{ filtered.length }} 个服务</p>
-              <p v-if="!visible.length" class="services-empty" role="status">没有匹配的服务。</p>
+            <section class="services-list" :aria-label="phrase('服务列表')" :aria-busy="loading">
+              <p class="services-count">{{ phrase(`${filtered.length} 个服务`) }}</p>
+              <p v-if="!visible.length" class="services-empty" role="status">{{ phrase('没有匹配的服务。') }}</p>
               <button v-for="service in visible" :key="service.name" type="button" class="services-row" :class="{ 'is-selected': selected === service.name }" :aria-pressed="selected === service.name" :disabled="running" @click="selectService(service.name)">
                 <span class="services-row__name" data-i18n-ignore>{{ service.name }}</span>
                 <span class="services-state" :class="{ 'is-failed': service.activeState === 'failed' }">{{ stateLabel(service.activeState) }}</span>
                 <span class="services-row__description" data-i18n-ignore>{{ service.description || service.name }}</span>
                 <span class="services-row__boot">{{ stateLabel(service.unitFileState) }}</span>
               </button>
-              <nav v-if="pages > 1" class="services-pagination" aria-label="服务分页"><button type="button" class="button button--secondary" :disabled="page <= 1" @click="page--">上一页</button><span>{{ page }} / {{ pages }}</span><button type="button" class="button button--secondary" :disabled="page >= pages" @click="page++">下一页</button></nav>
+              <nav v-if="pages > 1" class="services-pagination" :aria-label="phrase('服务分页')"><button type="button" class="button button--secondary" :disabled="page <= 1" @click="page--">{{ phrase('上一页') }}</button><span>{{ page }} / {{ pages }}</span><button type="button" class="button button--secondary" :disabled="page >= pages" @click="page++">{{ phrase('下一页') }}</button></nav>
             </section>
-            <section class="services-detail" aria-label="服务详情" :aria-busy="detailLoading">
-              <div v-if="!selected" class="services-empty"><Server :size="28" aria-hidden="true" /><p>选择服务，查看详情和管理操作。</p></div>
+            <section class="services-detail" :aria-label="phrase('服务详情')" :aria-busy="detailLoading">
+              <div v-if="!selected" class="services-empty"><Server :size="28" aria-hidden="true" /><p>{{ phrase('选择服务，查看详情和管理操作。') }}</p></div>
               <template v-else>
                 <h3 data-i18n-ignore>{{ selected }}</h3>
                 <p v-if="detailError" class="services-error" role="alert">{{ detailError }}</p>
-                <LoadingState v-if="detailLoading && !detail" title="正在读取服务详情" />
+                <LoadingState v-if="detailLoading && !detail" :title="phrase('正在读取服务详情')" />
                 <template v-if="detail">
                   <p class="services-description" data-i18n-ignore>{{ detail.description }}</p>
-                  <dl><dt>运行状态</dt><dd>{{ stateLabel(detail.activeState) }} <span data-i18n-ignore>({{ detail.subState }})</span></dd><dt>开机自启</dt><dd>{{ stateLabel(detail.unitFileState) }}</dd><dt>加载状态</dt><dd data-i18n-ignore>{{ detail.loadState }}</dd><dt>主进程 PID</dt><dd>{{ detail.mainPID || '—' }}</dd><dt>单元文件</dt><dd data-i18n-ignore>{{ detail.fragmentPath || '—' }}</dd></dl>
-                  <p v-if="!writable" class="services-notice">当前 Agent 未启用服务写入，仅可查看。</p>
+                  <dl><dt>{{ phrase('运行状态') }}</dt><dd>{{ stateLabel(detail.activeState) }} <span data-i18n-ignore>({{ detail.subState }})</span></dd><dt>{{ phrase('开机自启') }}</dt><dd>{{ stateLabel(detail.unitFileState) }}</dd><dt>{{ phrase('加载状态') }}</dt><dd data-i18n-ignore>{{ detail.loadState }}</dd><dt>{{ phrase('主进程 PID') }}</dt><dd>{{ detail.mainPID || '—' }}</dd><dt>{{ phrase('单元文件') }}</dt><dd data-i18n-ignore>{{ detail.fragmentPath || '—' }}</dd></dl>
+                  <p v-if="!writable" class="services-notice">{{ phrase('当前 Agent 未启用服务写入，仅可查看。') }}</p>
                   <div class="services-actions"><button v-for="action in actions" :key="action.id" type="button" class="button button--secondary" :data-action="action.id" :disabled="!canExecute(action.id)" @click="execute(action.id)">{{ phrase(action.label) }}</button></div>
-                  <p class="services-hint">开机自启设置不会立即启动或停止服务；静态、屏蔽等限制由 systemd 返回。</p>
+                  <p class="services-hint">{{ phrase('开机自启设置不会立即启动或停止服务；静态、屏蔽等限制由 systemd 返回。') }}</p>
                 </template>
-                <p v-if="running" role="status">正在提交服务操作…</p>
+                <p v-if="running" role="status">{{ phrase('正在提交服务操作…') }}</p>
                 <p v-if="actionError" class="services-error" role="alert">{{ actionError }}</p>
                 <p v-if="actionMessage" class="services-notice" role="status">{{ phrase(actionMessage) }}</p>
-                <div class="services-log-header"><h4>最近日志</h4><button type="button" class="button button--secondary" :disabled="logsLoading" @click="loadLogs">{{ logsLoading ? phrase('读取中') : phrase('读取日志') }}</button></div>
+                <div class="services-log-header"><h4>{{ phrase('最近日志') }}</h4><button type="button" class="button button--secondary" :disabled="logsLoading" @click="loadLogs">{{ logsLoading ? phrase('读取中') : phrase('读取日志') }}</button></div>
                 <p v-if="logsError" class="services-error" role="alert">{{ logsError }}</p>
-                <p v-if="logs?.truncated" class="services-hint">日志已截断，仅显示最近的有界输出。</p>
-                <pre v-if="logs" class="services-logs" tabindex="0" aria-label="服务日志" data-i18n-ignore>{{ logs.content || phrase('暂无服务日志。') }}</pre>
+                <p v-if="logs?.truncated" class="services-hint">{{ phrase('日志已截断，仅显示最近的有界输出。') }}</p>
+                <pre v-if="logs" class="services-logs" tabindex="0" :aria-label="phrase('服务日志')" data-i18n-ignore>{{ logs.content || phrase('暂无服务日志。') }}</pre>
               </template>
             </section>
           </div>

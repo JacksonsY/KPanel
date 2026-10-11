@@ -15,6 +15,7 @@ export default [
   ["终端关闭失败，请重试关闭。", "Could not close the terminal. Try closing it again."],
   ["正在连接终端…", "Connecting to terminal…"],
 
+  ['当前主机不支持该服务操作。', 'This host does not support this service operation.'],
   ['服务名称、参数或状态无效。', 'The service name, parameters, or state are invalid.'],
   ['服务操作正在执行，请稍后重试。', 'A service operation is in progress. Try again shortly.'],
   ['服务状态已变化，请刷新后重试。', 'Service state changed. Refresh before trying again.'],
