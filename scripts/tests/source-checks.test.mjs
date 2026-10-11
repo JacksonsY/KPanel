@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { runPlan } from '../run-source-checks.mjs';
 import { resolveBash } from '../run-repo-bash.mjs';
-import { assertTrivyInventory, baselineMod, moduleEnvironment, parseModuleJSON, validateBackport, verifyModuleGraphs } from '../torrent-backport-baseline.mjs';
+import { assertTrivyInventory, baselineMod, moduleEnvironment, parseModuleJSON, validateBackport, verifyModuleDeclarations, verifyModuleGraphs } from '../torrent-backport-baseline.mjs';
 
 const repo = resolve(import.meta.dirname, '../..');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -25,6 +25,66 @@ test('torrent baseline removes only the exact replacement and preserves every ot
   assert.throws(() => baselineMod(rest + replacement + replacement), /one exact/);
   assert.throws(() => baselineMod(rest + replacement.replace(' v1.61.0 =>', ' =>')), /one exact/);
   assert.throws(() => baselineMod(rest + replacement.replace('v1.61.0 =>', 'v1.62.0 =>')), /one exact/);
+});
+
+function moduleDeclarations() {
+  // Shape observed from the fixed Go 1.27.2 `go mod edit -json`: empty Replace is omitted.
+  const baseline = { Module: { Path: 'example.test/panel' }, Go: '1.27.2',
+    Require: [{ Path: 'github.com/anacrolix/torrent', Version: 'v1.61.0' }, { Path: 'example.test/other', Version: 'v1.0.0', Indirect: true }] };
+  const replacement = { Old: { Path: 'github.com/anacrolix/torrent', Version: 'v1.61.0' }, New: { Path: './third_party/torrent' } };
+  return { baseline, actual: { ...structuredClone(baseline), Replace: [replacement] } };
+}
+
+test('torrent declaration comparison accepts only equivalent empty Replace representations', () => {
+  const { actual, baseline } = moduleDeclarations();
+  for (const empty of [baseline, { ...baseline, Replace: null }, { ...baseline, Replace: [] }]) {
+    assert.doesNotThrow(() => verifyModuleDeclarations(actual, empty));
+  }
+  assert.equal(Object.hasOwn(baseline, 'Replace'), false, 'comparison must not mutate input');
+  assert.equal(actual.Replace.length, 1);
+  for (const Replace of ['', {}, false, 0]) {
+    assert.throws(() => verifyModuleDeclarations(actual, { ...baseline, Replace }), /Invalid replacement declarations/);
+  }
+});
+
+test('torrent declaration comparison preserves every other field and replacement exactly', () => {
+  const { actual, baseline } = moduleDeclarations();
+  const otherReplacement = { Old: { Path: 'example.test/other', Version: 'v1.0.0' }, New: { Path: 'example.test/fork', Version: 'v1.0.1' } };
+  actual.Replace.push(otherReplacement);
+  baseline.Replace = [structuredClone(otherReplacement)];
+  assert.doesNotThrow(() => verifyModuleDeclarations(actual, baseline));
+  for (const key of ['Module', 'Go', 'Toolchain', 'Require', 'Exclude', 'Retract', 'Tool', 'Godebug', 'FutureField']) {
+    const changed = { ...structuredClone(baseline), [key]: { changed: true } };
+    assert.throws(() => verifyModuleDeclarations(actual, changed), /changed other module declarations/, key);
+  }
+  const changedPin = structuredClone(baseline); changedPin.Require[1].Version = 'v1.0.1';
+  assert.throws(() => verifyModuleDeclarations(actual, changedPin), /changed other module declarations/);
+  const changedReplacement = structuredClone(baseline); changedReplacement.Replace[0].New.Version = 'v1.0.2';
+  assert.throws(() => verifyModuleDeclarations(actual, changedReplacement), /changed other module declarations/);
+  for (const Replace of [undefined, null, []]) {
+    assert.throws(() => verifyModuleDeclarations(actual, { ...baseline, Replace }), /changed other module declarations/);
+  }
+  // Even another field's null/empty/omitted distinction remains strict.
+  assert.throws(() => verifyModuleDeclarations({ ...actual, Exclude: [] }, baseline), /changed other module declarations/);
+  assert.throws(() => verifyModuleDeclarations({ ...actual, Exclude: null }, { ...baseline, Exclude: [] }), /changed other module declarations/);
+});
+
+test('torrent declaration comparison rejects missing, duplicate and changed torrent identities', () => {
+  const { actual, baseline } = moduleDeclarations();
+  for (const Replace of [undefined, null, [], {}, [actual.Replace[0], actual.Replace[0]]]) {
+    assert.throws(() => verifyModuleDeclarations({ ...actual, Replace }, baseline), /Unexpected torrent module declaration/);
+  }
+  for (const mutate of [
+    value => { value.Replace[0].Old.Version = 'v1.62.0'; },
+    value => { value.Replace[0].New.Path = './other'; },
+    value => { value.Replace[0].New.Version = 'v1.61.0'; },
+    value => { value.Require[0].Version = 'v1.62.0'; },
+    value => { value.Require.shift(); },
+  ]) {
+    const changed = structuredClone(actual); mutate(changed);
+    assert.throws(() => verifyModuleDeclarations(changed, baseline), /Unexpected torrent module declaration/);
+  }
+  assert.throws(() => verifyModuleDeclarations(actual, actual), /changed other module declarations/);
 });
 
 test('torrent graph qualification rejects missing identities, other dependency changes and malformed output', () => {

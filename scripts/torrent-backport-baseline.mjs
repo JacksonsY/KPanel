@@ -44,6 +44,23 @@ export function parseModuleJSON(text) {
   return values;
 }
 
+export function verifyModuleDeclarations(actual, baseline) {
+  const replacements = Array.isArray(actual.Replace) ? actual.Replace.filter(r => r.Old?.Path === MODULE) : [];
+  if (replacements.length !== 1 || replacements[0].Old.Version !== VERSION
+      || replacements[0].New?.Path !== REPLACEMENT || replacements[0].New.Version
+      || actual.Require?.filter(r => r.Path === MODULE && r.Version === VERSION).length !== 1) throw new Error('Unexpected torrent module declaration');
+  const normalizeEmptyReplace = declaration => {
+    const normalized = { ...declaration };
+    if (normalized.Replace != null && !Array.isArray(normalized.Replace)) throw new Error('Invalid replacement declarations');
+    // Go 1.27 omits an empty Replace field; older JSON shapes may use null or [].
+    // No other field is normalized: every remaining declaration must match exactly.
+    if (normalized.Replace == null || normalized.Replace.length === 0) delete normalized.Replace;
+    return normalized;
+  };
+  const expected = { ...actual, Replace: actual.Replace.filter(r => r !== replacements[0]) };
+  if (JSON.stringify(normalizeEmptyReplace(expected)) !== JSON.stringify(normalizeEmptyReplace(baseline))) throw new Error('Baseline changed other module declarations');
+}
+
 export function verifyModuleGraphs(actual, baseline) {
   for (const graph of [actual, baseline]) {
     if (graph.some(m => !m.Path || m.Error) || new Set(graph.map(m => m.Path)).size !== graph.length) throw new Error('Invalid module graph');
@@ -114,13 +131,7 @@ function prepare(repo, directory, basename) {
   const baselineEnvironment = moduleEnvironment(modfile);
   const actualMod = JSON.parse(go(['mod', 'edit', '-json'], repo, actualEnvironment));
   const originalMod = JSON.parse(go(['mod', 'edit', '-json', '-modfile=' + modfile], repo, actualEnvironment));
-  const replacements = (actualMod.Replace ?? []).filter(r => r.Old?.Path === MODULE);
-  if (replacements.length !== 1 || replacements[0].Old.Version !== VERSION
-      || replacements[0].New?.Path !== REPLACEMENT || replacements[0].New.Version
-      || actualMod.Require?.filter(r => r.Path === MODULE && r.Version === VERSION).length !== 1) throw new Error('Unexpected torrent module declaration');
-  const expectedMod = { ...actualMod, Replace: actualMod.Replace.filter(r => r !== replacements[0]) };
-  if (!expectedMod.Replace.length) expectedMod.Replace = null;
-  if (JSON.stringify(expectedMod) !== JSON.stringify(originalMod)) throw new Error('Baseline changed other module declarations');
+  verifyModuleDeclarations(actualMod, originalMod);
   const actualGraph = go(['list', '-m', '-json', 'all'], repo, actualEnvironment);
   const originalGraph = go(['list', '-m', '-json', 'all'], repo, baselineEnvironment);
   const graphSha256 = verifyModuleGraphs(parseModuleJSON(actualGraph), parseModuleJSON(originalGraph));
