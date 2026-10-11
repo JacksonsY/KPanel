@@ -22,7 +22,7 @@ vi.mock('@/lib/api', () => ({
   terminalStream: { subscribe: mocks.subscribe },
 }))
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
-  options = {}; parser = { registerOscHandler() {} }; rows = 24; cols = 80
+  options = {}; parser = { registerOscHandler() {}, registerCsiHandler() { return { dispose() {} } } }; rows = 24; cols = 80
   buffer = { active: { viewportY: 0, baseY: 0 } }
   loadAddon() {} attachCustomKeyEventHandler() {} open() {} dispose() {} focus() {} scrollToBottom() {} reset() {}
   onData(handler: (data: string) => void) { mocks.onData = handler }

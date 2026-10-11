@@ -14,7 +14,7 @@ vi.mock('@/lib/api', async (original) => ({ ...await original<typeof import('@/l
   close: () => Promise.resolve({ closed: true }), output: mocks.output, resize: () => Promise.resolve({ accepted: true }),
 } } }))
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
-  options = {}; parser = { registerOscHandler() {} }; rows = 24; cols = 80; buffer = { active: { viewportY: 0, baseY: 0 } }
+  options = {}; parser = { registerOscHandler() {}, registerCsiHandler() { return { dispose() {} } } }; rows = 24; cols = 80; buffer = { active: { viewportY: 0, baseY: 0 } }
   loadAddon() {} attachCustomKeyEventHandler() {} onData() {} open() {} dispose() {} focus() {} scrollToBottom() {}
   write(_data: unknown, callback?: () => void) {
     if (mocks.deferWrites && callback) mocks.pending.push(callback)

@@ -25,7 +25,7 @@ vi.mock('@/lib/api', () => ({ api: { apps: { terminalResize: mocks.resize, termi
     jobTerminals: { inputTransport: () => Promise.resolve({ protocol: '' }) } },
   terminalStream: { subscribe: mocks.subscribe } }))
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
-  options = {}; parser = { registerOscHandler() {} }; rows = 24; cols = 80
+  options = {}; parser = { registerOscHandler() {}, registerCsiHandler() { return { dispose() {} } } }; rows = 24; cols = 80
   buffer = { active: { viewportY: 0, baseY: 0 } }
   focus = vi.fn()
   resize = vi.fn((cols: number, rows: number) => { this.cols = cols; this.rows = rows })

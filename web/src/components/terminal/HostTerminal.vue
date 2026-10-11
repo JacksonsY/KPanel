@@ -21,6 +21,7 @@ import {
 } from '@/lib/terminalInput'
 import { createTerminalTouchScroll } from '@/lib/terminalTouchScroll'
 import { terminalCursorOptions } from '@/lib/terminalCursor'
+import { installTerminalCursorReport } from '@/lib/terminalCursorReport'
 import { readTerminalTheme } from '@/lib/terminalTheme'
 import { TerminalWriteFlow } from '@/lib/terminalWriteFlow'
 import { useI18n } from '@/i18n'
@@ -50,6 +51,7 @@ const inputBlocked = ref(false)
 let duplexInput: TerminalDuplexInput | undefined
 const state = ref<'connecting' | 'connected' | 'reconnecting' | 'finished'>('connecting')
 let terminal: Terminal | undefined
+let cursorReport: ReturnType<typeof installTerminalCursorReport> | undefined
 let fitAddon: FitAddon | undefined
 let observer: ResizeObserver | undefined
 let pollController: AbortController | undefined
@@ -350,6 +352,7 @@ onMounted(() => {
   terminal.parser.registerOscHandler(52, () => true)
   terminal.attachCustomKeyEventHandler((event) => clipboardMenu.value?.handleKeyEvent(event) ?? true)
   terminal.onData(queueInput)
+  cursorReport = installTerminalCursorReport(terminal)
   if (host.value) {
     terminal.open(host.value)
     observer = new ResizeObserver(scheduleResize)
@@ -370,6 +373,7 @@ onBeforeUnmount(() => {
   if (inputTimer) window.clearTimeout(inputTimer)
   if (resizeTimer) window.clearTimeout(resizeTimer)
   observer?.disconnect()
+  cursorReport?.dispose()
   terminal?.dispose()
   void closeSession().catch(() => undefined)
 })

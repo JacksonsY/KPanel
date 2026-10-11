@@ -10,7 +10,7 @@ vi.mock('@/lib/api', async (original) => ({ ...await original<typeof import('@/l
   close: mocks.close, output: () => new Promise(() => {}), resize: () => Promise.resolve({ accepted: true }),
 } } }))
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
-  options = {}; parser = { registerOscHandler() {} }; rows = 24; cols = 80
+  options = {}; parser = { registerOscHandler() {}, registerCsiHandler() { return { dispose() {} } } }; rows = 24; cols = 80
   loadAddon() {} attachCustomKeyEventHandler() {} onData() {} open() {} dispose() {} focus() {}
 } }))
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }))
