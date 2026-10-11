@@ -117,7 +117,7 @@ jobs:
           node scripts/run-source-checks.mjs
 
       - name: Scan Go call paths for known vulnerabilities
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+        run: make security-audit-go
 
       - name: Audit Node dependencies
         run: |

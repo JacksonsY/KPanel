@@ -41,6 +41,26 @@ case "$mode" in
       --ignorefile /src/.trivyignore.yaml \
       --skip-files /src/go.sum \
       /src
+    # A local Go replacement has no upstream version in scanner databases.
+    # Keep the actual scan above and require conservative original-version coverage too.
+    baseline_dir="$(mktemp -d "${TMPDIR:-/tmp}/kpanel-torrent-manifest.XXXXXXXX")"
+    trap 'rm -rf -- "$baseline_dir"' EXIT
+    node "$repo_root/scripts/torrent-backport-baseline.mjs" manifest "$baseline_dir"
+    docker run --rm \
+      "${network_args[@]}" \
+      "${proxy_args[@]}" \
+      -v "$baseline_dir:/baseline:ro" \
+      -v "$cache_dir:/root/.cache/trivy" \
+      "$trivy_image" \
+      fs \
+      --scanners vuln \
+      --severity HIGH,CRITICAL \
+      --exit-code 1 \
+      --format json \
+      --list-all-pkgs \
+      --skip-files /baseline/go.sum \
+      /baseline | tee "$baseline_dir/trivy.json"
+    node "$repo_root/scripts/torrent-backport-baseline.mjs" check-trivy "$baseline_dir/trivy.json"
     ;;
   image)
     image_ref="${2:-}"

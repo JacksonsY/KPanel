@@ -12,7 +12,8 @@ the `v1.61.0` requirement and its existing dependency versions.
 - Module checksum: `h1:vxo+B4SwnoP5AQWbhvnTYIaTgPSX+llYUVuQVsN4Jg8=`
 - Archive SHA-256: `58393811685d90f3e4f821cfc41e1b34c60019e6380750c6c8e31976707de0ef`
 - Original module files: 453. Preserve these files byte for byte except for the
-  two files changed by the upstream patches. This provenance note is an addition.
+  two files changed by the upstream patches. This note and the machine-readable
+  [source manifest](KPANEL_BACKPORT.json) are additions.
 
 ## Applied upstream changes
 
@@ -39,6 +40,12 @@ update this nested module or reformat unchanged upstream files.
 
 This backport does not assert that `v1.61.0` is the latest release or free of
 vulnerabilities. Dependency freshness, source and vulnerability checks remain
-required. Replace this backport with a reviewed upstream release containing both
+required. Local replacements omit the upstream version from database matching;
+the actual-source scans are supplemented by conservative original-version
+govulncheck and Trivy scans through `scripts/torrent-backport-baseline.mjs`.
+Those scans preserve KPanel's dependency versions and do not replace the actual
+patched-source or image scans. Release provenance must identify the source as
+modified and bind this manifest to the released candidate and image digest.
+Replace this backport with a reviewed upstream release containing both
 fixes when its wider changes and compatibility have been verified. To roll back,
 revert the KPanel backport commit as a unit.

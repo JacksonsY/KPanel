@@ -3,7 +3,7 @@ NPM ?= npm
 VERSION := $(shell tr -d '\r\n' < VERSION)
 LDFLAGS := -s -w -X github.com/kejilion/kejilion-panel/internal/version.Version=$(VERSION)
 
-.PHONY: fmt test test-go test-web test-deploy source-check security-audit governance-check environment-policy-check release-metrics dependency-policy-check dependency-report verify-change verify-l2 verify-release build build-web build-linux build-linux-binaries build-mcp-clients clean
+.PHONY: fmt test test-go test-web test-deploy source-check security-audit security-audit-go governance-check environment-policy-check release-metrics dependency-policy-check dependency-report verify-change verify-l2 verify-release build build-web build-linux build-linux-binaries build-mcp-clients clean
 
 fmt:
 	$(GO) fmt ./...
@@ -22,8 +22,11 @@ test-deploy:
 source-check:
 	node scripts/run-source-checks.mjs
 
-security-audit:
+security-audit-go:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+	node scripts/torrent-backport-baseline.mjs govuln
+
+security-audit: security-audit-go
 	set -e; for attempt in 1 2 3; do \
 		if $(NPM) audit --prefix web --audit-level=high; then exit 0; fi; \
 		if [ "$$attempt" -lt 3 ]; then sleep $$((attempt * 10)); fi; \

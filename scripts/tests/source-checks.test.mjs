@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { runPlan } from '../run-source-checks.mjs';
 import { resolveBash } from '../run-repo-bash.mjs';
+import { assertTrivyInventory, baselineMod, moduleEnvironment, parseModuleJSON, validateBackport, verifyModuleGraphs } from '../torrent-backport-baseline.mjs';
 
 const repo = resolve(import.meta.dirname, '../..');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -15,6 +16,59 @@ function fixture() {
     cleanup: () => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) };
 }
 const lane = (id, code) => ({ id, argv: [process.execPath, '-e', code] });
+
+test('torrent baseline removes only the exact replacement and preserves every other declaration', () => {
+  const replacement = 'replace github.com/anacrolix/torrent v1.61.0 => ./third_party/torrent\n';
+  const rest = 'module example.test/panel\n\ngo 1.27.2\nrequire github.com/anacrolix/torrent v1.61.0\nreplace example.test/other v1.0.0 => example.test/other v1.0.1\n';
+  assert.equal(baselineMod(rest + replacement), rest);
+  assert.throws(() => baselineMod(rest), /one exact/);
+  assert.throws(() => baselineMod(rest + replacement + replacement), /one exact/);
+  assert.throws(() => baselineMod(rest + replacement.replace(' v1.61.0 =>', ' =>')), /one exact/);
+  assert.throws(() => baselineMod(rest + replacement.replace('v1.61.0 =>', 'v1.62.0 =>')), /one exact/);
+});
+
+test('torrent graph qualification rejects missing identities, other dependency changes and malformed output', () => {
+  const original = [{ Path: 'example.test/panel', Main: true }, { Path: 'github.com/anacrolix/torrent', Version: 'v1.61.0' }, { Path: 'example.test/other', Version: 'v1.0.0' }];
+  const actual = structuredClone(original);
+  actual[1].Replace = { Path: './third_party/torrent', Dir: '/private/source' };
+  assert.match(verifyModuleGraphs(actual, original), /^[a-f0-9]{64}$/);
+  assert.deepEqual(parseModuleJSON(original.map(x => JSON.stringify(x, null, 2)).join('\n')), original);
+  assert.throws(() => verifyModuleGraphs(actual, []), /identity mismatch/);
+  const changed = structuredClone(original); changed[2].Version = 'v1.0.1';
+  assert.throws(() => verifyModuleGraphs(actual, changed), /changed the dependency graph/);
+  changed[2] = { ...original[2], Replace: { Path: 'example.test/fork', Version: 'v1.0.0' } };
+  assert.throws(() => verifyModuleGraphs(actual, changed), /changed the dependency graph/);
+  assert.throws(() => verifyModuleGraphs(actual, [...original, original[1]]), /Invalid module graph/);
+  for (const malformed of ['', '{', '{}junk', '{"Path":"unfinished}', '}']) assert.throws(() => parseModuleJSON(malformed), /module graph/);
+});
+
+test('baseline Go flags quote the whole modfile argument and reject conflicting overrides', () => {
+  const environment = moduleEnvironment('C:\\task directory\\baseline.mod', { GOFLAGS: '-tags=netgo' });
+  assert.equal(environment.GOWORK, 'off');
+  assert.equal(environment.GOFLAGS, '-tags=netgo -mod=readonly "-modfile=C:/task directory/baseline.mod"');
+  for (const GOFLAGS of ['-mod=mod', '-modfile=other.mod', '"-modfile=with spaces.mod"', "'-mod=mod'"]) {
+    assert.throws(() => moduleEnvironment('/tmp/baseline.mod', { GOFLAGS }), /Conflicting GOFLAGS/);
+  }
+  assert.throws(() => moduleEnvironment('/tmp/"bad/baseline.mod', {}), /Unsupported module-file path/);
+});
+
+test('torrent provenance and conservative scanner inventory retain the original module identity', () => {
+  const provenance = validateBackport(repo);
+  assert.equal(provenance.files.length, 453);
+  assert.equal(provenance.patches.length, 2);
+  const report = { Results: [{ Packages: [{ Name: 'github.com/anacrolix/torrent', Version: '1.61.0' }] }] };
+  assert.equal(assertTrivyInventory(report), 1);
+  assert.throws(() => assertTrivyInventory({ Results: [] }), /missing torrent/);
+  report.Results[0].Packages[0].Version = '1.62.0';
+  assert.throws(() => assertTrivyInventory(report), /missing torrent/);
+  const makefile = readFileSync(join(repo, 'Makefile'), 'utf8');
+  assert.match(makefile, /security-audit-go:\s+\$\(GO\) run golang\.org\/x\/vuln\/cmd\/govulncheck@v1\.6\.0 \.\/\.\.\.\s+node scripts\/torrent-backport-baseline\.mjs govuln/);
+  for (const workflow of ['ci.yml', 'release.yml']) assert.match(readFileSync(join(repo, '.github/workflows', workflow), 'utf8'), /run: make security-audit-go/);
+  const scan = readFileSync(join(repo, 'scripts/security-scan.sh'), 'utf8');
+  assert.match(scan, /--scanners vuln,secret,misconfig/);
+  assert.match(scan, /--format json \\\s+--list-all-pkgs/);
+  assert.match(scan, /torrent-backport-baseline\.mjs" check-trivy/);
+});
 
 test('bounded parallel source checks retain every log and ordered terminal result', async () => {
   const f = fixture();

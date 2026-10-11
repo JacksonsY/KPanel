@@ -28,6 +28,17 @@ test('the release-runner root exception is narrow, reasoned and time bounded', (
   assert.doesNotMatch(ignore, /id:\s*\*/);
 });
 
+test('the original-version supplement keeps actual scans and requires an explicit package inventory', () => {
+  const script = readFileSync(scriptPath, 'utf8');
+  assert.match(script, /--scanners vuln,secret,misconfig/);
+  assert.match(script, /--scanners vuln,secret/);
+  assert.match(script, /-v "\$baseline_dir:\/baseline:ro"/);
+  assert.match(script, /torrent-backport-baseline\.mjs" manifest "\$baseline_dir"/);
+  assert.match(script, /--format json \\\s+--list-all-pkgs/);
+  assert.match(script, /torrent-backport-baseline\.mjs" check-trivy "\$baseline_dir\/trivy\.json"/);
+  assert.match(script, /set -euo pipefail/);
+});
+
 test('security scan proxy wiring has valid Bash syntax', () => {
   const bash = process.env.KPANEL_TEST_BASH ||
     (process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash');

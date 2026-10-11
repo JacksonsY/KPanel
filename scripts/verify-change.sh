@@ -99,6 +99,7 @@ for path in "${changed_files[@]}"; do
     scripts/check-release-acceptance-coverage.mjs|\
     scripts/run-repo-bash.mjs|\
     scripts/run-source-checks.mjs|scripts/verify-source-lane.sh|scripts/task-preflight.mjs|\
+    scripts/torrent-backport-baseline.mjs|scripts/security-scan.sh|scripts/tests/security-scan-proxy.test.mjs|\
     scripts/tests/source-checks.test.mjs|scripts/tests/task-preflight.test.mjs|\
     scripts/run-release-gate.sh|scripts/run-release-l3.mjs|scripts/run-release-l3-remote.sh|\
     scripts/run-production-evidence.mjs|scripts/run-production-evidence-remote.sh|\

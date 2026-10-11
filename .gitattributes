@@ -32,3 +32,8 @@ scene-packs/*/assets/** binary
 scene-packs/*/dist/assets/** binary
 scene-packs/*/license.txt text eol=lf
 scene-packs/*/dist/license.txt text eol=lf
+# Preserve these authenticated upstream files byte for byte, including original whitespace.
+third_party/torrent/NOTES.md -whitespace
+third_party/torrent/README.md -whitespace
+third_party/torrent/bencode/README.md -whitespace
+third_party/torrent/storage/iter.go -whitespace
