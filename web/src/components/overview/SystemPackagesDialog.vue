@@ -21,6 +21,8 @@ const snapshot = ref<SystemPackagesSnapshot>()
 const selected = ref<SystemPackageID[]>([])
 const search = ref('')
 const statusFilter = ref<'all' | 'installed' | 'missing'>('all')
+const activeTab = ref<'packages' | 'runtimes'>('packages')
+const runtimeNames = { python: 'Python', node: 'Node.js', java: 'Java', go: 'Go' } as const
 const submitting = ref(false)
 const error = ref('')
 const terminalOpen = ref(false)
@@ -92,6 +94,7 @@ const { load, stop, loading, refreshing } = usePollingRequest({
     selected.value = selected.value.filter((id) => snapshot.value?.items.some((item) => item.id === id))
   },
   shouldPoll: () => running.value,
+  shouldRetry: (reason) => !(reason instanceof ApiError) || reason.status < 400 || reason.status >= 500 || reason.status === 408 || reason.status === 429,
   onStart: () => { error.value = '' },
   onError: (reason) => {
     error.value = reason instanceof ApiError ? reason.message : '无法读取软件包状态。'
@@ -216,9 +219,28 @@ onBeforeUnmount(closePackageTerminal)
           <button class="icon-button" type="button" :disabled="refreshing || submitting" :title="phrase('刷新软件包状态')" @click="load(true)"><RefreshCw :size="17" :class="{ spin: refreshing }" /></button>
         </header>
 
+        <div v-if="error" class="inline-alert inline-alert--danger"><TriangleAlert :size="17" /> {{ phrase(error) }}</div>
         <div v-if="maintenanceBusy" class="inline-alert inline-alert--warning"><TriangleAlert :size="17" /> {{ phrase('另一项系统维护任务正在运行，完成后才能管理软件包。') }}</div>
         <div v-else-if="snapshot.maintenance.action === 'packages' && snapshot.maintenance.state === 'failed'" class="inline-alert inline-alert--danger"><TriangleAlert :size="17" /> {{ phrase(snapshot.maintenance.message || '软件包任务执行失败。') }}</div>
 
+        <div class="packages-tabs" role="group" :aria-label="phrase('工具与运行环境')">
+          <button class="button" type="button" :aria-pressed="activeTab === 'packages'" @click="activeTab = 'packages'">{{ phrase('常用软件包') }}</button>
+          <button class="button" type="button" :aria-pressed="activeTab === 'runtimes'" @click="activeTab = 'runtimes'">{{ phrase('运行环境检测') }}</button>
+        </div>
+
+        <section v-if="activeTab === 'runtimes'" class="runtimes-panel" :aria-label="phrase('运行环境检测')">
+          <p class="runtimes-description">{{ phrase('检测 Agent 当前 PATH 中的 Python、Node.js、Java 和 Go；用户私有环境和容器内环境可能无法发现。') }}</p>
+          <div v-if="!snapshot.runtimes" class="inline-alert inline-alert--warning">{{ phrase('当前 Agent 尚未提供运行环境检测。') }}</div>
+          <div v-else class="runtimes-grid">
+            <article v-for="item in snapshot.runtimes" :key="item.id" class="runtime-card">
+              <div class="runtime-card__heading"><strong>{{ runtimeNames[item.id] }}</strong><span :class="{ 'is-installed': item.installed }">{{ phrase(item.installed ? '已安装' : '未检测到') }}</span></div>
+              <p>{{ item.installed ? (item.version || phrase('版本检测失败')) : phrase('Agent 当前 PATH 中未找到可执行文件。') }}</p>
+              <code v-if="item.path" class="runtime-card__path">{{ item.path }}</code>
+            </article>
+          </div>
+        </section>
+
+        <template v-else>
         <div class="packages-toolbar">
           <label class="packages-search"><Search :size="17" /><input v-model="search" type="search" :placeholder="phrase('搜索名称或用途')" /></label>
           <div class="packages-filters" :aria-label="phrase('安装状态')">
@@ -254,6 +276,7 @@ onBeforeUnmount(closePackageTerminal)
             <button class="button button--primary" type="button" :disabled="!writable || !installable.length || running || maintenanceBusy || submitting" @click="submit('install')"><LoaderCircle v-if="submitting" :size="16" class="spin" /><Download v-else :size="16" />{{ phrase(`安装所选（${installable.length}）`) }}</button>
           </div>
         </footer>
+        </template>
       </template>
     </div>
   </ModalDialog>
@@ -261,8 +284,7 @@ onBeforeUnmount(closePackageTerminal)
   <ModalDialog
     :open="terminalOpen"
     :title="phrase(terminalTitle)"
-    :description="phrase('独立会话，不会占用或改动主终端页面中的会话。')"
-    size="wide"
+    variant="workspace"
     allow-fullscreen
     @close="closePackageTerminal"
   >
@@ -281,6 +303,19 @@ onBeforeUnmount(closePackageTerminal)
 
 <style scoped>
 .packages-dialog { display:grid; gap:14px; }
+.packages-tabs { display:flex; flex-wrap:wrap; gap:8px; }
+.packages-tabs [aria-pressed="true"] { color:var(--brand); border-color:var(--brand); background:var(--brand-soft); }
+.runtimes-panel { display:grid; gap:14px; }
+.runtimes-description { margin:0; color:var(--muted); font-size:14px; line-height:1.5; }
+.runtimes-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.runtime-card { min-width:0; padding:16px; border:1px solid var(--border); border-radius:var(--radius); }
+.runtime-card__heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; }
+.runtime-card__heading strong { font-size:16px; }
+.runtime-card__heading span { color:var(--muted); font-size:14px; }
+.runtime-card__heading .is-installed { color:var(--success); }
+.runtime-card p { margin:12px 0 0; font-size:14px; line-height:1.5; }
+.runtime-card__path { display:block; margin-top:8px; color:var(--muted); font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+@media (max-width:600px) { .runtimes-grid { grid-template-columns:1fr; } }
 .packages-summary { display:flex; min-height:58px; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface-subtle); }
 .packages-summary__icon { display:grid; width:38px; height:38px; place-items:center; border-radius:var(--radius); color:var(--brand); background:color-mix(in srgb,var(--brand) 10%,transparent); }
 .packages-summary>span:nth-child(2) { display:grid; gap:3px; }
@@ -322,6 +357,6 @@ onBeforeUnmount(closePackageTerminal)
 .packages-footer>span { max-width:52%; color:var(--muted); font-size:12px; line-height:1.45; }
 .packages-footer>div { display:flex; gap:8px; }
 .packages-footer .button { display:inline-flex; align-items:center; gap:6px; }
-.package-terminal { height:min(62vh,560px); min-height:360px; }
+.package-terminal { display:flex; flex:1 1 auto; min-height:0; flex-direction:column; }
 @media (max-width:800px) { .packages-toolbar { grid-template-columns:1fr; } .packages-filters { width:max-content; max-width:100%; overflow-x:auto; } .packages-grid { grid-template-columns:1fr; } .packages-footer { align-items:stretch; flex-direction:column; } .packages-footer>span { max-width:none; } .packages-footer>div { display:grid; grid-template-columns:1fr 1fr; } .packages-footer .button { justify-content:center; } }
 </style>

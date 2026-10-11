@@ -97,12 +97,13 @@ func (m *Manager) readSystemPackagesSnapshot() (contract.SystemPackagesSnapshot,
 	}, nil
 }
 
-func (m *Manager) SystemPackagesSnapshot(context.Context) (contract.SystemPackagesSnapshot, error) {
+func (m *Manager) SystemPackagesSnapshot(ctx context.Context) (contract.SystemPackagesSnapshot, error) {
 	snapshot, err := m.readSystemPackagesSnapshot()
 	if err != nil {
 		return contract.SystemPackagesSnapshot{}, err
 	}
 	snapshot.Maintenance = m.MaintenanceStatus()
+	snapshot.Runtimes = m.readSystemRuntimes(ctx)
 	return snapshot, nil
 }
 

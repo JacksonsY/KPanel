@@ -81,7 +81,19 @@ func (runner commandRunner) RunResource(
 	name string,
 	arguments ...string,
 ) ([]byte, []byte, error) {
+	return runner.runResource(ctx, limit, input, 0, name, arguments...)
+}
+
+func (runner commandRunner) runResource(
+	ctx context.Context,
+	limit int,
+	input []byte,
+	waitDelay time.Duration,
+	name string,
+	arguments ...string,
+) ([]byte, []byte, error) {
 	command := exec.CommandContext(ctx, name, arguments...)
+	command.WaitDelay = waitDelay
 	command.Env = append(
 		os.Environ(),
 		"LC_ALL=C",

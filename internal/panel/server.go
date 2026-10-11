@@ -1304,6 +1304,7 @@ func allowedAgentPath(publicPath string) (string, bool) {
 		"/api/v1/system/accounts":               "/v1/system/accounts",
 		"/api/v1/system/ssh-defense":            "/v1/system/ssh-defense",
 		"/api/v1/system/system-tuning":          "/v1/system/system-tuning",
+		"/api/v1/system/packages":               "/v1/system/packages",
 		"/api/v1/system/disk-partitions":        "/v1/system/disk-partitions",
 		"/api/v1/system/virus-scan":             "/v1/system/virus-scan",
 		"/api/v1/monitoring/history":            "/v1/monitoring/history",

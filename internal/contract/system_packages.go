@@ -26,6 +26,14 @@ type SystemPackagesSnapshot struct {
 	Maintenance     SystemMaintenanceSummary `json:"maintenance"`
 	ResourceVersion string                   `json:"resourceVersion"`
 	ObservedAt      time.Time                `json:"observedAt"`
+	Runtimes        []SystemRuntime          `json:"runtimes,omitempty"`
+}
+
+type SystemRuntime struct {
+	ID        string `json:"id"`
+	Installed bool   `json:"installed"`
+	Version   string `json:"version,omitempty"`
+	Path      string `json:"path,omitempty"`
 }
 
 type SystemPackagesActionRequest struct {

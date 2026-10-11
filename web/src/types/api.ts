@@ -1106,6 +1106,14 @@ export interface SystemPackagesSnapshot {
 	maintenance: SystemManagement['maintenance']
 	resourceVersion: string
 	observedAt: string
+	runtimes?: SystemRuntime[]
+}
+
+export interface SystemRuntime {
+	id: 'python' | 'node' | 'java' | 'go'
+	installed: boolean
+	version?: string
+	path?: string
 }
 
 export interface SystemPackagesActionInput {

@@ -6,6 +6,7 @@ interface PollingRequestOptions<T> {
   request: (signal: AbortSignal) => Promise<T>
   apply: (value: T) => void
   shouldPoll: () => boolean
+  shouldRetry?: (reason: unknown) => boolean
   onStart: () => void
   onError: (reason: unknown) => void
 }
@@ -55,7 +56,7 @@ export function usePollingRequest<T>(options: PollingRequestOptions<T>) {
     controller = requestController
     // Defer execution so synchronous throws also settle the registered request.
     inFlight = Promise.resolve().then(async () => {
-      let retry = false
+      let retry: boolean | undefined
       try {
         if (!current(run)) return
         const value = await options.request(requestController.signal)
@@ -64,7 +65,7 @@ export function usePollingRequest<T>(options: PollingRequestOptions<T>) {
         loaded = true
       } catch (reason) {
         if (!current(run) || requestController.signal.aborted) return
-        retry = true
+        retry = options.shouldRetry?.(reason) ?? true
         if (reason instanceof DOMException && reason.name === 'AbortError') return
         options.onError(reason)
       } finally {
@@ -73,7 +74,7 @@ export function usePollingRequest<T>(options: PollingRequestOptions<T>) {
         if (current(run) && !requestController.signal.aborted) {
           loading.value = false
           refreshing.value = false
-          if (retry || options.shouldPoll()) {
+          if (retry ?? options.shouldPoll()) {
             timer = window.setTimeout(() => {
               timer = undefined
               if (current(run)) void load(true)
