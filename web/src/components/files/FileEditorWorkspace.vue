@@ -560,7 +560,7 @@ defineExpose({ openFile })
       </div>
       <button
         v-if="canExecuteFile(active.entry)"
-        class="button button--secondary editor-execute"
+        class="editor-tool editor-execute"
         type="button"
         :disabled="!editorReady || active.saving || executing"
         :inert="compact && sidebarOpen"
@@ -879,6 +879,10 @@ defineExpose({ openFile })
   min-height: 36px;
   padding: 6px 12px;
   font-size: 14px;
+}
+.editor-execute {
+  gap: 6px;
+  width: auto;
 }
 .editor-workspace__body {
   position: relative;
