@@ -6555,6 +6555,14 @@ body.terminal-fullscreen-open .modal-panel {
     height: 44px;
   }
 
+  .topbar .language-selector__trigger {
+    width: auto;
+  }
+
+  .topbar .language-selector__trigger svg {
+    flex-shrink: 0;
+  }
+
   .topbar .desktop-entry-button {
     align-items: center;
     min-width: 44px;
