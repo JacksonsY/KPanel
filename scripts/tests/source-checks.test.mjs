@@ -68,6 +68,8 @@ test('torrent provenance and conservative scanner inventory retain the original 
   assert.match(scan, /--scanners vuln,secret,misconfig/);
   assert.match(scan, /--format json \\\s+--list-all-pkgs/);
   assert.match(scan, /torrent-backport-baseline\.mjs" check-trivy/);
+  assert.match(scan, /baseline_root="\$repo_root\/\.codex-tmp"/);
+  assert.match(scan, /mktemp -d "\$baseline_root\/torrent-baseline\.XXXXXXXX"/);
 });
 
 test('bounded parallel source checks retain every log and ordered terminal result', async () => {

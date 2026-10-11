@@ -33,6 +33,10 @@ test('the original-version supplement keeps actual scans and requires an explici
   assert.match(script, /--scanners vuln,secret,misconfig/);
   assert.match(script, /--scanners vuln,secret/);
   assert.match(script, /-v "\$baseline_dir:\/baseline:ro"/);
+  assert.match(script, /baseline_root="\$repo_root\/\.codex-tmp"/);
+  assert.match(script, /-L "\$baseline_root"/);
+  assert.match(script, /mktemp -d "\$baseline_root\/torrent-baseline\.XXXXXXXX"/);
+  assert.doesNotMatch(script, /mktemp -d "\$\{TMPDIR/);
   assert.match(script, /torrent-backport-baseline\.mjs" manifest "\$baseline_dir"/);
   assert.match(script, /--format json \\\s+--list-all-pkgs/);
   assert.match(script, /torrent-backport-baseline\.mjs" check-trivy "\$baseline_dir\/trivy\.json"/);

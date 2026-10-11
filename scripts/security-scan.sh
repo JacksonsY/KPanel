@@ -43,7 +43,15 @@ case "$mode" in
       /src
     # A local Go replacement has no upstream version in scanner databases.
     # Keep the actual scan above and require conservative original-version coverage too.
-    baseline_dir="$(mktemp -d "${TMPDIR:-/tmp}/kpanel-torrent-manifest.XXXXXXXX")"
+    # The release Runner and host Docker daemon share this checkout at the same path.
+    # Runner-private /tmp cannot be used as a nested Docker bind source.
+    baseline_root="$repo_root/.codex-tmp"
+    if [[ -L "$baseline_root" || ( -e "$baseline_root" && ! -d "$baseline_root" ) ]]; then
+      echo 'Refusing an unsafe baseline staging directory.' >&2
+      exit 1
+    fi
+    [[ -d "$baseline_root" ]] || mkdir -m 700 -- "$baseline_root"
+    baseline_dir="$(mktemp -d "$baseline_root/torrent-baseline.XXXXXXXX")"
     trap 'rm -rf -- "$baseline_dir"' EXIT
     node "$repo_root/scripts/torrent-backport-baseline.mjs" manifest "$baseline_dir"
     docker run --rm \
