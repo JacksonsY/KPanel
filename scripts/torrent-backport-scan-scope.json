@@ -1,0 +1,389 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-10-11",
+  "expiresAt": "2026-10-25",
+  "owner": "KPanel release maintainers",
+  "sourceManifestSha256": "3165b3c3e3fcdefe8dc52fba19a0a872eb26238692d6fedff4db2fc48ecf2580",
+  "selectedGraphSha256": "1151008d84fe52c7916af74706edcab8454f5edec0355eee889e1eb527b8dd98",
+  "buildTargetFilesSha256": {
+    "Dockerfile": "49a15b28739aa97b421831b21d4269a591f69bacdfda9c7162364ca73e70ef54",
+    ".github/workflows/release.yml": "163d76610fc6b5c22c8516f97eac0530f4a555616e146cb1d6249351aabbd3ba",
+    "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
+    "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
+  },
+  "closureSha256": "44e7d95877fe2d066cb8ef81fb8bf224a010efa546466ade9c21ee30fbafa65b",
+  "firstPartySourceSha256": "0b4143ff7bbaadc8faa762f699aa0df85cff84df1bbf84b2af8cfe9dddfa6b2b",
+  "buildTargetHashEncoding": "UTF-8 with LF line endings",
+  "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.2; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
+  "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
+  "review": {
+    "state": "reviewed",
+    "reviewerRole": "Independent source and dependency evidence reviewer",
+    "evidenceSha256": "bee43c50565c4276b5c2876c3a15020a947c106a337c4e765b6d1395918e28f1",
+    "advisoryEvidenceSha256": "32c054b8eebcda02c82748fd29981fa8c3988fa19605e1deed1628d7a6ab4607",
+    "additionalSelectedEvidenceSha256": "93a256970a82a7c224c5e38aadbb21431fdbd8e5f6621da469473d7955d80bf2",
+    "summary": "Original upstream findings and all six actual production package closures were independently reviewed. The affected SDK, gRPC, Thrift and gogo/protobuf versions are absent from these closures. The generated-code boundary remains explicit. This records applicability evidence; it does not claim the new scanner implementation, final image or release has passed validation."
+  },
+  "findings": [
+    {
+      "scope": "selected",
+      "kind": "vulnerability",
+      "id": "CVE-2019-0210",
+      "module": "github.com/apache/thrift",
+      "version": "v0.12.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected version is in the selected build list but absent from all six verified production package closures. The HIGH/CRITICAL finding and original scanner exit status remain visible."
+    },
+    {
+      "scope": "selected",
+      "kind": "vulnerability",
+      "id": "CVE-2021-3121",
+      "module": "github.com/gogo/protobuf",
+      "version": "v1.2.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected version is in the selected build list but absent from every production package closure. The observation also verifies no compiled .pb.go or .proto source and binds all current first-party Go source content. Copying generated code or changing this source observation requires a new review; module absence alone is insufficient."
+    },
+    {
+      "scope": "selected",
+      "kind": "vulnerability",
+      "id": "CVE-2026-24051",
+      "module": "go.opentelemetry.io/otel/sdk",
+      "version": "v1.38.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected version is in the selected build list but absent from all six verified production package closures. The HIGH/CRITICAL finding and original scanner exit status remain visible."
+    },
+    {
+      "scope": "selected",
+      "kind": "vulnerability",
+      "id": "CVE-2026-33186",
+      "module": "google.golang.org/grpc",
+      "version": "v1.77.0",
+      "severity": "CRITICAL",
+      "disposition": "not-in-production",
+      "reason": "The affected version is in the selected build list but absent from all six verified production package closures. The HIGH/CRITICAL finding and original scanner exit status remain visible."
+    },
+    {
+      "scope": "selected",
+      "kind": "vulnerability",
+      "id": "CVE-2026-39883",
+      "module": "go.opentelemetry.io/otel/sdk",
+      "version": "v1.38.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected version is in the selected build list but absent from all six verified production package closures. The HIGH/CRITICAL finding and original scanner exit status remain visible."
+    },
+    {
+      "scope": "selected",
+      "kind": "vulnerability",
+      "id": "CVE-2026-41602",
+      "module": "github.com/apache/thrift",
+      "version": "v0.12.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected version is in the selected build list but absent from all six verified production package closures. The HIGH/CRITICAL finding and original scanner exit status remain visible."
+    },
+    {
+      "scope": "selected",
+      "kind": "vulnerability",
+      "id": "CVE-2026-43871",
+      "module": "github.com/apache/thrift",
+      "version": "v0.12.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected version is in the selected build list but absent from all six verified production package closures. The HIGH/CRITICAL finding and original scanner exit status remain visible."
+    },
+    {
+      "scope": "selected",
+      "kind": "vulnerability",
+      "id": "CVE-2026-84304",
+      "module": "google.golang.org/grpc",
+      "version": "v1.77.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected version is in the selected build list but absent from all six verified production package closures. The HIGH/CRITICAL finding and original scanner exit status remain visible."
+    },
+    {
+      "scope": "selected",
+      "kind": "vulnerability",
+      "id": "CVE-2026-84445",
+      "module": "google.golang.org/grpc",
+      "version": "v1.77.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected version is in the selected build list but absent from all six verified production package closures. The HIGH/CRITICAL finding and original scanner exit status remain visible."
+    },
+    {
+      "scope": "selected",
+      "kind": "vulnerability",
+      "id": "GHSA-hrxh-6v49-42gf",
+      "module": "google.golang.org/grpc",
+      "version": "v1.77.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected version is in the selected build list but absent from all six verified production package closures. The HIGH/CRITICAL finding and original scanner exit status remain visible."
+    },
+    {
+      "scope": "standalone",
+      "kind": "misconfiguration",
+      "id": "DS-0002",
+      "module": "github.com/anacrolix/torrent",
+      "version": "v1.61.0",
+      "severity": "HIGH",
+      "disposition": "unused-upstream-development-recipe",
+      "reason": "The authenticated upstream Dockerfile builds possum and runs upstream tests. KPanel release builds use the separately bound root Dockerfile and never execute this development recipe; its original finding remains visible."
+    },
+    {
+      "scope": "standalone",
+      "kind": "misconfiguration",
+      "id": "DS-0025",
+      "module": "github.com/anacrolix/torrent",
+      "version": "v1.61.0",
+      "severity": "HIGH",
+      "disposition": "unused-upstream-development-recipe",
+      "reason": "The authenticated upstream Dockerfile builds possum and runs upstream tests. KPanel release builds use the separately bound root Dockerfile and never execute this development recipe; its original finding remains visible."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-24051",
+      "module": "go.opentelemetry.io/otel/sdk",
+      "version": "v1.38.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected module is present in the selected build list but absent from all six verified production package closures. Its upstream command/test use remains an inventory finding."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-25681",
+      "module": "golang.org/x/net",
+      "version": "v0.47.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.47.0; KPanel selects v0.60.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-27136",
+      "module": "golang.org/x/net",
+      "version": "v0.47.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.47.0; KPanel selects v0.60.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-29181",
+      "module": "go.opentelemetry.io/otel",
+      "version": "v1.38.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v1.38.0; KPanel selects v1.47.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-33186",
+      "module": "google.golang.org/grpc",
+      "version": "v1.77.0",
+      "severity": "CRITICAL",
+      "disposition": "not-in-production",
+      "reason": "The affected module is present in the selected build list but absent from all six verified production package closures. Its upstream command/test use remains an inventory finding."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-33814",
+      "module": "golang.org/x/net",
+      "version": "v0.47.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.47.0; KPanel selects v0.60.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-39821",
+      "module": "golang.org/x/net",
+      "version": "v0.47.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.47.0; KPanel selects v0.60.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-39828",
+      "module": "golang.org/x/crypto",
+      "version": "v0.44.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.44.0; KPanel selects v0.57.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-39829",
+      "module": "golang.org/x/crypto",
+      "version": "v0.44.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.44.0; KPanel selects v0.57.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-39830",
+      "module": "golang.org/x/crypto",
+      "version": "v0.44.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.44.0; KPanel selects v0.57.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-39831",
+      "module": "golang.org/x/crypto",
+      "version": "v0.44.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.44.0; KPanel selects v0.57.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-39832",
+      "module": "golang.org/x/crypto",
+      "version": "v0.44.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.44.0; KPanel selects v0.57.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-39835",
+      "module": "golang.org/x/crypto",
+      "version": "v0.44.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.44.0; KPanel selects v0.57.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-39883",
+      "module": "go.opentelemetry.io/otel/sdk",
+      "version": "v1.38.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected module is present in the selected build list but absent from all six verified production package closures. Its upstream command/test use remains an inventory finding."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-42508",
+      "module": "golang.org/x/crypto",
+      "version": "v0.44.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.44.0; KPanel selects v0.57.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-46595",
+      "module": "golang.org/x/crypto",
+      "version": "v0.44.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.44.0; KPanel selects v0.57.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-46597",
+      "module": "golang.org/x/crypto",
+      "version": "v0.44.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.44.0; KPanel selects v0.57.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-46600",
+      "module": "golang.org/x/net",
+      "version": "v0.47.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.47.0; KPanel selects v0.60.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-56852",
+      "module": "golang.org/x/text",
+      "version": "v0.31.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.31.0; KPanel selects v0.42.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-56854",
+      "module": "golang.org/x/crypto",
+      "version": "v0.44.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.44.0; KPanel selects v0.57.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-78669",
+      "module": "golang.org/x/net",
+      "version": "v0.47.0",
+      "severity": "HIGH",
+      "disposition": "superseded-by-selected-version",
+      "reason": "The standalone declaration uses v0.47.0; KPanel selects v0.60.0. Selected and production inventories are scanned independently without suppressing production findings."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-84304",
+      "module": "google.golang.org/grpc",
+      "version": "v1.77.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected module is present in the selected build list but absent from all six verified production package closures. Its upstream command/test use remains an inventory finding."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "CVE-2026-84445",
+      "module": "google.golang.org/grpc",
+      "version": "v1.77.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected module is present in the selected build list but absent from all six verified production package closures. Its upstream command/test use remains an inventory finding."
+    },
+    {
+      "scope": "standalone",
+      "kind": "vulnerability",
+      "id": "GHSA-hrxh-6v49-42gf",
+      "module": "google.golang.org/grpc",
+      "version": "v1.77.0",
+      "severity": "HIGH",
+      "disposition": "not-in-production",
+      "reason": "The affected module is present in the selected build list but absent from all six verified production package closures. Its upstream command/test use remains an inventory finding."
+    }
+  ]
+}

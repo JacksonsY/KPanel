@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { runPlan } from '../run-source-checks.mjs';
 import { resolveBash } from '../run-repo-bash.mjs';
-import { assertTrivyInventory, baselineMod, moduleEnvironment, parseModuleJSON, validateBackport, verifyModuleDeclarations, verifyModuleGraphs } from '../torrent-backport-baseline.mjs';
+import { baselineMod, firstPartySources, moduleEnvironment, parseModuleJSON, productionClosure, productionTargets, scannerManifest, validateBackport, validateScanScope, verifyModuleDeclarations, verifyModuleGraphs, verifyScanReport } from '../torrent-backport-baseline.mjs';
 
 const repo = resolve(import.meta.dirname, '../..');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -116,20 +117,149 @@ test('torrent provenance and conservative scanner inventory retain the original 
   const provenance = validateBackport(repo);
   assert.equal(provenance.files.length, 453);
   assert.equal(provenance.patches.length, 2);
-  const report = { Results: [{ Packages: [{ Name: 'github.com/anacrolix/torrent', Version: '1.61.0' }] }] };
-  assert.equal(assertTrivyInventory(report), 1);
-  assert.throws(() => assertTrivyInventory({ Results: [] }), /missing torrent/);
-  report.Results[0].Packages[0].Version = '1.62.0';
-  assert.throws(() => assertTrivyInventory(report), /missing torrent/);
   const makefile = readFileSync(join(repo, 'Makefile'), 'utf8');
   assert.match(makefile, /security-audit-go:\s+\$\(GO\) run golang\.org\/x\/vuln\/cmd\/govulncheck@v1\.6\.0 \.\/\.\.\.\s+node scripts\/torrent-backport-baseline\.mjs govuln/);
   for (const workflow of ['ci.yml', 'release.yml']) assert.match(readFileSync(join(repo, '.github/workflows', workflow), 'utf8'), /run: make security-audit-go/);
   const scan = readFileSync(join(repo, 'scripts/security-scan.sh'), 'utf8');
-  assert.match(scan, /--scanners vuln,secret,misconfig/);
+  assert.match(scan, /--scanners secret/);
+  assert.match(scan, /--scanners vuln,misconfig/);
   assert.match(scan, /--format json \\\s+--list-all-pkgs/);
-  assert.match(scan, /torrent-backport-baseline\.mjs" check-trivy/);
+  assert.match(scan, /torrent-backport-baseline\.mjs" check-report/);
   assert.match(scan, /baseline_root="\$repo_root\/\.codex-tmp"/);
   assert.match(scan, /mktemp -d "\$baseline_root\/torrent-baseline\.XXXXXXXX"/);
+});
+
+test('production closure retains exact selected versions and rejects incomplete or missing entry points', () => {
+  const main = { Path: 'github.com/kejilion/kejilion-panel', Main: true, Dir: '/repo' };
+  const dependency = { Path: 'github.com/anacrolix/torrent', Version: 'v1.61.0', Replace: { Path: './third_party/torrent' } };
+  const selected = [main, dependency];
+  const target = { goos: 'linux', goarch: 'amd64', targets: ['./cmd/paneld'] };
+  const packages = [
+    { ImportPath: main.Path + '/cmd/paneld', Name: 'main', Module: main, Dir: '/repo/cmd/paneld', GoFiles: ['main.go'] },
+    { ImportPath: dependency.Path, Name: 'torrent', Module: dependency, GoFiles: ['torrent.go'] },
+    { ImportPath: 'fmt', Name: 'fmt', Standard: true },
+  ];
+  const closure = productionClosure(packages, target, selected);
+  assert.deepEqual(closure.modules, [{ Path: dependency.Path, Version: dependency.Version }]);
+  assert.deepEqual(closure.row.packages[0], { path: 'fmt', module: 'stdlib', version: 'go1.27.2' });
+  assert.deepEqual(productionClosure([...packages].reverse(), target, selected), closure);
+  for (const bad of [[], packages.slice(1), [...packages, packages[0]], packages.map(p => ({ ...p, Incomplete: true })), packages.map(p => ({ ...p, DepsErrors: [{}] }))]) {
+    assert.throws(() => productionClosure(bad, target, selected));
+  }
+  for (const change of [{ Version: 'v1.62.0' }, { Path: 'example.invalid/unselected' }, { Error: { Err: 'missing module' } }, { Replace: { Path: './elsewhere' } }]) {
+    const changed = structuredClone(packages); changed[1].Module = { ...dependency, ...change };
+    assert.throws(() => productionClosure(changed, target, selected), /outside the selected graph/);
+  }
+  const changed = structuredClone(packages); changed[0].Name = 'library';
+  assert.throws(() => productionClosure(changed, target, selected), /entry point/);
+  for (const patch of [{ GoFiles: undefined }, { GoFiles: ['generated.pb.go'] }, { GoFiles: ['../outside.go'] }, { Dir: '/repo/other' }, { Dir: '/outside/cmd/paneld' }]) {
+    const changed = structuredClone(packages); Object.assign(changed[0], patch);
+    assert.throws(() => productionClosure(changed, target, selected), /Generated-code|source directory/);
+  }
+});
+
+const scopePolicy = () => JSON.parse(readFileSync(join(repo, 'scripts/torrent-backport-scan-scope.json'), 'utf8'));
+const scopeIdentity = policy => Object.fromEntries(['sourceManifestSha256', 'selectedGraphSha256', 'buildTargetFilesSha256', 'closureSha256', 'firstPartySourceSha256'].map(key => [key, structuredClone(policy[key])]));
+
+test('bounded scan scope expires, binds source and targets, and requires exact independently reviewed findings', () => {
+  const policy = scopePolicy(), identity = scopeIdentity(policy), observed = new Date('2026-10-11T12:00:00Z');
+  assert.doesNotThrow(() => validateScanScope(policy, identity, observed));
+  for (const date of ['2026-10-10T12:00:00Z', '2026-10-25T00:00:00Z']) assert.throws(() => validateScanScope(policy, identity, new Date(date)), /window/);
+  for (const key of ['sourceManifestSha256', 'selectedGraphSha256', 'closureSha256', 'buildTargetFilesSha256', 'firstPartySourceSha256']) {
+    assert.throws(() => validateScanScope(policy, { ...identity, [key]: 'changed' }, observed), /changed/);
+  }
+  for (const mutate of [p => { p.review.state = 'pending'; }, p => { p.review.evidenceSha256 = ''; }, p => { p.findings[0].id = '*'; }, p => { p.findings[1] = p.findings[0]; }, p => { p.findings.push(p.findings[0]); }]) {
+    const changed = structuredClone(policy); mutate(changed);
+    assert.throws(() => validateScanScope(changed, identity, observed));
+  }
+  assert.equal(policy.findings.filter(f => f.scope === 'selected').length, 10);
+  assert.equal(policy.findings.filter(f => f.scope === 'standalone').length, 26);
+});
+
+test('release inventory matrix and build-file hashes cover every supported release environment', () => {
+  assert.deepEqual(productionTargets.map(t => `${t.goos}/${t.goarch}`), ['linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64', 'windows/amd64', 'windows/arm64']);
+  for (const target of productionTargets) assert.deepEqual(target.targets, target.goos === 'linux'
+    ? ['./cmd/paneld', './cmd/kejilion-agent', './cmd/kejilion-node', './cmd/kpctl', './cmd/kpanel-mcp'] : ['./cmd/kpanel-mcp']);
+  const policy = scopePolicy();
+  assert.equal(firstPartySources(repo).sha256, policy.firstPartySourceSha256, 'first-party source observation changed');
+  assert.deepEqual(Object.keys(policy.buildTargetFilesSha256), ['Dockerfile', '.github/workflows/release.yml', 'scripts/build-mcp-clients.sh', 'Makefile']);
+  for (const [path, expected] of Object.entries(policy.buildTargetFilesSha256)) {
+    assert.equal(createHash('sha256').update(readFileSync(join(repo, path), 'utf8').replaceAll('\r\n', '\n')).digest('hex'), expected, 'build target contract changed: ' + path);
+  }
+});
+
+test('first-party source observation binds content and rejects generated code and symlink roots', () => {
+  const f = fixture();
+  try {
+    mkdirSync(join(f.root, 'cmd')); mkdirSync(join(f.root, 'internal'));
+    writeFileSync(join(f.root, 'cmd/main.go'), 'package main\r\n');
+    const observed = firstPartySources(f.root);
+    writeFileSync(join(f.root, 'cmd/main.go'), 'package main\n');
+    assert.deepEqual(firstPartySources(f.root), observed, 'line endings are normalized');
+    writeFileSync(join(f.root, 'cmd/main.go'), 'package changed\n');
+    assert.notEqual(firstPartySources(f.root).sha256, observed.sha256);
+    for (const name of ['generated.pb.go', 'messages.proto']) {
+      writeFileSync(join(f.root, 'internal', name), 'generated');
+      assert.throws(() => firstPartySources(f.root), /Generated protobuf/);
+      unlinkSync(join(f.root, 'internal', name));
+    }
+    rmSync(join(f.root, 'cmd'), { recursive: true });
+    symlinkSync(join(f.root, 'internal'), join(f.root, 'cmd'), process.platform === 'win32' ? 'junction' : 'dir');
+    assert.throws(() => firstPartySources(f.root), /real directory/);
+  } finally { f.cleanup(); }
+});
+
+function scanReport(inventory, findings = []) {
+  return { SchemaVersion: 2, ArtifactType: 'filesystem', ArtifactName: '/inventory', Results: [{ Target: 'go.mod', Class: 'lang-pkgs', Type: 'gomod', Packages: inventory.map(m => ({ Name: m.Path, Version: m.Version })), Vulnerabilities: findings }] };
+}
+
+test('scanner inventory requires every resolved module and genuine exit semantics', () => {
+  const inventory = [{ Path: 'github.com/anacrolix/torrent', Version: 'v1.61.0' }, { Path: 'example.invalid/dependency', Version: 'v2.0.0' }];
+  const verify = (report, exit = 0) => verifyScanReport(report, inventory, exit, 'production', scopePolicy(), inventory, inventory);
+  assert.equal(verify(scanReport(inventory)).packageCount, 2);
+  for (const change of [r => r.Results[0].Packages.pop(), r => r.Results[0].Packages.push(r.Results[0].Packages[0]), r => { r.Results[0].Packages[0].Version = 'v1.62.0'; }, r => { r.Results[0].Packages[0].Name = 'unknown'; }, r => { r.Results[0].Target = 'other/go.mod'; }, r => { r.Results[0].Error = 'DB unavailable'; }, r => { r.SchemaVersion = 3; }]) {
+    const report = scanReport(inventory); change(report); assert.throws(() => verify(report));
+  }
+  for (const exit of [1, 2, 125, NaN]) assert.throws(() => verify(scanReport(inventory), exit));
+  const finding = { VulnerabilityID: 'CVE-2026-12345', PkgName: inventory[0].Path, InstalledVersion: inventory[0].Version, Severity: 'HIGH' };
+  assert.throws(() => verify(scanReport(inventory, [finding]), 0), /exit status/);
+  assert.throws(() => verify(scanReport(inventory, [finding]), 1), /Production dependency/);
+});
+
+test('selected and standalone findings remain visible and cannot allow unknown IDs or production intersections', () => {
+  const policy = scopePolicy();
+  const entry = policy.findings.find(f => f.scope === 'selected');
+  const inventory = [{ Path: entry.module, Version: entry.version }];
+  const finding = { VulnerabilityID: entry.id, PkgName: entry.module, InstalledVersion: entry.version, Severity: entry.severity };
+  const verify = (report, exit = 1, production = []) => verifyScanReport(report, inventory, exit, 'selected', policy, production, inventory);
+  assert.equal(verify(scanReport(inventory, [finding])).findingsRetained[0].id, entry.id);
+  assert.equal(verify(scanReport(inventory), 0).findingsRetained.length, 0, 'resolved database findings need not persist forever');
+  assert.throws(() => verify(scanReport(inventory, [finding]), 1, inventory), /now in production/);
+  assert.throws(() => verify(scanReport(inventory, [{ ...finding, VulnerabilityID: 'CVE-2026-999999' }])), /Unreviewed/);
+  assert.throws(() => verify(scanReport(inventory, [finding, finding])), /Duplicate/);
+  const old = policy.findings.find(f => f.scope === 'standalone' && f.disposition === 'superseded-by-selected-version');
+  const oldInventory = [{ Path: old.module, Version: old.version }];
+  const report = scanReport(oldInventory, [{ VulnerabilityID: old.id, PkgName: old.module, InstalledVersion: old.version, Severity: old.severity }]);
+  report.Results.push({ Target: 'Dockerfile', Class: 'config', Type: 'dockerfile', Misconfigurations: [] });
+  assert.throws(() => verifyScanReport(report, oldInventory, 1, 'standalone', policy, [], oldInventory), /not superseded/);
+  assert.equal(verifyScanReport(report, oldInventory, 1, 'standalone', policy, [], [{ Path: old.module, Version: 'v99.0.0' }]).findingsRetained.length, 1);
+  const selected = [{ Path: old.module, Version: 'v99.0.0' }];
+  assert.throws(() => verifyScanReport({ ...report, Results: report.Results.slice(0, 1) }, oldInventory, 1, 'standalone', policy, [], selected), /incomplete/);
+  const config = policy.findings.find(f => f.kind === 'misconfiguration');
+  const configFinding = { ID: config.id, Severity: config.severity, Status: 'FAIL' };
+  report.Results[1].Misconfigurations.push(configFinding);
+  assert.equal(verifyScanReport(report, oldInventory, 1, 'standalone', policy, [], selected).findingsRetained.length, 2);
+  configFinding.Status = 'PASS';
+  assert.throws(() => verifyScanReport(report, oldInventory, 1, 'standalone', policy, [], selected), /configuration finding status/);
+});
+
+test('scanner-only manifests include all exact modules and reject malformed identities', () => {
+  const modules = [{ Path: 'github.com/anacrolix/torrent', Version: 'v1.61.0' }, { Path: 'example.invalid/module/v2', Version: 'v2.0.0' }];
+  const text = scannerManifest(modules, 'selected');
+  assert.match(text, /github.com\/anacrolix\/torrent v1\.61\.0/);
+  assert.match(text, /example\.invalid\/module\/v2 v2\.0\.0/);
+  assert.doesNotMatch(text, /replace/);
+  for (const bad of [[], [...modules, modules[0]], [{ Path: 'bad\npath', Version: 'v1.0.0' }], [{ Path: 'good/path', Version: 'latest' }]]) assert.throws(() => scannerManifest(bad, 'production'));
 });
 
 test('bounded parallel source checks retain every log and ordered terminal result', async () => {
