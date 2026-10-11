@@ -153,6 +153,20 @@ test('release workflow publishes isolated stable and preview channels', () => {
   assert.doesNotMatch(workflow, /gh api --method DELETE/);
 });
 
+test('modified-component upload queries the draft by its numeric release ID', () => {
+  const workflow = readFileSync(join(repoRoot, '.github', 'workflows', 'release.yml'), 'utf8');
+  const step = workflow.slice(workflow.indexOf('- name: Verify and upload modified-component provenance'),
+    workflow.indexOf('- name: Validate final release notes'));
+  assert.match(step, /gh release view "\$GITHUB_REF_NAME" --repo kejilion\/KPanel/);
+  assert.match(step, /--json databaseId --jq '\.databaseId'/);
+  assert.ok(step.includes('[[ "$release_id" =~ ^[1-9][0-9]*$ ]]'));
+  assert.equal(step.split('gh api "repos/kejilion/KPanel/releases/$release_id"').length - 1, 2);
+  assert.doesNotMatch(step, /releases\/tags\//);
+  assert.ok(step.indexOf("--jq '.draft' | grep -qx true") < step.indexOf('gh release upload'));
+  assert.match(step, /\.draft == true and \.tag_name == \$tag/);
+  assert.match(step, /\.\[0\]\.digest == \$digest and \.\[0\]\.size == \$size/);
+});
+
 test('release has no Windows node build or release-artifact dependency', () => {
   const workflow = readFileSync(join(repoRoot, '.github', 'workflows', 'release.yml'), 'utf8').replaceAll('\r\n', '\n');
   assert.doesNotMatch(workflow, /^  windows-node:/m);

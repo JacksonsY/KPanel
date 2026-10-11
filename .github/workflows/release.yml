@@ -358,13 +358,16 @@ jobs:
             --candidate "$GITHUB_SHA" --version "$VERSION" \
             --image "$IMAGE" --digest "$IMAGE_DIGEST" \
             --output release/KPANEL_MODIFIED_COMPONENTS.json
-          gh api "repos/kejilion/KPanel/releases/tags/$GITHUB_REF_NAME" \
+          release_id="$(gh release view "$GITHUB_REF_NAME" --repo kejilion/KPanel \
+            --json databaseId --jq '.databaseId')"
+          [[ "$release_id" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/kejilion/KPanel/releases/$release_id" \
             --jq '.draft' | grep -qx true
           gh release upload "$GITHUB_REF_NAME" \
             --repo kejilion/KPanel --clobber release/KPANEL_MODIFIED_COMPONENTS.json
           asset_digest="sha256:$(sha256sum release/KPANEL_MODIFIED_COMPONENTS.json | awk '{print $1}')"
           asset_size="$(wc -c < release/KPANEL_MODIFIED_COMPONENTS.json)"
-          gh api "repos/kejilion/KPanel/releases/tags/$GITHUB_REF_NAME" |
+          gh api "repos/kejilion/KPanel/releases/$release_id" |
             jq -e --arg tag "$GITHUB_REF_NAME" --arg digest "$asset_digest" --argjson size "$asset_size" '
               .draft == true and .tag_name == $tag and
               ([.assets[] | select(.name == "KPANEL_MODIFIED_COMPONENTS.json")] |
