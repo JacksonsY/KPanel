@@ -51,10 +51,11 @@ export function verifyModuleDeclarations(actual, baseline) {
       || actual.Require?.filter(r => r.Path === MODULE && r.Version === VERSION).length !== 1) throw new Error('Unexpected torrent module declaration');
   const normalizeEmptyReplace = declaration => {
     const normalized = { ...declaration };
-    if (normalized.Replace != null && !Array.isArray(normalized.Replace)) throw new Error('Invalid replacement declarations');
-    // Go 1.27 omits an empty Replace field; older JSON shapes may use null or [].
+    const absent = normalized.Replace === undefined || normalized.Replace === null;
+    if (!absent && !Array.isArray(normalized.Replace)) throw new Error('Invalid replacement declarations');
+    // Go 1.27.2 omits an empty Replace field; null and [] are equivalent here.
     // No other field is normalized: every remaining declaration must match exactly.
-    if (normalized.Replace == null || normalized.Replace.length === 0) delete normalized.Replace;
+    if (absent || normalized.Replace.length === 0) delete normalized.Replace;
     return normalized;
   };
   const expected = { ...actual, Replace: actual.Replace.filter(r => r !== replacements[0]) };
