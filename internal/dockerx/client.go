@@ -565,6 +565,30 @@ type dockerMount struct {
 	RW          bool   `json:"RW"`
 }
 
+func mountsForResourceVersion(mounts []dockerMount) []dockerMount {
+	// Docker may reorder mounts between observations of the same container.
+	ordered := slices.Clone(mounts)
+	slices.SortFunc(ordered, func(a, b dockerMount) int {
+		switch {
+		case a.Destination != b.Destination:
+			return strings.Compare(a.Destination, b.Destination)
+		case a.Type != b.Type:
+			return strings.Compare(a.Type, b.Type)
+		case a.Name != b.Name:
+			return strings.Compare(a.Name, b.Name)
+		case a.Source != b.Source:
+			return strings.Compare(a.Source, b.Source)
+		case a.RW == b.RW:
+			return 0
+		case a.RW:
+			return 1
+		default:
+			return -1
+		}
+	})
+	return ordered
+}
+
 func (c *Client) summaryFromList(raw containerListItem) contract.ContainerSummary {
 	name := strings.TrimPrefix(first(raw.Names), "/")
 	ownership, evidence := c.ownership(raw.Labels, name)
@@ -591,7 +615,7 @@ func (c *Client) summaryFromList(raw containerListItem) contract.ContainerSummar
 		ID, ImageID, State, Status string
 		Labels                     map[string]string
 		Mounts                     []dockerMount
-	}{raw.ID, raw.ImageID, raw.State, raw.Status, raw.Labels, raw.Mounts})
+	}{raw.ID, raw.ImageID, raw.State, raw.Status, raw.Labels, mountsForResourceVersion(raw.Mounts)})
 	return contract.ContainerSummary{
 		ID: raw.ID, Name: name, Image: raw.Image, State: raw.State, Status: raw.Status,
 		CreatedAt: createdAt,
@@ -655,7 +679,7 @@ func (c *Client) summaryFromInspect(raw containerInspect) contract.ContainerSumm
 	}{
 		raw.ID, raw.Name, raw.Created, raw.Config.Image, raw.State.Status,
 		raw.State.StartedAt, raw.State.FinishedAt, raw.RestartCount, raw.State.Restarting,
-		raw.Config.Labels, raw.HostConfig, raw.Mounts,
+		raw.Config.Labels, raw.HostConfig, mountsForResourceVersion(raw.Mounts),
 	})
 	allowed := []string{"logs"}
 	switch raw.State.Status {
