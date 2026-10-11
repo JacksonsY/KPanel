@@ -11,18 +11,18 @@
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "44e7d95877fe2d066cb8ef81fb8bf224a010efa546466ade9c21ee30fbafa65b",
-  "firstPartySourceSha256": "6d0f5dd6a56c3f2b44928815a4056058ba1a7e8b4dde0bde96f2ea1c061f51b2",
+  "closureSha256": "b1e1c9df6308c9bde4349c5fc4188ef5f14e925dac31fc19aa07c53a56d3ab52",
+  "firstPartySourceSha256": "9d933bee5de1111f2feebc792ff3c84d277a264bcbedda5ce4b4721e1d509580",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.2; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
     "state": "reviewed",
     "reviewerRole": "Independent source and dependency evidence reviewer",
-    "evidenceSha256": "bee43c50565c4276b5c2876c3a15020a947c106a337c4e765b6d1395918e28f1",
+    "evidenceSha256": "9e9e11349af242129f8b916cdaf543b6eeb7b7ed1626c5294dcd3eaea289e217",
     "advisoryEvidenceSha256": "32c054b8eebcda02c82748fd29981fa8c3988fa19605e1deed1628d7a6ab4607",
     "additionalSelectedEvidenceSha256": "93a256970a82a7c224c5e38aadbb21431fdbd8e5f6621da469473d7955d80bf2",
-    "summary": "Original upstream findings and all six actual production package closures were independently reviewed. The affected SDK, gRPC, Thrift and gogo/protobuf versions are absent from these closures. The generated-code boundary remains explicit. This records applicability evidence; it does not claim the new scanner implementation, final image or release has passed validation."
+    "summary": "RC8 first-party source inventory (891 Go files) and all six Go 1.27.2 target closures were independently reviewed. The Linux amd64/arm64 production closures each include all six changed production Go files; each Darwin/Windows target closure includes the changed internal/version/version.go file, while the other five changed production files are outside those target entry-point closures. Actual/original closures match for every target. The selected graph, 106-module production set, go.mod, and go.sum remain unchanged from RC7; generated protobuf source and symlink counts are zero. Existing finding dispositions remain unchanged. This records source/closure applicability only; the official vulnerability scanner, final image, and release have not passed."
   },
   "findings": [
     {
