@@ -41,8 +41,8 @@ export function validateOptions(options) {
 export function allowedRedirect(url) {
   const value = new URL(url);
   return value.protocol === 'https:' && !value.username && !value.password && (!value.port || value.port === '443')
-    && (value.origin === REGISTRY || ['production.cloudflare.docker.com', 'production.cloudfront.docker.com'].includes(value.hostname)
-      || /^docker-images-prod-[a-f0-9]+\.[a-f0-9]+\.r2\.cloudflarestorage\.com$/.test(value.hostname));
+    && (value.origin === REGISTRY || ['production.cloudflare.docker.com', 'production.cloudfront.docker.com',
+      'docker-images-prod.6aa30f8b08e16409b46e0173d6de2f56.r2.cloudflarestorage.com'].includes(value.hostname));
 }
 
 // One deadline covers redirects and body consumption. Tokens and signed URLs never enter evidence/errors.

@@ -148,15 +148,20 @@ test('registry rejects corrupt bytes, manifest header mismatch, oversized and in
 });
 
 test('trusted CDN redirect strips registry bearer; untrusted targets and loops fail', async () => {
-  const requests = [];
-  const fetcher = async (url, init) => {
-    requests.push({ url, headers: init.headers });
-    return requests.length === 1 ? new Response(null, { status: 307, headers: { location: 'https://production.cloudflare.docker.com/fixture?signed=redacted' } }) : new Response('{}');
-  };
-  await boundedGet('https://registry-1.docker.io/test', { authorization: 'Bearer fixture-secret', fetcher });
-  assert.equal(requests[0].headers.Authorization, 'Bearer fixture-secret');
-  assert.equal(requests[1].headers.Authorization, undefined);
-  for (const url of ['http://production.cloudflare.docker.com/a', 'https://127.0.0.1/a', 'https://evil.invalid/a', 'https://x@production.cloudflare.docker.com/a']) assert.equal(allowedRedirect(url), false);
+  for (const host of ['production.cloudflare.docker.com', 'production.cloudfront.docker.com',
+    'docker-images-prod.6aa30f8b08e16409b46e0173d6de2f56.r2.cloudflarestorage.com']) {
+    const requests = [];
+    const fetcher = async (url, init) => {
+      requests.push({ url, headers: init.headers });
+      return requests.length === 1 ? new Response(null, { status: 307, headers: { location: `https://${host}/fixture?signed=redacted` } }) : new Response('{}');
+    };
+    await boundedGet('https://registry-1.docker.io/test', { authorization: 'Bearer fixture-secret', fetcher });
+    assert.equal(requests[0].headers.Authorization, 'Bearer fixture-secret');
+    assert.equal(requests[1].headers.Authorization, undefined);
+  }
+  for (const url of ['http://production.cloudflare.docker.com/a', 'https://127.0.0.1/a', 'https://evil.invalid/a',
+    'https://x@production.cloudflare.docker.com/a', 'https://untrusted.r2.cloudflarestorage.com/a',
+    'https://docker-images-prod-aa.bb.r2.cloudflarestorage.com/a']) assert.equal(allowedRedirect(url), false);
   await assert.rejects(boundedGet('https://registry-1.docker.io/test', { fetcher: async () => new Response(null, { status: 307, headers: { location: 'https://evil.invalid/a' } }) }), /Untrusted/);
   await assert.rejects(boundedGet('https://registry-1.docker.io/test', { fetcher: async () => new Response(null, { status: 307, headers: { location: 'https://registry-1.docker.io/again' } }) }), /redirect limit/);
 });
@@ -229,6 +234,8 @@ test('CLI rejects a mismatched checkout before registry or Docker work', async (
 });
 
 test('workflow generation, draft upload and digest/size verification precede both publication steps', () => {
+  const governance = readFileSync(resolve(repo, 'scripts/verify-governance.sh'), 'utf8');
+  assert.match(governance, /^  scripts\/tests\/torrent-backport-provenance\.test\.mjs \\$/m);
   const workflow = readFileSync(resolve(repo, '.github/workflows/release.yml'), 'utf8');
   const push = workflow.indexOf('- name: Build and push multi-architecture image');
   const gate = workflow.indexOf('- name: Verify and upload modified-component provenance');
