@@ -10,7 +10,6 @@ export default [
   ["终端启动失败，请检查主机连接后重新打开。", "Could not start the terminal. Check the host connection and reopen it."],
   ["命令未发送，请关闭窗口后重新执行。", "The command was not sent. Close the window and run the file again."],
   ["终端关闭失败，请重试关闭。", "Could not close the terminal. Try closing it again."],
-  ["支持交互输入，按 Ctrl+C 中断。关闭窗口会关闭此终端会话。", "Interactive input is supported. Press Ctrl+C to interrupt. Closing this window closes the terminal session."],
   ["正在连接终端…", "Connecting to terminal…"],
 
   ['自动备份已关闭', 'Automatic backups are disabled'],

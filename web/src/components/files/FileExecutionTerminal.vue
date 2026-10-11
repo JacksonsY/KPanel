@@ -109,7 +109,6 @@ onBeforeUnmount(() => {
 <template>
   <ModalDialog :open="true" :title="`${phrase('在终端中执行')} · ${entry.name}`" :description="hostName" variant="workspace" allow-fullscreen :close-disabled="closing" @close="close">
     <div class="file-execution-terminal">
-      <p class="file-execution-terminal__hint">{{ phrase('支持交互输入，按 Ctrl+C 中断。关闭窗口会关闭此终端会话。') }}</p>
       <div v-if="opening" class="file-execution-terminal__state" role="status"><LoaderCircle class="spin" :size="20" />{{ phrase('正在连接终端…') }}</div>
       <div v-if="error" class="inline-alert inline-alert--danger" role="alert">{{ error }}</div>
       <HostTerminal v-if="session" ref="terminal" :session-id="session.sessionId" :host-name="hostName" :initial-offset="session.offset" @state-change="onStateChange" />
@@ -119,7 +118,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .file-execution-terminal { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
-.file-execution-terminal__hint { margin: 0; padding: 10px 16px; color: var(--text-soft); font-size: 14px; line-height: 1.5; border-bottom: 1px solid var(--border); }
 .file-execution-terminal__state { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 14px; }
 .file-execution-terminal > .inline-alert { margin: 16px; }
 .file-execution-terminal > :deep(.host-terminal) { flex: 1 1 auto; height: auto; }
