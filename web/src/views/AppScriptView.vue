@@ -203,7 +203,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="app-script-page">
+  <section class="app-script-page terminal-theme-scope">
     <div v-if="closeError" class="app-script-page__close-error" role="alert">
       <TriangleAlert :size="16" />
       <span>{{ closeError }}</span>
@@ -259,7 +259,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  background: var(--terminal-shell-background);
+  background: var(--terminal-wallpaper-background, var(--terminal-shell-background));
 }
 
 .app-script-page__terminal {

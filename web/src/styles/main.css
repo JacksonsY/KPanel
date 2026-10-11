@@ -82,7 +82,8 @@
 }
 
 /* Terminals and terminal-style output share one wallpaper treatment, including
-   empty output states. Editors and command input fields keep their own fill. */
+   empty output and script lifecycle states. Editors and command input fields keep their own fill. */
+.app-script-page,
 .host-terminal__screen,
 .interactive-terminal__screen,
 .diagnostic-log,
