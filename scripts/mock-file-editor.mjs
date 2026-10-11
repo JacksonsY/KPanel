@@ -14,6 +14,8 @@ const contents = new Map([
   ],
   ['/editor-demo/conflict.conf', '# 模拟保存冲突：修改并保存后显示错误，草稿保留\nport=8080\n'],
   ['/editor-demo/unavailable.txt', ''],
+  ['/editor-demo/demo.sh', '# UI Mock only: no commands are executed on this computer.\nprintf "Hello from the file terminal\\n"\n'],
+  ['/editor-demo/server', '# UI Mock only: represents an executable Go program.\n'],
   [
     '/editor-demo/config/long-configuration-name-for-responsive-preview.yaml',
     Array.from({ length: 800 }, (_, i) => `setting_${i + 1}: value_${i + 1}`).join('\n'),
@@ -36,7 +38,7 @@ export const mockEditorFiles = [
 ].map((entry, index) => ({
   ...entry,
   name: entry.path.split('/').at(-1),
-  mode: entry.kind === 'file' ? '-rw-r--r--' : 'drwxr-xr-x',
+  mode: entry.kind === 'file' ? entry.path === '/editor-demo/server' ? '-rwxr-xr-x' : '-rw-r--r--' : 'drwxr-xr-x',
   owner: 'demo',
   group: 'demo',
   modifiedAt: '2026-09-23T00:00:00Z',
