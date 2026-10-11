@@ -2,6 +2,9 @@ module github.com/kejilion/kejilion-panel
 
 go 1.27.2
 
+// v1.61.0 with two upstream message-writer fixes; see third_party/torrent/KPANEL_BACKPORT.md.
+replace github.com/anacrolix/torrent v1.61.0 => ./third_party/torrent
+
 require (
 	github.com/anacrolix/dht/v2 v2.23.0
 	github.com/anacrolix/log v0.17.1-0.20251118025802-918f1157b7bb

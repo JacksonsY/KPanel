@@ -34,6 +34,10 @@ test('change routing includes deletions and every GitHub workflow', () => {
   assert.match(script, /docs\/release-channels\.md/);
   assert.match(script, /unset GOVERNANCE_CI_TOKEN GITHUB_TOKEN/);
   assert.match(script, /GITHUB_TOKEN="\$governance_ci_token" node scripts\/check-governance-candidate-ci\.mjs/);
+  assert.match(script, /go\.mod\|go\.sum\|third_party\/torrent\/\*/);
+  assert.match(script, /git ls-files '\*\.go' ':!:third_party\/torrent\/\*\*'/);
+  assert.match(script, /third_party\/torrent\/peer-conn-msg-writer\{,_test\}\.go/);
+  assert.match(script, /bash scripts\/verify-source-lane\.sh torrent/);
 });
 
 function executable(path, body) {

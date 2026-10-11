@@ -13,7 +13,12 @@ case "${1:-}" in
   go)
     go test ./...
     go test -race ./internal/panel ./internal/auth ./internal/dockerx
+    bash "${BASH_SOURCE[0]}" torrent
     go vet ./...
+    ;;
+  torrent)
+    # Nested module tests are not included by ./...; use the root dependency graph.
+    go test -race github.com/anacrolix/torrent -run '^TestMsgWriter(BroadcastDuringFillWakesWriter|KeepAliveTimerRearmed)$' -count=1 -timeout=1m
     ;;
   deploy)
     bash scripts/verify-deploy.sh
@@ -37,7 +42,7 @@ case "${1:-}" in
     bash --version | sed -n '1p'
     ;;
   *)
-    echo 'usage: verify-source-lane.sh web|go|deploy|preflight' >&2
+    echo 'usage: verify-source-lane.sh web|go|torrent|deploy|preflight' >&2
     exit 2
     ;;
 esac

@@ -14,7 +14,7 @@ KPanel.
 | `github.com/coder/websocket` | `v1.8.15` | ISC | [`LICENSES/coder-websocket-ISC.txt`](LICENSES/coder-websocket-ISC.txt) |
 | `github.com/anacrolix/dht/v2` | `v2.23.0` | MPL-2.0 | [`LICENSES/anacrolix-dht-MPL-2.0.txt`](LICENSES/anacrolix-dht-MPL-2.0.txt) |
 | `github.com/anacrolix/log` | `v0.17.1-0.20251118025802-918f1157b7bb` | MPL-2.0 | [`LICENSES/anacrolix-log-MPL-2.0.txt`](LICENSES/anacrolix-log-MPL-2.0.txt) |
-| `github.com/anacrolix/torrent` | `v1.61.0` | MPL-2.0 | [`LICENSES/anacrolix-torrent-MPL-2.0.txt`](LICENSES/anacrolix-torrent-MPL-2.0.txt) |
+| `github.com/anacrolix/torrent` | `v1.61.0` with upstream message-writer fixes ([source and modifications](third_party/torrent/KPANEL_BACKPORT.md)) | MPL-2.0 | [`LICENSES/anacrolix-torrent-MPL-2.0.txt`](LICENSES/anacrolix-torrent-MPL-2.0.txt) |
 | `golang.org/x/crypto` | `v0.54.0` | BSD-3-Clause | [`LICENSES/golang-x-crypto-BSD-3-Clause.txt`](LICENSES/golang-x-crypto-BSD-3-Clause.txt) |
 | `golang.org/x/image` | `v0.45.0` | BSD-3-Clause | [`LICENSES/golang-x-image-BSD-3-Clause.txt`](LICENSES/golang-x-image-BSD-3-Clause.txt) |
 | `golang.org/x/sys` | `v0.47.0` | BSD-3-Clause | [`LICENSES/golang-x-sys-BSD-3-Clause.txt`](LICENSES/golang-x-sys-BSD-3-Clause.txt) |

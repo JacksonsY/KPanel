@@ -183,7 +183,7 @@ for path in "${changed_files[@]}"; do
       needs_go=true
       go_domains+=("systemmanage")
       ;;
-    internal/agent/*|internal/panel/*|internal/contract/*|cmd/*|go.mod|go.sum)
+    internal/agent/*|internal/panel/*|internal/contract/*|cmd/*|go.mod|go.sum|third_party/torrent/*)
       docs_only=false
       needs_go=true
       needs_full_go=true
@@ -335,7 +335,11 @@ fi
 go_format_files=()
 if [[ "$needs_go" == true ]]; then
   if [[ "$needs_full_go" == true || "$forced_verification" == true ]]; then
-    mapfile -t go_format_files < <(git ls-files '*.go')
+    # Preserve authenticated upstream bytes; check only its two backported files.
+    mapfile -t go_format_files < <(git ls-files '*.go' ':!:third_party/torrent/**')
+    for path in third_party/torrent/peer-conn-msg-writer{,_test}.go; do
+      [[ ! -f "$path" ]] || go_format_files+=("$path")
+    done
   else
     for path in "${changed_files[@]}"; do
       [[ "$path" == *.go && -f "$path" ]] && go_format_files+=("$path")
@@ -406,6 +410,7 @@ if [[ "$needs_go" == true ]]; then
   else
     verify_targeted_go
   fi
+  bash scripts/verify-source-lane.sh torrent
 fi
 
 if [[ "$needs_web" == true ]]; then
