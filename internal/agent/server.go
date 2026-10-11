@@ -118,6 +118,7 @@ type Server struct {
 	storageUsageGate  chan struct{}
 	processReads      processReads
 	systemLogsGate    chan struct{}
+	serviceReadGate   chan struct{}
 	now               func() time.Time
 	backups           *hostbackup.Service
 	selfUpdate        *selfupdate.Service
@@ -266,6 +267,7 @@ func NewServer(config Config) (*Server, error) {
 		thumbnails:       newThumbnailCache(thumbnailCacheBytes),
 		storageUsageGate: make(chan struct{}, 1),
 		systemLogsGate:   make(chan struct{}, 1),
+		serviceReadGate:  make(chan struct{}, 2),
 		now:              config.Now,
 	}, nil
 }
@@ -407,6 +409,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.requireMethod(w, r, requestID, http.MethodGet, s.systemLogsSummary)
 	case r.URL.Path == "/v1/system/logs":
 		s.requireMethod(w, r, requestID, http.MethodGet, s.systemLogs)
+	case r.URL.Path == "/v1/system/services" || strings.HasPrefix(r.URL.Path, "/v1/system/services/"):
+		s.requireMethod(w, r, requestID, http.MethodGet, s.systemServices)
+	case r.URL.Path == "/v1/system/service-actions":
+		s.requireMethod(w, r, requestID, http.MethodPost, s.systemServiceAction)
 	case r.URL.Path == "/v1/system/virus-scan":
 		s.requireMethod(w, r, requestID, http.MethodGet, s.virusScan)
 	case r.URL.Path == "/v1/monitoring/history":

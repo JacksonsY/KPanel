@@ -128,6 +128,7 @@ type Manager struct {
 	processSignaler        ProcessSignaler
 	rebootScheduled        bool
 	mu                     sync.Mutex
+	servicesMu             sync.Mutex
 	sshLoginMu             sync.Mutex
 	sshLoginCache          *contract.SSHLoginEvent
 	sshLoginCheckedAt      time.Time
@@ -357,6 +358,7 @@ func (m *Manager) Capabilities() []contract.Capability {
 	capabilities = append(capabilities, m.SystemPackagesCapabilities()...)
 	capabilities = append(capabilities, m.DiskPartitionCapabilities()...)
 	capabilities = append(capabilities, m.SystemLogCapabilities()...)
+	capabilities = append(capabilities, m.SystemServiceCapabilities()...)
 	return append(capabilities, m.VirusScanCapabilities()...)
 }
 
