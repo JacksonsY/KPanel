@@ -1,6 +1,20 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ["在终端中执行", "Run in terminal"],
+  ["文件已变化，请刷新列表后重新执行。", "The file has changed. Refresh the list before running it again."],
+  ["文件不存在或已不再是普通文件。", "The file is missing or is no longer a regular file."],
+  ["文件没有执行权限，请先在文件管理中修改权限。", "The file is not executable. Change its permissions in the file manager first."],
+  ["缺少解释器：{0}，请安装后重新执行。", "Interpreter missing: {0}. Install it before running the file again."],
+  ["缺少工具：{0}，请安装后重新执行。", "Tool missing: {0}. Install it before running the file again."],
+  ["保存并执行", "Save and run"],
+  ["执行", "Run"],
+  ["当前文件不支持在终端中执行。", "This file cannot be run in the terminal."],
+  ["终端启动失败，请检查主机连接后重新打开。", "Could not start the terminal. Check the host connection and reopen it."],
+  ["命令未发送，请关闭窗口后重新执行。", "The command was not sent. Close the window and run the file again."],
+  ["终端关闭失败，请重试关闭。", "Could not close the terminal. Try closing it again."],
+  ["正在连接终端…", "Connecting to terminal…"],
+
   ['自动备份已关闭', 'Automatic backups are disabled'],
   ['自动备份等待首次执行', 'Waiting for the first automatic backup'],
   ['自动备份正在执行', 'Automatic backup in progress'],

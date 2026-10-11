@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import {
   ArrowLeft,
@@ -81,6 +81,7 @@ import {
 } from '@/lib/contextMenu'
 import { transferCrossPanelFileBatch } from '@/lib/crossPanelFileTransfer'
 import { downloadFileEntries } from '@/lib/fileDownloads'
+import { canExecuteFile } from '@/lib/fileExecution'
 import {
   addFileEntriesToDesktop,
   beginDesktopFileDrag,
@@ -183,6 +184,9 @@ const emit = defineEmits<{
 
 const desktop = useDesktopMode()
 const desktopIcons = useDesktopIcons()
+const FileExecutionTerminal = defineAsyncComponent(() => import('@/components/files/FileExecutionTerminal.vue'))
+const executionTarget = ref<FileEntry>()
+let executionOpener: HTMLElement | undefined
 const documentFullscreen = useDocumentFullscreen()
 const theme = useTheme()
 // The translucent drag hint keeps the dark palette even over a light desktop.
@@ -1123,6 +1127,12 @@ const selectedEntries = computed(() => {
   return [...selectedIcons.value]
     .map((key) => byKey.get(key))
     .filter((entry): entry is DesktopEntry => Boolean(entry))
+})
+const menuExecutableFile = computed(() => {
+  const entry = menuEntry.value
+  if (menuSelectionKeys.value.length > 1 || entry?.kind !== 'shortcut' || entry.launch !== 'file' || !entry.path) return
+  const metadata = desktopFileMetadata.value[entry.path]
+  if (metadata?.path === entry.path && canExecuteFile(metadata)) return metadata
 })
 const menuDownloadEntries = computed(() => {
   const byKey = new Map(
@@ -3831,6 +3841,21 @@ function onEntryMenuOpenContainingDirectory(): void {
   }
 }
 
+function onEntryMenuExecute(): void {
+  const entry = menuExecutableFile.value
+  if (!entry || executionTarget.value) return
+  executionTarget.value = { ...entry }
+  executionOpener = contextMenuOpener
+  closeContextMenu(false)
+}
+
+function closeFileExecution(): void {
+  executionTarget.value = undefined
+  const opener = executionOpener
+  executionOpener = undefined
+  if (opener?.isConnected) void nextTick(() => opener.focus({ preventScroll: true }))
+}
+
 async function onFileMenuDownload(): Promise<void> {
   const entries = [...menuDownloadEntries.value]
   closeContextMenu()
@@ -4886,6 +4911,10 @@ function onViewportResize(): void {
             <FolderOpen :size="15" aria-hidden="true" />
             {{ i18n.t('desktop.fileOpenContainingDirectory') }}
           </button>
+          <button v-if="menuExecutableFile" type="button" role="menuitem" @click="onEntryMenuExecute">
+            <SquareTerminal :size="15" aria-hidden="true" />
+            {{ i18n.t('desktop.fileRunInTerminal') }}
+          </button>
           <button
             v-if="menuDownloadEntries.length"
             type="button"
@@ -5607,5 +5636,12 @@ function onViewportResize(): void {
         </button>
       </template>
     </ModalDialog>
+    <FileExecutionTerminal
+      v-if="executionTarget"
+      :entry="executionTarget"
+      host-id=""
+      :host-name="i18n.t('terminal.hostKind.local')"
+      @close="closeFileExecution"
+    />
   </div>
 </template>

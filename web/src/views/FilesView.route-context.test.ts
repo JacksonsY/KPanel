@@ -7,6 +7,7 @@ import { windowRouterKey, windowRouteKey } from '@/lib/desktopRouteKeys'
 import { useFileClipboard, resetFileWindowTransferForTest } from '@/lib/fileWindowTransfer'
 import { resetApiSecurityState } from '@/lib/api'
 import { beginDesktopFileDrag } from '@/lib/desktopFileShortcuts'
+import type { FileEntry } from '@/types/api'
 
 vi.mock('@/stores/toast', () => ({ useToast: () => ({show: vi.fn(),success: vi.fn(),danger: vi.fn()}) }))
 const hosts = ['local', 'a', 'b'].map(id => ({id,name:id,isLocal:id==='local',kind:'panel',state:'online',fileManagementAvailable:true,remoteNodeId:id.repeat(32)}))
@@ -34,6 +35,26 @@ beforeEach(()=>{
  }))
 })
 afterEach(()=>{wrapper?.unmount();wrapper=undefined;vi.unstubAllGlobals();vi.useRealTimers()})
+
+it('opens execution for the editor active tab and captured host rather than the initial preview file', async () => {
+ const router = createWindowRouter('/files?path=/&hostId=a')
+ await router.isReady()
+ wrapper = shallowMount(FilesView, { global: {
+  renderStubDefaultSlot: true,
+  provide: { [windowRouterKey as symbol]: router, [windowRouteKey as symbol]: reactiveRouteFor(router) },
+ } })
+ await flushPromises()
+ const vm = wrapper.vm as unknown as { previewEntry: FileEntry; previewContent: string; executionTarget?: { entry: FileEntry; hostId: string } }
+ const initial: FileEntry = { ...entry, kind: 'file', mode: '-rw-r--r--', owner: 'root', group: 'root', modifiedAt: '', previewable: true, sizeBytes: 5 }
+ vm.previewEntry = initial
+ vm.previewContent = 'text'
+ await flushPromises()
+ const active = { ...initial, name: 'demo.sh', path: '/demo.sh', resourceVersion: 'saved-v2' }
+ wrapper.findComponent({ name: 'FileEditorWorkspace' }).vm.$emit('execute', active, 'b')
+ await flushPromises()
+ expect(vm.executionTarget).toMatchObject({ entry: active, hostId: 'b' })
+ expect(vm.previewEntry.path).toBe(initial.path)
+})
 
 it('editor directory navigation shares browser history and retains the open file and host', async () => {
  const router = createWindowRouter('/files?path=/&hostId=a')

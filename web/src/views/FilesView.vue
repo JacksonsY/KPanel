@@ -42,6 +42,7 @@ import {
   Search,
   Share2,
   ShieldCheck,
+  SquareTerminal,
   Trash2,
   Upload,
   X,
@@ -95,6 +96,7 @@ import {
 import FileEntryIcon from '@/components/files/FileEntryIcon.vue'
 import { fileEntryIconKind as entryIconKind } from '@/lib/fileEntryPresentation'
 import { fileAPIForHost } from '@/lib/fileHostContext'
+import { canExecuteFile } from '@/lib/fileExecution'
 import { requestedFilePath } from '@/lib/fileRoutePath'
 import { fileHostStatus as sharedFileHostStatus, type FileHostStatus } from '@/lib/fileHostStatus'
 import { withoutUnsupportedLightNodes } from '@/lib/nodeFeatureHosts'
@@ -142,6 +144,9 @@ import type {
 
 const FileEditorWorkspace = defineAsyncComponent(() => import('@/components/files/FileEditorWorkspace.vue'))
 const OfficeWorkspace = defineAsyncComponent(() => import('@/components/files/OfficeWorkspace.vue'))
+const FileExecutionTerminal = defineAsyncComponent(() => import('@/components/files/FileExecutionTerminal.vue'))
+const executionTarget = ref<{ entry: FileEntry; hostId: string; hostName: string }>()
+let executionOpener: HTMLElement | undefined
 const route = useRoute()
 const router = useRouter()
 const desktopWindowActive = inject(desktopWindowActiveKey, computed(() => true))
@@ -1029,6 +1034,23 @@ function openEntry(entry: FileEntry): void {
     return
   }
   if (entry.kind === 'file') void openPreview(entry)
+}
+
+function executeFile(entry: FileEntry, hostId = fileHostId.value): void {
+  if (executionTarget.value || !canExecuteFile(entry)) return
+  const host = fileHostInventory.value?.items.find((item) => item.id === (hostId || 'local'))
+  executionOpener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+  if (contextMenu.value) executionOpener = contextMenuOpener || undefined
+  contextMenu.value = undefined
+  executionOpener?.focus({ preventScroll: true })
+  executionTarget.value = { entry: { ...entry }, hostId, hostName: host?.name || hostId || phrase('本机') }
+}
+
+function closeExecutionTerminal(): void {
+  executionTarget.value = undefined
+  const opener = executionOpener
+  executionOpener = undefined
+  if (opener?.isConnected) void nextTick(() => opener.focus({ preventScroll: true }))
 }
 
 function clearMediaLoadTimer(): void {
@@ -3635,6 +3657,9 @@ onBeforeUnmount(() => {
       <button v-if="contextMenu.entry" role="menuitem" type="button" @click="openEntry(contextMenu.entry)">
         <Eye :size="15" />{{ phrase(contextMenu.entry.kind === 'directory' ? '打开' : '查看') }}
       </button>
+      <button v-if="contextMenu.entry && !contextHasMultipleEntries && canExecuteFile(contextMenu.entry)" role="menuitem" type="button" @click="executeFile(contextMenu.entry)">
+        <SquareTerminal :size="15" />{{ phrase('在终端中执行') }}
+      </button>
       <button v-if="!contextMenu.entry && !isRemoteFileHost" role="menuitem" type="button" :disabled="desktopAdding" @click="addEntriesToDesktop(undefined, true)">
         <Pin :size="15" />{{ phrase('将当前文件夹添加到桌面') }}
       </button>
@@ -3755,6 +3780,7 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <FileShareDialog v-if="shareEntry" :entry="shareEntry" @close="closeFileShare" />
+    <FileExecutionTerminal v-if="executionTarget" :entry="executionTarget.entry" :host-id="executionTarget.hostId" :host-name="executionTarget.hostName" @close="closeExecutionTerminal" />
     <FileShareManagerDialog v-if="shareManagerOpen" @close="closeShareManager" />
 
     <ModalDialog
@@ -4047,6 +4073,7 @@ onBeforeUnmount(() => {
         @dirty="previewDirty = $event"
         @saving="previewSaving = $event"
         @saved="refreshDirectoryAfterPreviewSave"
+        @execute="executeFile"
         @close="closePreview"
       >
         <template #window-controls><ModalWindowControls /></template>
