@@ -284,8 +284,7 @@ onBeforeUnmount(closePackageTerminal)
   <ModalDialog
     :open="terminalOpen"
     :title="phrase(terminalTitle)"
-    :description="phrase('独立会话，不会占用或改动主终端页面中的会话。')"
-    size="wide"
+    variant="workspace"
     allow-fullscreen
     @close="closePackageTerminal"
   >
@@ -358,6 +357,6 @@ onBeforeUnmount(closePackageTerminal)
 .packages-footer>span { max-width:52%; color:var(--muted); font-size:12px; line-height:1.45; }
 .packages-footer>div { display:flex; gap:8px; }
 .packages-footer .button { display:inline-flex; align-items:center; gap:6px; }
-.package-terminal { height:min(62vh,560px); min-height:360px; }
+.package-terminal { display:flex; flex:1 1 auto; min-height:0; flex-direction:column; }
 @media (max-width:800px) { .packages-toolbar { grid-template-columns:1fr; } .packages-filters { width:max-content; max-width:100%; overflow-x:auto; } .packages-grid { grid-template-columns:1fr; } .packages-footer { align-items:stretch; flex-direction:column; } .packages-footer>span { max-width:none; } .packages-footer>div { display:grid; grid-template-columns:1fr 1fr; } .packages-footer .button { justify-content:center; } }
 </style>
