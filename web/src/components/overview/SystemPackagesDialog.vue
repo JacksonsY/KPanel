@@ -92,6 +92,7 @@ const { load, stop, loading, refreshing } = usePollingRequest({
     selected.value = selected.value.filter((id) => snapshot.value?.items.some((item) => item.id === id))
   },
   shouldPoll: () => running.value,
+  shouldRetry: (reason) => !(reason instanceof ApiError) || reason.status < 400 || reason.status >= 500 || reason.status === 408 || reason.status === 429,
   onStart: () => { error.value = '' },
   onError: (reason) => {
     error.value = reason instanceof ApiError ? reason.message : '无法读取软件包状态。'
@@ -216,6 +217,7 @@ onBeforeUnmount(closePackageTerminal)
           <button class="icon-button" type="button" :disabled="refreshing || submitting" :title="phrase('刷新软件包状态')" @click="load(true)"><RefreshCw :size="17" :class="{ spin: refreshing }" /></button>
         </header>
 
+        <div v-if="error" class="inline-alert inline-alert--danger"><TriangleAlert :size="17" /> {{ phrase(error) }}</div>
         <div v-if="maintenanceBusy" class="inline-alert inline-alert--warning"><TriangleAlert :size="17" /> {{ phrase('另一项系统维护任务正在运行，完成后才能管理软件包。') }}</div>
         <div v-else-if="snapshot.maintenance.action === 'packages' && snapshot.maintenance.state === 'failed'" class="inline-alert inline-alert--danger"><TriangleAlert :size="17" /> {{ phrase(snapshot.maintenance.message || '软件包任务执行失败。') }}</div>
 

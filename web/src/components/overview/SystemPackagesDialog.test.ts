@@ -3,6 +3,7 @@
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SystemPackagesDialog from './SystemPackagesDialog.vue'
+import { ApiError } from '@/lib/api'
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(), action: vi.fn(), terminalOpen: vi.fn(), terminalInput: vi.fn(), terminalClose: vi.fn(),
@@ -10,7 +11,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/api', () => ({
-  ApiError: class MockApiError extends Error {},
+  ApiError: class MockApiError extends Error {
+    constructor(message: string, readonly status = 0) { super(message) }
+  },
   api: {
     system: { packages: mocks.list, packagesAction: mocks.action },
     terminals: { open: mocks.terminalOpen, input: mocks.terminalInput, close: mocks.terminalClose },
@@ -56,6 +59,47 @@ beforeEach(() => {
 })
 
 describe('SystemPackagesDialog', () => {
+  it.each([400, 401, 403, 404, 405, 422])('keeps HTTP %s errors stable until manual retry', async (status) => {
+    vi.useFakeTimers()
+    mocks.list.mockRejectedValueOnce(new ApiError('Route not found', status))
+    const wrapper = mountDialog()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Route not found')
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(mocks.list).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('Route not found')
+    await wrapper.find('.error-state button').trigger('click')
+    await flushPromises()
+    expect(mocks.list).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('已安装 1/3 个常用工具')
+  })
+
+  it('stops on a missing route even with a previously running task', async () => {
+    vi.useFakeTimers()
+    mocks.list.mockResolvedValueOnce({ ...snapshot, maintenance: { state: 'running', action: 'packages', progress: 10 } })
+      .mockRejectedValueOnce(new ApiError('Route not found', 404))
+    const wrapper = mountDialog()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(1_800)
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(mocks.list).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('Route not found')
+    await wrapper.find('button[title="刷新软件包状态"]').trigger('click')
+    await flushPromises()
+    expect(mocks.list).toHaveBeenCalledTimes(3)
+    expect(wrapper.find('.packages-summary__progress').exists()).toBe(false)
+  })
+
+  it.each([408, 429, 503])('recovers automatically from HTTP %s', async (status) => {
+    vi.useFakeTimers()
+    mocks.list.mockRejectedValueOnce(new ApiError('Temporary failure', status))
+    const wrapper = mountDialog()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(1_800)
+    expect(mocks.list).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('已安装 1/3 个常用工具')
+  })
+
   it('recovers a running task after a transient read error and stops at completion', async () => {
     vi.useFakeTimers()
     mocks.list
