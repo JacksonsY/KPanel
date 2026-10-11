@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.26.0-rc.7] - 2026-10-11
+
+### Fixed
+
+- 容器镜像未包含 /bin/sh 时，Docker 控制台明确提示缺少 Shell；不再统一显示为容器或 Agent 终端服务故障，正常打开路径不增加探测。
+- 修复主机、应用和 Docker 交互终端首次打开时可能丢失首段输出的问题，无需先输入内容才能看到已有提示符。
+- 为终端输出订阅和输入协议协商增加 5 秒超时，避免连接一直等待；保留输入确认、重试和防止重复执行的语义。
+
+### Performance
+
+- 本机打开终端不再等待一次主机遥测采集，减少进入终端前的等待。
+
+### Upgrade Notes
+
+- 请配套更新 Panel 与 Agent。无 Shell 的镜像仍无法运行交互 Shell；本版提供准确提示，不向容器安装 Shell。
+- 本版未改变 Agent 权限或旧安装的服务迁移逻辑。旧 RC.5 安装若仍缺少 CAP_KILL，继续按 RC.6 的升级说明刷新生命周期脚本或迁移服务配置。
+- 仅更新预览通道，GitHub Latest 和 Docker latest 保持 v1.25.1；退出预览计划不会自动降级，既有 CF 补审及稳定版前待办继续保留。
+
+### 发布边界
+
+- 仅发布 GitHub prerelease 与 Docker preview，保留 release/v1.26.0-candidate；预览版不进入正式生产部署。
+- scriptLinkageState=not-required：无需发布脚本（不适用）；继续使用 1800d955f216aebd2776674368a8e469a671c489 及现有安装、更新协议。
+
 ## [1.26.0-rc.6] - 2026-10-11
 
 ### Fixed
