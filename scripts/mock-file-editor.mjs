@@ -23,6 +23,12 @@ const contents = new Map([
     Array.from({ length: 800 }, (_, i) => `setting_${i + 1}: value_${i + 1}`).join('\n'),
   ],
 ])
+
+function mockFileMode(entry) {
+  if (entry.kind !== 'file') return 'drwxr-xr-x'
+  return entry.path === '/editor-demo/server' ? '-rwxr-xr-x' : '-rw-r--r--'
+}
+
 export const mockEditorFiles = [
   ...['/editor-demo', '/editor-demo/config', '/editor-demo/empty'].map((path) => ({
     path,
@@ -40,7 +46,7 @@ export const mockEditorFiles = [
 ].map((entry, index) => ({
   ...entry,
   name: entry.path.split('/').at(-1),
-  mode: entry.kind === 'file' ? entry.path === '/editor-demo/server' ? '-rwxr-xr-x' : '-rw-r--r--' : 'drwxr-xr-x',
+  mode: mockFileMode(entry),
   owner: 'demo',
   group: 'demo',
   modifiedAt: '2026-09-23T00:00:00Z',
