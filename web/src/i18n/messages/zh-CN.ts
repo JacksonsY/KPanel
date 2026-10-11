@@ -936,6 +936,7 @@ export const zhCNMessages = {
   'desktop.aboutMessage': 'KPanel 桌面模式：单击图标打开窗口，可拖动、缩放、最小化并从底部程序坞恢复；右上角可切换回经典模式。',
   'desktop.entryOpen': '打开',
   'desktop.fileOpenContainingDirectory': '打开所在目录',
+  'desktop.fileRunInTerminal': '在终端中执行',
   'desktop.entryScriptManage': '脚本管理',
   'desktop.scriptWindowTitle': '脚本终端',
   'desktop.namedScriptWindowTitle': '{name} 的脚本终端',

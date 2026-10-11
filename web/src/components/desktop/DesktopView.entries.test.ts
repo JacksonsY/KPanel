@@ -726,6 +726,51 @@ describe('DesktopView dynamic entries', () => {
     wrapper.unmount()
   })
 
+  it.each([
+    ['demo.sh', '-rw-r--r--', 'file', true, true],
+    ['server', '-rwxr-xr-x', 'file', true, true],
+    ['notes.txt', '-rw-r--r--', 'file', true, false],
+    ['demo.sh', '-rw-r--r--', 'file', false, false],
+    ['demo.sh', 'drwxr-xr-x', 'directory', true, false],
+    ['demo.sh', 'lrwxrwxrwx', 'symlink', true, false],
+  ] as const)('offers terminal execution for shortcut %s (%s, %s, metadata=%s)', async (name, mode, kind, available, executable) => {
+    const shortcutID = '9'.repeat(32)
+    const path = `/home/${name}`
+    const entry = {
+      name, path, kind, mode, resourceVersion: 'sha256:target', sizeBytes: 7,
+      owner: 'root', group: 'root', modifiedAt: '2026-08-20T00:00:00Z',
+      editable: false, previewable: false,
+    }
+    mockedWorkspace.mockResolvedValueOnce(makeWorkspace({ shortcuts: [{
+      id: shortcutID, name, path, description: '', targetType: kind === 'directory' ? 'directory' : 'file',
+      createdAt: '2026-08-20T00:00:00Z', updatedAt: '2026-08-20T00:00:00Z',
+    }] }))
+    mockedFileEntries.mockResolvedValue({ entries: available ? [entry] : [], unavailable: [] })
+    const wrapper = mount(DesktopView, { attachTo: document.body, global: { stubs: {
+      FileExecutionTerminal: { name: 'ExecutionStub', props: ['entry', 'hostId', 'hostName'], emits: ['close'], template: '<div />' },
+    } } })
+    await flushPromises()
+    const shortcut = wrapper.get(`[data-icon-key="shortcut:${shortcutID}"] button`)
+    await shortcut.trigger('contextmenu', { clientX: 120, clientY: 140 })
+    await nextTick()
+    const run = wrapper.findAll('[role="menuitem"]').find((item) => item.text().trim() === '在终端中执行')
+    expect(Boolean(run)).toBe(executable)
+    expect(wrapper.findComponent({ name: 'ExecutionStub' }).exists()).toBe(false)
+    if (run) {
+      await run.trigger('click')
+      await flushPromises()
+      const terminal = wrapper.getComponent({ name: 'ExecutionStub' })
+      expect(terminal.props()).toMatchObject({ entry, hostId: '', hostName: '本机' })
+      expect(useDesktopMode().windows.value).toHaveLength(0)
+      expect(wrapper.find('.desktop__context-menu').exists()).toBe(false)
+      terminal.vm.$emit('close')
+      await nextTick()
+      expect(wrapper.findComponent({ name: 'ExecutionStub' }).exists()).toBe(false)
+      expect(document.activeElement).toBe(shortcut.element)
+    }
+    wrapper.unmount()
+  })
+
   it('creates a file shortcut at the desktop drop area without moving the source', async () => {
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await flushPromises()
