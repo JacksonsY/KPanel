@@ -146,6 +146,7 @@ const FileEditorWorkspace = defineAsyncComponent(() => import('@/components/file
 const OfficeWorkspace = defineAsyncComponent(() => import('@/components/files/OfficeWorkspace.vue'))
 const FileExecutionTerminal = defineAsyncComponent(() => import('@/components/files/FileExecutionTerminal.vue'))
 const executionTarget = ref<{ entry: FileEntry; hostId: string; hostName: string }>()
+let executionOpener: HTMLElement | undefined
 const route = useRoute()
 const router = useRouter()
 const desktopWindowActive = inject(desktopWindowActiveKey, computed(() => true))
@@ -1035,17 +1036,21 @@ function openEntry(entry: FileEntry): void {
   if (entry.kind === 'file') void openPreview(entry)
 }
 
-function executeFile(entry: FileEntry): void {
+function executeFile(entry: FileEntry, hostId = fileHostId.value): void {
   if (executionTarget.value || !canExecuteFile(entry)) return
-  const host = fileHostInventory.value?.items.find((item) => item.id === (fileHostId.value || 'local'))
+  const host = fileHostInventory.value?.items.find((item) => item.id === (hostId || 'local'))
+  executionOpener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+  if (contextMenu.value) executionOpener = contextMenuOpener
   contextMenu.value = undefined
-  contextMenuOpener?.focus({ preventScroll: true })
-  executionTarget.value = { entry: { ...entry }, hostId: fileHostId.value, hostName: host?.name || fileHostId.value || phrase('本机') }
+  executionOpener?.focus({ preventScroll: true })
+  executionTarget.value = { entry: { ...entry }, hostId, hostName: host?.name || hostId || phrase('本机') }
 }
 
 function closeExecutionTerminal(): void {
   executionTarget.value = undefined
-  void nextTick(() => contextMenuOpener?.focus({ preventScroll: true }))
+  const opener = executionOpener
+  executionOpener = undefined
+  if (opener?.isConnected) void nextTick(() => opener.focus({ preventScroll: true }))
 }
 
 function clearMediaLoadTimer(): void {
@@ -4068,6 +4073,7 @@ onBeforeUnmount(() => {
         @dirty="previewDirty = $event"
         @saving="previewSaving = $event"
         @saved="refreshDirectoryAfterPreviewSave"
+        @execute="executeFile"
         @close="closePreview"
       >
         <template #window-controls><ModalWindowControls /></template>

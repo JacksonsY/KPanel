@@ -19,12 +19,14 @@ import {
   RefreshCw,
   Save,
   Search,
+  SquareTerminal,
   WrapText,
   X,
 } from '@lucide/vue'
 import CodeEditor from './CodeEditor.vue'
 import FileEntryIcon from './FileEntryIcon.vue'
 import { fileAPIForHost } from '@/lib/fileHostContext'
+import { canExecuteFile } from '@/lib/fileExecution'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import type { CodeEditorSession } from '@/lib/code-editor-session'
 import type { FileDirectory, FileEntry } from '@/types/api'
@@ -42,10 +44,13 @@ const emit = defineEmits<{
   dirty: [value: boolean]
   saving: [value: boolean]
   saved: [entry: FileEntry]
+  execute: [entry: FileEntry, hostId: string]
   close: []
   navigate: [path: string]
 }>()
-const files = fileAPIForHost(props.hostId)
+const hostId = props.hostId
+const files = fileAPIForHost(hostId)
+const executing = ref(false)
 const MAX_TABS = 12
 const MAX_ENTRIES = 500
 interface EditorTab {
@@ -273,6 +278,21 @@ async function save(): Promise<void> {
     }
   }
 }
+async function execute(): Promise<void> {
+  const tab = active.value
+  if (executing.value || !editorReady.value || tab.saving || !canExecuteFile(tab.entry)) return
+  const revision = tab.revision
+  executing.value = true
+  try {
+    if (tab.dirty) await save()
+    if (disposed || active.value !== tab || tab.dirty || tab.error || tab.saving
+      || tab.revision !== revision || !canExecuteFile(tab.entry)) return
+    emit('execute', { ...tab.entry }, hostId)
+  } finally {
+    executing.value = false
+  }
+}
+
 async function loadDirectory(
   path = directoryPath.value,
   append = false,
@@ -538,6 +558,18 @@ defineExpose({ openFile })
           </button>
         </div>
       </div>
+      <button
+        v-if="canExecuteFile(active.entry)"
+        class="button button--secondary editor-execute"
+        type="button"
+        :disabled="!editorReady || active.saving || executing"
+        :inert="compact && sidebarOpen"
+        :aria-label="phrase(active.dirty ? '保存并执行' : '在终端中执行')"
+        :title="phrase(active.dirty ? '保存并执行' : '在终端中执行')"
+        @click="execute"
+      >
+        <SquareTerminal :size="16" /><span>{{ phrase(active.dirty ? '保存并执行' : '执行') }}</span>
+      </button>
       <button
         class="button button--primary editor-save"
         type="button"
@@ -841,7 +873,8 @@ defineExpose({ openFile })
   opacity: 0.5;
   cursor: default;
 }
-.editor-save {
+.editor-save,
+.editor-execute {
   flex: 0 0 auto;
   min-height: 36px;
   padding: 6px 12px;
@@ -1140,13 +1173,15 @@ defineExpose({ openFile })
   margin-right: -4px;
   padding-left: 0;
 }
-.is-compact .editor-save {
+.is-compact .editor-save,
+.is-compact .editor-execute {
   width: 40px;
   min-height: 40px;
   padding: 0;
   justify-content: center;
 }
-.is-compact .editor-save > span {
+.is-compact .editor-save > span,
+.is-compact .editor-execute > span {
   display: none;
 }
 .is-compact .editor-tab {
