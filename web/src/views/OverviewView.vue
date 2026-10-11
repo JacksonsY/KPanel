@@ -63,6 +63,7 @@ import SystemTuningDialog from '@/components/overview/SystemTuningDialog.vue'
 import SystemPackagesDialog from '@/components/overview/SystemPackagesDialog.vue'
 import DiskPartitionDialog from '@/components/overview/DiskPartitionDialog.vue'
 import SystemLogsDialog from '@/components/overview/SystemLogsDialog.vue'
+import SystemServicesDialog from '@/components/overview/SystemServicesDialog.vue'
 import VirusScanDialog from '@/components/overview/VirusScanDialog.vue'
 import { detectOperatingSystemIdentity } from '@/lib/operatingSystem'
 import CountryFlagIcon from '@/components/overview/CountryFlagIcon.vue'
@@ -140,7 +141,7 @@ interface SystemCenterSection {
 
 type KernelProfile = 'high' | 'balanced' | 'web' | 'stream' | 'game' | 'off'
 type BBRv3Policy = 'install' | 'update' | 'uninstall'
-type ResourceDialogID = 'hosts' | 'cron' | 'network-interfaces' | 'firewall' | 'port-usage' | 'traffic-shutdown' | 'accounts' | 'ssh-defense' | 'system-tuning' | 'packages' | 'disk-partitions' | 'system-logs' | 'virus-scan'
+type ResourceDialogID = 'hosts' | 'cron' | 'network-interfaces' | 'firewall' | 'port-usage' | 'traffic-shutdown' | 'accounts' | 'ssh-defense' | 'system-tuning' | 'packages' | 'disk-partitions' | 'system-logs' | 'virus-scan' | 'services'
 
 const mirrorPresets: Array<{
   value: MirrorPreset
@@ -653,6 +654,17 @@ const maintenanceTools = computed<ManagementTool[]>(() => {
       tone: 'blue',
     },
     {
+      id: 'services',
+      title: 'systemd 服务管理',
+      description: '查看系统服务状态，管理启停、重载和开机自启。',
+      value: capabilityState('system.services.read').enabled ? '打开后读取服务状态' : '适配器未就绪',
+      detail: '服务搜索 · 运行状态 · 开机自启 · 最近日志',
+      capability: 'system.services.read',
+      safety: '操作关键服务可能中断网络、SSH 或面板连接；提交后请刷新确认最终状态。',
+      icon: Server,
+      tone: 'blue',
+    },
+    {
       id: 'system-logs',
       title: '系统日志',
       description: '按需查看系统、服务、安全与登录日志，并安全清理旧日志。',
@@ -765,7 +777,7 @@ const systemCenterSections = computed<SystemCenterSection[]>(() => {
     {
       id: 'maintenance',
       title: '日常维护',
-      description: '软件包、系统更新、空间清理、日志与可控重启',
+      description: '软件包、系统更新、服务管理、空间清理与日志',
       icon: RefreshCw,
       iconTone: 'violet',
       tools: maintenanceTools.value.map((tool) => ({
@@ -808,6 +820,7 @@ const systemCenterSections = computed<SystemCenterSection[]>(() => {
 })
 
 const resourceCapabilityNames: Record<ResourceDialogID, string> = {
+  services: 'system.services',
   hosts: 'system.hosts',
   cron: 'system.cron',
   'network-interfaces': 'system.network-interfaces',
@@ -824,6 +837,7 @@ const resourceCapabilityNames: Record<ResourceDialogID, string> = {
 }
 
 const resourceCapabilityUnavailableReasons: Record<ResourceDialogID, string> = {
+  services: '当前 Agent 的 systemd 服务适配器尚未就绪。',
   hosts: '当前 Agent 的 Hosts 适配器未就绪。',
   cron: '当前 Agent 的定时任务适配器未就绪。',
   'network-interfaces': '当前 Agent 的网卡适配器未就绪。',
@@ -2000,6 +2014,13 @@ onBeforeUnmount(() => {
 		:unavailable-reason="resourceCapability('disk-partitions', 'read').reason"
 		@close="closeResourceDialog"
 	/>
+  <SystemServicesDialog
+    :open="selectedResourceDialog === 'services'"
+    :readable="resourceCapability('services', 'read').enabled"
+    :writable="resourceCapability('services', 'write').enabled"
+    :unavailable-reason="resourceCapability('services', 'read').reason"
+    @close="closeResourceDialog"
+  />
 	<SystemLogsDialog
 		:open="selectedResourceDialog === 'system-logs'"
 		:readable="resourceCapability('system-logs', 'read').enabled"

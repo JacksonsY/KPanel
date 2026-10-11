@@ -3,6 +3,7 @@ import { TerminalStreamClient } from '@/lib/terminalStream'
 import { uploadFileInSession, type FileReceiveSession } from '@/lib/fileReceiveUpload'
 import { watchFileTransferJob } from '@/lib/fileTransferJob'
 import type { PasskeyList } from '@/types/api'
+import type { SystemServicesSnapshot, SystemServiceDetail, SystemServiceLogs, SystemServiceActionInput, SystemServiceActionResult } from '@/types/systemServices'
 import type { ShareThemeList } from '@/lib/shareThemes'
 import type { ScenePack, ScenePackList, ScenePackSource } from '@/lib/scenePacks'
 import type { PasskeyCreationOptions, PasskeyRequestOptions, PasskeyCredentialJSON } from '@/lib/passkeys'
@@ -1965,6 +1966,14 @@ export const api = {
     },
   },
   system: {
+    services: (signal?: AbortSignal): Promise<SystemServicesSnapshot> =>
+      request<SystemServicesSnapshot>('/system/services', { signal }),
+    service: (name: string, signal?: AbortSignal): Promise<SystemServiceDetail> =>
+      request<SystemServiceDetail>(`/system/services/${encodeURIComponent(name)}`, { signal }),
+    serviceLogs: (name: string, signal?: AbortSignal): Promise<SystemServiceLogs> =>
+      request<SystemServiceLogs>(`/system/services/${encodeURIComponent(name)}/logs`, { signal }),
+    serviceAction: (body: SystemServiceActionInput): Promise<SystemServiceActionResult> =>
+      request<SystemServiceActionResult>('/system/service-actions', { method: 'POST', body }),
     resources: async (signal?: AbortSignal): Promise<SystemResourceSnapshot> =>
       normalizeSystemResources(await request<RawSystemSummary>('/system/summary', { signal })),
     processes: (query: ProcessQuery = {}, signal?: AbortSignal): Promise<ProcessSnapshot> =>

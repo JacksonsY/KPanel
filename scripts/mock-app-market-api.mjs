@@ -8,6 +8,7 @@ import { mockScenePacks } from './mock-scene-packs.mjs'
 import { mockDesktopWallpapers } from './mock-desktop-wallpapers.mjs'
 import { mockGallery, mockGalleryRootEntries } from './mock-gallery.mjs'
 import { mockOffers } from './mock-offers.mjs'
+import { handleMockSystemServices } from './mock-system-services.mjs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1362,6 +1363,8 @@ const systemCapabilities = [
     'reboot',
   ].map((action) => ({ id: `system.${action}.write`, enabled: true, methods: ['POST'] })),
   { id: 'system.logs.read', enabled: true, methods: ['GET'] },
+  { id: 'system.services.read', enabled: true, methods: ['GET'] },
+  { id: 'system.services.write', enabled: true, methods: ['POST'] },
   { id: 'system.logs.write', enabled: true, methods: ['POST'] },
   { id: 'system.virus-scan.read', enabled: true, methods: ['GET'] },
   { id: 'system.virus-scan.write', enabled: true, methods: ['POST'] },
@@ -2101,6 +2104,7 @@ createServer(async (request, response) => {
     return
   }
   if (await handleMockOffice(request, response, url, { send, readJSON })) return
+  if (await handleMockSystemServices(request, response, url, { send, readJSON })) return
   if (await handleMockEditor(request, response, url, { send, readJSON })) return
   if (request.method === 'GET' && url.pathname === '/api/v1/files/content') {
     if (url.searchParams.get('path') === '/kpanel-desktop.webp') {

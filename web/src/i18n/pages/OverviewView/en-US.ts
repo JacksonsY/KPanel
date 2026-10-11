@@ -1,6 +1,12 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['查看系统服务状态，管理启停、重载和开机自启。', 'View system services and manage start, stop, reload, and boot settings.'],
+  ['打开后读取服务状态', 'Load service state on opening'],
+  ['服务搜索 · 运行状态 · 开机自启 · 最近日志', 'Search · Runtime state · Boot settings · Recent logs'],
+  ['操作关键服务可能中断网络、SSH 或面板连接；提交后请刷新确认最终状态。', 'Changes to critical services may interrupt network, SSH, or panel connections. Refresh after submitting to check the final state.'],
+  ['软件包、系统更新、服务管理、空间清理与日志', 'Packages, system updates, services, cleanup, and logs'],
+  ['当前 Agent 的 systemd 服务适配器尚未就绪。', 'The systemd service adapter is not ready on this Agent.'],
   ["刷新中", "Refreshing"],
   ["状态加载中", "Loading status"],
   ["状态读取失败", "Status unavailable"],
@@ -334,7 +340,6 @@ export default [
 	['BBR 管理', 'BBR management'],
 	['综合调优', 'System tuning'],
 	['日常维护', 'Routine maintenance'],
-	['系统更新、空间清理、日志与可控重启', 'System updates, space cleanup, logs, and controlled restarts'],
 	['系统日志', 'System logs'],
 	['按需查看系统、服务、安全与登录日志，并安全清理旧日志。', 'View system, service, security, and login logs on demand, and safely clean old logs.'],
 	['打开后读取真实占用', 'Open to load real usage'],
@@ -392,7 +397,6 @@ export default [
   ["选择全部未安装工具", "Select all missing tools"],
   ["在独立终端启动 {0}", "Launch {0} in a dedicated terminal"],
   ["只允许固定目录中的软件包 ID；每项使用原生包管理器参数执行，不接受自定义包名或命令。", "Only fixed catalog package IDs are accepted. Each item uses native package-manager arguments; custom package names and commands are rejected."],
-  ["软件包、系统更新、空间清理、日志与可控重启", "Packages, system updates, cleanup, logs, and controlled reboot"],
   ["当前 Agent 的软件包管理适配器尚未就绪。", "Package management is unavailable with the current Agent."],
   ["软件包任务正在后台执行", "The package task is running in the background"],
   ["工具与运行环境", "Tools and runtimes"],
