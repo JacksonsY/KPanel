@@ -16,6 +16,8 @@ const contents = new Map([
   ['/editor-demo/unavailable.txt', ''],
   ['/editor-demo/demo.sh', '# UI Mock only: no commands are executed on this computer.\nprintf "Hello from the file terminal\\n"\n'],
   ['/editor-demo/server', '# UI Mock only: represents an executable Go program.\n'],
+  ['/editor-demo/Dockerfile', '# UI Mock only\nFROM scratch\n'],
+  ['/editor-demo/compose.yaml', '# UI Mock only\nservices:\n  web:\n    image: nginx:alpine\n'],
   [
     '/editor-demo/config/long-configuration-name-for-responsive-preview.yaml',
     Array.from({ length: 800 }, (_, i) => `setting_${i + 1}: value_${i + 1}`).join('\n'),

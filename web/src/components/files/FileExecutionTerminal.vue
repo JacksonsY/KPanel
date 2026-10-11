@@ -46,6 +46,7 @@ async function open(): Promise<void> {
       unavailable: phrase('文件不存在或已不再是普通文件。'),
       permission: phrase('文件没有执行权限，请先在文件管理中修改权限。'),
       interpreter: (name) => phrase('缺少解释器：{0}，请安装后重新执行。').replace('{0}', name),
+      tool: (name) => phrase('缺少工具：{0}，请安装后重新执行。').replace('{0}', name),
     })
     if (!command) {
       error.value = phrase('当前文件不支持在终端中执行。')

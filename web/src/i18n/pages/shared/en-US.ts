@@ -6,6 +6,7 @@ export default [
   ["文件不存在或已不再是普通文件。", "The file is missing or is no longer a regular file."],
   ["文件没有执行权限，请先在文件管理中修改权限。", "The file is not executable. Change its permissions in the file manager first."],
   ["缺少解释器：{0}，请安装后重新执行。", "Interpreter missing: {0}. Install it before running the file again."],
+  ["缺少工具：{0}，请安装后重新执行。", "Tool missing: {0}. Install it before running the file again."],
   ["当前文件不支持在终端中执行。", "This file cannot be run in the terminal."],
   ["终端启动失败，请检查主机连接后重新打开。", "Could not start the terminal. Check the host connection and reopen it."],
   ["命令未发送，请关闭窗口后重新执行。", "The command was not sent. Close the window and run the file again."],

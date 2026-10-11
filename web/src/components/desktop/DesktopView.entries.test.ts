@@ -729,6 +729,8 @@ describe('DesktopView dynamic entries', () => {
   it.each([
     ['demo.sh', '-rw-r--r--', 'file', true, true],
     ['server', '-rwxr-xr-x', 'file', true, true],
+    ['Dockerfile', '-rw-r--r--', 'file', true, true],
+    ['compose.yaml', '-rw-r--r--', 'file', true, true],
     ['notes.txt', '-rw-r--r--', 'file', true, false],
     ['demo.sh', '-rw-r--r--', 'file', false, false],
     ['demo.sh', 'drwxr-xr-x', 'directory', true, false],
