@@ -1,14 +1,32 @@
 # KPanel 当前业务事实与规范适配基线
 
 - 复核日期：`2026-10-11`
-- 基线提交：`0d43a08ac53d4f493e4a32ea288b3ee2450be6d5`
+- 基线提交：`6ee57f095268346b115f64c0f2c6fec6212157c8`
 - 基线版本：`v1.25.1`
-- 当前公开稳定：`v1.25.1`（2026-10-10T08:57:44Z），产品提交 `8affed894e4dd0a2a2f0af3c1f1d12318a60361a`；当前公开预览：`v1.26.0-rc.6`（2026-10-11T00:39:14Z），产品提交 `0d43a08ac53d4f493e4a32ea288b3ee2450be6d5`；产物已发布，生产未部署。
-- 上一份完整复核：[`product-quality-review-2026-08-13.md`](product-quality-review-2026-08-13.md)
-- 自动刷新门槛：基线后达到 50 个提交，或同时达到 20 个提交和 8 个正式版本；产品性质、业务真源、权限边界或核心旅程发生实质变化时立即复核
+- 当前公开预览：`v1.26.0-rc.7`，产品提交 `6ee57f095268346b115f64c0f2c6fec6212157c8`；2026-10-11T11:19:26Z 已公开，prerelease=true、draft=false，未部署生产。
+- 稳定版本及 Latest/latest：`v1.25.1`；稳定镜像 `sha256:1894b5e3aa76edbd75efef2de1164f44d38734cb3a27dc11aa2f75c420c1b325`，本轮未提升稳定通道。
+- 预览 version/preview 双架构镜像：`sha256:968946e9dcc1e478fef355f84c355c11db7d5e35b89284c01f6f2649389fdaf4`。
+- 后续治理提交：`e564b6af9f290a54608397d5c2475bbd627728ce`，只修正 draft Release ID 查询及契约；候选和 main 的 CI/freshness 均通过，已独立归档清理。该提交不属于 RC7 已发布产品字节。
+- 上一份完整复核：[product-quality-review-2026-08-13.md](product-quality-review-2026-08-13.md)。自动刷新门槛保持：基线后达到 50 个提交，或同时达到 20 个提交和 8 个正式版本；产品性质、业务真源、权限边界或核心旅程实质变化时立即复核。
 
-本文件是 AI 会话定位当前产品形态的稳定入口。历史复核保留对应时点证据；这里不重复完整质量规范，
-只记录会影响任务分级、设计判断和验收范围的当前业务事实。
+本文件是定位当前产品形态的事实入口；历史复核保留当时的证据和限制，不重复定义工程规范。
+
+### v1.26.0-rc.7 终端与 BT 修复（已发布预览，未部署生产）
+
+- 来源为终端打开/首段输出及缺 Shell 提示 `de7eb95f8766762bb1ada2dba03e0b21d7695dcd`、BusyBox 光标报告 `13360e870c150ab55afcf5ff9e6d8426d15f394c`，以及 BT writer/keepalive、Mounts 稳定版本和原生粘贴 rollup `6ee57f095268346b115f64c0f2c6fec6212157c8`。三个精确来源已保存只读 bundle、远端 archive 引用，并在所有权释放后清理本地工作树和活跃分支；预览序列 `release/v1.26.0-candidate` 保留。
+- 无 `/bin/sh` 的镜像仍不能提供交互 Shell，RC7 提供准确提示，不安装 Shell。Panel 自身镜像无 Shell 的事实未改变。CAP_KILL 安装迁移沿用 RC6；Panel/Agent 配套更新要求保持。
+- 修复终端首条输入/首段输出、BusyBox 光标报告与原生 Ctrl+V paste；真实 DOM paste → WS seq2/CR ack2 → SSE echo 已验证，不新增剪贴板权限读取。排序 Mounts 后计算版本，避免多挂载容器伪 resource_conflict，真实冲突检查保留。
+- BT 锁定上游 v1.61.0，只回移 writer 唤醒和 keepalive 重启两项官方补丁。已验证部分载荷后继续下载及定向 race；不据此保证所有 WAN/BT 停滞均消失。
+- 精确 C5 的 canonical L3 于 08:21:21Z—08:44:03Z 通过；web 274 文件、2568 通过/6 跳过，类型/构建、后端 race、两项官方补丁 race、双架构构建、安装安全和场景包通过。终端后台验收 17 场景/18 PNG、8 会话关闭；公开镜像 E2E 和公开通道/说明/下载后台验收 8 场景/8 PNG 通过，全部 PNG 已实际复核。
+- 发布后读回 15 个附件/11 条 SHA256SUMS、453 个修改组件源原件及双架构身份，4 项镜像提取二进制 build info 通过；原 SBOM/SLSA 保留。未重新下载全部 10 个独立二进制附件；不得声称进行了全资产逐字节下载。
+- 原 Release Actions 在 draft API 查询处失败，保留失败状态；使用独立复核的恢复流程完成同标签/同镜像公开发布，没有重建或移动 tag。Docker 29 的 child/config ID 兼容由受审 collector 适配，canonical collector 可移植性仍为 2026-10-25 或稳定前的限期治理项；不能声称原工作流通过或该项已永久修复。
+- 当前扫描：生产闭包 106 外部模块 0 HIGH/CRITICAL，exit0；selected 460 模块保留 10 项漏洞，exit1；standalone 150 模块保留 24 项漏洞和 2 配置项，exit1。36 条逐 ID/module/version/scope 限期处置至 2026-10-25，未知/新增/过期/生产交集或身份变化重审；不是全依赖图无漏洞或永久豁免。govuln 0 affected/0 imported、1 require-only 警告；npm 0。
+- CF 覆盖 decision=scoped-required；未新增 CF 审计，run-31/32/33 incomplete/needs_validation、SSE/轻量节点撤权及 private magnet DHT 限制保持。GPU 经典拖动 +25.485% 超 20% 预算仍开放；offers 后台刷新/TempDir 竞态须 2026-10-15 或稳定前，GPU 准入须 2026-10-16 或稳定前处置。
+- apps commit `6602ac36e0c329e35b74ff621721b23583e94f5f` 无需同步提交；scriptLinkageState=not-required，脚本 pin `1800d955f216aebd2776674368a8e469a671c489`、SHA256 `5778fdc9637c8614f5246f9eb13c1e549de51522fb91b3805067cbc0475b614c`。用户未提交修改保留。
+- 产品资格封存时为 62 次流程异常/122 条历史事件/41 组处置，生产写后 0 次；封存后的文档 L0 元数据格式失败追加 1 次，Windows 检出校验及恢复后置断言失败再追加 2 次，当前计数 65 次/43 组，原封存字节保持不变；未发布的失败候选和原始失败日志继续保留。REC5 私有 daemon 误删共享 docker0 已恢复精确桥身份并验证两个既有业务服务；该证据不等于完整路由/防火墙审计，后续只使用共享 Docker 单 daemon。
+- 未验证原生 ARM 运行时、Safari/Firefox、实体手机/缩放、屏幕阅读器、长时 WAN/soak、完整性能准入；窄屏弹窗短时 toast 遮挡部分标题的视觉限制保留。隔离验收不证明 prod-108 的健康或升级。
+
+详细证据、恢复和风险见 [RC7 发布验收记录](release-v1.26.0-rc.7-acceptance.md)。本次文档提交自己的 CI、归档及最终自有临时文件清理以之后的外部回执为准，不提前宣称完成。
 
 ### v1.26.0-rc.6 Docker终端启动修复已发布
 
