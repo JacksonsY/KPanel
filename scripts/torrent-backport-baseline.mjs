@@ -19,7 +19,11 @@ const MAIN_MODULE = 'github.com/kejilion/kejilion-panel';
 const BUILD_FILES = ['Dockerfile', '.github/workflows/release.yml', 'scripts/build-mcp-clients.sh', 'Makefile'];
 const GO_VERSION = 'go1.27.2';
 const SOURCE_ROOTS = ['cmd', 'internal'];
-const ascii = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+const ascii = (a, b) => {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+};
 const version = value => String(value ?? '').replace(/^v/, '');
 export const productionTargets = Object.freeze(['linux', 'darwin', 'windows'].flatMap(goos =>
   ['amd64', 'arm64'].map(goarch => ({ goos, goarch, targets: goos === 'linux'
