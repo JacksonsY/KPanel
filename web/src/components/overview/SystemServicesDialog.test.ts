@@ -2,13 +2,16 @@
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SystemServicesDialog from './SystemServicesDialog.vue'
+import { registerPhraseCatalog, resetPhraseLocalizationForTest } from '@/i18n/phrase'
+import servicePhrases from '@/i18n/pages/shared/en-US'
+import overviewPhrases from '@/i18n/pages/OverviewView/en-US'
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), detail: vi.fn(), logs: vi.fn(), action: vi.fn() }))
 vi.mock('@/lib/api', () => ({ api: { system: { services: mocks.list, service: mocks.detail, serviceLogs: mocks.logs, serviceAction: mocks.action } } }))
 const service = { name: 'nginx.service', description: 'Web server', loadState: 'loaded', activeState: 'active', subState: 'running', unitFileState: 'enabled', resourceVersion: 'a'.repeat(64), fragmentPath: '/usr/lib/systemd/system/nginx.service', mainPID: 100, canReload: true, canStart: true, canStop: true }
 const snapshot = { supported: true, services: [service, { ...service, name: 'backup.service', activeState: 'inactive', description: 'Backup' }], observedAt: '2026-10-11T00:00:00Z', truncated: false }
 enableAutoUnmount(afterEach)
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals(); resetPhraseLocalizationForTest() })
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.list.mockResolvedValue(snapshot)
@@ -22,6 +25,16 @@ async function select(wrapper: ReturnType<typeof dialog>, index = 0) { await flu
 function deferred() { let resolve!: (value: unknown) => void; const promise = new Promise((yes) => { resolve = yes }); return { promise, resolve } }
 
 describe('SystemServicesDialog', () => {
+  it('translates teleported content explicitly in English, including log controls', async () => {
+    registerPhraseCatalog(servicePhrases)
+    registerPhraseCatalog(overviewPhrases)
+    const wrapper = dialog()
+    await select(wrapper)
+    expect(wrapper.find('.services-manager').text()).not.toMatch(/[\u3400-\u9fff]/)
+    expect(wrapper.findComponent({ name: 'ModalDialog' }).props('title')).toBe('systemd services')
+    expect(wrapper.find('.services-search input').attributes('placeholder')).toBe('Search service names or descriptions')
+    expect(wrapper.find('.services-log-header button').text()).toBe('Read logs')
+  })
   it('loads only when opened and reads details and logs only on demand', async () => {
     const wrapper = dialog({ open: false })
     expect(mocks.list).not.toHaveBeenCalled()
