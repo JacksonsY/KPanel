@@ -390,7 +390,6 @@ export default [
   ["实用工具 · 独立终端启动", "Utilities · Dedicated terminal launch"],
   ["精选 kejilion.sh 基础工具中的常用实用项；查看真实状态、批量安装或卸载，并快速启动交互式工具。", "A practical selection from kejilion.sh Basic Tools. View live status, install or remove in batches, and quickly launch interactive tools."],
   ["选择全部未安装工具", "Select all missing tools"],
-  ["独立会话，不会占用或改动主终端页面中的会话。", "A dedicated session that does not use or modify sessions on the main Terminal page."],
   ["在独立终端启动 {0}", "Launch {0} in a dedicated terminal"],
   ["只允许固定目录中的软件包 ID；每项使用原生包管理器参数执行，不接受自定义包名或命令。", "Only fixed catalog package IDs are accepted. Each item uses native package-manager arguments; custom package names and commands are rejected."],
   ["软件包、系统更新、空间清理、日志与可控重启", "Packages, system updates, cleanup, logs, and controlled reboot"],
