@@ -396,4 +396,11 @@ export default [
   ["软件包、系统更新、空间清理、日志与可控重启", "Packages, system updates, cleanup, logs, and controlled reboot"],
   ["当前 Agent 的软件包管理适配器尚未就绪。", "Package management is unavailable with the current Agent."],
   ["软件包任务正在后台执行", "The package task is running in the background"],
+  ["工具与运行环境", "Tools and runtimes"],
+  ["运行环境检测", "Runtime detection"],
+  ["检测 Agent 当前 PATH 中的 Python、Node.js、Java 和 Go；用户私有环境和容器内环境可能无法发现。", "Detect Python, Node.js, Java and Go in the Agent's current PATH. Private user environments and container runtimes may not be discovered."],
+  ["当前 Agent 尚未提供运行环境检测。", "This Agent does not yet provide runtime detection."],
+  ["未检测到", "Not detected"],
+  ["版本检测失败", "Version detection failed"],
+  ["Agent 当前 PATH 中未找到可执行文件。", "No executable was found in the Agent's current PATH."],
 ] as const satisfies PhraseCatalog

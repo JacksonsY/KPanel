@@ -59,6 +59,39 @@ beforeEach(() => {
 })
 
 describe('SystemPackagesDialog', () => {
+  it('shows the four detected runtimes without adding install or launch actions', async () => {
+    mocks.list.mockResolvedValue({ ...snapshot, runtimes: [
+      { id: 'python', installed: true, version: '3.13.7', path: '/usr/bin/python3' },
+      { id: 'node', installed: true, version: '24.8.0', path: '/usr/bin/node' },
+      { id: 'java', installed: false },
+      { id: 'go', installed: true, path: '/usr/local/go/bin/go' },
+    ] })
+    const wrapper = mountDialog()
+    await flushPromises()
+    await wrapper.findAll('.packages-tabs button')[1]!.trigger('click')
+    const cards = wrapper.findAll('.runtime-card')
+    expect(cards).toHaveLength(4)
+    expect(cards[0]!.text()).toContain('Python')
+    expect(cards[0]!.text()).toContain('3.13.7')
+    expect(cards[0]!.text()).toContain('/usr/bin/python3')
+    expect(cards[1]!.text()).toContain('Node.js')
+    expect(cards[2]!.text()).toContain('未检测到')
+    expect(cards[3]!.text()).toContain('版本检测失败')
+    expect(wrapper.find('.packages-footer').exists()).toBe(false)
+    expect(wrapper.findAll('.runtime-card button')).toHaveLength(0)
+    expect(mocks.action).not.toHaveBeenCalled()
+    await wrapper.findAll('.packages-tabs button')[0]!.trigger('click')
+    expect(wrapper.findAll('.package-card')).toHaveLength(3)
+  })
+
+  it('explains runtime detection is unavailable with an older Agent', async () => {
+    const wrapper = mountDialog()
+    await flushPromises()
+    await wrapper.findAll('.packages-tabs button')[1]!.trigger('click')
+    expect(wrapper.text()).toContain('当前 Agent 尚未提供运行环境检测。')
+    expect(wrapper.findAll('.runtime-card')).toHaveLength(0)
+  })
+
   it.each([400, 401, 403, 404, 405, 422])('keeps HTTP %s errors stable until manual retry', async (status) => {
     vi.useFakeTimers()
     mocks.list.mockRejectedValueOnce(new ApiError('Route not found', status))

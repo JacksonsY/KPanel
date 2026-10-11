@@ -1014,6 +1014,12 @@ function materializeSystemPackagesSnapshot() {
   return {
     manager: 'APT',
     items: systemPackages,
+    runtimes: [
+      { id: 'python', installed: true, version: '3.13.7', path: '/usr/bin/python3' },
+      { id: 'node', installed: true, version: '24.8.0', path: '/usr/bin/node' },
+      { id: 'java', installed: false },
+      { id: 'go', installed: true, path: '/usr/local/go/bin/go' },
+    ],
     maintenance: running
       ? {
           id: systemPackagesJob.id,
