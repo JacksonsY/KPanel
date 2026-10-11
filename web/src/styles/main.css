@@ -7067,6 +7067,7 @@ body.terminal-fullscreen-open .modal-panel {
   .topbar .language-selector__trigger {
     width: 42px;
     min-width: 42px;
+    justify-content: center;
     padding: 0;
   }
 
