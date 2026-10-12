@@ -55,8 +55,8 @@ describe('desktop app catalogue', () => {
     expect(desktopApps).toHaveLength(17)
   })
 
-  it('lets only optional fixed pages be hidden from the desktop', () => {
-    expect([...removableDesktopAppKeys]).toEqual(['nav:/settings/guides', 'nav:/offers'])
+  it('lets every fixed system entry be hidden from the desktop', () => {
+    expect([...removableDesktopAppKeys]).toEqual(desktopApps.map((app) => `nav:${app.path}`))
   })
 
   it('gives every app a distinct gradient', () => {

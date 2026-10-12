@@ -742,12 +742,8 @@ func validateShortcutPath(value string, directory bool) error {
 	return nil
 }
 
-// hideableNavKeys lists the fixed desktop entries an administrator may hide.
-// Management pages stay pinned; the 广告专栏 page is optional content.
-var hideableNavKeys = map[string]bool{"nav:/offers": true}
-
 func validHideableKey(key string) bool {
-	return validAppKey(key) || validSiteKey(key) || hideableNavKeys[key]
+	return validAppKey(key) || validSiteKey(key) || navKeyPattern.MatchString(key)
 }
 
 func validPositionKey(key string) bool {

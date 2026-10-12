@@ -496,16 +496,12 @@ describe('DesktopView dynamic entries', () => {
     wrapper.unmount()
   })
 
-  it('hides the sponsored page like an app while management pages stay pinned', async () => {
+  it('hides and restores a system page through the common desktop entry behavior', async () => {
+    const desktop = useDesktopMode()
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await flushPromises()
 
     await wrapper.find('button[title="概览"]').trigger('contextmenu', { clientX: 60, clientY: 60 })
-    await nextTick()
-    expect(wrapper.findAll('.desktop__context-menu [role="menuitem"]').map((item) => item.text()))
-      .not.toContain('从桌面移除')
-
-    await wrapper.find('button[title="广告专栏"]').trigger('contextmenu', { clientX: 80, clientY: 80 })
     await nextTick()
     const remove = wrapper.findAll('.desktop__context-menu [role="menuitem"]')
       .find((item) => item.text().includes('从桌面移除'))
@@ -516,9 +512,28 @@ describe('DesktopView dynamic entries', () => {
     document.body.querySelector<HTMLButtonElement>('.modal-panel--compact .button--primary')?.click()
     await flushPromises()
     expect(mockedWorkspaceUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      hiddenEntryKeys: ['nav:/offers'],
+      hiddenEntryKeys: ['nav:/overview'],
     }))
-    expect(wrapper.find('button[title="广告专栏"]').exists()).toBe(false)
+    expect(wrapper.find('button[title="概览"]').exists()).toBe(false)
+
+    await wrapper.get('.desktop__start-button').trigger('click')
+    await flushPromises()
+    const hiddenSystemEntry = wrapper.get('[data-start-menu-key="nav:/overview"]')
+    expect(hiddenSystemEntry.find('.desktop-start-menu__badge').exists()).toBe(false)
+    const search = wrapper.get<HTMLInputElement>('#desktop-start-menu input[role="combobox"]')
+    await search.setValue('概览')
+    await flushPromises()
+    expect(wrapper.get('[data-start-menu-key="nav:/overview"]')
+      .find('.desktop-start-menu__badge').exists()).toBe(false)
+    await search.setValue('')
+    await flushPromises()
+    await hiddenSystemEntry.trigger('click')
+    await flushPromises()
+    expect(desktop.windows.value.map((window) => window.path)).toContain('/overview')
+    await wrapper.get('.desktop__start-button').trigger('click')
+    await flushPromises()
+    await wrapper.get('.desktop__start-button').trigger('click')
+    await nextTick()
 
     await wrapper.trigger('contextmenu', { clientX: 220, clientY: 160 })
     await nextTick()
@@ -527,11 +542,11 @@ describe('DesktopView dynamic entries', () => {
     await manage?.trigger('click')
     await nextTick()
     const hidden = Array.from(document.body.querySelectorAll<HTMLElement>('.desktop-icon-manager article'))
-      .find((article) => article.textContent?.includes('广告专栏'))
+      .find((article) => article.textContent?.includes('概览'))
     hidden?.querySelector<HTMLButtonElement>('button')?.click()
     await flushPromises()
     expect(mockedWorkspaceUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ hiddenEntryKeys: [] }))
-    expect(wrapper.find('button[title="广告专栏"]').exists()).toBe(true)
+    expect(wrapper.find('button[title="概览"]').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -605,23 +620,24 @@ describe('DesktopView dynamic entries', () => {
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await flushPromises()
 
-    await wrapper.get('button[title="Nginx"]').trigger('click')
+    await wrapper.get('button[title="概览"]').trigger('click')
+    await wrapper.get('button[title="Nginx"]').trigger('click', { ctrlKey: true })
     await wrapper.get('button[title="blog.example.com"]').trigger('click', { ctrlKey: true })
     await wrapper.get('button[title="内部文档"]').trigger('click', { ctrlKey: true })
     const actions = wrapper.get('.desktop__selection-actions')
-    expect(actions.text()).toContain('已选 3 项')
+    expect(actions.text()).toContain('已选 4 项')
     await actions.findAll('button').find(button => button.text().includes('从桌面移除'))!.trigger('click')
     await nextTick()
     expect(document.body.textContent).toContain('文件和目录不会被删除')
 
     const dialog = Array.from(document.body.querySelectorAll<HTMLElement>('.modal-panel'))
-      .find((panel) => panel.textContent?.includes('确认从桌面移除 3 项'))
+      .find((panel) => panel.textContent?.includes('确认从桌面移除 4 项'))
     dialog?.querySelector<HTMLButtonElement>('.button--primary')?.click()
     await flushPromises()
 
     expect(mockedWorkspaceUpdate).toHaveBeenCalledTimes(1)
     expect(mockedWorkspaceUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      hiddenEntryKeys: expect.arrayContaining(['app:nginx', 'site:blog']),
+      hiddenEntryKeys: expect.arrayContaining(['nav:/overview', 'app:nginx', 'site:blog']),
       shortcuts: [],
       positions: expect.objectContaining({
         'app:nginx': { x: 0.2, y: 0.1 },
