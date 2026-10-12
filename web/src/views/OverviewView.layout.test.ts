@@ -36,6 +36,10 @@ describe('OverviewView service status layout', () => {
     expect(styles).toMatch(/\.realtime-monitoring__actions\s*\{[^}]*display:\s*flex;/)
   })
 
+  it('keeps the real-time monitoring icon square when the header row is constrained', () => {
+    expect(styles).toMatch(/\.realtime-monitoring__icon\s*\{[^}]*width:\s*36px;[^}]*height:\s*36px;[^}]*flex:\s*0 0 36px;/)
+  })
+
   it('keeps resource dialogs on the overview route and preserves the read-only DNS fact', () => {
     expect(source).toContain("title: '网络与流量'")
     expect(source).toContain('<dt>DNS 地址</dt>')

@@ -2959,6 +2959,7 @@ textarea:focus-visible,
   display: grid;
   width: 36px;
   height: 36px;
+  flex: 0 0 36px;
   place-items: center;
   color: var(--brand);
   background: var(--brand-soft);
