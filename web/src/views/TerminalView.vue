@@ -104,7 +104,6 @@ const hosts = computed(() => {
 const activeSession = computed(() => sessions.value.find((item) => item.id === activeSessionId.value))
 const selectedBatchHosts = computed(() => orderedHosts.value.filter((host) => selectedBatchHostIDs.value.has(host.id)))
 const selectableBatchHosts = computed(() => hosts.value.filter((host) => host.terminalAvailable))
-const visibleBatchSelectedCount = computed(() => selectableBatchHosts.value.filter((host) => selectedBatchHostIDs.value.has(host.id)).length)
 watch(hosts, () => { batchSelectionAnchor.value = '' })
 const activeInteractiveSessionCount = computed(() => sessions.value.filter((item) => item.state !== 'finished').length)
 const activeTerminalSessionCount = activeInteractiveSessionCount
@@ -354,12 +353,11 @@ function selectBatchHost(host: ClusterHost, event: MouseEvent, checkbox = false)
   if (!checkbox) (event.currentTarget as HTMLElement).querySelector<HTMLInputElement>('input')?.focus()
 }
 
-function selectBatchHosts(action: 'all' | 'none' | 'invert'): void {
+function selectAllBatchHosts(): void {
   if (batchRunning.value) return
   const next = new Set(selectedBatchHostIDs.value)
   for (const host of selectableBatchHosts.value) {
-    if (action === 'none' || (action === 'invert' && next.has(host.id))) next.delete(host.id)
-    else next.add(host.id)
+    next.add(host.id)
   }
   selectedBatchHostIDs.value = next
   batchSelectionAnchor.value = ''
@@ -368,7 +366,7 @@ function selectBatchHosts(action: 'all' | 'none' | 'invert'): void {
 function onBatchSelectionKeydown(event: KeyboardEvent): void {
   if (terminalMode.value !== 'batch' || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'a') return
   event.preventDefault()
-  selectBatchHosts('all')
+  selectAllBatchHosts()
 }
 
 function hostStateLabel(host: ClusterHost): string {
@@ -523,14 +521,6 @@ onBeforeUnmount(() => {
           />
         </label>
         <div id="terminal-connection-selector" v-show="!connectionsCollapsed || mobileConnectionsOpen" class="terminal-connections__list" @keydown="onBatchSelectionKeydown">
-          <div v-if="terminalMode === 'batch'" class="terminal-batch-selection">
-            <div class="terminal-batch-selection__actions" role="group" :aria-label="t('terminal.batchSelectionActions')">
-              <button type="button" :disabled="batchRunning || !selectableBatchHosts.length || visibleBatchSelectedCount === selectableBatchHosts.length" @click="selectBatchHosts('all')">{{ t('terminal.selectAll') }}</button>
-              <button type="button" :disabled="batchRunning || !visibleBatchSelectedCount" @click="selectBatchHosts('none')">{{ t('terminal.batchDeselectAll') }}</button>
-              <button type="button" :disabled="batchRunning || !selectableBatchHosts.length" @click="selectBatchHosts('invert')">{{ t('terminal.batchInvertSelection') }}</button>
-            </div>
-            <small>{{ t('terminal.batchSelectionHint') }}</small>
-          </div>
           <div v-if="!loading && !hosts.length" class="terminal-connections__empty">暂无可显示主机</div>
           <template v-if="terminalMode === 'interactive'">
             <div v-for="host in hosts" :key="host.id" class="terminal-host-row">
@@ -788,12 +778,7 @@ onBeforeUnmount(() => {
 .terminal-host.is-opening { cursor:wait; opacity:.64; }
 .terminal-host.is-unavailable { cursor:not-allowed; }
 .terminal-host.is-disabled { cursor:not-allowed; opacity:.58; }
-.terminal-batch-selection { position:sticky; top:0; z-index:2; display:grid; gap:6px; padding:0 10px 8px; background:var(--terminal-shell-panel,#111a1d); }
-.terminal-batch-selection__actions { display:flex; flex-wrap:wrap; gap:6px; }
-.terminal-batch-selection__actions button { flex:1 1 auto; min-height:32px; padding:4px 6px; border:1px solid var(--terminal-shell-border,#29383a); border-radius:var(--radius-sm); color:var(--terminal-shell-text,#d8dddc); background:var(--terminal-shell-background,#0b1214); font:inherit; font-size:14px; cursor:pointer; }
-.terminal-batch-selection__actions button:disabled { opacity:.55; cursor:default; }
-.terminal-batch-selection__actions button:focus-visible,.terminal-host--batch input:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
-.terminal-batch-selection small { color:var(--terminal-shell-muted,#8a9695); font-size:13px; line-height:1.5; }
+.terminal-host--batch input:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
 .terminal-host--batch { grid-template-columns:auto auto minmax(0,1fr); user-select:none; }
 .terminal-host--batch input { width:17px; height:17px; margin:0; accent-color:var(--brand); }
 .terminal-host :deep(.terminal-host__os) { width:32px; height:32px; flex:0 0 auto; border-radius:9px; box-shadow:none; }
