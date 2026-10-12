@@ -290,9 +290,8 @@ watch(() => results.value.length, (length) => {
                   <span v-if="!group.grid && option.item.detail" class="desktop-start-menu__detail">{{ option.item.detail }}</span>
                 </span>
                 <span
-                  v-if="option.item.hidden"
+                  v-if="option.item.hidden && option.item.section !== 'system'"
                   class="desktop-start-menu__badge"
-                  :class="{ 'desktop-start-menu__badge--tile': group.grid }"
                 >
                   {{ i18n.t('desktop.startMenuHidden') }}
                 </span>

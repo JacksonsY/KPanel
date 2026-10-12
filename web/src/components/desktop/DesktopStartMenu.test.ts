@@ -51,6 +51,7 @@ describe('DesktopStartMenu', () => {
     expect(document.activeElement).toBe(search().element)
     expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe('开始菜单')
     expect(wrapper.findAll('.desktop-start-menu__option--tile')).toHaveLength(3)
+    expect(wrapper.findAll('.desktop-start-menu__option--tile .desktop-start-menu__badge')).toHaveLength(0)
     const rows = wrapper.findAll('.desktop-start-menu__option:not(.desktop-start-menu__option--tile)')
     expect(rows.map((row) => row.attributes('data-start-menu-key'))).toEqual(['app:nginx', 'site:blog'])
     expect(rows[1]!.text()).toContain('桌面已隐藏')

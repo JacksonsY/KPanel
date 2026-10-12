@@ -3068,13 +3068,6 @@ body.desktop-mode-open::-webkit-scrollbar {
   line-height: 1.5;
 }
 
-.desktop-start-menu__badge--tile {
-  max-width: 100%;
-  padding: 1px 4px;
-  text-align: center;
-  white-space: normal;
-}
-
 .desktop-start-menu__note--action {
   display: flex;
   flex-wrap: wrap;

@@ -497,6 +497,7 @@ describe('DesktopView dynamic entries', () => {
   })
 
   it('hides and restores a system page through the common desktop entry behavior', async () => {
+    const desktop = useDesktopMode()
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await flushPromises()
 
@@ -517,7 +518,20 @@ describe('DesktopView dynamic entries', () => {
 
     await wrapper.get('.desktop__start-button').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-start-menu-key="nav:/overview"]').text()).toContain('桌面已隐藏')
+    const hiddenSystemEntry = wrapper.get('[data-start-menu-key="nav:/overview"]')
+    expect(hiddenSystemEntry.find('.desktop-start-menu__badge').exists()).toBe(false)
+    const search = wrapper.get<HTMLInputElement>('#desktop-start-menu input[role="combobox"]')
+    await search.setValue('概览')
+    await flushPromises()
+    expect(wrapper.get('[data-start-menu-key="nav:/overview"]')
+      .find('.desktop-start-menu__badge').exists()).toBe(false)
+    await search.setValue('')
+    await flushPromises()
+    await hiddenSystemEntry.trigger('click')
+    await flushPromises()
+    expect(desktop.windows.value.map((window) => window.path)).toContain('/overview')
+    await wrapper.get('.desktop__start-button').trigger('click')
+    await flushPromises()
     await wrapper.get('.desktop__start-button').trigger('click')
     await nextTick()
 
