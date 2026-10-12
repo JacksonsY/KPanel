@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "originalCommit": "a951aef2660fafd365d91ae9e47781bdbe3238d8",
+  "originalDirectory": ".governance/security-audit/run-34/",
+  "originalBranch": "feature/settings-user-guides",
+  "storedDirectory": ".governance/security-audit/run-35/",
+  "reason": "The systemd audit already occupies run-34 on main. Preserve both attempts; imported files retain their original bytes and run_id. This is record relocation, not a rerun or new coverage claim."
+}

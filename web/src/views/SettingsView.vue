@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { isTouchPrimary } from '../lib/touchFocus'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type CSSProperties } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
 
 usePhraseCatalog((locale) => locale === 'en-US'
@@ -13,6 +13,7 @@ import {
   Clock3,
   Copy,
   Download,
+  BookOpen,
   Image as ImageIcon,
   ImageOff,
   ExternalLink,
@@ -85,6 +86,7 @@ function phrase(value: string): string {
 type SettingsCategoryId = 'all' | 'account' | 'appearance' | 'data' | 'system' | 'support'
 type SettingsSectionId =
   | 'help'
+  | 'guides'
   | 'account-overview'
   | 'username'
   | 'password'
@@ -120,6 +122,7 @@ const settingsCategories: Array<{ id: SettingsCategoryId; label: string }> = [
 
 const settingsSections: SettingsSectionDefinition[] = [
   { id: 'branding', category: 'appearance', title: '站点名称与图标', description: '自定义面板与登录页标识', keywords: ['名称', '图标', 'Logo', 'favicon', 'KPanel'] },
+  { id: 'guides', category: 'support', title: '使用说明', description: '视频与图文教程，帮助你熟悉 KPanel', keywords: ['教程', '视频', '图文', '帮助'] },
   { id: 'help', category: 'support', title: '帮助与问题报告', description: '生成问题报告并获取排查帮助', keywords: ['反馈', '诊断', '日志', '报告'] },
   { id: 'account-overview', category: 'account', title: '管理账户', description: '当前登录身份与会话信息', keywords: ['管理员', 'Session', '登录', '身份验证'] },
   { id: 'username', category: 'account', title: '修改用户名', description: '更新当前管理员账户的登录名称', keywords: ['账号', '名称'] },
@@ -944,6 +947,21 @@ onBeforeUnmount(stopKPanelReleaseRequest)
       <p class="sr-only" role="status" aria-live="polite">
         {{ settingsResultSummary }}
       </p>
+    </section>
+
+    <section v-show="isSettingsSectionVisible('guides')" class="settings-section panel-card">
+      <header class="settings-section__header">
+        <span><BookOpen :size="19" /></span>
+        <div>
+          <h2>{{ phrase('使用说明') }}</h2>
+          <p>{{ phrase('视频与图文教程，帮助你熟悉 KPanel') }}</p>
+        </div>
+      </header>
+      <p class="settings-note">{{ i18n.t('tutorials.settingsHint') }}</p>
+      <RouterLink class="button button--secondary settings-guide-link" to="/settings/guides">
+        {{ i18n.t('tutorials.open') }}
+        <ExternalLink :size="16" aria-hidden="true" />
+      </RouterLink>
     </section>
 
     <ProblemReportHelp v-show="isSettingsSectionVisible('help')" />
@@ -1916,6 +1934,15 @@ onBeforeUnmount(stopKPanelReleaseRequest)
   justify-content: flex-start;
 }
 
+.settings-guide-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  width: fit-content;
+  text-decoration: none;
+}
+
 @media (max-width: 640px) {
   .settings-browser {
     padding: 14px;
@@ -1957,6 +1984,11 @@ onBeforeUnmount(stopKPanelReleaseRequest)
 
   .license-actions .button {
     width: 100%;
+  }
+
+  .settings-guide-link {
+    width: 100%;
+    justify-content: center;
   }
 
   .security-entry-form {

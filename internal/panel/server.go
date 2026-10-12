@@ -87,6 +87,8 @@ type Server struct {
 	clusterShareCache       clusterShareCacheEntry
 	clusterShareRateMu      sync.Mutex
 	clusterShareRates       map[string]clusterShareRateEntry
+	tutorialMetadataMu      sync.Mutex
+	tutorialMetadataCache   map[string]tutorialMetadataCacheEntry
 	fileShareRateMu         sync.Mutex
 	fileShareRates          map[string]fileShareRateEntry
 	fileShareValidationMu   sync.Mutex
@@ -448,6 +450,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleAutomaticUpdateSettings(w, r)
 	case r.URL.Path == "/api/v1/settings/kpanel-release":
 		s.handleKPanelRelease(w, r)
+	case r.URL.Path == tutorialMetadataPath:
+		s.handleTutorialMetadata(w, r)
+	case r.URL.Path == tutorialThumbnailPath:
+		s.handleTutorialThumbnail(w, r)
 	case r.URL.Path == shareThemesPath || strings.HasPrefix(r.URL.Path, shareThemesPath+"/"):
 		s.handleShareThemes(w, r)
 	case r.URL.Path == "/api/v1/cluster/share":

@@ -16,6 +16,11 @@ export interface ApiList<T> {
   nextCursor?: string
 }
 
+export interface TutorialVideoMetadata {
+  title: string
+  thumbnailUrl: string
+}
+
 export interface AgentStatus {
   connected: boolean
   readOnly: boolean

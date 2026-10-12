@@ -244,6 +244,11 @@ export function windowRouteRecords(): RouteRecordRaw[] {
       name: 'settings',
       component: WINDOW_ROUTE_PLACEHOLDER,
     },
+    {
+      path: '/settings/guides',
+      name: 'settings-guides',
+      component: WINDOW_ROUTE_PLACEHOLDER,
+    },
     { path: '/:pathMatch(.*)*', redirect: '/overview' },
   ]
 }

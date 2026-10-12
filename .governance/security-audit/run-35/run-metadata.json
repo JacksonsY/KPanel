@@ -1,0 +1,346 @@
+{
+  "run_id": "kpanel-settings-user-guides-security-audit-run-34-c4ef4c5d",
+  "repo": "kejilion-panel",
+  "target": "C:\\GitHub\\_codex-tasks\\kejilion-panel-codex-settings-user-guides",
+  "output_dir": "C:\\GitHub\\_codex-evidence\\kpanel-settings-user-guides-security-audit-run-34-c4ef4c5d",
+  "skill_dir": "C:\\GitHub\\_codex-tmp\\security-audit-skill-20260919\\skills\\security-audit",
+  "skill_source": "cloudflare/security-audit-skill",
+  "skill_commit": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+  "governance_dir": "C:\\GitHub\\_codex-tasks\\kejilion-panel-codex-settings-user-guides",
+  "scope_mode": "scoped",
+  "profile": "standard",
+  "source_ref": "c4ef4c5d82589ed8bf94dcce5c1c107c75be65da",
+  "source_tree": "9cf28dd2868fbdcd3152c0158d57e1ab027d2655",
+  "source_dirty": false,
+  "baseline_ref": "c4ef4c5d82589ed8bf94dcce5c1c107c75be65da",
+  "comparison_base": "4c0694aa8e02e46145a775707b8d5a0355f7ce10",
+  "reviewed_commits": [
+    "c4ef4c5d82589ed8bf94dcce5c1c107c75be65da"
+  ],
+  "scope_complete": false,
+  "scope_paths": [
+    "internal/panel/server.go",
+    "internal/panel/tutorial_metadata.go",
+    "internal/panel/tutorial_metadata_test.go",
+    "web/public/tutorials/kpanel-cluster-zh.webp",
+    "web/public/tutorials/kpanel-desktop-zh.webp",
+    "web/public/tutorials/kpanel-launch-zh.webp",
+    "web/public/tutorials/kpanel-release-124-en.webp",
+    "web/public/tutorials/kpanel-release-124-zh.webp",
+    "web/public/tutorials/kpanel-release-125-en.webp",
+    "web/public/tutorials/kpanel-release-125-zh.webp",
+    "web/public/tutorials/kpanel-security-en.webp",
+    "web/public/tutorials/kpanel-security-zh.webp",
+    "web/public/tutorials/kpanel-theme-zh.webp",
+    "web/public/tutorials/kpanel-video-placeholder.svg",
+    "web/public/tutorials/kpanel-webssh-en.webp",
+    "web/public/tutorials/kpanel-webssh-zh.webp",
+    "web/src/components/problem-report/ProblemReportHelp.vue",
+    "web/src/i18n/messages/en-US.ts",
+    "web/src/i18n/messages/zh-CN.ts",
+    "web/src/i18n/messages/zh-TW.ts",
+    "web/src/lib/api.ts",
+    "web/src/types/api.ts",
+    "web/src/views/SettingsGuidesView.test.ts",
+    "web/src/views/SettingsGuidesView.vue"
+  ],
+  "selected_companion_files": [
+    "WEB-PROTOCOL-AND-AUTH.md",
+    "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md",
+    "CLIENT-SIDE.md"
+  ],
+  "prior_runs": [
+    "run-1",
+    "run-2",
+    "run-3",
+    "run-4",
+    "run-5",
+    "run-6",
+    "run-7",
+    "run-9",
+    "run-10",
+    "run-16",
+    "run-19",
+    "run-20",
+    "run-21",
+    "run-22",
+    "run-29",
+    "run-30",
+    "run-31",
+    "run-32",
+    "run-33"
+  ],
+  "prior_ledger_notes": [
+    "No prior unit or finding names tutorial_metadata, SettingsGuides, the tutorial metadata route, or this feature source.",
+    "Prior run-10 covers unrelated scene-pack and wallpaper HTTP cache controls; run-30 covers AI outbound HTTP plus internal/netpolicy; run-32 covers remotedownload URL/DNS/redirect policy. These are adjacent source patterns only and do not suppress current work.",
+    "run-33 is incomplete and has no matching unit; incomplete runs do not count as coverage. No prior finding is carried."
+  ],
+  "execution_policy": "source-only",
+  "validation_mode": "source-only",
+  "run_status": "complete",
+  "audit_started_at": "2026-10-12T04:40:16Z",
+  "budget": {
+    "max_wall_seconds": 7200,
+    "max_agent_invocations": 16,
+    "max_concurrency": 2,
+    "expected_candidates": 2,
+    "candidate_verification_reserve": 4,
+    "tokens": null
+  },
+  "execution_plan": {
+    "reviewed_commits": [
+      "c4ef4c5d82589ed8bf94dcce5c1c107c75be65da"
+    ],
+    "ledger_unit_scope": "single current feature commit; all changed boundary files plus direct route, authentication, fetch/parser/cache, frontend display call chains",
+    "model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "validation_mode": "source-only",
+    "max_wall_seconds": 7200,
+    "max_agent_invocations": 16,
+    "max_concurrency": 2,
+    "planned_agent_calls": {
+      "reconnaissance": 4,
+      "hunters": 4,
+      "post_wave_critic": 2,
+      "final_clean_critic": 1,
+      "candidate_verification_per_candidate": 1,
+      "phase5_record_verification_per_record": 1,
+      "max_candidate_records_reserved": 2
+    },
+    "stop_conditions": [
+      "Do not execute target code, builds, tests, or fixture processing.",
+      "Do not access live or external services.",
+      "Mark source-grounded runtime or deployment-dependent candidates needs_validation.",
+      "Stop and mark incomplete if any required agent cannot run with gpt-6-luna/max, if the source identity changes, or if strict call/time budget is exhausted."
+    ],
+    "dynamic_risks": [
+      "Observed server egress, redirect enforcement, and remote service response behavior cannot be dynamically established in this source-only run.",
+      "Effective deployed route authentication and any reverse-proxy response-cache policy are outside the source snapshot."
+    ],
+    "owner": "parent task",
+    "initial_budget_estimate": "13 maximum calls: four reconnaissance assignments, three focused hunter assignments in a wave with concurrency capped at two, post-wave and distinct final-clean critics, plus up to four independent candidate/Phase-5 calls for two candidate records; three calls remain reserved for a bounded gap reassignment or repair.",
+    "plan_adjustments": [
+      {
+        "at": "2026-10-12T04:51:01Z",
+        "change": "Expanded the hunter plan from two broad assignments to three focused domains (auth/cache, URL/egress, provider buffering/UI) after reconnaissance split these into materially distinct boundaries; max concurrency stays two and total reserved calls remain within 16."
+      },
+      {
+        "at": "2026-10-12T05:14:44Z",
+        "change": "Added one focused hunter and a second post-wave coverage critic after the first independent critic requested reassignment of the provider buffering/cardinality unit for explicit same-key concurrent miss and aggregate upstream-request review.",
+        "reason": "Close the critic-identified in-scope coverage gap without changing source scope; retain the existing max_agent_invocations=16 and max_concurrency=2 caps."
+      },
+      {
+        "at": "2026-10-12T05:27:00Z",
+        "change": "After wave 2, a same-agent follow-up from the wave-1 critic was treated only as a supplemental check. Dispatched a fresh independent critic_post_wave_2 to satisfy one fresh coverage critic per wave; retained the supplemental turn in actual invocation accounting.",
+        "reason": "Apply the workflow’s independent per-wave critic requirement. No scope expansion; max_agent_invocations=16 and max_concurrency=2 remain unchanged."
+      }
+    ]
+  },
+  "actual_cost": {
+    "started_at": "2026-10-12T04:40:16Z",
+    "ended_at": "2026-10-12T05:31:12Z",
+    "wall_seconds": 3056,
+    "agent_invocations": 15,
+    "successful_child_agents": 12,
+    "dispatch_attempts": 12,
+    "actual_calls": 15,
+    "model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "tokens": null,
+    "token_unavailable_reason": "The agent orchestration platform does not expose per-agent token usage; not estimated.",
+    "amount": null,
+    "amount_unavailable_reason": "The agent orchestration platform does not expose a task-level monetary amount; not estimated.",
+    "platform_wait_seconds": null,
+    "platform_wait_reason": "No reliable separate platform-wait telemetry is available.",
+    "max_concurrency_observed": 2,
+    "max_agent_invocations": 16,
+    "validation_rework_calls": 0,
+    "final_validator_invocations": 2,
+    "validator_log_capture_retry_calls": 1
+  },
+  "excluded_companion_files": [
+    {
+      "file": "DATA-ISOLATION-AND-LIFECYCLE.md",
+      "reason": "The feature cache contains public provider metadata and no tenant-owned derived records; no source-visible isolation/lifecycle boundary applies."
+    }
+  ],
+  "run_status_detail": "The selected scoped feature commit completed source-only review. Other pending commits remain unreviewed; scope_complete is false.",
+  "completed_at": "2026-10-12T05:31:12Z",
+  "ended_at": "2026-10-12T05:31:12Z",
+  "agent_roster": [
+    {
+      "agent_id": "recon_product",
+      "role": "reconnaissance/product-stack",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 1,
+      "status": "complete"
+    },
+    {
+      "agent_id": "recon_identity",
+      "role": "reconnaissance/identity-authorization",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 1,
+      "status": "complete"
+    },
+    {
+      "agent_id": "recon_surfaces",
+      "role": "reconnaissance/entry-surfaces-and-sinks",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 1,
+      "status": "complete"
+    },
+    {
+      "agent_id": "recon_execution",
+      "role": "reconnaissance/execution-capabilities",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 2,
+      "status": "complete",
+      "note": "One follow-up turn was used to complete the execution-capability reconnaissance."
+    },
+    {
+      "agent_id": "hunter_auth_cache",
+      "role": "hunter/auth-and-cache",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 1,
+      "status": "complete"
+    },
+    {
+      "agent_id": "hunter_url_egress",
+      "role": "hunter/url-egress-and-provider-buffering-wave-1",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 1,
+      "status": "complete"
+    },
+    {
+      "agent_id": "hunter_browser_render",
+      "role": "hunter/browser-rendering",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 1,
+      "status": "complete"
+    },
+    {
+      "agent_id": "critic_post_wave",
+      "role": "coverage-critic/wave-1-plus-supplemental-recheck",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 2,
+      "status": "complete",
+      "note": "Wave 1 requested resource-unit reassignment; a supplemental follow-up checked closure, while a fresh wave-2 critic was also dispatched."
+    },
+    {
+      "agent_id": "hunter_resource_concurrency",
+      "role": "hunter/resource-concurrency-reassignment-wave-2",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 1,
+      "status": "complete"
+    },
+    {
+      "agent_id": "critic_post_wave_2",
+      "role": "coverage-critic/fresh-wave-2",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 1,
+      "status": "complete"
+    },
+    {
+      "agent_id": "critic_final_clean",
+      "role": "distinct-final-clean-critic",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 1,
+      "status": "complete"
+    },
+    {
+      "agent_id": "phase5_record_review",
+      "role": "phase-5-zero-record-and-citation-review",
+      "model": "gpt-6-luna",
+      "reasoning_effort": "max",
+      "invocations": 2,
+      "status": "complete",
+      "note": "Initial zero-record/report citation review plus narrow citation-amendment follow-up."
+    }
+  ],
+  "final_baseline_check": {
+    "source_ref": "c4ef4c5d82589ed8bf94dcce5c1c107c75be65da",
+    "source_tree": "9cf28dd2868fbdcd3152c0158d57e1ab027d2655",
+    "source_dirty": false,
+    "exit_code": 0,
+    "observed_at": "2026-10-12T05:31:12Z",
+    "output": "The final baseline check after report/metadata preparation matched the frozen commit and tree; worktree clean."
+  },
+  "validator_results": {
+    "coverage": {
+      "runtime": "Ubuntu WSL Node 24.18.1",
+      "exit_code": 0,
+      "stdout": "PASS: 5 coverage units valid",
+      "log": "validators/coverage-ledger.txt"
+    },
+    "findings": {
+      "runtime": "Ubuntu WSL Node 24.18.1",
+      "exit_code": 0,
+      "stdout": "PASS: 0 findings valid",
+      "log": "validators/findings.txt"
+    }
+  },
+  "coverage_critic_results": [
+    {
+      "agent_id": "critic_post_wave",
+      "wave": 1,
+      "missing_units": [],
+      "reassign_ids": [
+        "internal%2Fpanel%2Ftutorial_metadata.go%23tutorialJSONRequest::internal%2Fpanel%2Ftutorial_metadata.go%23provider%20response%20parser::internal%2Fpanel%2Ftutorial_metadata.go%23provider%20response%20parsing%20and%20buffering::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Unbounded%20buffering%20and%20cardinality"
+      ],
+      "stop": false
+    },
+    {
+      "agent_id": "critic_post_wave_2",
+      "wave": 2,
+      "missing_units": [],
+      "reassign_ids": [],
+      "resolved_prior_leads": [
+        "internal%2Fpanel%2Ftutorial_metadata.go%23tutorialJSONRequest::internal%2Fpanel%2Ftutorial_metadata.go%23provider%20response%20parser::internal%2Fpanel%2Ftutorial_metadata.go%23provider%20response%20parsing%20and%20buffering::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Unbounded%20buffering%20and%20cardinality"
+      ],
+      "stop": true
+    }
+  ],
+  "final_clean_review": {
+    "agent_id": "critic_final_clean",
+    "verdict": "clean",
+    "scope_complete": false,
+    "covered_units": 5,
+    "missing_units": [],
+    "candidate_records": [],
+    "claim_issues": [],
+    "blockers": []
+  },
+  "phase5_review": {
+    "agent_id": "phase5_record_review",
+    "status": "passed",
+    "surviving_record_count": 0,
+    "per_record_reviews_required": 0,
+    "citation_amendment_followup": "passed",
+    "issues": [],
+    "blockers": []
+  },
+  "findings_counts": {
+    "confirmed": 0,
+    "needs_validation": 0,
+    "rejected": 0
+  },
+  "coverage_counts": {
+    "covered": 5,
+    "candidate": 0,
+    "blocked": 0,
+    "deferred": 0,
+    "out_of_scope": 0,
+    "total": 5
+  }
+}

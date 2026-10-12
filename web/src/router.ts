@@ -172,6 +172,12 @@ export const router = createRouter({
           component: () => loadNavigationRoute('/settings'),
           meta: { titleKey: 'route.settings' },
         },
+        {
+          path: 'settings/guides',
+          name: 'settings-guides',
+          component: () => loadNavigationRoute('/settings/guides'),
+          meta: { titleKey: 'route.settingsGuide' },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/overview' },

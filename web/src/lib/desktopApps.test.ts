@@ -48,14 +48,15 @@ describe('desktop app catalogue', () => {
         '/cluster',
         '/activity',
         '/settings',
+        '/settings/guides',
         '/offers',
       ]),
     )
-    expect(desktopApps).toHaveLength(16)
+    expect(desktopApps).toHaveLength(17)
   })
 
-  it('lets only the optional sponsored page be hidden from the desktop', () => {
-    expect([...removableDesktopAppKeys]).toEqual(['nav:/offers'])
+  it('lets only optional fixed pages be hidden from the desktop', () => {
+    expect([...removableDesktopAppKeys]).toEqual(['nav:/settings/guides', 'nav:/offers'])
   })
 
   it('gives every app a distinct gradient', () => {

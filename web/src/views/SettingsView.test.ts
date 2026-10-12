@@ -132,7 +132,7 @@ interface SettingsBindings {
   settingsSearch: Ref<string>
   activeSettingsCategory: Ref<'all' | 'account' | 'appearance' | 'data' | 'system' | 'support'>
   visibleSettingsSectionCount: ComputedRef<number>
-  isSettingsSectionVisible: (id: 'help' | 'account-overview' | 'username' | 'password' | 'security-entrance' | 'totp' | 'language' | 'appearance' | 'wallpaper' | 'backup' | 'mcp' | 'version-updates' | 'agent' | 'license') => boolean
+  isSettingsSectionVisible: (id: 'help' | 'guides' | 'account-overview' | 'username' | 'password' | 'security-entrance' | 'totp' | 'language' | 'appearance' | 'wallpaper' | 'backup' | 'mcp' | 'version-updates' | 'agent' | 'license') => boolean
   settingsCategoryCount: (category: 'all' | 'account' | 'appearance' | 'data' | 'system' | 'support') => number
   selectSettingsCategory: (category: 'all' | 'account' | 'appearance' | 'data' | 'system' | 'support') => void
   clearSettingsSearch: () => void
@@ -228,12 +228,13 @@ describe('SettingsView navigation', () => {
   it('starts with every settings section visible and exposes useful category counts', () => {
     const view = setupView()
 
-    expect(view.visibleSettingsSectionCount.value).toBe(16)
+    expect(view.visibleSettingsSectionCount.value).toBe(17)
     expect(view.settingsCategoryCount('account')).toBe(6)
     expect(view.settingsCategoryCount('appearance')).toBe(4)
     expect(view.settingsCategoryCount('data')).toBe(2)
     expect(view.settingsCategoryCount('system')).toBe(2)
-    expect(view.settingsCategoryCount('support')).toBe(2)
+    expect(view.settingsCategoryCount('support')).toBe(3)
+    expect(view.isSettingsSectionVisible('guides')).toBe(true)
   })
 
   it('filters sections by category without destroying their state', () => {
@@ -246,12 +247,18 @@ describe('SettingsView navigation', () => {
     expect(view.isSettingsSectionVisible('appearance')).toBe(true)
     expect(view.isSettingsSectionVisible('wallpaper')).toBe(true)
     expect(view.isSettingsSectionVisible('password')).toBe(false)
+    expect(view.isSettingsSectionVisible('guides')).toBe(false)
     expect(settingsSource).toContain('<BackupCenter v-show=')
     expect(settingsSource).toContain('<MCPAccess v-show=')
   })
 
   it('searches section labels and keywords, then restores the complete list', () => {
     const view = setupView()
+
+    view.settingsSearch.value = '教程'
+
+    expect(view.visibleSettingsSectionCount.value).toBe(1)
+    expect(view.isSettingsSectionVisible('guides')).toBe(true)
 
     view.settingsSearch.value = '恢复码'
 
@@ -263,7 +270,7 @@ describe('SettingsView navigation', () => {
 
     expect(view.settingsSearch.value).toBe('')
     expect(view.activeSettingsCategory.value).toBe('all')
-    expect(view.visibleSettingsSectionCount.value).toBe(16)
+    expect(view.visibleSettingsSectionCount.value).toBe(17)
   })
 
   it('renders an accessible search, category tabs, and empty-result recovery action', () => {

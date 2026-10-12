@@ -601,21 +601,21 @@ describe('DesktopView icon layout interaction', () => {
     wrapper.unmount()
   })
 
-  it('selects all icons from the keyboard and only offers the optional page for removal', async () => {
+  it('selects all icons from the keyboard and offers only optional pages for removal', async () => {
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await flushPromises()
     const desktop = wrapper.get<HTMLElement>('.desktop')
     desktop.element.focus()
 
     await desktop.trigger('keydown', { key: 'a', ctrlKey: true })
-    expect(wrapper.findAll('.desktop__icon--selected')).toHaveLength(16)
-    expect(wrapper.find('.desktop__selection-actions').text()).toContain('已选 16 项')
+    expect(wrapper.findAll('.desktop__icon--selected')).toHaveLength(17)
+    expect(wrapper.find('.desktop__selection-actions').text()).toContain('已选 17 项')
 
     await desktop.trigger('keydown', { key: 'Delete' })
     await flushPromises()
-    // Management pages stay pinned; only the sponsored page joins the confirmation.
+    // Management pages stay pinned; the guide and sponsored pages are optional.
     const dialog = Array.from(document.body.querySelectorAll<HTMLElement>('.modal-panel'))
-      .find((panel) => panel.textContent?.includes('确认从桌面移除 1 项'))
+      .find((panel) => panel.textContent?.includes('确认从桌面移除 2 项'))
     expect(dialog).toBeDefined()
     expect(updateWorkspace).not.toHaveBeenCalled()
     wrapper.unmount()
@@ -1076,8 +1076,8 @@ describe('DesktopView icon layout interaction', () => {
   }, 10_000)
 
   it('keeps icons beyond the 512-position limit separate and refuses false auto-arrange success', async () => {
-    // Sixteen fixed entries plus 497 apps leave exactly one icon past the limit.
-    const extras: DesktopEntry[] = Array.from({ length: 497 }, (_, index) => ({
+    // Seventeen fixed entries plus 496 apps leave exactly one icon past the limit.
+    const extras: DesktopEntry[] = Array.from({ length: 496 }, (_, index) => ({
       key: `app:extra-${index}`,
       kind: 'app',
       id: `extra-${index}`,
@@ -1091,8 +1091,8 @@ describe('DesktopView icon layout interaction', () => {
 
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await flushPromises()
-    const supported = wrapper.find('[data-icon-key="app:extra-495"]')
-    const overflow = wrapper.find('[data-icon-key="app:extra-496"]')
+    const supported = wrapper.find('[data-icon-key="app:extra-494"]')
+    const overflow = wrapper.find('[data-icon-key="app:extra-495"]')
 
     expect(overflow.attributes('style')).not.toBe(supported.attributes('style'))
     expect(overflow.attributes('style')).not.toContain('display: none')

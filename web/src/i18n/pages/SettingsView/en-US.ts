@@ -3,6 +3,12 @@ import type { PhraseCatalog } from '@/i18n/phrase'
 export default [
   ['站点名称与图标', 'Site name and icon'],
   ['自定义面板与登录页标识', 'Custom panel and sign-in branding'],
+  ['使用说明', 'User guide'],
+  ['视频与图文教程，帮助你熟悉 KPanel', 'Video and illustrated tutorials to help you get started with KPanel'],
+  ['教程', 'tutorials'],
+  ['视频', 'video'],
+  ['图文', 'illustrated guide'],
+  ['帮助', 'help'],
   ['图标', 'Icon'],
   ['壁纸', 'Wallpaper'],
   ['桌面与经典模式共用的壁纸、3D 场景与透出程度', 'Shared wallpaper, 3D scenes, and transparency for desktop and classic modes'],
