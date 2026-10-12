@@ -2729,8 +2729,22 @@ onBeforeUnmount(() => {
 }
 
 @container desktop-window (max-width: 640px) {
-  .gallery-hero {
-    padding: 18px;
+  .gallery-page--windowed .gallery-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-height: max-content;
+    align-items: start;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .gallery-page--windowed .gallery-hero__content {
+    width: 100%;
+  }
+
+  .gallery-page--windowed .gallery-hero__actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .gallery-albums__grid {
