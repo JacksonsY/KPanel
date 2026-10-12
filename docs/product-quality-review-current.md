@@ -1,15 +1,23 @@
 # KPanel 当前业务事实与规范适配基线
 
 - 复核日期：`2026-10-13`
-- 基线提交：`63dc3afe50fc9354446cc0af490e475409700e6e`
+- 基线提交：`690b953ad0609b1cff56f80082cf9ae3cd907124`
 - 基线版本：`v1.25.1`
-- 当前公开预览：`v1.26.0-rc.13`，产品提交 `63dc3afe50fc9354446cc0af490e475409700e6e`；2026-10-12T16:39:53Z 已公开，prerelease=true、draft=false，未部署生产。
+- 当前公开预览：`v1.26.0-rc.14`，产品提交 `690b953ad0609b1cff56f80082cf9ae3cd907124`；2026-10-12T18:20:43Z 已公开，prerelease=true、draft=false，未部署生产。
 - 稳定版本及 Latest/latest：`v1.25.1`；稳定镜像 `sha256:1894b5e3aa76edbd75efef2de1164f44d38734cb3a27dc11aa2f75c420c1b325`，本轮未提升稳定通道。
-- 预览 version/preview 双架构镜像：`sha256:25ba652bc2f75e6292d405ff37c645a4092268c6ab48b6ed042ce10cf0e6dadc`；公开双架构标签、15 个附件摘要和公开镜像 E2E 已复核，详见 [RC13 验收](release-v1.26.0-rc.13-acceptance.md)。
+- 预览 version/preview 双架构镜像：`sha256:2b816c66fcbc60590e1afcc0517617b8db21dd79cb91b72d3219b5d52e7fbe95`；公开双架构标签、15 个附件摘要和公开镜像 E2E 已复核，详见 [RC14 验收](release-v1.26.0-rc.14-acceptance.md)。
 - RC9 后续验收提交：`03650f985c4cf28b10c7949f91438c3af7c634b5`，发布证据见 [RC9 验收](release-v1.26.0-rc.9-acceptance.md)。该文档提交不属于 RC9 已发布产品字节。
 - 上一份完整复核：[product-quality-review-2026-08-13.md](product-quality-review-2026-08-13.md)。自动刷新门槛保持：基线后达到 50 个提交，或同时达到 20 个提交和 8 个正式版本；产品性质、业务真源、权限边界或核心旅程实质变化时立即复核。
 
 本文件是定位当前产品形态的事实入口；历史复核保留当时的证据和限制，不重复定义工程规范。
+
+### 2026-10-13 RC14 业务复核
+
+RC14 唯一尚未发布的产品增量来自 `feature/terminal-split-workspace`：交互终端新增单屏、左右、上下和四宫格工作区，切换布局、调整窗格、最大化和窄窗口降级时保持现有 PTY 会话。`fix/issue-27-autofs-statfs` 与 `fix/system-packages-retry` 的代码已经在 RC13；systemd 服务管理已在 RC9 上线。旧快捷方式图标、分页和文件页布局继续归档；`Offers` 广告专栏与本地“新内容”提示都不是本版新增内容。
+
+精确 L3、同 SHA 候选/main CI、依赖新鲜度、标签 Release 工作流、公开双架构镜像、15 个 Release 附件与 11 项 SHA256SUMS、公开镜像 E2E 均通过。preview index 为 `sha256:2b816c66fcbc60590e1afcc0517617b8db21dd79cb91b72d3219b5d52e7fbe95`；stable `latest` 仍为 v1.25.1 原摘要。Release 前的初始候选 CI 与 L3 曾因同一个 stale first-party 摘要问题被拦截，修正后最终冻结 SHA 全部通过；按一个根因记录，生产写入为 0。
+
+终端界面复核使用绑定冻结 SHA 的 Mock，不证明真实 Linux PTY、真实宿主命令或生产升级。Trivy selected/standalone 依赖清单仍保留既有发现；CF 覆盖仍需按既有 scoped-required 要求在稳定版前完成。完整边界与原始证据见 [RC14 验收](release-v1.26.0-rc.14-acceptance.md)。
 
 ### 2026-10-13 RC13 业务复核
 
