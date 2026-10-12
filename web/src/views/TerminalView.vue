@@ -6,6 +6,7 @@ import { translatePhrase } from '@/i18n/phrase'
 import BatchTerminalPanel from '@/components/terminal/BatchTerminalPanel.vue'
 import HostTerminal from '@/components/terminal/HostTerminal.vue'
 import TerminalWorkspace from '@/components/terminal/TerminalWorkspace.vue'
+import TerminalLayoutSelector from '@/components/terminal/TerminalLayoutSelector.vue'
 import TerminalQuickCommands from '@/components/terminal/TerminalQuickCommands.vue'
 import TerminalToolbar from '@/components/terminal/TerminalToolbar.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -674,6 +675,8 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </nav>
+          <TerminalLayoutSelector :model-value="workspaceRef?.layout || 'single'" :compact="workspaceRef?.compact"
+            @update:model-value="workspaceRef?.setLayout($event)" />
           <TerminalToolbar
             :fullscreen="workspaceFullscreen"
             :quick-commands="true"

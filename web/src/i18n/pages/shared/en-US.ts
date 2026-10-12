@@ -1,6 +1,10 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['单屏', 'Single pane'],
+  ['左右分屏', 'Side by side'],
+  ['上下分屏', 'Stacked'],
+  ['四宫格', 'Four panes'],
   ["在终端中执行", "Run in terminal"],
   ["文件已变化，请刷新列表后重新执行。", "The file has changed. Refresh the list before running it again."],
   ["文件不存在或已不再是普通文件。", "The file is missing or is no longer a regular file."],

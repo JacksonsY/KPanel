@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch, type CSSProperties } from 'vue'
 import { Maximize2, Minimize2, Plus, X } from '@lucide/vue'
-import { useTerminalWorkspace, type TerminalLayout } from '@/composables/useTerminalWorkspace'
+import { useTerminalWorkspace } from '@/composables/useTerminalWorkspace'
 import { translatePhrase } from '@/i18n/phrase'
 import { useI18n } from '@/i18n'
 
@@ -54,9 +54,6 @@ function activate(index: number): void {
 function chooseHost(index: number): void {
   activate(index)
   emit('chooseHost')
-}
-function changeLayout(event: Event): void {
-  setLayout((event.target as HTMLSelectElement).value as TerminalLayout)
 }
 function refresh(): void { void nextTick(() => emit('resize')) }
 watch([layout, panes, activePane, maximized, compact], refresh, { deep: true })
@@ -117,23 +114,11 @@ onMounted(() => {
   if (grid.value) observer.observe(grid.value)
 })
 onBeforeUnmount(() => { observer?.disconnect(); endDrag() })
-defineExpose({ selectSession })
+defineExpose({ selectSession, layout, setLayout, compact })
 </script>
 
 <template>
   <section ref="root" class="terminal-pane-workspace" :class="{ 'is-single-visible': singleVisible }">
-    <div class="terminal-layout-controls">
-      <label>{{ phrase('终端布局') }}
-        <select :value="layout" :aria-label="phrase('终端布局')" @change="changeLayout">
-          <option value="single">{{ phrase('单屏') }}</option>
-          <option value="columns">{{ phrase('左右分屏') }}</option>
-          <option value="rows">{{ phrase('上下分屏') }}</option>
-          <option value="grid">{{ phrase('四宫格') }}</option>
-        </select>
-      </label>
-      <span v-if="compact && layout !== 'single'" class="terminal-layout-note">{{ phrase('窗口较小，已显示当前窗格') }}</span>
-      <button v-if="maximized" type="button" @click="maximized = false">{{ phrase('恢复分屏') }}</button>
-    </div>
     <div ref="grid" class="terminal-pane-grid" :style="gridStyle">
       <!-- Stable siblings: layout changes never remount a terminal or close its PTY. -->
       <section v-for="item in sessions" v-show="isVisible(panes.indexOf(item.id))" :key="item.id"
@@ -171,11 +156,7 @@ defineExpose({ selectSession })
 </template>
 
 <style scoped>
-.terminal-pane-workspace { display:grid; grid-template-rows:auto minmax(0,1fr); min-width:0; min-height:0; overflow:hidden; }
-.terminal-layout-controls { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; padding:5px 10px; border-bottom:1px solid var(--terminal-shell-border); color:var(--terminal-shell-text); background:var(--terminal-shell-panel); font-size:14px; }
-.terminal-layout-controls label { display:flex; align-items:center; gap:8px; }
-.terminal-layout-controls select,.terminal-layout-controls button { min-height:30px; padding:3px 8px; border:1px solid var(--terminal-shell-border); border-radius:var(--radius-sm); background:var(--terminal-shell-background); color:var(--terminal-shell-text); font:inherit; cursor:pointer; }
-.terminal-layout-note { color:var(--terminal-shell-muted); font-size:13px; }
+.terminal-pane-workspace { display:grid; grid-template-rows:minmax(0,1fr); min-width:0; min-height:0; overflow:hidden; }
 .terminal-pane-grid { display:grid; min-width:0; min-height:0; overflow:hidden; }
 .terminal-pane { display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; position:relative; }
 .terminal-pane.is-active { box-shadow:inset 0 0 0 1px var(--brand); }

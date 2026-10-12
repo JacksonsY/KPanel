@@ -2,10 +2,6 @@ import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
   ['终端布局', 'Terminal layout'],
-  ['单屏', 'Single pane'],
-  ['左右分屏', 'Side by side'],
-  ['上下分屏', 'Stacked'],
-  ['四宫格', 'Four panes'],
   ['窗口较小，已显示当前窗格', 'Small window: showing the current pane'],
   ['恢复分屏', 'Restore panes'],
   ['最大化窗格', 'Maximize pane'],
