@@ -11,6 +11,8 @@ export function createGalleryTouchSelection(options: {
   let suppressUntil = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   let frame: number | undefined
+  let lastPath = ''
+  let lastFrame = 0
   const pathAt = (element: Element | null) => {
     const tile = element?.closest<HTMLElement>('[data-gallery-path]')
     return tile && options.root()?.contains(tile) ? tile.dataset.galleryPath : undefined
@@ -23,13 +25,18 @@ export function createGalleryTouchSelection(options: {
     frame = undefined
     press = undefined
     active = false
+    lastPath = ''
+    lastFrame = 0
   }
   function update(): void {
     if (!press) return
     const path = pathAt(document.elementFromPoint(press.x, press.y))
-    if (path) options.update(path)
+    if (path && path !== lastPath) {
+      lastPath = path
+      options.update(path)
+    }
   }
-  function scroll(): void {
+  function scroll(timestamp: number): void {
     if (!active || !press) return
     const root = options.root()
     const nested = root?.querySelector<HTMLElement>('.gallery-scroll')
@@ -38,8 +45,10 @@ export function createGalleryTouchSelection(options: {
     const top = Math.max(0, bounds.top)
     const bottom = Math.min(innerHeight, bounds.bottom)
     const direction = press.y < top + 48 ? -1 : press.y > bottom - 48 ? 1 : 0
+    const elapsed = lastFrame ? Math.min(32, timestamp - lastFrame) : 16
+    lastFrame = timestamp
     if (container && direction) {
-      container.scrollTop += direction * 8
+      container.scrollTop += direction * elapsed * 0.48
       update()
     }
     frame = requestAnimationFrame(scroll)
@@ -50,6 +59,7 @@ export function createGalleryTouchSelection(options: {
     active = true
     suppressClick = true
     suppressUntil = Infinity
+    lastPath = press.path
     options.begin(press.path)
     update()
     frame = requestAnimationFrame(scroll)
