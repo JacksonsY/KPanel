@@ -95,7 +95,7 @@ func TestReplaceValidatesWorkspaceContract(t *testing.T) {
 			name: "malformed hidden navigation path",
 			input: func() ReplaceInput {
 				input := validReplaceInput(base.ResourceVersion)
-				input.HiddenEntryKeys = []string{"nav:/system/extra"}
+				input.HiddenEntryKeys = []string{"nav:/system//extra"}
 				return input
 			},
 			field: "hiddenEntryKeys",
