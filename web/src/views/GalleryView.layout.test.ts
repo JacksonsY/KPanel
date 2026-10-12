@@ -26,4 +26,12 @@ describe('GalleryView layout contract', () => {
     // Batch actions are needed while scrolling a long selection, so that bar keeps following.
     expect(source).toMatch(/\n\.gallery-selection \{\n\s+position: sticky;/)
   })
+
+  it('keeps the hero actions inside the cover in a narrow desktop window', () => {
+    const narrowWindow = source.slice(source.lastIndexOf('@container desktop-window (max-width: 640px)'))
+    expect(narrowWindow).toMatch(/\.gallery-page--windowed \.gallery-hero\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[^}]*min-height:\s*max-content;/)
+    expect(narrowWindow).not.toMatch(/\.gallery-page--windowed \.gallery-hero--photo\s*\{[^}]*min-height:\s*0;/)
+    expect(narrowWindow).toMatch(/\.gallery-page--windowed \.gallery-hero__content\s*\{[^}]*width:\s*100%;/)
+    expect(narrowWindow).toMatch(/\.gallery-page--windowed \.gallery-hero__actions\s*\{[^}]*width:\s*100%;[^}]*justify-content:\s*flex-start;/)
+  })
 })
