@@ -1,16 +1,65 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   captureGalleryVideoFrame,
   galleryPosterKey,
   readGalleryPoster,
   resetGalleryPostersForTest,
   storeGalleryPoster,
+  loadGalleryPoster,
 } from './galleryPosters'
 
-afterEach(() => resetGalleryPostersForTest())
+afterEach(() => { resetGalleryPostersForTest(); vi.restoreAllMocks() })
 
 describe('gallery poster cache', () => {
+  it('waits for an explicit seek and releases the decoder after capturing', async () => {
+    const video = document.createElement('video')
+    Object.defineProperties(video, {
+      duration: { value: 12 }, videoWidth: { value: 640 }, videoHeight: { value: 360 },
+    })
+    vi.spyOn(video, 'load').mockImplementation(() => undefined)
+    const pause = vi.spyOn(video, 'pause').mockImplementation(() => undefined)
+    const original = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation(((name: string) => name === 'video' ? video : original(name)) as typeof document.createElement)
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,frame')
+    const pending = loadGalleryPoster('video', '/video.mp4', new AbortController().signal)
+    await Promise.resolve()
+    video.dispatchEvent(new Event('loadeddata'))
+    expect(readGalleryPoster('video')).toBeUndefined()
+    video.dispatchEvent(new Event('loadedmetadata'))
+    expect(video.currentTime).toBe(1)
+    expect(readGalleryPoster('video')).toBeUndefined()
+    video.dispatchEvent(new Event('seeked'))
+    await pending
+    expect(readGalleryPoster('video')).toEqual({ poster: 'data:image/jpeg;base64,frame', duration: 12 })
+    expect(video.getAttribute('src')).toBeNull()
+    expect(pause).toHaveBeenCalled()
+  })
+
+  it('cancels the decoder when navigation abandons a pending poster', async () => {
+    const video = document.createElement('video')
+    vi.spyOn(video, 'load').mockImplementation(() => undefined)
+    vi.spyOn(video, 'pause').mockImplementation(() => undefined)
+    const original = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation(((name: string) => name === 'video' ? video : original(name)) as typeof document.createElement)
+    const controller = new AbortController()
+    const pending = loadGalleryPoster('cancelled', '/video.mp4', controller.signal)
+    const rejected = expect(pending).rejects.toBeDefined()
+    await Promise.resolve()
+    controller.abort()
+    await rejected
+    expect(video.getAttribute('src')).toBeNull()
+    expect(readGalleryPoster('cancelled')).toBeUndefined()
+  })
+
+  it('evicts posters when their encoded memory exceeds the byte budget', () => {
+    storeGalleryPoster('large-a', { poster: 'x'.repeat(4 * 1024 * 1024) })
+    storeGalleryPoster('large-b', { poster: 'x'.repeat(4 * 1024 * 1024) })
+    expect(readGalleryPoster('large-a')).toBeUndefined()
+    expect(readGalleryPoster('large-b')?.poster).toBeDefined()
+  })
+
   it('isolates the same path and version on two hosts', () => {
     const entry = { path: '/home/gallery/a.mp4', resourceVersion: 'sha256:1' }
     const local = galleryPosterKey(entry, '/api/v1/files/content?path=a.mp4')

@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, Film, ImageOff, Play } from '@lucide/vue'
 import { formatGalleryDuration, galleryFileExtension, type GalleryItem } from '@/lib/gallery'
 import {
-  captureGalleryVideoFrame,
   galleryPosterKey,
   readGalleryPoster,
-  storeGalleryPoster,
 } from '@/lib/galleryPosters'
+import GalleryImage from './GalleryImage.vue'
+import GalleryVideo from './GalleryVideo.vue'
 
 const props = defineProps<{
   item: GalleryItem
@@ -17,6 +17,7 @@ const props = defineProps<{
   fallbackUrl?: string
   /** Inline video source for the poster frame and hover preview. */
   videoUrl?: string
+  suspended?: boolean
   featured?: boolean
   selecting?: boolean
   selected?: boolean
@@ -31,22 +32,22 @@ const emit = defineEmits<{
   dragend: [item: GalleryItem, event: DragEvent]
 }>()
 
-const root = ref<HTMLElement>()
-const video = ref<HTMLVideoElement>()
 const source = ref(props.imageUrl)
 const failed = ref(false)
 const loaded = ref(false)
-const near = ref(false)
 const previewing = ref(false)
-const videoReady = ref(false)
 const posterKey = computed(() => galleryPosterKey(props.item.entry, props.videoUrl))
-let observer: IntersectionObserver | undefined
 let hoverTimer: number | undefined
+let pointerType = ''
 
-watch(() => [props.imageUrl, props.videoUrl], () => {
+watch([() => props.imageUrl, () => props.videoUrl, () => props.item.entry.resourceVersion], () => {
   source.value = props.imageUrl
   failed.value = false
   loaded.value = false
+})
+watch(() => props.item.entry, () => {
+  // An explicit directory refresh retries failed media without reloading healthy tiles.
+  if (failed.value) { failed.value = false; loaded.value = false }
 })
 
 const label = computed(() => props.item.entry.name)
@@ -60,47 +61,15 @@ const cached = computed(() => readGalleryPoster(posterKey.value))
 const poster = computed(() => cached.value?.poster)
 const duration = computed(() => cached.value?.duration === undefined ? '' : formatGalleryDuration(cached.value.duration))
 const playable = computed(() => props.item.kind === 'video' && Boolean(props.videoUrl) && !failed.value)
-// A video element exists only to grab the poster frame once, or while previewing.
-const mountsVideo = computed(() => playable.value && ((near.value && !poster.value) || previewing.value))
 const showsImage = computed(() => props.item.kind === 'image' && Boolean(source.value) && !failed.value)
-const showsPlaceholder = computed(() => !showsImage.value && !poster.value && !mountsVideo.value)
-
-watch(mountsVideo, (mounted) => {
-  if (!mounted) videoReady.value = false
-})
+const showsPlaceholder = computed(() => !showsImage.value && !poster.value)
 
 function onImageError(): void {
-  if (props.fallbackUrl && source.value !== props.fallbackUrl) {
-    source.value = props.fallbackUrl
-    return
-  }
   failed.value = true
 }
 
-function capture(element: HTMLVideoElement): void {
-  const frame = captureGalleryVideoFrame(element)
-  storeGalleryPoster(posterKey.value, {
-    poster: frame ?? poster.value,
-    duration: Number.isFinite(element.duration) ? element.duration : cached.value?.duration,
-  })
-}
-
-function onVideoFrame(): void {
-  const element = video.value
-  // An audio-only or undecodable stream still fires loadeddata without a frame.
-  if (!element || element.videoWidth <= 0) {
-    failed.value = true
-    return
-  }
-  loaded.value = true
-  videoReady.value = true
-  if (poster.value || previewing.value) return
-  if (element.seeking) element.addEventListener('seeked', () => capture(element), { once: true })
-  else capture(element)
-}
-
 function startPreview(event: PointerEvent): void {
-  if (event.pointerType !== 'mouse' || props.selecting || !playable.value) return
+  if (event.pointerType !== 'mouse' || props.selecting || props.suspended || !playable.value) return
   window.clearTimeout(hoverTimer)
   hoverTimer = window.setTimeout(() => {
     previewing.value = true
@@ -122,37 +91,19 @@ function onClick(event: MouseEvent): void {
 }
 
 function onDragStart(event: DragEvent): void {
+  if (pointerType === 'touch') { event.preventDefault(); return }
   // A hover preview must not keep playing under the drag image.
   stopPreview()
   emit('dragstart', props.item, event)
 }
 
-onMounted(() => {
-  if (props.item.kind !== 'video' || poster.value) return
-  if (typeof IntersectionObserver === 'undefined') {
-    near.value = true
-    return
-  }
-  // Video tiles fetch metadata only near the screen, so a long timeline does
-  // not open one request per video at once.
-  observer = new IntersectionObserver((entries) => {
-    if (!entries.some((entry) => entry.isIntersecting)) return
-    near.value = true
-    observer?.disconnect()
-    observer = undefined
-  }, { rootMargin: '240px 0px' })
-  if (root.value) observer.observe(root.value)
-})
-
 onBeforeUnmount(() => {
-  observer?.disconnect()
   window.clearTimeout(hoverTimer)
 })
 </script>
 
 <template>
   <div
-    ref="root"
     class="gallery-tile"
     :class="{
       'gallery-tile--featured': featured,
@@ -163,6 +114,7 @@ onBeforeUnmount(() => {
     }"
     :draggable="draggable ? 'true' : undefined"
     @pointerenter="startPreview"
+    @pointerdown="pointerType = $event.pointerType"
     @pointerleave="stopPreview"
     @dragstart="onDragStart"
     @dragend="emit('dragend', item, $event)"
@@ -174,10 +126,12 @@ onBeforeUnmount(() => {
       :aria-pressed="selecting ? selected : undefined"
       @click="onClick"
     >
-      <img
+      <GalleryImage
         v-if="showsImage"
+        :key="item.entry.resourceVersion"
         class="gallery-tile__media"
-        :src="source"
+        :src="source!"
+        :fallback="fallbackUrl"
         alt=""
         loading="lazy"
         decoding="async"
@@ -185,29 +139,14 @@ onBeforeUnmount(() => {
         @load="loaded = true"
         @error="onImageError"
       />
-      <img
-        v-else-if="poster"
+      <GalleryVideo
+        v-if="playable && videoUrl"
         class="gallery-tile__media"
-        :src="poster"
-        alt=""
-        decoding="async"
-        draggable="false"
-      />
-      <video
-        v-if="mountsVideo"
-        ref="video"
-        class="gallery-tile__media gallery-tile__media--video"
-        :class="{ 'is-ready': videoReady }"
-        :src="previewing ? videoUrl : `${videoUrl}#t=0.1`"
-        muted
-        loop
-        playsinline
-        :autoplay="previewing"
-        preload="metadata"
-        disablepictureinpicture
-        tabindex="-1"
-        aria-hidden="true"
-        @loadeddata="onVideoFrame"
+        :src="videoUrl"
+        :poster-key="posterKey"
+        :preview="previewing"
+        :suspended="suspended"
+        @load="loaded = true"
         @error="failed = true"
       />
       <span v-if="showsPlaceholder" class="gallery-tile__placeholder" aria-hidden="true">
@@ -283,17 +222,6 @@ onBeforeUnmount(() => {
 }
 
 .gallery-tile--loaded .gallery-tile__media {
-  opacity: 1;
-}
-
-/* Hover previews play over the captured poster and appear once a frame is ready. */
-.gallery-tile .gallery-tile__media--video {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-}
-
-.gallery-tile .gallery-tile__media--video.is-ready {
   opacity: 1;
 }
 
@@ -396,6 +324,11 @@ onBeforeUnmount(() => {
 }
 
 @media (hover: none) {
+  .gallery-tile {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+
   .gallery-tile:hover .gallery-tile__media {
     transform: none;
   }

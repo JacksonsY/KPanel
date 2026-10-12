@@ -29,6 +29,8 @@ import {
   type GalleryItem,
 } from '@/lib/gallery'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
+import { fetchGalleryImage, galleryAllowsPrefetch } from '@/lib/galleryMedia'
+import GalleryImage from './GalleryImage.vue'
 
 function phrase(value: string): string {
   phraseCatalogVersion.value
@@ -102,7 +104,11 @@ const coverMenuOpen = ref(false)
 let chromeHeld = false
 let chromeTimer: number | undefined
 let opener: HTMLElement | null = null
-let pointer: { id: number; x: number; y: number; startX: number; startY: number; moved: boolean } | undefined
+let pointer: { id: number; x: number; y: number; startX: number; startY: number; moved: boolean; pinched: boolean; started: number } | undefined
+const contacts = new Map<number, { x: number; y: number }>()
+let pinch: { distance: number; x: number; y: number } | undefined
+const interacting = ref(false)
+const swipeOffset = ref(0)
 
 const item = computed(() => props.items[props.index])
 const itemSources = computed(() => item.value ? props.sources(item.value) : undefined)
@@ -117,7 +123,25 @@ const stripItems = computed(() => {
     index: start + offsetIndex,
   }))
 })
-const mediaTransform = computed(() => `translate3d(${offset.value.x}px, ${offset.value.y}px, 0) scale(${scale.value})`)
+const mediaTransform = computed(() => `translate3d(${offset.value.x + swipeOffset.value}px, ${offset.value.y}px, 0) scale(${scale.value})`)
+
+function cancelGesture(): void {
+  for (const id of contacts.keys()) {
+    if (stage.value?.hasPointerCapture?.(id)) stage.value.releasePointerCapture(id)
+  }
+  contacts.clear()
+  pointer = undefined
+  pinch = undefined
+  interacting.value = false
+  swipeOffset.value = 0
+}
+
+function pinchPoints() {
+  if (contacts.size !== 2) return undefined
+  const [a, b] = [...contacts.values()]
+  if (!a || !b) return undefined
+  return { distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
 
 function resetView(): void {
   scale.value = 1
@@ -173,6 +197,7 @@ function onViewerFocusIn(event: FocusEvent): void {
 }
 
 function resetMedia(): void {
+  cancelGesture()
   loaded.value = false
   failed.value = false
   failureDetail.value = ''
@@ -188,7 +213,7 @@ watch(() => props.filmstrip, (visible) => {
 watch(() => item.value?.entry.path, () => {
   coverMenuOpen.value = false
   resetMedia()
-  preloadNeighbours()
+  neighbourController?.abort()
   void nextTick(scrollStripToCurrent)
 })
 
@@ -201,8 +226,11 @@ function go(step: number): void {
 function clampOffset(nextScale: number, x: number, y: number): { x: number; y: number } {
   const bounds = stage.value?.getBoundingClientRect()
   if (!bounds || nextScale <= 1) return { x: 0, y: 0 }
-  const limitX = (bounds.width * (nextScale - 1)) / 2
-  const limitY = (bounds.height * (nextScale - 1)) / 2
+  const image = stage.value?.querySelector<HTMLImageElement>('img.gallery-viewer__media:not(.gallery-viewer__media--preview)')
+  const width = image?.clientWidth || bounds.width
+  const height = image?.clientHeight || bounds.height
+  const limitX = Math.max(0, (width * nextScale - bounds.width) / 2)
+  const limitY = Math.max(0, (height * nextScale - bounds.height) / 2)
   return {
     x: Math.max(-limitX, Math.min(limitX, x)),
     y: Math.max(-limitY, Math.min(limitY, y)),
@@ -238,11 +266,31 @@ function onDoubleClick(event: MouseEvent): void {
 
 function onPointerDown(event: PointerEvent): void {
   if (event.button !== 0 || item.value?.kind !== 'image') return
-  pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, moved: false }
-  stage.value?.setPointerCapture(event.pointerId)
+  if ((event.target as Element | null)?.closest('button, a, input')) return
+  contacts.set(event.pointerId, { x: event.clientX, y: event.clientY })
+  interacting.value = true
+  stage.value?.setPointerCapture?.(event.pointerId)
+  if (contacts.size > 1) {
+    pointer = undefined
+    swipeOffset.value = 0
+    pinch = pinchPoints()
+    return
+  }
+  pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, moved: false, pinched: false, started: performance.now() }
 }
 
 function onPointerMove(event: PointerEvent): void {
+  if (!contacts.has(event.pointerId)) return
+  contacts.set(event.pointerId, { x: event.clientX, y: event.clientY })
+  if (contacts.size > 1) {
+    const next = pinchPoints()
+    if (pinch && next) {
+      zoomTo(scale.value * next.distance / pinch.distance, pinch.x, pinch.y)
+      offset.value = clampOffset(scale.value, offset.value.x + next.x - pinch.x, offset.value.y + next.y - pinch.y)
+    }
+    pinch = next
+    return
+  }
   if (!pointer || pointer.id !== event.pointerId) return
   const deltaX = event.clientX - pointer.x
   const deltaY = event.clientY - pointer.y
@@ -250,17 +298,39 @@ function onPointerMove(event: PointerEvent): void {
   pointer.y = event.clientY
   if (Math.abs(event.clientX - pointer.startX) + Math.abs(event.clientY - pointer.startY) > 6) pointer.moved = true
   if (zoomed.value) offset.value = clampOffset(scale.value, offset.value.x + deltaX, offset.value.y + deltaY)
+  else if (!pointer.pinched) {
+    const x = event.clientX - pointer.startX
+    const y = event.clientY - pointer.startY
+    const edge = (x > 0 && props.index === 0) || (x < 0 && props.index === props.items.length - 1)
+    const limit = (stage.value?.clientWidth || 360) * 0.4
+    swipeOffset.value = Math.abs(x) > Math.abs(y) * 1.5 ? Math.max(-limit, Math.min(limit, x * (edge ? 0.25 : 1))) : 0
+  }
 }
 
 function onPointerUp(event: PointerEvent): void {
+  if (!contacts.delete(event.pointerId)) return
+  if (stage.value?.hasPointerCapture?.(event.pointerId)) stage.value.releasePointerCapture(event.pointerId)
+  if (pinch || contacts.size) {
+    pinch = undefined
+    const remaining = [...contacts.entries()][0]
+    pointer = remaining ? { id: remaining[0], ...remaining[1], startX: remaining[1].x, startY: remaining[1].y, moved: true, pinched: true, started: performance.now() } : undefined
+    interacting.value = contacts.size > 0
+    return
+  }
+  interacting.value = false
+  swipeOffset.value = 0
   if (!pointer || pointer.id !== event.pointerId) return
   const swipe = event.clientX - pointer.startX
   const vertical = Math.abs(event.clientY - pointer.startY)
   const wasZoomed = zoomed.value
   const tapped = !pointer.moved
+  const pinched = pointer.pinched
+  const elapsed = Math.max(1, performance.now() - pointer.started)
   pointer = undefined
   // A horizontal drag on an unzoomed photo turns the page like a phone gallery.
-  if (!wasZoomed && Math.abs(swipe) > 64 && vertical < 80) go(swipe < 0 ? 1 : -1)
+  const threshold = Math.max(32, Math.min(64, (stage.value?.clientWidth || 360) * 0.15))
+  if (!pinched && !wasZoomed && Math.abs(swipe) > vertical * 1.5
+    && (Math.abs(swipe) > threshold || (Math.abs(swipe) > 24 && Math.abs(swipe) / elapsed > 0.5))) go(swipe < 0 ? 1 : -1)
   // Touch screens have no hover, so a tap toggles the controls instead.
   else if (tapped && event.pointerType === 'touch') {
     if (chromeVisible.value) chromeVisible.value = false
@@ -272,6 +342,7 @@ function onImageLoad(event: Event): void {
   const image = event.currentTarget as HTMLImageElement
   naturalSize.value = { width: image.naturalWidth, height: image.naturalHeight }
   loaded.value = true
+  preloadNeighbours()
 }
 
 function onImageError(): void {
@@ -309,13 +380,16 @@ function retry(): void {
   retryKey.value += 1
 }
 
+let neighbourController: AbortController | undefined
 function preloadNeighbours(): void {
+  neighbourController?.abort()
+  neighbourController = new AbortController()
   for (const step of [1, -1]) {
     const neighbour = props.items[props.index + step]
-    if (!neighbour || neighbour.kind !== 'image' || !galleryBrowserCanShow(neighbour)) continue
-    const image = new Image()
-    image.decoding = 'async'
-    image.src = props.sources(neighbour).original
+    if (!neighbour || neighbour.kind !== 'image' || !galleryBrowserCanShow(neighbour) || !galleryAllowsPrefetch(neighbour.entry.sizeBytes)) continue
+    // Warm the versioned thumbnail cache, never download neighbouring originals.
+    const preview = props.sources(neighbour).preview
+    if (preview) void fetchGalleryImage(preview, neighbourController.signal).catch(() => undefined)
   }
 }
 
@@ -404,12 +478,13 @@ onMounted(() => {
   if (!props.contained) activateModal(modalId)
   document.addEventListener('fullscreenchange', syncFullscreen)
   root.value?.focus({ preventScroll: true })
-  preloadNeighbours()
   showChrome()
   void nextTick(scrollStripToCurrent)
 })
 
 onBeforeUnmount(() => {
+  cancelGesture()
+  neighbourController?.abort()
   window.clearTimeout(chromeTimer)
   if (!props.contained) deactivateModal(modalId)
   document.removeEventListener('fullscreenchange', syncFullscreen)
@@ -532,13 +607,14 @@ onBeforeUnmount(() => {
       <div
         ref="stage"
         class="gallery-viewer__stage"
-        :class="{ 'is-zoomed': zoomed, 'is-image': item?.kind === 'image' }"
+        :class="{ 'is-zoomed': zoomed, 'is-image': item?.kind === 'image', 'is-interacting': interacting }"
         @wheel="onWheel"
         @dblclick="onDoubleClick"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
-        @pointercancel="pointer = undefined"
+        @pointercancel="cancelGesture"
+        @lostpointercapture="contacts.has($event.pointerId) && cancelGesture()"
       >
         <template v-if="item && canShow && !failed">
           <template v-if="item.kind === 'image'">
@@ -649,7 +725,7 @@ onBeforeUnmount(() => {
         :aria-label="thumb.item.entry.name"
         @click="emit('navigate', thumb.index)"
       >
-        <img v-if="sources(thumb.item).preview" :src="sources(thumb.item).preview" alt="" loading="lazy" decoding="async" draggable="false" />
+        <GalleryImage v-if="sources(thumb.item).preview" :src="sources(thumb.item).preview!" alt="" draggable="false" />
         <span v-else>{{ galleryFileExtension(thumb.item.entry.name).toUpperCase() }}</span>
       </button>
     </nav>
@@ -889,6 +965,10 @@ onBeforeUnmount(() => {
   cursor: zoom-in;
 }
 
+.gallery-viewer__stage:not(.is-image) {
+  touch-action: auto;
+}
+
 .gallery-viewer__stage.is-zoomed {
   cursor: grab;
 }
@@ -927,7 +1007,8 @@ onBeforeUnmount(() => {
   background: #000;
 }
 
-.gallery-viewer__stage.is-zoomed .gallery-viewer__media {
+.gallery-viewer__stage.is-zoomed .gallery-viewer__media,
+.gallery-viewer__stage.is-interacting .gallery-viewer__media {
   transition: opacity .28s ease;
 }
 
