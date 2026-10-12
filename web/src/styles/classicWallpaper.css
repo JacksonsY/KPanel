@@ -184,15 +184,25 @@ body:has(.classic-backdrop) {
   --auth-wallpaper-veil-end: 86%;
 }
 
-/* The wallpaper choice remains visible behind the page. Shell chrome follows
- * the accessibility preference even when show-through was explicitly selected. */
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+/* Without live blur support, chrome normally uses its solid fallback. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root:has(.classic-backdrop) .topbar {
     background: var(--material-chrome-fill);
   }
 }
 
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+/* Reduced transparency disables live blur, while the explicit classic wallpaper
+   keeps the topbar's static fill aligned with the sidebar. */
+@media (prefers-reduced-transparency: reduce) {
+  :root:has(.classic-backdrop) .topbar {
+    background: color-mix(in srgb, var(--surface) var(--classic-wallpaper-sidebar), transparent);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Higher contrast keeps chrome opaque, including when both preferences apply. */
+@media (prefers-contrast: more) {
   :root:has(.classic-backdrop) .topbar {
     background: var(--material-chrome-fill);
   }
