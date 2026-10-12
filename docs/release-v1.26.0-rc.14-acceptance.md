@@ -48,15 +48,29 @@
 证据根目录：`C:/GitHub/_release-evidence/v1.26.0-rc.14/`，包含 OCR、源身份审阅、L3 原件、Release 附件核验、公开镜像摘要和 E2E 日志。GitHub Release：[v1.26.0-rc.14](https://github.com/kejilion/KPanel/releases/tag/v1.26.0-rc.14)。
 
 <!-- kpanel-release-metrics:start -->
-- 首个纳入提交时间：`2026-10-13T01:15:16+08:00`
-- 候选冻结时间：`2026-10-13T01:30:46+08:00`
+- 首个纳入提交时间：2026-10-13T01:15:16+08:00
+- 候选冻结时间：2026-10-13T01:30:46+08:00
 - 生产完成时间：不适用
 - 提交到生产用时：不适用
 - 是否回滚、紧急热修复或重复发布：否（无生产部署）
-- 生产写入后异常次数：0
+- 若发生失败，发现时间、恢复时间和逃逸门禁：不适用
 <!-- kpanel-release-metrics:end -->
 
 <!-- kpanel-release-process-metrics:start -->
-- 本版发布流程异常根因数：1
+- 已记录发布流程异常或无效证据拦截次数：1
 - 其中生产写操作开始后异常次数：0
 <!-- kpanel-release-process-metrics:end -->
+
+<!-- kpanel-release-process-incidents:start -->
+[
+  {
+    "fingerprint": "release/candidate-gates/stale-first-party-source-digest",
+    "position": "before-production-write",
+    "count": 1,
+    "impact": "初始候选的 CI 和 L3 均在发布前拦截了过期的 first-party source 摘要；没有错误公开产物或生产写入，最终冻结候选的全量门禁通过。",
+    "recoveryEvidence": "C:/GitHub/_release-evidence/v1.26.0-rc.14/v1.26.0-rc.14-db8ab39-l3-r1/l3-verify-release.log；C:/GitHub/_release-evidence/v1.26.0-rc.14/first-party-source-review.json；C:/GitHub/_release-evidence/v1.26.0-rc.14/v1.26.0-rc.14-690b953-l3-r1/status.txt。",
+    "permanentAction": "冻结前更新 first-party source 摘要并做独立身份复核；完整 L3 仍对最终候选 SHA 重新计算。保留初始拦截证据，不把同一根因的 CI 和 L3 两次拦截重复计数。",
+    "historicalReleases": []
+  }
+]
+<!-- kpanel-release-process-incidents:end -->
