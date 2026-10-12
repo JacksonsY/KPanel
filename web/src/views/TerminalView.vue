@@ -63,6 +63,7 @@ const limitReached = ref(false)
 const search = ref('')
 const terminalMode = ref<'interactive' | 'batch'>('interactive')
 const selectedBatchHostIDs = ref<Set<string>>(new Set())
+const batchSelectionAnchor = ref('')
 const batchRunning = ref(false)
 const connectionsCollapsed = ref(false)
 const mobileConnectionsOpen = ref(false)
@@ -102,6 +103,8 @@ const hosts = computed(() => {
 
 const activeSession = computed(() => sessions.value.find((item) => item.id === activeSessionId.value))
 const selectedBatchHosts = computed(() => orderedHosts.value.filter((host) => selectedBatchHostIDs.value.has(host.id)))
+const selectableBatchHosts = computed(() => hosts.value.filter((host) => host.terminalAvailable))
+watch(hosts, () => { batchSelectionAnchor.value = '' })
 const activeInteractiveSessionCount = computed(() => sessions.value.filter((item) => item.state !== 'finished').length)
 const activeTerminalSessionCount = activeInteractiveSessionCount
 const batchSessionCapacity = computed(() => Math.max(0, 4 - activeTerminalSessionCount.value))
@@ -322,12 +325,48 @@ function toggleTerminalMode(): void {
   })
 }
 
-function toggleBatchHost(host: ClusterHost): void {
+function selectBatchHost(host: ClusterHost, event: MouseEvent, checkbox = false): void {
   if (batchRunning.value || !host.terminalAvailable) return
-  const next = new Set(selectedBatchHostIDs.value)
-  if (next.has(host.id)) next.delete(host.id)
-  else next.add(host.id)
+  const visibleIDs = selectableBatchHosts.value.map((item) => item.id)
+  const anchorIndex = visibleIDs.indexOf(batchSelectionAnchor.value)
+  const targetIndex = visibleIDs.indexOf(host.id)
+  const additive = event.ctrlKey || event.metaKey
+  let next = new Set(selectedBatchHostIDs.value)
+  if (event.shiftKey && anchorIndex >= 0 && targetIndex >= 0) {
+    // Ranges follow the displayed, filtered order and never include unavailable hosts.
+    if (!additive) for (const id of visibleIDs) next.delete(id)
+    for (const id of visibleIDs.slice(Math.min(anchorIndex, targetIndex), Math.max(anchorIndex, targetIndex) + 1)) next.add(id)
+  } else {
+    if (checkbox || additive) {
+      if (next.has(host.id)) next.delete(host.id)
+      else next.add(host.id)
+    } else next = new Set([host.id])
+    batchSelectionAnchor.value = host.id
+  }
   selectedBatchHostIDs.value = next
+  if (checkbox) {
+    // A range may keep the reactive value unchanged after the browser toggles it.
+    const input = event.currentTarget as HTMLInputElement
+    void nextTick(() => { input.checked = selectedBatchHostIDs.value.has(host.id) })
+  }
+  // Preventing label activation avoids a second synthetic checkbox click.
+  if (!checkbox) (event.currentTarget as HTMLElement).querySelector<HTMLInputElement>('input')?.focus()
+}
+
+function selectAllBatchHosts(): void {
+  if (batchRunning.value) return
+  const next = new Set(selectedBatchHostIDs.value)
+  for (const host of selectableBatchHosts.value) {
+    next.add(host.id)
+  }
+  selectedBatchHostIDs.value = next
+  batchSelectionAnchor.value = ''
+}
+
+function onBatchSelectionKeydown(event: KeyboardEvent): void {
+  if (terminalMode.value !== 'batch' || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'a') return
+  event.preventDefault()
+  selectAllBatchHosts()
 }
 
 function hostStateLabel(host: ClusterHost): string {
@@ -481,7 +520,7 @@ onBeforeUnmount(() => {
             :placeholder="t('terminal.searchPlaceholder')"
           />
         </label>
-        <div id="terminal-connection-selector" v-show="!connectionsCollapsed || mobileConnectionsOpen" class="terminal-connections__list">
+        <div id="terminal-connection-selector" v-show="!connectionsCollapsed || mobileConnectionsOpen" class="terminal-connections__list" @keydown="onBatchSelectionKeydown">
           <div v-if="!loading && !hosts.length" class="terminal-connections__empty">暂无可显示主机</div>
           <template v-if="terminalMode === 'interactive'">
             <div v-for="host in hosts" :key="host.id" class="terminal-host-row">
@@ -538,8 +577,8 @@ onBeforeUnmount(() => {
             </div>
           </template>
           <template v-else>
-            <label v-for="host in hosts" :key="host.id" class="terminal-host terminal-host--batch" :class="{ 'is-active': selectedBatchHostIDs.has(host.id), 'is-disabled': !host.terminalAvailable }">
-              <input type="checkbox" :checked="selectedBatchHostIDs.has(host.id)" :disabled="batchRunning || !host.terminalAvailable" @change="toggleBatchHost(host)" />
+            <label v-for="host in hosts" :key="host.id" class="terminal-host terminal-host--batch" :class="{ 'is-active': selectedBatchHostIDs.has(host.id), 'is-disabled': !host.terminalAvailable }" @click.prevent="selectBatchHost(host, $event)">
+              <input type="checkbox" :checked="selectedBatchHostIDs.has(host.id)" :disabled="batchRunning || !host.terminalAvailable" @click.stop="selectBatchHost(host, $event, true)" />
               <OperatingSystemIcon class="terminal-host__os" :distro="hostOperatingSystemIdentity(host).key" :label="hostOperatingSystemIdentity(host).label" :show-tooltip="false" />
               <span class="terminal-host__content">
                 <strong>{{ host.name }}</strong>
@@ -739,7 +778,8 @@ onBeforeUnmount(() => {
 .terminal-host.is-opening { cursor:wait; opacity:.64; }
 .terminal-host.is-unavailable { cursor:not-allowed; }
 .terminal-host.is-disabled { cursor:not-allowed; opacity:.58; }
-.terminal-host--batch { grid-template-columns:auto auto minmax(0,1fr); }
+.terminal-host--batch input:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+.terminal-host--batch { grid-template-columns:auto auto minmax(0,1fr); user-select:none; }
 .terminal-host--batch input { width:17px; height:17px; margin:0; accent-color:var(--brand); }
 .terminal-host :deep(.terminal-host__os) { width:32px; height:32px; flex:0 0 auto; border-radius:9px; box-shadow:none; }
 .terminal-host__content { display:grid; min-width:0; gap:3px; }
