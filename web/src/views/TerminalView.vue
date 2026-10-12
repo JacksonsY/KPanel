@@ -345,6 +345,11 @@ function selectBatchHost(host: ClusterHost, event: MouseEvent, checkbox = false)
     batchSelectionAnchor.value = host.id
   }
   selectedBatchHostIDs.value = next
+  if (checkbox) {
+    // A range may keep the reactive value unchanged after the browser toggles it.
+    const input = event.currentTarget as HTMLInputElement
+    void nextTick(() => { input.checked = selectedBatchHostIDs.value.has(host.id) })
+  }
   // Preventing label activation avoids a second synthetic checkbox click.
   if (!checkbox) (event.currentTarget as HTMLElement).querySelector<HTMLInputElement>('input')?.focus()
 }
@@ -583,7 +588,7 @@ onBeforeUnmount(() => {
           </template>
           <template v-else>
             <label v-for="host in hosts" :key="host.id" class="terminal-host terminal-host--batch" :class="{ 'is-active': selectedBatchHostIDs.has(host.id), 'is-disabled': !host.terminalAvailable }" @click.prevent="selectBatchHost(host, $event)">
-              <input type="checkbox" :checked="selectedBatchHostIDs.has(host.id)" :disabled="batchRunning || !host.terminalAvailable" @click.stop.prevent="selectBatchHost(host, $event, true)" />
+              <input type="checkbox" :checked="selectedBatchHostIDs.has(host.id)" :disabled="batchRunning || !host.terminalAvailable" @click.stop="selectBatchHost(host, $event, true)" />
               <OperatingSystemIcon class="terminal-host__os" :distro="hostOperatingSystemIdentity(host).key" :label="hostOperatingSystemIdentity(host).label" :show-tooltip="false" />
               <span class="terminal-host__content">
                 <strong>{{ host.name }}</strong>

@@ -125,7 +125,6 @@ describe('terminal batch mode', () => {
     const rangeClick = new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true })
     checkbox.element.dispatchEvent(rangeClick)
     await flushPromises()
-    expect(rangeClick.defaultPrevented).toBe(true)
     expect((checkbox.element as HTMLInputElement).checked).toBe(true)
     expect(selected()).toBe('A,B,C')
     await row('B').trigger('click', { shiftKey: true })
