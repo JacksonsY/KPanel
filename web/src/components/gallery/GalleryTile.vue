@@ -39,7 +39,7 @@ const previewing = ref(false)
 const posterKey = computed(() => galleryPosterKey(props.item.entry, props.videoUrl))
 let hoverTimer: number | undefined
 
-watch(() => [props.imageUrl, props.videoUrl, props.item.entry.resourceVersion], () => {
+watch([() => props.imageUrl, () => props.videoUrl, () => props.item.entry.resourceVersion], () => {
   source.value = props.imageUrl
   failed.value = false
   loaded.value = false
