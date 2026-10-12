@@ -70,7 +70,7 @@ describe('terminal batch mode', () => {
     expect(checkboxes[2]!.attributes('disabled')).toBeDefined()
     expect(wrapper.get('.batch-panel-stub').text()).toBe('')
 
-    await checkboxes[1]!.setValue(true)
+    await checkboxes[1]!.trigger('click')
     expect(wrapper.get('.batch-panel-stub').text()).toBe('生产环境')
 
     await wrapper.get('.terminal-search input').setValue('本机')
@@ -81,6 +81,67 @@ describe('terminal batch mode', () => {
     expect(wrapper.findAll('.terminal-tab')).toHaveLength(1)
     expect(mocks.terminalMounts).toHaveBeenCalledTimes(1)
     expect(mocks.open).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('selects, inverts and clears only visible available hosts, including the list shortcut', async () => {
+    const wrapper = mount(TerminalView)
+    await flushPromises()
+    await wrapper.get('.terminal-mode-button').trigger('click')
+    const actions = () => wrapper.findAll('.terminal-batch-selection__actions button')
+    await actions()[0]!.trigger('click')
+    expect(wrapper.get('.batch-panel-stub').text()).toBe('本机,生产环境')
+    await wrapper.get('.terminal-search input').setValue('本机')
+    await actions()[1]!.trigger('click')
+    expect(wrapper.get('.batch-panel-stub').text()).toBe('生产环境')
+    await actions()[2]!.trigger('click')
+    expect(wrapper.get('.batch-panel-stub').text()).toBe('本机,生产环境')
+    await actions()[2]!.trigger('click')
+    await wrapper.get('#terminal-connection-selector').trigger('keydown', { key: 'a', metaKey: true })
+    expect(wrapper.get('.batch-panel-stub').text()).toBe('本机,生产环境')
+    await wrapper.get('.terminal-search input').setValue('no-match')
+    expect(actions().every((button) => button.attributes('disabled') !== undefined)).toBe(true)
+    expect(wrapper.get('.batch-panel-stub').text()).toBe('本机,生产环境')
+    wrapper.unmount()
+  })
+
+  it('combines row selection, checkbox toggles, modifier ranges and a filtered anchor reset', async () => {
+    mocks.hosts.mockResolvedValue({ items: [
+      { id: 'a', name: 'A', kind: 'panel', terminalAvailable: true },
+      { id: 'b', name: 'B', kind: 'panel', terminalAvailable: true },
+      { id: 'offline', name: 'Offline', kind: 'panel', terminalAvailable: false },
+      { id: 'c', name: 'C', kind: 'panel', terminalAvailable: true },
+      { id: 'd', name: 'D', kind: 'panel', terminalAvailable: true },
+    ] })
+    const wrapper = mount(TerminalView)
+    await flushPromises()
+    await wrapper.get('.terminal-mode-button').trigger('click')
+    const row = (name: string) => wrapper.findAll('.terminal-host--batch').find((item) => item.get('strong').text() === name)!
+    const selected = () => wrapper.get('.batch-panel-stub').text()
+    await row('A').trigger('click')
+    await row('C').trigger('click', { shiftKey: true })
+    expect(selected()).toBe('A,B,C')
+    await row('B').trigger('click', { shiftKey: true })
+    expect(selected()).toBe('A,B')
+    await row('D').trigger('click', { ctrlKey: true })
+    await row('C').trigger('click', { shiftKey: true, metaKey: true })
+    expect(selected()).toBe('A,B,C,D')
+    await row('B').get('input').trigger('click')
+    expect(selected()).toBe('A,C,D')
+    await row('C').trigger('click')
+    expect(selected()).toBe('C')
+    await row('Offline').trigger('click', { ctrlKey: true })
+    expect(selected()).toBe('C')
+    await wrapper.get('.terminal-search input').setValue('D')
+    await row('D').trigger('click', { shiftKey: true })
+    expect(selected()).toBe('D')
+    const panel = wrapper.findComponent({ name: 'BatchTerminalPanelStub' })
+    panel.vm.$emit('runningChange', true)
+    await flushPromises()
+    await wrapper.get('#terminal-connection-selector').trigger('keydown', { key: 'a', ctrlKey: true })
+    await row('D').trigger('click')
+    expect(selected()).toBe('D')
+    expect(wrapper.findAll('.terminal-batch-selection__actions button').every((button) => button.attributes('disabled') !== undefined)).toBe(true)
     wrapper.unmount()
   })
 
