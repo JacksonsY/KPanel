@@ -23,6 +23,7 @@ import { createTerminalTouchScroll } from '@/lib/terminalTouchScroll'
 import { terminalCursorOptions } from '@/lib/terminalCursor'
 import { installTerminalCursorReport } from '@/lib/terminalCursorReport'
 import { readTerminalTheme } from '@/lib/terminalTheme'
+import { installTerminalScrollbar } from '@/lib/terminalScrollbar'
 import { TerminalWriteFlow } from '@/lib/terminalWriteFlow'
 import { TerminalCommandPresentation } from '@/lib/terminalCommandPresentation'
 import { useI18n } from '@/i18n'
@@ -55,6 +56,7 @@ let presentationTimer: number | undefined
 let duplexInput: TerminalDuplexInput | undefined
 const state = ref<'connecting' | 'connected' | 'reconnecting' | 'finished'>('connecting')
 let terminal: Terminal | undefined
+let disposeScrollbar: (() => void) | undefined
 let cursorReport: ReturnType<typeof installTerminalCursorReport> | undefined
 let fitAddon: FitAddon | undefined
 let observer: ResizeObserver | undefined
@@ -401,6 +403,7 @@ onMounted(() => {
   cursorReport = installTerminalCursorReport(terminal)
   if (host.value) {
     terminal.open(host.value)
+    disposeScrollbar = installTerminalScrollbar(host.value, terminal)
     observer = new ResizeObserver(scheduleResize)
     observer.observe(host.value)
     scheduleResize()
@@ -420,6 +423,7 @@ onBeforeUnmount(() => {
   if (inputTimer) window.clearTimeout(inputTimer)
   if (resizeTimer) window.clearTimeout(resizeTimer)
   observer?.disconnect()
+  disposeScrollbar?.()
   cursorReport?.dispose()
   terminal?.dispose()
   void closeSession().catch(() => undefined)
@@ -475,5 +479,4 @@ onBeforeUnmount(() => {
 .host-terminal__composer button { border:0; border-radius:8px; padding:0 16px; color:var(--on-brand,#05251c); background:var(--brand-action,#35cba6); font-weight: 700; }
 /* Workspace dialogs run the terminal to the window edges. */
 :global(.modal-panel--workspace .host-terminal) { border:0; border-radius:0; box-shadow:none; }
-.host-terminal :deep(.xterm-viewport) { scrollbar-color:var(--terminal-shell-scrollbar,#35474a) var(--terminal-shell-background,#0b1214); }
 </style>

@@ -23,6 +23,7 @@ import { TerminalDuplexInput } from '@/lib/terminalDuplexInput'
 import { terminalCursorOptions } from '@/lib/terminalCursor'
 import { installTerminalCursorReport } from '@/lib/terminalCursorReport'
 import { readTerminalTheme } from '@/lib/terminalTheme'
+import { installTerminalScrollbar } from '@/lib/terminalScrollbar'
 import { TerminalWriteFlow } from '@/lib/terminalWriteFlow'
 import { useTheme } from '@/stores/theme'
 import {
@@ -54,6 +55,7 @@ const connectionState = ref<'connecting' | 'connected' | 'finished' | 'error'>('
 const terminalInputOpen = ref(Boolean(props.inputOpen))
 const pendingLine = ref('')
 let terminal: Terminal | undefined
+let disposeScrollbar: (() => void) | undefined
 let cursorReport: ReturnType<typeof installTerminalCursorReport> | undefined
 let fitAddon: FitAddon | undefined
 let resizeObserver: ResizeObserver | undefined
@@ -515,6 +517,7 @@ onMounted(() => {
   cursorReport = installTerminalCursorReport(terminal)
   if (host.value) {
     terminal.open(host.value)
+    disposeScrollbar = installTerminalScrollbar(host.value, terminal)
     fitTerminal()
     resizeObserver = new ResizeObserver(fitTerminal)
     resizeObserver.observe(host.value)
@@ -531,6 +534,7 @@ onBeforeUnmount(() => {
   resizeGeneration++
   if (resizeTimer) window.clearTimeout(resizeTimer)
   resizeObserver?.disconnect()
+  disposeScrollbar?.()
   sizeMembership.value?.leave()
   cursorReport?.dispose()
   terminal?.dispose()

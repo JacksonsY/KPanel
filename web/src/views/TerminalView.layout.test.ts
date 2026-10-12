@@ -238,7 +238,7 @@ describe('multi-host terminal workspace layout', () => {
     )
   })
 
-  it('contains wheel scrolling inside the host terminal viewport', () => {
+  it('contains host terminal scrolling with a shared native scrollbar', () => {
     expect(hostTerminalSource).toContain('@wheel="containTerminalWheel"')
     expect(hostTerminalSource).toMatch(
       /\.host-terminal__screen :deep\(\.xterm-viewport\)\s*\{[^}]*overflow-y:scroll !important;[^}]*overscroll-behavior:contain;/,
