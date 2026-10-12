@@ -601,7 +601,7 @@ describe('DesktopView icon layout interaction', () => {
     wrapper.unmount()
   })
 
-  it('selects all icons from the keyboard and offers only optional pages for removal', async () => {
+  it('selects all icons from the keyboard and offers every system icon for removal', async () => {
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await flushPromises()
     const desktop = wrapper.get<HTMLElement>('.desktop')
@@ -613,9 +613,9 @@ describe('DesktopView icon layout interaction', () => {
 
     await desktop.trigger('keydown', { key: 'Delete' })
     await flushPromises()
-    // Management pages stay pinned; the guide and sponsored pages are optional.
+    // Hiding applies to every selected system icon, including the guide entry.
     const dialog = Array.from(document.body.querySelectorAll<HTMLElement>('.modal-panel'))
-      .find((panel) => panel.textContent?.includes('确认从桌面移除 2 项'))
+      .find((panel) => panel.textContent?.includes('确认从桌面移除 17 项'))
     expect(dialog).toBeDefined()
     expect(updateWorkspace).not.toHaveBeenCalled()
     wrapper.unmount()
