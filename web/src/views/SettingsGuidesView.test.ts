@@ -11,10 +11,10 @@ async function mountGuides() {
     history: createMemoryHistory(),
     routes: [
       { path: '/settings', component: { template: '<div />' } },
-      { path: '/settings/guides', component: SettingsGuidesView },
+      { path: '/guides', component: SettingsGuidesView },
     ],
   })
-  await router.push('/settings/guides')
+  await router.push('/guides')
   await router.isReady()
   return mount(SettingsGuidesView, { global: { plugins: [router] } })
 }

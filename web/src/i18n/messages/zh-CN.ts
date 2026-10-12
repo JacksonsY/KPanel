@@ -330,7 +330,7 @@ export const zhCNMessages = {
   'route.docker': 'Docker',
   'route.activity': '活动记录',
   'route.settings': '设置',
-  'route.settingsGuide': '使用说明',
+  'route.guides': '使用说明',
 
   'tutorials.title': 'KPanel 使用说明',
   'tutorials.description': '按当前界面语言浏览官方 KPanel 视频，并通过图文快速了解常用入口。',

@@ -147,10 +147,17 @@ let lastBrowserHistoryPoint = browserHistoryPoint(props.windowState.path)
 
 function handoffDesktopRoute(fullPath: string): boolean {
   const targetPath = desktopRoutePath(fullPath)
-  // Overview utility cards navigate in place; other apps keep their own windows.
-  if (targetPath === '/system') return false
+  const currentPath = router.currentRoute.value.path
+  // Keep related settings/help navigation in this window so Back returns to
+  // the page the user came from instead of opening a second app window.
   if (
-    router.currentRoute.value.path === '/overview'
+    targetPath === '/system'
+    || (currentPath === '/settings' && targetPath === '/guides')
+    || (currentPath === '/guides' && targetPath === '/settings')
+  ) return false
+  // Overview utility cards navigate in place; other apps keep their own windows.
+  if (
+    currentPath === '/overview'
     && ['/monitoring', '/processes'].includes(targetPath)
   ) return false
   const app = findDesktopApp(fullPath)

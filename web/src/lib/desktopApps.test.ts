@@ -48,7 +48,7 @@ describe('desktop app catalogue', () => {
         '/cluster',
         '/activity',
         '/settings',
-        '/settings/guides',
+        '/guides',
         '/offers',
       ]),
     )

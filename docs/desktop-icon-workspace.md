@@ -127,7 +127,8 @@ URL、图标、安装状态等快照；真源变化后桌面刷新应采用最�
 `widgetPositions` 使用同样的归一化坐标；插件尺寸由前端注册表声明，布局引擎按矩形占用多个基础网格
 单元。服务端拒绝 NaN、Infinity、越界值及超过位置总量上限的请求。
 
-`positions` 允许 `nav:`、`app:`、`site:`、已存在的 `shortcut:` 和 `group:`；`widgetPositions` 只接受稳定的
+`positions` 允许 `nav:`、`app:`、`site:`、已存在的 `shortcut:` 和 `group:`。固定路由键支持多段路径；每段为
+1–64 个小写字母、数字或连字符且以小写字母开头，完整 `nav:` 键最多 256 字节。`widgetPositions` 只接受稳定的
 `widget:` 键；`labels` 只接受 `site:` 键，且只
 改变桌面显示名，不修改网站真源。`resourceVersion` 由规范化 metadata 计算，不包含图标内容；快捷
 方式时间戳由服务端维护，不由客户端提交。请求采用严格 JSON，未知字段、重复或非法稳定键、悬空

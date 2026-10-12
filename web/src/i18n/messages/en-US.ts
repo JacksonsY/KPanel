@@ -331,7 +331,7 @@ export const enUSMessages = {
   'route.docker': 'Docker',
   'route.activity': 'Activity',
   'route.settings': 'Settings',
-  'route.settingsGuide': 'User guide',
+  'route.guides': 'User guide',
 
   'tutorials.title': 'KPanel User Guide',
   'tutorials.description': 'Browse official KPanel videos in your interface language, then follow the illustrated quick start.',

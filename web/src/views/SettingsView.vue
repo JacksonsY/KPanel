@@ -958,7 +958,7 @@ onBeforeUnmount(stopKPanelReleaseRequest)
         </div>
       </header>
       <p class="settings-note">{{ i18n.t('tutorials.settingsHint') }}</p>
-      <RouterLink class="button button--secondary settings-guide-link" to="/settings/guides">
+      <RouterLink class="button button--secondary settings-guide-link" to="/guides">
         {{ i18n.t('tutorials.open') }}
         <ExternalLink :size="16" aria-hidden="true" />
       </RouterLink>

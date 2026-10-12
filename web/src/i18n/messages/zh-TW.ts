@@ -1197,7 +1197,7 @@ export const zhTWMessages = {
   "branding.loadFailed": "站點設定載入失敗，請重試。",
   "branding.saveFailed": "儲存失敗或設定已被其他頁面更新。目前輸入已保留，請重試。",
   "branding.retry": "重新載入",
-  "route.settingsGuide": "使用說明",
+  "route.guides": "使用說明",
 
   "tutorials.title": "KPanel 使用說明",
   "tutorials.description": "依照目前介面語言瀏覽 KPanel 官方影片，並透過圖文快速了解常用入口。",

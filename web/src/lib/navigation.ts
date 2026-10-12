@@ -25,7 +25,7 @@ const routeViewLoaders = {
   '/docker': () => import('@/views/DockerView.vue'),
   '/activity': () => import('@/views/ActivityView.vue'),
   '/settings': () => import('@/views/SettingsView.vue'),
-  '/settings/guides': () => import('@/views/SettingsGuidesView.vue'),
+  '/guides': () => import('@/views/SettingsGuidesView.vue'),
 } satisfies Record<string, () => Promise<RouteViewModule>>
 
 export type NavigationRoutePath = keyof typeof routeViewLoaders

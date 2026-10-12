@@ -47,6 +47,8 @@ const (
 	MaxIconPixels        = 1_000_000
 )
 
+const maxNavKeyBytes = 256
+
 type ShortcutTargetType string
 
 const (
@@ -66,7 +68,7 @@ var (
 	errInvalidOnDisk  = errors.New("desktop workspace data is invalid")
 	shortcutIDPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 	resourcePattern   = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
-	navKeyPattern     = regexp.MustCompile(`^nav:/[a-z][a-z0-9-]{0,63}$`)
+	navKeyPattern     = regexp.MustCompile(`^nav:/[a-z][a-z0-9-]{0,63}(?:/[a-z][a-z0-9-]{0,63})*$`)
 	appIDPattern      = regexp.MustCompile(`^(?:builtin|thirdparty)-[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 	siteIDPattern     = regexp.MustCompile(`^[a-f0-9]{32}$`)
 	widgetKeyPattern  = regexp.MustCompile(`^widget:[a-z][a-z0-9-]{0,63}$`)
@@ -743,11 +745,15 @@ func validateShortcutPath(value string, directory bool) error {
 }
 
 func validHideableKey(key string) bool {
-	return validAppKey(key) || validSiteKey(key) || navKeyPattern.MatchString(key)
+	return validAppKey(key) || validSiteKey(key) || validNavKey(key)
 }
 
 func validPositionKey(key string) bool {
-	return navKeyPattern.MatchString(key) || validAppKey(key) || validSiteKey(key) || validShortcutKey(key)
+	return validNavKey(key) || validAppKey(key) || validSiteKey(key) || validShortcutKey(key)
+}
+
+func validNavKey(key string) bool {
+	return len(key) <= maxNavKeyBytes && navKeyPattern.MatchString(key)
 }
 
 func validWidgetPositionKey(key string) bool {
