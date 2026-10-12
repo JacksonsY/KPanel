@@ -177,14 +177,15 @@ Vue 组件内使用材质滤镜同样受 `ALLOWED_COMPONENT_BLUR_SELECTORS` 约�
 
 | 条件 | 行为 |
 | --- | --- |
-| `prefers-reduced-transparency: reduce` | 所有材质（panel/chrome/overlay）改为 `--surface-raised` 实色、无模糊，边缘改 `--border-strong` |
-| `prefers-contrast: more` | 同上 |
-| 浏览器不支持 `backdrop-filter` | chrome 与 overlay 填充改为实色（panel 本就不模糊，保持不变） |
+| `prefers-reduced-transparency: reduce` | panel/overlay 使用 `--surface-raised` 实色且无模糊；经典壁纸顶栏关闭模糊，使用与侧栏相同的不透明度静态填充 |
+| `prefers-contrast: more` | 所有材质（panel/chrome/overlay）改为 `--surface-raised` 实色、无模糊，边缘改 `--border-strong` |
+| 浏览器不支持 `backdrop-filter` | chrome 与 overlay 填充改为实色（panel 本就不模糊，保持不变）；系统减少透明度时，经典壁纸顶栏仍使用与侧栏相同的不透明度静态填充 |
 | `forced-colors: active` | 由系统映射颜色；经典模式同时隐藏壁纸并还原实色页面、侧栏与顶栏 |
 
 降级后层级仍由焦点态、边框和阴影表达。材质令牌降级集中在 `main.css`；经典壁纸顶栏在
-`classicWallpaper.css` 将专用填充切回 chrome 令牌，因此减少透明度、提高对比度或不支持模糊时也为实色。
-用户显式选择的经典壁纸仍可从其他页面表面透出，只有 `forced-colors` 隐藏整层壁纸。
+`classicWallpaper.css` 遵循同一无模糊规则。系统减少透明度时，其静态填充沿用侧栏的不透明度，避免两块
+常驻外框出现不同透出程度；提高对比度时顶栏仍为实色。用户显式选择的经典壁纸仍可从其他页面表面透出，
+只有 `forced-colors` 隐藏整层壁纸。
 
 #### 3.5.6 焦点与层级
 

@@ -429,7 +429,7 @@ describe('visual rhythm contract', () => {
     expect(desktop.match(/\.desktop-folder__sheet\s*\{([^}]*)\}/)?.[1]).not.toContain('backdrop-filter')
   })
 
-  it('makes materials solid for accessibility and blurred surfaces solid without blur support', () => {
+  it('keeps material tokens solid for accessibility and blurred surfaces solid without blur support', () => {
     const degrade = main.match(/@media \(prefers-reduced-transparency: reduce\), \(prefers-contrast: more\) \{\s*:root \{([^}]*)\}/)?.[1] ?? ''
     for (const role of ['panel', 'chrome', 'overlay']) {
       expect(degrade).toContain(`--material-${role}-fill: var(--surface-raised);`)
@@ -442,7 +442,7 @@ describe('visual rhythm contract', () => {
       expect(unsupported).toContain(`--material-${role}-fill: var(--surface-raised);`)
     }
     for (const condition of [
-      '@media (prefers-reduced-transparency: reduce), (prefers-contrast: more)',
+      '@media (prefers-contrast: more)',
       '@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))',
     ]) {
       const fallback = classicWallpaper.slice(classicWallpaper.indexOf(condition)).match(/\.topbar\s*\{([^}]*)\}/)?.[1] ?? ''
