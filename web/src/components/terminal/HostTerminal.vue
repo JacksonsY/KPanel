@@ -179,14 +179,16 @@ async function executePresentedCommand(command: string, displayCommand: string):
   if (!terminal || disposed || inputBlocked.value || state.value !== 'connected' || presentingCommand.value
     || !command.trim() || !displayCommand.trim() || /[\x00-\x1f\x7f-\x9f]/.test(displayCommand)) return false
   presentingCommand.value = true
+  const presentation = new TerminalCommandPresentation(command)
+  commandPresentation = presentation
   // Let xterm parse the command and the browser paint it before sending input.
   // Readline's echoed mode changes are part of the hidden startup line. Disable
   // bracketed paste here so interactive programs inherit the normal input mode.
-  await new Promise<void>((resolve) => writeTerminalOutput(`${displayCommand}\r\n\x1b[?2004l`, resolve))
+  // A startup prompt may arrive in several packets. Replace its unfinished line
+  // with a self-contained command instead of appending to a partial prompt.
+  await new Promise<void>((resolve) => writeTerminalOutput(`\r\x1b[2K$ ${displayCommand}\r\n\x1b[?2004l`, resolve))
   await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())))
-  if (disposed || inputBlocked.value || state.value !== 'connected') { finishPresentation(); return false }
-  const presentation = new TerminalCommandPresentation(command)
-  commandPresentation = presentation
+  if (disposed || inputBlocked.value || state.value !== 'connected' || commandPresentation !== presentation) { finishPresentation(); return false }
   if (!queueInput(terminalLineSubmission(presentation.command), true)) { finishPresentation(); return false }
   presentationTimer = window.setTimeout(() => {
     writeTerminalOutput(presentation.release())

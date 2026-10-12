@@ -61,8 +61,10 @@ describe('HostTerminal presented execution', () => {
   it('paints the concise command before sending, hides only bootstrap echo and streams subsequent output', async () => {
     mocks.defer = true
     const result = (wrapper.vm as unknown as Exposed).executePresentedCommand('internal-check && bash ./demo.sh', 'cd -- /root && bash ./demo.sh')
-    expect(view()).toContain('root@host:~# cd -- /root && bash ./demo.sh\r\n')
+    expect(view()).toContain('\r\x1b[2K$ cd -- /root && bash ./demo.sh\r\n')
     expect(mocks.input).not.toHaveBeenCalled()
+    output('late partial prompt:~# ')
+    expect(view()).not.toContain('late partial prompt')
     mocks.callbacks.shift()!()
     mocks.defer = false
     await flushPromises()
