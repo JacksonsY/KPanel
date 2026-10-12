@@ -1,6 +1,7 @@
 import type { Component } from 'vue'
 import {
   Activity,
+  BookOpen,
   Boxes,
   Bot,
   ClipboardList,
@@ -163,6 +164,15 @@ export const desktopApps: DesktopApp[] = [
     desktopIconURL: '/desktop-icons/settings-kpanel-flat-v1.webp',
     allowMultiple: false,
     gradient: ['#cbd5e1', '#64748b'],
+  },
+  {
+    path: '/settings/guides',
+    labelKey: 'route.settingsGuide',
+    icon: BookOpen,
+    desktopIconURL: '/desktop-icons/guides-kpanel-flat-v1.webp',
+    allowMultiple: false,
+    gradient: ['#60a5fa', '#2563eb'],
+    removable: true,
   },
   {
     path: '/offers',
