@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch, type CSSProperties } from 'vue'
 import { Maximize2, Minimize2, Plus, X } from '@lucide/vue'
-import { useTerminalWorkspace } from '@/composables/useTerminalWorkspace'
+import { useTerminalWorkspace, type TerminalLayout } from '@/composables/useTerminalWorkspace'
 import { translatePhrase } from '@/i18n/phrase'
 import { useI18n } from '@/i18n'
 
@@ -54,6 +54,11 @@ function activate(index: number): void {
 function chooseHost(index: number): void {
   activate(index)
   emit('chooseHost')
+}
+function applyLayout(next: TerminalLayout): void {
+  setLayout(next)
+  const id = panes.value[activePane.value]
+  if (id && id !== props.activeId) emit('activate', id)
 }
 function refresh(): void { void nextTick(() => emit('resize')) }
 watch([layout, panes, activePane, maximized, compact], refresh, { deep: true })
@@ -114,7 +119,7 @@ onMounted(() => {
   if (grid.value) observer.observe(grid.value)
 })
 onBeforeUnmount(() => { observer?.disconnect(); endDrag() })
-defineExpose({ selectSession, layout, setLayout, compact })
+defineExpose({ selectSession, layout, setLayout: applyLayout, compact })
 </script>
 
 <template>

@@ -70,6 +70,16 @@ describe('terminal split workspace integration', () => {
     expect(wrapper.get('[data-session-id="s3"]').classes()).toContain('is-active')
   })
 
+  it('synchronizes the command target when the active single pane is outside the new layout', async () => {
+    await add(); await add(); await add()
+    expect(visibleIds()).toEqual(['s4'])
+    await layout('columns')
+    expect(visibleIds()).toEqual(['s1', 's2'])
+    expect(wrapper.get('[data-session-id="s1"]').classes()).toContain('is-active')
+    wrapper.findComponent(TerminalQuickCommands).vm.$emit('execute', 'pwd')
+    expect(mocks.execute).toHaveBeenLastCalledWith('s1', 'pwd')
+  })
+
   it('keeps every terminal instance across layouts, maximize and batch round trips', async () => {
     await add(); await add(); await add()
     await layout('grid')
