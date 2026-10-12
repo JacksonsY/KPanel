@@ -660,6 +660,13 @@ html {
   --scrollbar-thumb-active: var(--brand);
 }
 
+/* A slim, rounded terminal thumb keeps xterm's full drag target. */
+.terminal-theme-scope .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  border: 4px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
 @media (pointer: coarse) {
   :root {
     --scrollbar-size: 8px;
