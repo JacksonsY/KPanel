@@ -144,8 +144,27 @@ func openTestService(t *testing.T, origin *fakeOrigin, now *time.Time) (*Service
 	root := filepath.Join(t.TempDir(), "offers")
 	service := Open(root, origin.fetch)
 	service.now = func() time.Time { return *now }
-	t.Cleanup(service.Close)
+	cleanupTestService(t, service)
 	return service, root
+}
+
+func cleanupTestService(t *testing.T, service *Service) {
+	t.Helper()
+	t.Cleanup(func() {
+		service.Close()
+		service.mu.Lock()
+		done := service.inflight
+		service.mu.Unlock()
+		// Close cancels refreshes but does not join them. Tests own all
+		// requests, so drain the last refresh before TempDir removes its files.
+		if done != nil {
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Error("offers refresh did not stop before test cleanup")
+			}
+		}
+	})
 }
 
 func TestSnapshotDownloadsManifestAndServesPinnedImages(t *testing.T) {
@@ -302,6 +321,7 @@ func TestConcurrentFirstLoadsShareTheDownload(t *testing.T) {
 		return origin.fetch(ctx, address, limit)
 	}
 	service := Open(filepath.Join(t.TempDir(), "offers"), fetch)
+	cleanupTestService(t, service)
 	defer service.Close()
 
 	results := make(chan View, 2)
@@ -377,6 +397,7 @@ func TestCacheSurvivesReopenAndPrunesUnreferencedImages(t *testing.T) {
 	offline := newFakeOrigin()
 	offline.failures[ManifestURL] = errors.New("offline")
 	reopened := Open(root, offline.fetch)
+	cleanupTestService(t, reopened)
 	reopened.now = func() time.Time { return now }
 	defer reopened.Close()
 	view := reopened.Snapshot(context.Background(), false)
@@ -405,6 +426,7 @@ func TestDamagedCacheIsDiscarded(t *testing.T) {
 	origin := newFakeOrigin()
 	origin.failures[ManifestURL] = errors.New("offline")
 	service := Open(root, origin.fetch)
+	cleanupTestService(t, service)
 	defer service.Close()
 	if view := service.Snapshot(context.Background(), false); view.State != StateUnavailable || len(view.Items) != 0 {
 		t.Fatalf("damaged cache view = %+v", view)
