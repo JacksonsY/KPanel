@@ -60,8 +60,27 @@ const settle = (page) => page.waitForFunction(() => [...document.querySelectorAl
         requests.length = 0;
         // Keep the exact xterm nodes to detect remounts during layout changes.
         await page.evaluate(() => { window.__splitNodes = [...document.querySelectorAll('.xterm')]; });
-        const layout = page.locator('.terminal-layout-controls select');
-        await layout.selectOption('grid');
+        const layout = page.locator('.terminal-layout-trigger');
+        const chooseLayout = async (value) => {
+          await layout.click();
+          assert.equal(await page.locator('.terminal-layout-menu button svg:first-child').count(), 4);
+          if (width === 1600 && theme === 'dark' && zoom === 1 && language === 'zh-CN') {
+            await page.screenshot({ path: path.join(out, `layout-menu-${mode}.png`), fullPage: true });
+          }
+          await page.locator(`[data-layout="${value}"]`).click();
+        };
+        assert.equal(await layout.evaluate((element) => Boolean(element.closest('.terminal-tabs-bar'))), true);
+        assert.equal(await page.locator('.terminal-pane-workspace .terminal-layout-controls').count(), 0);
+        const controlBox = await layout.boundingBox();
+        const toolbarBox = await page.locator('.terminal-tabs-bar').first().boundingBox();
+        assert(controlBox.x + controlBox.width <= toolbarBox.x + toolbarBox.width && controlBox.y >= toolbarBox.y);
+        await layout.focus();
+        await layout.press('ArrowDown');
+        await page.keyboard.press('End');
+        assert.equal(await page.locator('[data-layout="grid"]').evaluate((el) => el === document.activeElement), true);
+        await page.keyboard.press('Escape');
+        assert.equal(await layout.getAttribute('aria-expanded'), 'false');
+        await chooseLayout('grid');
         await settle(page);
         const compact = await page.locator('.terminal-pane-workspace').evaluate((el) => el.classList.contains('is-single-visible'));
         assert.equal(requests.filter((r) => r.url.endsWith('/close')).length, 0);
@@ -76,6 +95,10 @@ const settle = (page) => page.waitForFunction(() => [...document.querySelectorAl
         await settle(page);
         const count = await visiblePanes(page).count();
         assert.equal(count, compact ? 1 : 4);
+        if (!compact) {
+          const cells = await visiblePanes(page).evaluateAll((panes) => panes.map((el) => [el.style.gridColumn, el.style.gridRow]));
+          assert.deepEqual(cells, [['1', '1'], ['3', '1'], ['1', '3'], ['3', '3']]);
+        }
         assert.equal(await page.evaluate(() => window.__splitNodes.every((node) => node.isConnected)), true);
         const drawer = page.locator('.terminal-tabs-bar__connections').first();
         if (await drawer.isVisible() && await drawer.getAttribute('aria-expanded') !== 'true') await drawer.click();
@@ -113,11 +136,11 @@ const settle = (page) => page.waitForFunction(() => [...document.querySelectorAl
           await pane.locator('.terminal-pane-header button').first().click();
           await waitPaneCount(page, 1);
           assert.equal(await visiblePanes(page).count(), 1);
-          await page.locator('.terminal-layout-controls button').click();
+          await pane.locator('.terminal-pane-header button').first().click();
           await waitPaneCount(page, 4);
           assert.equal(await visiblePanes(page).count(), 4);
         }
-        for (const value of ['rows', 'columns', 'single', 'grid']) await layout.selectOption(value);
+        for (const value of ['rows', 'columns', 'single', 'grid']) await chooseLayout(value);
         await settle(page);
         assert.equal(await page.evaluate(() => window.__splitNodes.every((node) => node.isConnected)), true);
         assert.equal(requests.filter((r) => r.url.endsWith('/close')).length, 0);
@@ -155,9 +178,16 @@ const settle = (page) => page.waitForFunction(() => [...document.querySelectorAl
         await page.locator('.terminal-tab__close').last().click();
         await page.locator('.terminal-alert button').waitFor();
         assert.equal(await page.locator('.terminal-tab').count(), before);
+        const retried = page.waitForResponse((response) => response.url().endsWith('/close') && response.ok());
         await page.locator('.terminal-alert button').click();
+        await retried;
         await page.waitForFunction((n) => document.querySelectorAll('.terminal-tab').length === n, before - 1);
         result.cases.push({ width, theme, zoom, language, mode, count, ...metrics });
+      } catch (error) {
+        await page.screenshot({ path: path.join(out, 'failure.png'), fullPage: true });
+        console.error(await page.locator('.terminal-alert').allTextContents());
+        console.error(requests.filter((request) => request.url.endsWith('/close')));
+        throw error;
       } finally {
         for (let remaining = 4; remaining > 0 && await page.locator('.terminal-tab__close').count(); remaining--) {
           const n = await page.locator('.terminal-tab__close').count();

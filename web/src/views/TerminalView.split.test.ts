@@ -31,7 +31,11 @@ vi.mock('@/components/terminal/HostTerminal.vue', () => ({ default: defineCompon
 let resize: ResizeObserverCallback
 let wrapper: VueWrapper
 const visibleIds = () => wrapper.findAll('.terminal-pane[data-session-id]').filter((pane) => pane.isVisible()).map((pane) => pane.attributes('data-session-id'))
-const layout = async (value: string) => { await wrapper.get('.terminal-layout-controls select').setValue(value); await flushPromises() }
+const layout = async (value: string) => {
+  await wrapper.get('.terminal-layout-trigger').trigger('click')
+  await wrapper.get(`[data-layout="${value}"]`).trigger('click')
+  await flushPromises()
+}
 const add = async () => { await wrapper.get('.terminal-host__new').trigger('click'); await flushPromises() }
 
 describe('terminal split workspace integration', () => {
@@ -53,6 +57,19 @@ describe('terminal split workspace integration', () => {
   })
   afterEach(() => { wrapper.unmount(); vi.unstubAllGlobals() })
 
+  it('orders panes like tabs when expanding and appends the next terminal', async () => {
+    await add()
+    await layout('columns')
+    expect(wrapper.get('[data-session-id="s1"]').attributes('style')).toContain('grid-column: 1')
+    expect(wrapper.get('[data-session-id="s2"]').attributes('style')).toContain('grid-column: 3')
+    expect(wrapper.get('[data-session-id="s2"]').classes()).toContain('is-active')
+    await layout('grid')
+    await add()
+    expect(wrapper.get('[data-session-id="s1"]').attributes('style')).toContain('grid-row: 1')
+    expect(wrapper.get('[data-session-id="s3"]').attributes('style')).toContain('grid-row: 3')
+    expect(wrapper.get('[data-session-id="s3"]').classes()).toContain('is-active')
+  })
+
   it('keeps every terminal instance across layouts, maximize and batch round trips', async () => {
     await add(); await add(); await add()
     await layout('grid')
@@ -60,7 +77,7 @@ describe('terminal split workspace integration', () => {
     const pane = wrapper.get('[data-session-id="s1"]')
     await pane.get('[aria-label="最大化窗格"]').trigger('click')
     expect(visibleIds()).toEqual(['s1'])
-    await wrapper.get('.terminal-layout-controls button').trigger('click')
+    await wrapper.get('[data-session-id="s1"] .terminal-pane-header button').trigger('click')
     await wrapper.get('.terminal-mode-button').trigger('click')
     await wrapper.get('.terminal-mode-button').trigger('click')
     await layout('rows'); await layout('single'); await layout('grid')

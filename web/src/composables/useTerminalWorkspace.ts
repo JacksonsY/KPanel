@@ -13,7 +13,10 @@ export function useTerminalWorkspace(sessionIds: Ref<string[]>, selectedId: Ref<
   function fillEmptyPanes(): void {
     for (let index = 0; index < paneCount.value; index++) {
       if (!panes.value[index]) {
-        panes.value[index] = sessionIds.value.find((id) => !panes.value.includes(id)) ?? null
+        const id = sessionIds.value.find((id) => !panes.value.slice(0, paneCount.value).includes(id)) ?? null
+        const hiddenIndex = id ? panes.value.indexOf(id) : -1
+        if (hiddenIndex >= paneCount.value) panes.value[hiddenIndex] = null
+        panes.value[index] = id
       }
     }
   }
@@ -29,8 +32,15 @@ export function useTerminalWorkspace(sessionIds: Ref<string[]>, selectedId: Ref<
   }
 
   function setLayout(next: TerminalLayout): void {
+    const wasSingle = layout.value === 'single'
+    const activeId = panes.value[activePane.value]
     layout.value = next
     maximized.value = false
+    if (wasSingle && next !== 'single') {
+      panes.value = Array.from({ length: 4 }, (_, index) => sessionIds.value[index] ?? null)
+      const index = panes.value.indexOf(activeId ?? null)
+      activePane.value = index >= 0 && index < paneCount.value ? index : 0
+    }
     if (activePane.value >= paneCount.value) {
       const previous = panes.value[0] ?? null
       panes.value[0] = panes.value[activePane.value] ?? null
@@ -42,6 +52,8 @@ export function useTerminalWorkspace(sessionIds: Ref<string[]>, selectedId: Ref<
 
   watch(sessionIds, (ids) => {
     panes.value = panes.value.map((id) => id && ids.includes(id) ? id : null)
+    // Preserve an explicitly chosen empty pane; otherwise append before focusing the new session.
+    if (panes.value[activePane.value]) fillEmptyPanes()
     if (selectedId.value && ids.includes(selectedId.value)) selectSession(selectedId.value)
     fillEmptyPanes()
   }, { immediate: true })
