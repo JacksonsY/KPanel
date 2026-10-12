@@ -609,7 +609,7 @@ func meaningfulMount(path, fs string) bool {
 	switch fs {
 	case "proc", "sysfs", "devtmpfs", "devpts", "tmpfs", "cgroup", "cgroup2",
 		"overlay", "squashfs", "nsfs", "mqueue", "securityfs", "pstore", "tracefs",
-		"debugfs", "configfs", "fusectl", "hugetlbfs", "rpc_pipefs":
+		"debugfs", "configfs", "fusectl", "hugetlbfs", "rpc_pipefs", "autofs":
 		return false
 	}
 	return path == "/" || path == "/home" || strings.HasPrefix(path, "/mnt/") || strings.HasPrefix(path, "/data")
