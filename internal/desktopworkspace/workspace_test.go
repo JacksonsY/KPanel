@@ -73,6 +73,31 @@ func TestOpenCreatesPrivateWorkspaceAndPersistsReplacement(t *testing.T) {
 	}
 }
 
+func TestNavigationKeyBoundaries(t *testing.T) {
+	boundary := "nav:/" + strings.Repeat("a", 64) + "/" + strings.Repeat("b", 64) + "/" + strings.Repeat("c", 64) + "/" + strings.Repeat("d", 56)
+	tests := []struct {
+		key  string
+		want bool
+	}{
+		{"nav:/guides", true},
+		{"nav:/settings/guides", true},
+		{"nav:/" + strings.Repeat("a", 64), true},
+		{boundary, true},
+		{boundary + "e", false},
+		{"nav:/" + strings.Repeat("a", 65), false},
+		{"nav:/settings//guides", false},
+		{"nav:/settings/../guides", false},
+		{"nav:/settings/Guides", false},
+		{"nav:/settings/guides?tab=one", false},
+		{"nav:/settings/guides/", false},
+	}
+	for _, test := range tests {
+		if validNavKey(test.key) != test.want || validPositionKey(test.key) != test.want || validHideableKey(test.key) != test.want {
+			t.Errorf("navigation key %q: expected all validators to return %v", test.key, test.want)
+		}
+	}
+}
+
 func TestReplaceValidatesWorkspaceContract(t *testing.T) {
 	store := openTestStore(t)
 	base := store.Workspace()
