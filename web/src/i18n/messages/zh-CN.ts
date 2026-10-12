@@ -371,7 +371,7 @@ export const zhCNMessages = {
   'tutorials.quick.modeTitle': '选择工作方式',
   'tutorials.quick.modeBody': '经典模式通过侧边栏直接进入功能；桌面模式适合同时打开多个应用窗口。两种模式使用同一账户和主机状态。',
   'tutorials.quick.featuresTitle': '找到功能入口',
-  'tutorials.quick.featuresBody': '经典模式从侧边栏导航；桌面模式可双击桌面图标或从开始菜单打开应用。已隐藏的可选图标仍可从开始菜单找到，也能在图标管理中恢复。',
+  'tutorials.quick.featuresBody': '经典模式从侧边栏导航；桌面模式可双击桌面图标或从开始菜单打开应用。已隐藏的图标仍可从开始菜单找到，也能在图标管理中恢复。',
   'tutorials.quick.backupTitle': '修改前留好恢复点',
   'tutorials.quick.backupBody': '进行较大配置调整前，可先在设置的“备份中心”创建备份，并确认备份状态可用。',
 

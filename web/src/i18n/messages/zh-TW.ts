@@ -1238,7 +1238,7 @@ export const zhTWMessages = {
   "tutorials.quick.modeTitle": "選擇工作方式",
   "tutorials.quick.modeBody": "經典模式透過側邊欄直接進入功能；桌面模式適合同時開啟多個應用程式視窗。兩種模式使用相同帳戶和主機狀態。",
   "tutorials.quick.featuresTitle": "找到功能入口",
-  "tutorials.quick.featuresBody": "經典模式從側邊欄導覽；桌面模式可雙擊桌面圖示或從開始選單開啟應用程式。已隱藏的可選圖示仍可從開始選單找到，也能在圖示管理中還原。",
+  "tutorials.quick.featuresBody": "經典模式從側邊欄導覽；桌面模式可雙擊桌面圖示或從開始選單開啟應用程式。已隱藏的圖示仍可從開始選單找到，也能在圖示管理中還原。",
   "tutorials.quick.backupTitle": "修改前保留復原點",
   "tutorials.quick.backupBody": "進行較大的設定調整前，可先在設定的「備份中心」建立備份，並確認備份狀態可用。",
 } as const satisfies LocaleMessages

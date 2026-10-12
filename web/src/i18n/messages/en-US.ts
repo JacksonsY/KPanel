@@ -372,7 +372,7 @@ export const enUSMessages = {
   'tutorials.quick.modeTitle': 'Choose a workspace',
   'tutorials.quick.modeBody': 'Classic mode opens tools from the sidebar. Desktop mode is designed for several app windows at once. Both use the same account and host state.',
   'tutorials.quick.featuresTitle': 'Find a tool',
-  'tutorials.quick.featuresBody': 'Use the Classic sidebar, or double-click a Desktop icon and open apps from the Start menu. Hidden optional icons stay in the Start menu and can be restored in Manage icons.',
+  'tutorials.quick.featuresBody': 'Use the Classic sidebar, or double-click a Desktop icon and open apps from the Start menu. Hidden icons stay in the Start menu and can be restored in Manage icons.',
   'tutorials.quick.backupTitle': 'Keep a recovery point',
   'tutorials.quick.backupBody': 'Before larger configuration changes, create a backup in Settings → Backup center and confirm that it is available.',
 
