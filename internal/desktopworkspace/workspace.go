@@ -743,11 +743,16 @@ func validateShortcutPath(value string, directory bool) error {
 }
 
 func validHideableKey(key string) bool {
-	return validAppKey(key) || validSiteKey(key) || navKeyPattern.MatchString(key)
+	return validAppKey(key) || validSiteKey(key) || validNavKey(key)
 }
 
 func validPositionKey(key string) bool {
-	return navKeyPattern.MatchString(key) || validAppKey(key) || validSiteKey(key) || validShortcutKey(key)
+	return validNavKey(key) || validAppKey(key) || validSiteKey(key) || validShortcutKey(key)
+}
+
+func validNavKey(key string) bool {
+	// The settings guide is the only fixed desktop entry with a nested route.
+	return navKeyPattern.MatchString(key) || key == "nav:/settings/guides"
 }
 
 func validWidgetPositionKey(key string) bool {
