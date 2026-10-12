@@ -1213,11 +1213,11 @@ onBeforeUnmount(() => {
             <button class="icon-button" type="button" :disabled="refreshing" title="刷新系统状态" aria-label="刷新系统状态" @click="load(true)">
               <RefreshCw :size="16" :class="{ spin: refreshing }" />
             </button>
-            <RouterLink class="button button--secondary button--small" to="/processes">
+            <RouterLink class="button button--secondary" to="/processes">
               <ListTree :size="16" />
               {{ processManagerLabel }}
             </RouterLink>
-            <RouterLink class="button button--secondary button--small" to="/monitoring">
+            <RouterLink class="button button--secondary" to="/monitoring">
               查看历史
               <ChevronRight :size="16" />
             </RouterLink>
