@@ -103,6 +103,74 @@ const clusterHosts = [
   },
 ]
 
+describe('GalleryView Shift selection', () => {
+  beforeEach(() => {
+    harness.tree = { '/home/gallery': Array.from({ length: 6 }, (_, index) => media(`/home/gallery/${index}.jpg`)) }
+  })
+
+  const checked = (view: VueWrapper) => view.findAll('.gallery-tile__check')
+    .map((button, index) => button.attributes('aria-pressed') === 'true' ? index : -1).filter((index) => index >= 0)
+  const click = (view: VueWrapper, index: number, shiftKey = false) =>
+    view.findAll('.gallery-tile__check')[index]!.trigger('click', { shiftKey })
+  const action = (view: VueWrapper, text: string) =>
+    view.findAll('.gallery-selection button').find((button) => button.text().includes(text))!.trigger('click')
+
+  it('shrinks a range and crosses its anchor without losing unrelated selections', async () => {
+    const view = await mountGallery()
+    await click(view, 5)
+    await click(view, 2)
+    await click(view, 4, true)
+    expect(checked(view)).toEqual([2, 3, 4, 5])
+    await click(view, 3, true)
+    expect(checked(view)).toEqual([2, 3, 5])
+    await click(view, 0, true)
+    expect(checked(view)).toEqual([0, 1, 2, 5])
+    await click(view, 2, true)
+    expect(checked(view)).toEqual([2, 5])
+  })
+
+  it('can deselect a range and restore the withdrawn part when the range shrinks', async () => {
+    const view = await mountGallery()
+    await click(view, 0)
+    await action(view, '全选当前')
+    await click(view, 4)
+    await click(view, 1, true)
+    expect(checked(view)).toEqual([0, 5])
+    await click(view, 3, true)
+    expect(checked(view)).toEqual([0, 1, 2, 5])
+  })
+
+  it('starts a fresh range after a plain click', async () => {
+    const view = await mountGallery()
+    await click(view, 0)
+    await click(view, 3, true)
+    await click(view, 2)
+    await click(view, 4, true)
+    expect(checked(view)).toEqual([0, 1])
+  })
+
+  it('does not reuse a stale anchor after clearing or selecting all', async () => {
+    const view = await mountGallery()
+    await click(view, 0)
+    await click(view, 4, true)
+    await action(view, '清除')
+    await click(view, 3, true)
+    expect(checked(view)).toEqual([3])
+    await action(view, '全选当前')
+    await click(view, 1, true)
+    expect(checked(view)).toEqual([0, 2, 3, 4, 5])
+  })
+
+  it('resets the range when sorting changes and uses the new visible order', async () => {
+    const view = await mountGallery()
+    await click(view, 0)
+    await click(view, 3, true)
+    await view.get('select[aria-label="排序方式"]').setValue('oldest')
+    await click(view, 5, true)
+    expect(checked(view)).toEqual([0, 1, 2, 3, 5])
+  })
+})
+
 describe('GalleryView host switcher', () => {
   afterEach(() => {
     vi.restoreAllMocks()

@@ -186,6 +186,8 @@ const moreMenuOpen = ref(false)
 const selecting = ref(false)
 const selected = ref(new Set<string>())
 let selectionAnchor = ''
+let selectionBase = new Set<string>()
+let selectionAdds = true
 
 const viewerPath = ref<string>()
 const coverPicking = ref(false)
@@ -597,6 +599,8 @@ watch([currentPath, hostId, hostsLoaded], ([nextPath, nextHost], [previousPath, 
 
 watch([filter, search, () => preferences.sort], () => {
   renderLimit.value = RENDER_STEP
+  selectionAnchor = ''
+  selectionBase = new Set()
 })
 
 watch(viewerIndex, (index) => {
@@ -607,6 +611,7 @@ watch(viewerIndex, (index) => {
 function clearSelection(): void {
   selected.value = new Set()
   selectionAnchor = ''
+  selectionBase = new Set()
 }
 
 function stopSelecting(): void {
@@ -623,8 +628,13 @@ function toggleItem(item: GalleryItem, range: boolean): void {
     const from = paths.indexOf(selectionAnchor)
     const to = paths.indexOf(item.entry.path)
     if (from >= 0 && to >= 0) {
-      for (const path of paths.slice(Math.min(from, to), Math.max(from, to) + 1)) next.add(path)
-      selected.value = next
+      // Rebuild from the plain-click snapshot so moving the endpoint can undo a range.
+      const ranged = new Set(selectionBase)
+      for (const path of paths.slice(Math.min(from, to), Math.max(from, to) + 1)) {
+        if (selectionAdds) ranged.add(path)
+        else ranged.delete(path)
+      }
+      selected.value = ranged
       return
     }
   }
@@ -632,10 +642,14 @@ function toggleItem(item: GalleryItem, range: boolean): void {
   else next.add(item.entry.path)
   selected.value = next
   selectionAnchor = item.entry.path
+  selectionBase = new Set(next)
+  selectionAdds = next.has(item.entry.path)
 }
 
 function selectAllVisible(): void {
   selected.value = new Set(visibleItems.value.map((item) => item.entry.path))
+  selectionAnchor = ''
+  selectionBase = new Set()
 }
 
 function openViewer(item: GalleryItem): void {
@@ -926,6 +940,8 @@ async function confirmDelete(): Promise<void> {
       }
     }
     selected.value = new Set([...selected.value].filter((path) => !removed.has(path)))
+    selectionAnchor = ''
+    selectionBase = new Set()
     if (dialog.kind === 'album' && removed.has(currentPath.value)) openFolder(galleryParentPath(currentPath.value))
     deleteDialog.value = undefined
     if (!selected.value.size && dialog.kind === 'media' && dialog.entries.length > 1) stopSelecting()
@@ -1025,6 +1041,8 @@ async function moveEntries(entries: FileEntry[], destination: string): Promise<b
     }
     if (snapshot.value) snapshot.value = relocateGalleryItems(snapshot.value, moved)
     selected.value = new Set([...selected.value].filter((path) => !moved.has(path)))
+    selectionAnchor = ''
+    selectionBase = new Set()
     if (moved.size) {
       moveDialog.value = undefined
       if (!selected.value.size && selecting.value && entries.length > 1) stopSelecting()
