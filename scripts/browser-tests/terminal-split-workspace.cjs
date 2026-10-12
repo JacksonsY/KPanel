@@ -145,6 +145,21 @@ const settle = (page) => page.waitForFunction(() => [...document.querySelectorAl
         assert.equal(await page.evaluate(() => window.__splitNodes.every((node) => node.isConnected)), true);
         assert.equal(requests.filter((r) => r.url.endsWith('/close')).length, 0);
         if (count === 4 && mode === 'classic') {
+          if (width <= 900) {
+            const quickToggle = page.locator('[aria-controls="terminal-quick-commands"]');
+            await quickToggle.click();
+            const quickPanel = page.locator('.terminal-quick-commands');
+            await quickPanel.waitFor({ state: 'visible' });
+            await layout.click();
+            const option = page.locator('[data-layout="rows"]');
+            const box = await option.boundingBox();
+            const reachable = await page.evaluate(({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest('[data-layout="rows"]')),
+              { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+            assert.equal(reachable, true, 'layout option must remain above the narrow quick-commands panel');
+            await option.click();
+            await quickToggle.click();
+            await chooseLayout('grid');
+          }
           await page.setViewportSize({ width: 500, height: 900 });
           await page.waitForFunction(() => document.querySelector('.terminal-pane-workspace').classList.contains('is-single-visible'));
           await waitPaneCount(page, 1);

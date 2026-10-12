@@ -72,7 +72,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', outside))
 .terminal-layout-trigger, .terminal-layout-menu button { display:flex; align-items:center; gap:8px; min-height:34px; padding:6px 9px; color:var(--terminal-shell-text,#d8dddc); font:inherit; font-size:14px; cursor:pointer; }
 .terminal-layout-trigger { border:1px solid var(--terminal-shell-border,#29383a); border-radius:var(--radius-sm); background:var(--terminal-shell-panel,#111a1d); }
 .terminal-layout-trigger span { min-width:4em; text-align:left; white-space:nowrap; }
-.terminal-layout-menu { position:absolute; z-index:20; top:calc(100% + 6px); right:0; min-width:160px; padding:4px; border:1px solid var(--terminal-shell-border,#29383a); border-radius:var(--radius-sm); background:var(--terminal-shell-panel,#111a1d); box-shadow:var(--shadow-md); }
+.terminal-layout-menu { position:absolute; z-index:21; top:calc(100% + 6px); right:0; min-width:160px; padding:4px; border:1px solid var(--terminal-shell-border,#29383a); border-radius:var(--radius-sm); background:var(--terminal-shell-panel,#111a1d); box-shadow:var(--shadow-md); }
 .terminal-layout-menu button { width:100%; border:0; border-radius:var(--radius-sm); background:transparent; text-align:left; white-space:nowrap; }
 .terminal-layout-menu button span { flex:1; }
 .terminal-layout-menu button:hover, .terminal-layout-menu button:focus-visible { background:color-mix(in srgb,var(--brand) 15%,transparent); }
