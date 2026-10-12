@@ -170,7 +170,7 @@ const quickSteps = computed(() => [
 
 <template>
   <div class="page page--narrow guide-page">
-    <PageHeader :title="i18n.t('route.settingsGuide')" :description="i18n.t('tutorials.description')" />
+    <PageHeader :title="i18n.t('route.guides')" :description="i18n.t('tutorials.description')" />
 
     <header class="guide-intro panel-card">
       <div>

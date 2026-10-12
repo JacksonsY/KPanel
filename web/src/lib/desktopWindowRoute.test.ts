@@ -43,6 +43,7 @@ describe('desktop window route', () => {
       '/jobs',
       '/audit',
       '/settings',
+      '/guides',
       '/settings/guides',
     ]))
     expect(names).toEqual(expect.arrayContaining([
@@ -57,7 +58,7 @@ describe('desktop window route', () => {
       'app-script',
       'activity',
       'settings',
-      'settings-guides',
+      'guides',
     ]))
   })
 
@@ -162,11 +163,11 @@ describe('desktop window route', () => {
     const router = createWindowRouter('/overview')
     const files = router.resolve({ name: 'files', query: { path: '/home' } })
     const environment = router.resolve({ name: 'sites-environment' })
-    const settingsGuides = router.resolve({ name: 'settings-guides' })
+    const guides = router.resolve({ name: 'guides' })
 
     expect(files.fullPath).toBe('/files?path=/home')
     expect(environment.path).toBe('/sites/environment')
-    expect(settingsGuides.path).toBe('/settings/guides')
+    expect(guides.path).toBe('/guides')
   })
 
   it('redirects legacy activity paths inside the window', async () => {

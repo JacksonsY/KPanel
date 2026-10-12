@@ -161,8 +161,8 @@ export const desktopApps: DesktopApp[] = [
     gradient: ['#cbd5e1', '#64748b'],
   },
   {
-    path: '/settings/guides',
-    labelKey: 'route.settingsGuide',
+    path: '/guides',
+    labelKey: 'route.guides',
     icon: BookOpen,
     desktopIconURL: '/desktop-icons/guides-kpanel-flat-v1.webp',
     allowMultiple: false,
@@ -208,6 +208,7 @@ export function desktopRoutePath(fullPath: string): string {
 
 export function canonicalDesktopAppPath(path: string): string {
   path = desktopRoutePath(path)
+  if (path === '/settings/guides') return '/guides'
   if (path === '/sites/environment') return '/sites'
   if (path.startsWith('/ai/s/')) return '/ai'
   if (path === '/jobs' || path === '/audit') return '/activity'
