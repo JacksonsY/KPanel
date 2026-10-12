@@ -12,17 +12,17 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "7d8cb6312aab83626856dbfc60ba4d2728d71ab6a0d46fd025680f913a2965d3",
-  "firstPartySourceSha256": "26beea06609ecf2f6e9c0717bdbf1ce9f952f789e2f322e5b59508052323143d",
+  "firstPartySourceSha256": "ca8746171fbebcdd519f43d4192def3fd3a0cf603cb42384fc97860f695c50e4",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.2; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
     "state": "reviewed",
     "reviewerRole": "Independent source and dependency evidence reviewer",
-    "evidenceSha256": "510ec20749e147bf1a6d14275be9d651dd9fa7f8d8bf18b3ea3103419dd1c1ff",
+    "evidenceSha256": "9266327406d15f74ea816506b3b01e342a5f21eb8ee86d30889d4a137390d01f",
     "advisoryEvidenceSha256": "32c054b8eebcda02c82748fd29981fa8c3988fa19605e1deed1628d7a6ab4607",
     "additionalSelectedEvidenceSha256": "93a256970a82a7c224c5e38aadbb21431fdbd8e5f6621da469473d7955d80bf2",
-    "summary": "RC14 changes terminal web presentation and internal/version/version.go release metadata. The reviewed first-party Go source delta is only the RC13-to-RC14 version constant; Go file names, imports, build tags, module manifests, build targets and production closure rows are unchanged. Full L3 recomputes identity and all scanners."
+    "summary": "RC15 changes terminal web presentation and internal/version/version.go release metadata. The reviewed first-party Go source delta is only the RC14-to-RC15 version constant; Go imports/control flow and module manifests are unchanged. Full L3 recomputes dependency closure identity and all scanners."
   },
   "findings": [
     {
