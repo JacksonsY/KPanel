@@ -11,18 +11,18 @@
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "1791c2e4fd4c23c369908f3dfc3f12b8ea721092a286643020f112e0ddf38765",
-  "firstPartySourceSha256": "e3655f3a1f71fa0be08af435ba6ffe728556a5b2d6e6b61d0bcdfde56feda514",
+  "closureSha256": "7d8cb6312aab83626856dbfc60ba4d2728d71ab6a0d46fd025680f913a2965d3",
+  "firstPartySourceSha256": "286e7b4ba0d677bb237b2f2cd9d3b89e6091080b8bada41ce42b31fdf798b78c",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.2; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
     "state": "reviewed",
     "reviewerRole": "Independent source and dependency evidence reviewer",
-    "evidenceSha256": "a5739fb40b59c56484749cacdba259b11aefbcfecd50639b6d87a2862456da1a",
+    "evidenceSha256": "af77b5c46723b8d625ffdb825ce37314549f80ce85cc7f25887c133767e4158d",
     "advisoryEvidenceSha256": "32c054b8eebcda02c82748fd29981fa8c3988fa19605e1deed1628d7a6ab4607",
     "additionalSelectedEvidenceSha256": "93a256970a82a7c224c5e38aadbb21431fdbd8e5f6621da469473d7955d80bf2",
-    "summary": "RC10 first-party source inventory (899 Go files) and all six Go 1.27.2 production target closures were re-hashed by the release verifier in the pinned Linux Runner. All closure rows match RC9; the selected graph, 106-module production set, dependency manifests, build contracts, and 36 bounded scan-scope records are unchanged. The source difference is the autofs exclusion and regression test plus release version metadata, with no new packages, imports, dependencies, or generated source. Actual/original closure equality, the official vulnerability scanner, and the full security audit remain separate checks and are not claimed here."
+    "summary": "RC10 assembled first-party source inventory (901 Go files) and all six Go 1.27.2 production target closures were re-hashed by the release verifier in the pinned Linux Runner. The two Linux identities change with tutorial metadata entering the Panel; all four Darwin/Windows identities match RC9. The selected and production module counts, dependency manifests, build contracts, and 36 bounded scan-scope records are unchanged. New source files are tutorial_metadata.go and its test; existing-source changes are desktop visibility preferences, autofs sampling/regression and release metadata. Actual/original closure equality, the official vulnerability scanner, and the full security audit remain separate checks and are not claimed here."
   },
   "findings": [
     {
