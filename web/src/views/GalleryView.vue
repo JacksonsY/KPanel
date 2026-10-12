@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { createGalleryTouchSelection } from '@/lib/galleryTouchSelection'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
 
 usePhraseCatalog((locale) => locale === 'en-US'
@@ -652,6 +653,21 @@ function selectAllVisible(): void {
   selectionBase = new Set()
 }
 
+const touchSelection = createGalleryTouchSelection({
+  root: () => page.value,
+  selecting: () => selecting.value,
+  begin: (path) => {
+    const item = visibleItems.value.find((candidate) => candidate.entry.path === path)
+    if (item) toggleItem(item, false)
+  },
+  update: (path) => {
+    const item = visibleItems.value.find((candidate) => candidate.entry.path === path)
+    if (item) toggleItem(item, true)
+  },
+})
+watch([currentPath, hostId, filter, search, () => preferences.sort, viewerPath], () => touchSelection.cancel())
+watch(selecting, (value) => { if (!value) touchSelection.cancel() })
+
 function openViewer(item: GalleryItem): void {
   if (coverPicking.value) {
     void pickCover(item)
@@ -1212,6 +1228,7 @@ watch(desktopWindowActive, (active) => {
 })
 
 onBeforeUnmount(() => {
+  touchSelection.cancel()
   unmounted = true
   loadController?.abort()
   sentinelObserver?.disconnect()
@@ -1233,6 +1250,12 @@ onBeforeUnmount(() => {
     @dragleave="onDragLeave"
     @drop="onDrop"
     @keydown="onPageKeydown"
+    @touchstart="touchSelection.start"
+    @touchmove="touchSelection.move"
+    @touchend="touchSelection.end"
+    @touchcancel="touchSelection.end"
+    @click.capture="touchSelection.click"
+    @contextmenu="touchSelection.contextMenu"
   >
     <div ref="scroller" class="gallery-scroll">
       <section class="gallery-hero" :class="{ 'gallery-hero--photo': heroUrl, 'gallery-hero--menu-open': moreMenuOpen }">
@@ -1575,6 +1598,7 @@ onBeforeUnmount(() => {
               v-for="(item, index) in group.items"
               :key="item.entry.path"
               :item="item"
+              :data-gallery-path="item.entry.path"
               :image-url="tileUrls(item, index === 0 && group.items.length >= 5 && preferences.density !== 'compact').image"
               :fallback-url="tileUrls(item, index === 0 && group.items.length >= 5 && preferences.density !== 'compact').fallback"
               :video-url="tileUrls(item).video"

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { mount, type VueWrapper } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GalleryViewer from './GalleryViewer.vue'
 import type { GalleryItem } from '@/lib/gallery'
@@ -38,7 +39,59 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+async function dispatchPointer(element: Element, type: string, init: MouseEventInit & { pointerId: number; pointerType: string }) {
+  const event = new MouseEvent(type, { bubbles: true, ...init })
+  Object.defineProperties(event, { pointerId: { value: init.pointerId }, pointerType: { value: init.pointerType } })
+  element.dispatchEvent(event)
+  await nextTick()
+}
 describe('GalleryViewer controls', () => {
+  it('tracks a swipe under the finger, rejects diagonal drags and resets after cancellation', async () => {
+    const view = mountViewer()
+    const stage = view.get('.gallery-viewer__stage')
+    const event = (id: number, x: number, y: number) => ({ pointerId: id, pointerType: 'touch', button: 0, clientX: x, clientY: y })
+    await dispatchPointer(stage.element, 'pointerdown', event(1, 200, 200))
+    await dispatchPointer(stage.element, 'pointermove', event(1, 100, 200))
+    expect(view.get('img.gallery-viewer__media').attributes('style')).toContain('-100px')
+    await dispatchPointer(stage.element, 'pointerup', event(1, 100, 200))
+    expect(view.emitted('navigate')).toEqual([[2]])
+    await dispatchPointer(stage.element, 'pointerdown', event(2, 200, 200))
+    await dispatchPointer(stage.element, 'pointermove', event(2, 100, 125))
+    await dispatchPointer(stage.element, 'pointerup', event(2, 100, 125))
+    expect(view.emitted('navigate')).toHaveLength(1)
+    await dispatchPointer(stage.element, 'pointerdown', event(3, 200, 200))
+    await dispatchPointer(stage.element, 'pointermove', event(3, 100, 200))
+    await dispatchPointer(stage.element, 'pointercancel', event(3, 100, 200))
+    await dispatchPointer(stage.element, 'pointerup', event(3, 100, 200))
+    expect(view.emitted('navigate')).toHaveLength(1)
+    expect(stage.classes()).not.toContain('is-interacting')
+  })
+
+  it('pinches to zoom, pans with the remaining finger and never turns a pinch into navigation', async () => {
+    const view = mountViewer()
+    const stage = view.get('.gallery-viewer__stage')
+    vi.spyOn(stage.element, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 400, height: 600 } as DOMRect)
+    await view.get('img.gallery-viewer__media').trigger('load')
+    const event = (id: number, x: number) => ({ pointerId: id, pointerType: 'touch', button: 0, clientX: x, clientY: 300 })
+    await dispatchPointer(stage.element, 'pointerdown', event(1, 150))
+    await dispatchPointer(stage.element, 'pointerdown', event(2, 250))
+    await dispatchPointer(stage.element, 'pointermove', event(2, 350))
+    expect(view.get('img.gallery-viewer__media').attributes('style')).toContain('scale(2)')
+    await dispatchPointer(stage.element, 'pointerup', event(2, 350))
+    await dispatchPointer(stage.element, 'pointermove', event(1, 50))
+    await dispatchPointer(stage.element, 'pointerup', event(1, 50))
+    expect(view.emitted('navigate')).toBeUndefined()
+    expect(stage.classes()).not.toContain('is-interacting')
+    await dispatchPointer(stage.element, 'pointerdown', event(3, 150))
+    await dispatchPointer(stage.element, 'pointerdown', event(4, 250))
+    await dispatchPointer(stage.element, 'pointermove', event(4, 151))
+    expect(view.get('img.gallery-viewer__media').attributes('style')).toContain('scale(1)')
+    await dispatchPointer(stage.element, 'pointerup', event(4, 151))
+    await dispatchPointer(stage.element, 'pointermove', event(3, 40))
+    await dispatchPointer(stage.element, 'pointerup', event(3, 40))
+    expect(view.emitted('navigate')).toBeUndefined()
+  })
+
   it('fades the bar, arrows and strip when idle and brings them back on movement', async () => {
     const view = mountViewer()
     expect(view.classes()).not.toContain('gallery-viewer--idle')

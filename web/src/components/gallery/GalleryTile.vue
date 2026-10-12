@@ -38,6 +38,7 @@ const loaded = ref(false)
 const previewing = ref(false)
 const posterKey = computed(() => galleryPosterKey(props.item.entry, props.videoUrl))
 let hoverTimer: number | undefined
+let pointerType = ''
 
 watch([() => props.imageUrl, () => props.videoUrl, () => props.item.entry.resourceVersion], () => {
   source.value = props.imageUrl
@@ -90,6 +91,7 @@ function onClick(event: MouseEvent): void {
 }
 
 function onDragStart(event: DragEvent): void {
+  if (pointerType === 'touch') { event.preventDefault(); return }
   // A hover preview must not keep playing under the drag image.
   stopPreview()
   emit('dragstart', props.item, event)
@@ -112,6 +114,7 @@ onBeforeUnmount(() => {
     }"
     :draggable="draggable ? 'true' : undefined"
     @pointerenter="startPreview"
+    @pointerdown="pointerType = $event.pointerType"
     @pointerleave="stopPreview"
     @dragstart="onDragStart"
     @dragend="emit('dragend', item, $event)"
@@ -321,6 +324,11 @@ onBeforeUnmount(() => {
 }
 
 @media (hover: none) {
+  .gallery-tile {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+
   .gallery-tile:hover .gallery-tile__media {
     transform: none;
   }

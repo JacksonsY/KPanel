@@ -169,6 +169,68 @@ describe('GalleryView Shift selection', () => {
     await click(view, 5, true)
     expect(checked(view)).toEqual([0, 1, 2, 3, 5])
   })
+
+  it('long-presses into touch selection, contracts the range and consumes the trailing click', async () => {
+    const view = await mountGallery()
+    vi.useFakeTimers()
+    const original = document.elementFromPoint
+    let hit = 1
+    document.elementFromPoint = vi.fn(() => view.findAll('.gallery-tile')[hit]!.element)
+    try {
+      await view.findAll('.gallery-tile__open')[1]!.trigger('touchstart', {
+        touches: [{ identifier: 1, clientX: 100, clientY: 200 }],
+      })
+      vi.advanceTimersByTime(401)
+      await view.vm.$nextTick()
+      expect(checked(view)).toEqual([1])
+      hit = 4
+      await view.get('.gallery-page').trigger('touchmove', { touches: [{ identifier: 1, clientX: 220, clientY: 200 }] })
+      expect(checked(view)).toEqual([1, 2, 3, 4])
+      hit = 2
+      await view.get('.gallery-page').trigger('touchmove', { touches: [{ identifier: 1, clientX: 160, clientY: 200 }] })
+      expect(checked(view)).toEqual([1, 2])
+      await view.get('.gallery-page').trigger('touchend', { touches: [] })
+      view.findAll('.gallery-tile__open')[2]!.element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }))
+      await view.vm.$nextTick()
+      expect(checked(view)).toEqual([1, 2])
+    } finally { document.elementFromPoint = original; vi.useRealTimers() }
+  })
+
+  it('leaves vertical scrolling native and cancels a pending long press for multiple fingers', async () => {
+    const view = await mountGallery()
+    vi.useFakeTimers()
+    try {
+      const tile = view.findAll('.gallery-tile__open')[0]!
+      await tile.trigger('touchstart', { touches: [{ identifier: 1, clientX: 100, clientY: 200 }] })
+      const scroll = new Event('touchmove', { bubbles: true, cancelable: true })
+      Object.defineProperty(scroll, 'touches', { value: [{ identifier: 1, clientX: 102, clientY: 120 }] })
+      tile.element.dispatchEvent(scroll)
+      expect(scroll.defaultPrevented).toBe(false)
+      vi.advanceTimersByTime(500)
+      expect(checked(view)).toEqual([])
+      await tile.trigger('touchstart', { touches: [{ identifier: 1, clientX: 100, clientY: 200 }] })
+      await tile.trigger('touchstart', { touches: [{ identifier: 1 }, { identifier: 2 }] })
+      vi.advanceTimersByTime(500)
+      expect(checked(view)).toEqual([])
+    } finally { vi.useRealTimers() }
+  })
+
+  it('slides horizontally to remove a range in selection mode without reselecting on release', async () => {
+    const view = await mountGallery()
+    await click(view, 0)
+    await action(view, '全选当前')
+    const original = document.elementFromPoint
+    document.elementFromPoint = vi.fn(() => view.findAll('.gallery-tile')[3]!.element)
+    try {
+      await view.findAll('.gallery-tile__open')[1]!.trigger('touchstart', { touches: [{ identifier: 1, clientX: 100, clientY: 200 }] })
+      await view.get('.gallery-page').trigger('touchmove', { touches: [{ identifier: 1, clientX: 180, clientY: 200 }] })
+      expect(checked(view)).toEqual([0, 4, 5])
+      await view.get('.gallery-page').trigger('touchcancel', { touches: [] })
+      view.findAll('.gallery-tile__open')[3]!.element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }))
+      await view.vm.$nextTick()
+      expect(checked(view)).toEqual([0, 4, 5])
+    } finally { document.elementFromPoint = original }
+  })
 })
 
 describe('GalleryView host switcher', () => {
