@@ -29,6 +29,8 @@ import {
   type GalleryItem,
 } from '@/lib/gallery'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
+import { fetchGalleryImage, galleryAllowsPrefetch } from '@/lib/galleryMedia'
+import GalleryImage from './GalleryImage.vue'
 
 function phrase(value: string): string {
   phraseCatalogVersion.value
@@ -188,7 +190,7 @@ watch(() => props.filmstrip, (visible) => {
 watch(() => item.value?.entry.path, () => {
   coverMenuOpen.value = false
   resetMedia()
-  preloadNeighbours()
+  neighbourController?.abort()
   void nextTick(scrollStripToCurrent)
 })
 
@@ -272,6 +274,7 @@ function onImageLoad(event: Event): void {
   const image = event.currentTarget as HTMLImageElement
   naturalSize.value = { width: image.naturalWidth, height: image.naturalHeight }
   loaded.value = true
+  preloadNeighbours()
 }
 
 function onImageError(): void {
@@ -309,13 +312,16 @@ function retry(): void {
   retryKey.value += 1
 }
 
+let neighbourController: AbortController | undefined
 function preloadNeighbours(): void {
+  neighbourController?.abort()
+  neighbourController = new AbortController()
   for (const step of [1, -1]) {
     const neighbour = props.items[props.index + step]
-    if (!neighbour || neighbour.kind !== 'image' || !galleryBrowserCanShow(neighbour)) continue
-    const image = new Image()
-    image.decoding = 'async'
-    image.src = props.sources(neighbour).original
+    if (!neighbour || neighbour.kind !== 'image' || !galleryBrowserCanShow(neighbour) || !galleryAllowsPrefetch(neighbour.entry.sizeBytes)) continue
+    // Warm the versioned thumbnail cache, never download neighbouring originals.
+    const preview = props.sources(neighbour).preview
+    if (preview) void fetchGalleryImage(preview, neighbourController.signal).catch(() => undefined)
   }
 }
 
@@ -404,12 +410,12 @@ onMounted(() => {
   if (!props.contained) activateModal(modalId)
   document.addEventListener('fullscreenchange', syncFullscreen)
   root.value?.focus({ preventScroll: true })
-  preloadNeighbours()
   showChrome()
   void nextTick(scrollStripToCurrent)
 })
 
 onBeforeUnmount(() => {
+  neighbourController?.abort()
   window.clearTimeout(chromeTimer)
   if (!props.contained) deactivateModal(modalId)
   document.removeEventListener('fullscreenchange', syncFullscreen)
@@ -649,7 +655,7 @@ onBeforeUnmount(() => {
         :aria-label="thumb.item.entry.name"
         @click="emit('navigate', thumb.index)"
       >
-        <img v-if="sources(thumb.item).preview" :src="sources(thumb.item).preview" alt="" loading="lazy" decoding="async" draggable="false" />
+        <GalleryImage v-if="sources(thumb.item).preview" :src="sources(thumb.item).preview!" alt="" draggable="false" />
         <span v-else>{{ galleryFileExtension(thumb.item.entry.name).toUpperCase() }}</span>
       </button>
     </nav>

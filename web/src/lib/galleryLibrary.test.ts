@@ -5,6 +5,7 @@ import {
   GALLERY_COVER_READ_TIMEOUT_MS,
   GALLERY_FOLDER_PAGES,
   GALLERY_PAGE_SIZE,
+  GalleryFolderCache,
   loadGalleryFolder,
   type GalleryFolderSnapshot,
 } from './galleryLibrary'
@@ -37,6 +38,61 @@ function directory(path: string, entries: FileEntry[], nextOffset?: number): Fil
 }
 
 describe('gallery folder loader', () => {
+  it('does not let an aborted, non-cooperative host response repopulate the navigation cache', async () => {
+    const cache = new GalleryFolderCache()
+    let finish!: (value: FileDirectory) => void
+    const controller = new AbortController()
+    const updates = vi.fn()
+    const pending = loadGalleryFolder({ list: () => new Promise((resolve) => { finish = resolve }) }, '/library', updates, controller.signal, cache)
+    const rejected = expect(pending).rejects.toBeDefined()
+    controller.abort()
+    cache.clear()
+    finish(directory('/library', [file('/library/private.jpg')]))
+    await rejected
+    expect(updates).not.toHaveBeenCalled()
+    expect(cache.read('/library')).toBeUndefined()
+  })
+
+  it('shows scanned album contents immediately, then revalidates additions', async () => {
+    const cache = new GalleryFolderCache()
+    await loadGalleryFolder({ list: async (path) => directory(path, path === '/library'
+      ? [folder('/library/Album')]
+      : [file('/library/Album/a.jpg')]) }, '/library', undefined, undefined, cache)
+    let finish!: (value: FileDirectory) => void
+    const updates: GalleryFolderSnapshot[] = []
+    const pending = loadGalleryFolder({ list: () => new Promise((resolve) => { finish = resolve }) },
+      '/library/Album', (snapshot) => updates.push(snapshot), undefined, cache)
+    expect(updates[0]?.items.map((item) => item.entry.name)).toEqual(['a.jpg'])
+    finish(directory('/library/Album', [file('/library/Album/a.jpg'), file('/library/Album/b.jpg')]))
+    expect((await pending).items).toHaveLength(2)
+  })
+
+  it('shows the first page without waiting for later directory pages', async () => {
+    let finish!: (value: FileDirectory) => void
+    const updates: GalleryFolderSnapshot[] = []
+    const pending = loadGalleryFolder({ list: async (_path, { offset }) => offset === 0
+      ? directory('/library', [file('/library/a.jpg')], 500)
+      : new Promise((resolve) => { finish = resolve }) }, '/library', (snapshot) => updates.push(snapshot))
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    expect(updates[0]?.items).toHaveLength(1)
+    finish(directory('/library', [file('/library/b.jpg')]))
+    expect((await pending).items).toHaveLength(2)
+  })
+
+  it('expires navigation hints and clears them on invalidation', async () => {
+    vi.useFakeTimers()
+    try {
+      const cache = new GalleryFolderCache()
+      await loadGalleryFolder({ list: async (path) => directory(path, [file(`${path}/a.jpg`)]) }, '/library', undefined, undefined, cache)
+      expect(cache.read('/library')).toBeDefined()
+      vi.advanceTimersByTime(30_001)
+      expect(cache.read('/library')).toBeUndefined()
+      await loadGalleryFolder({ list: async (path) => directory(path, []) }, '/library', undefined, undefined, cache)
+      cache.clear()
+      expect(cache.read('/library')).toBeUndefined()
+    } finally { vi.useRealTimers() }
+  })
+
   it('reads the folder, then each direct album, and reports progress', async () => {
     const tree: Record<string, FileEntry[]> = {
       '/home/gallery': [

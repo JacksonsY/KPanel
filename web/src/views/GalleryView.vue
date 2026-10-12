@@ -42,6 +42,8 @@ import ErrorState from '@/components/feedback/ErrorState.vue'
 import LoadingState from '@/components/feedback/LoadingState.vue'
 import GalleryMoveDialog, { type GalleryMoveFolder } from '@/components/gallery/GalleryMoveDialog.vue'
 import GalleryTile from '@/components/gallery/GalleryTile.vue'
+import GalleryImage from '@/components/gallery/GalleryImage.vue'
+import GalleryVideo from '@/components/gallery/GalleryVideo.vue'
 import GalleryViewer, { type GalleryCoverOption, type GalleryViewerSources } from '@/components/gallery/GalleryViewer.vue'
 import { getLocale, useI18n } from '@/i18n'
 import { ApiError, api } from '@/lib/api'
@@ -82,7 +84,7 @@ import {
   type GalleryItem,
 } from '@/lib/gallery'
 import { GALLERY_COVER_MARKER, galleryRelativePath, resolveGalleryCover, serializeGalleryCover } from '@/lib/galleryCover'
-import { loadGalleryFolder, type GalleryAlbum, type GalleryFolderSnapshot } from '@/lib/galleryLibrary'
+import { GalleryFolderCache, loadGalleryFolder, type GalleryAlbum, type GalleryFolderSnapshot } from '@/lib/galleryLibrary'
 import {
   entriesToMove,
   GALLERY_DRAG_TYPE,
@@ -166,6 +168,7 @@ const activeHostLabel = computed(() => hostId.value ? hostName.value || hostId.v
 const showHostSwitcher = computed(() => hosts.value.length > 1 || Boolean(hostId.value))
 
 const snapshot = shallowRef<GalleryFolderSnapshot>()
+const folderCache = new GalleryFolderCache()
 const loading = ref(true)
 const loadError = ref('')
 let loadController: AbortController | undefined
@@ -488,7 +491,7 @@ async function load(options: { quiet?: boolean } = {}): Promise<void> {
       if (options.quiet && next.scanning) return
       snapshot.value = next
       loading.value = false
-    }, controller.signal)
+    }, controller.signal, folderCache)
   } catch (error) {
     if (sequence !== loadSequence || unmounted || controller.signal.aborted) return
     loadError.value = errorMessage(error)
@@ -569,6 +572,7 @@ function onHostSelected(host: ClusterHost): void {
 watch([currentPath, hostId, hostsLoaded], ([nextPath, nextHost], [previousPath, previousHost]) => {
   if (nextPath === previousPath && nextHost === previousHost && !nextHost) return
   if (nextHost !== previousHost) {
+    folderCache.clear()
     loadController?.abort()
     loadController = undefined
     ++loadSequence
@@ -1170,7 +1174,9 @@ onMounted(() => {
     if (sentinel.value) sentinelObserver.observe(sentinel.value)
   }
   unsubscribeChanges = subscribeFileDirectoryChanges((directories, _origin, moves, changedHost) => {
-    if ((changedHost || '') !== hostId.value || !snapshot.value) return
+    if ((changedHost || '') !== hostId.value) return
+    folderCache.clear()
+    if (!snapshot.value) return
     const watched = new Set([currentPath.value, ...snapshot.value.albums.map((album) => album.path)])
     const touched = [...directories].some((directory) => watched.has(directory))
       || (moves ?? []).some((move) => watched.has(galleryParentPath(move.source)) || watched.has(galleryParentPath(move.destination)))
@@ -1213,7 +1219,7 @@ onBeforeUnmount(() => {
     <div ref="scroller" class="gallery-scroll">
       <section class="gallery-hero" :class="{ 'gallery-hero--photo': heroUrl, 'gallery-hero--menu-open': moreMenuOpen }">
         <div v-if="heroUrl" class="gallery-hero__backdrop" aria-hidden="true">
-          <img :src="heroUrl" alt="" decoding="async" />
+          <GalleryImage :key="heroItem?.entry.resourceVersion" :src="heroUrl" alt="" eager />
         </div>
         <div class="gallery-hero__content">
           <nav v-if="trail.length > 1 || !insideLibrary" class="gallery-trail" aria-label="图库位置">
@@ -1391,22 +1397,21 @@ onBeforeUnmount(() => {
               <button class="album-card__open" type="button" :aria-label="`打开相册 ${album.name}`" @click="openFolder(album.path)">
                 <span class="album-card__cover">
                   <span v-if="dropTarget === album.path" class="album-card__drop"><FolderInput :size="18" aria-hidden="true" /> {{ phrase('移到这里') }}</span>
-                  <img
+                  <GalleryImage
                     v-if="album.cover && tileUrls(album.cover).image"
-                    :src="tileUrls(album.cover).image"
+                    :key="album.cover.entry.resourceVersion"
+                    :src="tileUrls(album.cover).image!"
+                    :fallback="tileUrls(album.cover).fallback"
                     alt=""
                     loading="lazy"
                     decoding="async"
                     draggable="false"
                   />
-                  <video
+                  <GalleryVideo
                     v-else-if="album.cover && tileUrls(album.cover).video"
-                    :src="`${tileUrls(album.cover).video}#t=0.1`"
-                    muted
-                    playsinline
-                    preload="metadata"
-                    tabindex="-1"
-                    aria-hidden="true"
+                    :src="tileUrls(album.cover).video!"
+                    :poster-key="galleryPosterKey(album.cover.entry, tileUrls(album.cover).video)"
+                    :suspended="Boolean(viewerPath) || !desktopWindowActive"
                   />
                   <span v-else class="album-card__placeholder"><Images :size="28" :stroke-width="1.6" /></span>
                 </span>
@@ -1555,6 +1560,7 @@ onBeforeUnmount(() => {
               :image-url="tileUrls(item, index === 0 && group.items.length >= 5 && preferences.density !== 'compact').image"
               :fallback-url="tileUrls(item, index === 0 && group.items.length >= 5 && preferences.density !== 'compact').fallback"
               :video-url="tileUrls(item).video"
+              :suspended="Boolean(viewerPath) || !desktopWindowActive"
               :featured="index === 0 && group.items.length >= 5 && preferences.density !== 'compact' && preferences.sort !== 'name'"
               :selecting="selecting"
               :selected="selected.has(item.entry.path)"

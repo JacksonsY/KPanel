@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import type { FileEntry } from '@/types/api'
+import { queueGalleryVideo } from '@/lib/galleryMedia'
 
 /**
  * Poster frames captured from gallery videos. Chromium caps how many media
@@ -14,6 +15,7 @@ export interface GalleryPoster {
 }
 
 const MAX_POSTERS = 240
+const MAX_POSTER_BYTES = 12 * 1024 * 1024
 const POSTER_EDGE = 640
 const posters = reactive(new Map<string, GalleryPoster>())
 
@@ -28,8 +30,9 @@ export function readGalleryPoster(key: string): GalleryPoster | undefined {
 
 export function storeGalleryPoster(key: string, value: GalleryPoster): void {
   posters.delete(key)
+  if ((value.poster?.length ?? 0) * 2 > MAX_POSTER_BYTES) return
   posters.set(key, { ...value })
-  while (posters.size > MAX_POSTERS) {
+  while (posters.size > MAX_POSTERS || [...posters.values()].reduce((bytes, value) => bytes + (value.poster?.length ?? 0) * 2, 0) > MAX_POSTER_BYTES) {
     const oldest = posters.keys().next().value
     if (oldest === undefined) break
     posters.delete(oldest)
@@ -58,4 +61,62 @@ export function captureGalleryVideoFrame(video: HTMLVideoElement): string | unde
 
 export function resetGalleryPostersForTest(): void {
   posters.clear()
+}
+
+/** Seek explicitly; loadeddata alone can still represent the initial black frame. */
+export async function loadGalleryPoster(key: string, url: string, signal: AbortSignal): Promise<void> {
+  await queueGalleryVideo(async () => {
+    if (readGalleryPoster(key)?.poster) return
+    const video = document.createElement('video')
+    video.muted = true
+    video.playsInline = true
+    video.preload = 'auto'
+    let frameCallback: number | undefined
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          clearTimeout(timer)
+          signal.removeEventListener('abort', abort)
+          video.onloadedmetadata = null
+          video.onseeked = null
+          video.onerror = null
+        }
+        const abort = () => { cleanup(); reject(signal.reason ?? new Error('Poster cancelled')) }
+        const fail = () => { cleanup(); reject(new Error('Video poster unavailable')) }
+        const finish = () => {
+          if (signal.aborted) { abort(); return }
+          const poster = captureGalleryVideoFrame(video)
+          if (!poster) { fail(); return }
+          storeGalleryPoster(key, { poster, duration: Number.isFinite(video.duration) ? video.duration : undefined })
+          cleanup()
+          resolve()
+        }
+        const timer = setTimeout(fail, 12_000)
+        signal.addEventListener('abort', abort, { once: true })
+        video.onerror = fail
+        video.onloadedmetadata = () => {
+          if (video.videoWidth <= 0 || !Number.isFinite(video.duration) || video.duration <= 0) { fail(); return }
+          // Do not use a fragment: explicitly wait for the target seek to finish.
+          video.currentTime = Math.min(1, video.duration / 3)
+        }
+        video.onseeked = () => {
+          if (typeof video.requestVideoFrameCallback === 'function') {
+            frameCallback = video.requestVideoFrameCallback(finish)
+            // Some paused browser players do not dispatch a frame callback after seeked.
+            fallbackTimer = setTimeout(finish, 150)
+          } else finish()
+        }
+        if (signal.aborted) { abort(); return }
+        video.src = url
+        video.load()
+      })
+    } finally {
+      clearTimeout(fallbackTimer)
+      if (frameCallback !== undefined) video.cancelVideoFrameCallback(frameCallback)
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+    }
+  }, signal)
 }

@@ -54,7 +54,10 @@ async function mountGallery(path = '/gallery'): Promise<VueWrapper> {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/gallery', name: 'gallery', component: GalleryView }] })
   await router.push(path)
   await router.isReady()
-  wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router] }, attachTo: document.body })
+  wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router], stubs: {
+    GalleryImage: { props: ['src'], template: '<img :src="src" />' },
+    GalleryVideo: { template: '<span />' },
+  } }, attachTo: document.body })
   await flushPromises()
   return wrapper
 }

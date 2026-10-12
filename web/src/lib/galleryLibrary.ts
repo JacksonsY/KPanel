@@ -71,23 +71,48 @@ interface FolderListing {
   truncated: boolean
 }
 
+/** Per-view, short-lived navigation hints; every navigation still revalidates with the host. */
+export class GalleryFolderCache {
+  private entries = new Map<string, { snapshot: GalleryFolderSnapshot; at: number }>()
+  read(path: string): GalleryFolderSnapshot | undefined {
+    const value = this.entries.get(path)
+    if (!value || Date.now() - value.at > 30_000) { this.entries.delete(path); return undefined }
+    this.entries.delete(path)
+    this.entries.set(path, value)
+    return value.snapshot
+  }
+  put(snapshot: GalleryFolderSnapshot): void {
+    this.entries.delete(snapshot.path)
+    if (snapshot.items.length + snapshot.albums.length > 10_000) return
+    this.entries.set(snapshot.path, { snapshot, at: Date.now() })
+    while (this.entries.size > 64 || [...this.entries.values()].reduce((sum, value) => sum + value.snapshot.items.length + value.snapshot.albums.length, 0) > 10_000) {
+      this.entries.delete(this.entries.keys().next().value!)
+    }
+  }
+  clear(): void { this.entries.clear() }
+}
+
 async function listFolder(
   api: GalleryListAPI,
   path: string,
   pages: number,
   signal?: AbortSignal,
+  onPage?: (listing: FolderListing) => void,
 ): Promise<FolderListing> {
   const entries: FileEntry[] = []
   let offset: number | undefined = 0
   let truncated = false
   for (let page = 0; offset !== undefined; page += 1) {
+    signal?.throwIfAborted()
     if (page >= pages) {
       truncated = true
       break
     }
     const directory: FileDirectory = await api.list(path, { offset, limit: GALLERY_PAGE_SIZE }, signal)
+    signal?.throwIfAborted()
     entries.push(...directory.entries)
     if (directory.scanTruncated) truncated = true
+    onPage?.({ entries: [...entries], truncated: truncated || directory.nextOffset !== undefined })
     offset = directory.nextOffset !== undefined && directory.nextOffset > offset ? directory.nextOffset : undefined
   }
   return { entries, truncated }
@@ -125,6 +150,7 @@ async function readCoverMarker(api: GalleryListAPI, folder: string, entries: rea
         reject(new Error('cover read timed out'))
       }, GALLERY_COVER_READ_TIMEOUT_MS) }),
     ])
+    signal?.throwIfAborted()
     const relative = parseGalleryCover(text)
     return relative === undefined ? undefined : resolveGalleryCover(folder, relative)
   } catch {
@@ -174,16 +200,31 @@ export async function loadGalleryFolder(
   path: string,
   onUpdate?: (snapshot: GalleryFolderSnapshot) => void,
   signal?: AbortSignal,
+  cache?: GalleryFolderCache,
 ): Promise<GalleryFolderSnapshot> {
+  signal?.throwIfAborted()
+  const cached = cache?.read(path)
+  if (cached) onUpdate?.(cached)
   let listing: FolderListing
   try {
-    listing = await listFolder(api, path, GALLERY_FOLDER_PAGES, signal)
+    listing = await listFolder(api, path, GALLERY_FOLDER_PAGES, signal, (partial) => {
+      if (cached) return
+      onUpdate?.({
+        path, exists: true, items: galleryItemsFromEntries(partial.entries, path),
+        albums: galleryAlbumEntries(partial.entries).map((entry) => ({
+          entry, path: entry.path, name: entry.name, imageCount: 0, videoCount: 0, folderCount: 0,
+          latest: 0, coverPinned: false, scanned: false, truncated: false, failed: false,
+        })),
+        truncated: partial.truncated, scanning: true, failedAlbums: 0,
+      })
+    })
   } catch (error) {
     if (!isMissingFolderError(error)) throw error
     const missing: GalleryFolderSnapshot = {
       path, exists: false, items: [], albums: [], truncated: false, scanning: false, failedAlbums: 0,
     }
     onUpdate?.(missing)
+    cache?.put(missing)
     return missing
   }
 
@@ -226,6 +267,15 @@ export async function loadGalleryFolder(
         const summary = summarizeAlbum(album, albumListing, await readCoverMarker(api, album.path, albumListing.entries, signal))
         albums[index] = summary.album
         albumItems.set(album.path, summary.items)
+        cache?.put({
+          path: album.path, exists: true, items: summary.items,
+          coverPath: summary.album.coverPinned ? summary.album.cover?.entry.path : undefined,
+          albums: galleryAlbumEntries(albumListing.entries).map((entry) => ({
+            entry, path: entry.path, name: entry.name, imageCount: 0, videoCount: 0, folderCount: 0,
+            latest: 0, coverPinned: false, scanned: false, truncated: false, failed: false,
+          })),
+          truncated: albumListing.truncated, scanning: summary.album.folderCount > 0, failedAlbums: 0,
+        })
       } catch (error) {
         if (signal?.aborted) throw error
         failedAlbums += 1
@@ -236,6 +286,8 @@ export async function loadGalleryFolder(
     }
   }))
   const final = snapshot(false)
+  signal?.throwIfAborted()
+  cache?.put(final)
   onUpdate?.(final)
   return final
 }
