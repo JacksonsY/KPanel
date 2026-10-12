@@ -5,7 +5,7 @@ import ModalDialog from '@/components/common/ModalDialog.vue'
 import HostTerminal from '@/components/terminal/HostTerminal.vue'
 import { api, ApiError } from '@/lib/api'
 import { fileAPIForHost } from '@/lib/fileHostContext'
-import { fileExecutionCommand } from '@/lib/fileExecution'
+import { fileExecutionCommand, fileExecutionDisplayCommand } from '@/lib/fileExecution'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import type { FileEntry, TerminalSession } from '@/types/api'
 
@@ -23,6 +23,7 @@ const hostId = props.hostId
 let disposed = false
 let submitted = false
 let command: string | undefined
+let displayCommand: string | undefined
 
 function phrase(value: string): string {
   phraseCatalogVersion.value
@@ -48,7 +49,8 @@ async function open(): Promise<void> {
       interpreter: (name) => phrase('缺少解释器：{0}，请安装后重新执行。').replace('{0}', name),
       tool: (name) => phrase('缺少工具：{0}，请安装后重新执行。').replace('{0}', name),
     })
-    if (!command) {
+    displayCommand = fileExecutionDisplayCommand(fresh)
+    if (!command || !displayCommand) {
       error.value = phrase('当前文件不支持在终端中执行。')
       return
     }
@@ -68,12 +70,13 @@ async function open(): Promise<void> {
 }
 
 async function onStateChange(state: string): Promise<void> {
-  if (state !== 'connected' || submitted || disposed || closing.value || !command) return
+  if (state !== 'connected' || submitted || disposed || closing.value || !command || !displayCommand) return
   // A reconnect must never repeat a script or installation. Mark before awaiting Vue's ref update.
   submitted = true
   await nextTick()
   if (disposed || closing.value) return
-  if (!terminal.value?.executeCommand(command)) error.value = phrase('命令未发送，请关闭窗口后重新执行。')
+  const sent = await terminal.value?.executePresentedCommand(command, displayCommand)
+  if (!sent && !disposed && !closing.value) error.value = phrase('命令未发送，请关闭窗口后重新执行。')
 }
 
 async function close(): Promise<void> {

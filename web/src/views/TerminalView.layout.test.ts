@@ -308,7 +308,8 @@ describe('multi-host terminal workspace layout', () => {
     expect(terminalSource).toMatch(
       /\.terminal-stage\.is-fullscreen\s*\{[^}]*position:fixed;[^}]*inset:0;[^}]*height:100dvh;[^}]*grid-template-rows:auto minmax\(0,1fr\);/,
     )
-    expect(hostTerminalSource).toContain('defineExpose({ focusTerminal, executeCommand, scheduleResize, closeSession })')
+    const exposedMethods = hostTerminalSource.match(/defineExpose\(\{([^}]+)\}\)/)?.[1]?.split(',').map(method => method.trim())
+    expect(exposedMethods).toEqual(expect.arrayContaining(['focusTerminal', 'executeCommand', 'scheduleResize', 'closeSession']))
   })
 
   it('opens a right-side quick-command drawer and executes through the active PTY queue', () => {

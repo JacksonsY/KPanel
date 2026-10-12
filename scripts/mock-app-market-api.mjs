@@ -2697,9 +2697,12 @@ createServer(async (request, response) => {
       const command = (exitIndex >= 0 ? lines.slice(0, exitIndex) : lines).join('\n').trim()
       if (command) {
         const result = mockTerminalCommandResult(session.host, command)
+        // Simulate the generated startup boundary; never evaluate shell input.
+        const startupToken = command.match(/^command printf '\\033\]kpanel-start;([a-zA-Z0-9-]+)\\007'; /)?.[1]
+        const boundary = startupToken ? `\x1b]kpanel-start;${startupToken}\x07` : ''
         session.data = Buffer.concat([
           session.data,
-          Buffer.from(`${command}\r\n${result.output}\r\n`),
+          Buffer.from(`${command}\r\n${boundary}${result.output}\r\n`),
         ])
         session.exitError = result.exitError
       }
