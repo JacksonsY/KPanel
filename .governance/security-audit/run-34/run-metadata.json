@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "run_id": "run-34",
+  "run_status": "incomplete",
+  "profile": "standard",
+  "scope_mode": "scoped",
+  "scope_complete": false,
+  "global_coverage_complete": false,
+  "risk_acceptance": null,
+  "risk_closed": false,
+  "repo": "KPanel",
+  "source_ref": "e2968b30962b2ac6b89c9c73f6f84dc699705558",
+  "source_tree": "d5f014659a9eca25103ffd8bc59ff9ae4c173bd5",
+  "source_dirty": false,
+  "comparison_base": "4c0694aa8e02e46145a775707b8d5a0355f7ce10",
+  "reviewed_commits": [
+    "2eeb15ee8d742b9502694d8cc156b05b7970cf18",
+    "6aca184a625fe018b5c9649c5bc74b928ce771f0",
+    "bb14a3087886dd9ba1c7552af3a21e45670ff709",
+    "62912014fc0d3bb466b42a311dd551e753796e3f",
+    "e2968b30962b2ac6b89c9c73f6f84dc699705558"
+  ],
+  "scope_paths": [
+    "web/src/components/overview/SystemServicesDialog.vue",
+    "web/src/components/overview/SystemServicesDialog.test.ts",
+    "web/src/i18n/pages/OverviewView/en-US.ts",
+    "web/src/i18n/pages/OverviewView/zh-TW.ts",
+    "web/src/i18n/pages/shared/en-US.ts",
+    "web/src/i18n/pages/shared/zh-TW.ts",
+    "web/src/lib/api.ts",
+    "web/src/lib/api.system-services.test.ts",
+    "web/src/types/systemServices.ts",
+    "web/src/views/OverviewView.vue",
+    "web/src/views/OverviewView.test.ts",
+    "internal/contract/system_services.go",
+    "internal/contract/system_services_test.go",
+    "internal/agent/server.go",
+    "internal/agent/system_services.go",
+    "internal/agent/system_services_test.go",
+    "internal/panel/server.go",
+    "internal/panel/system_services.go",
+    "internal/panel/system_services_test.go",
+    "internal/systemmanage/manager.go",
+    "internal/systemmanage/system_services.go",
+    "internal/systemmanage/system_services_test.go",
+    "deploy/systemd/kejilion-agent.service",
+    "docs/system-management.md"
+  ],
+  "governance_ref": "e2968b30962b2ac6b89c9c73f6f84dc699705558",
+  "skill_source": "https://github.com/cloudflare/security-audit-skill",
+  "skill_commit": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+  "validation_mode": "source-only",
+  "execution_policy": "source-only-no-target-execution",
+  "target_code_execution": false,
+  "production": false,
+  "production_connections": false,
+  "execution_configuration": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "max",
+    "applies_to": "Dedicated audit parent and all delegated audit agents; discovery and validation require different agents"
+  },
+  "incomplete_reason": "wall_clock_limit_reached_before_reassignment_candidate_and_phase5_verification_closed",
+  "completion_scope": "The scoped systemd service-management review is incomplete and contributes no coverage. No source-grounded vulnerability was confirmed. One ledger-only IPC/GID candidate remains unresolved because deployment group membership and effective ACLs were not observed; the candidate is not a final finding.",
+  "pending_candidates": [
+    {
+      "repair_verified_by_this_audit": false,
+      "status": "ledger-only-candidate",
+      "fingerprint": "agent-token-panel-group-membership",
+      "severity": null,
+      "prerequisites_verified": false,
+      "independently_validated": false
+    }
+  ],
+  "remaining_pending_commit_count": 83,
+  "invocation_counts": {
+    "reconnaissance": 4,
+    "initial_hunters": 4,
+    "post_wave_critics": 1,
+    "reassignment_hunters": 1,
+    "candidate_verifiers": 1,
+    "final_clean_critic": 0,
+    "phase5_record_verifiers": 0,
+    "failed_spawn_attempts": 1,
+    "total_actual": 12
+  },
+  "budget": {
+    "max_wall_seconds": 2700,
+    "actual_wall_seconds": 2799,
+    "wall_limit_overrun_seconds": 99,
+    "max_agent_invocations": 20,
+    "agent_invocations": 12,
+    "tokens": null,
+    "usd": null,
+    "cost_unavailable_reason": "Platform does not expose per-agent token or monetary meters",
+    "started_at_utc": "2026-10-12T02:01:51Z",
+    "ended_at_utc": "2026-10-12T02:48:30Z"
+  },
+  "validator_results": {
+    "findings": "PASS: 0 findings valid",
+    "coverage_ledger": "PASS: 7 coverage units valid",
+    "coverage_check": "Original coverage remains scoped-required; run incomplete does not count; 83 unrelated pending commits remain"
+  },
+  "terminal_gaps": [
+    "Critic-requested fresh hunter output had malformed coverage_id and was discarded.",
+    "Independent candidate verifier was interrupted at the wall limit; candidate remains ledger-only.",
+    "Phase-5 and final-clean critic were not run.",
+    "Deployment group membership and effective ACLs were not observed."
+  ],
+  "follow_up": {
+    "owner": "RC9 release owner",
+    "exit_conditions": "Complete a separately budgeted audit with independent candidate verification, Phase-5 review, and final coverage validation before claiming coverage closure or stable promotion."
+  },
+  "evidence": {
+    "external_original_sha256": "ed4ffbbe45f6adc9774379d55cb0564c10fe633298c58cbc59425ee2b5f3f7c3",
+    "artifact_sha256": {
+      "run-metadata.json": "ed4ffbbe45f6adc9774379d55cb0564c10fe633298c58cbc59425ee2b5f3f7c3",
+      "coverage-ledger.json": "48911c3394d089ce76f8f8432be6d74994656b52cb924ec3aa6ee065e89895b9",
+      "findings.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "REPORT.md": "04bb3940b8c79ce74ca4f4798c93dbb1457bc2a3972efe8cd825916f98c878a6",
+      "FINDINGS-DETAIL.md": "e8bddc4beb980bc215c48c5aec5dd4eaaf4a0c5d7af2d88ce33b6772db9a846a",
+      "NEEDS-VALIDATION.md": "4e06fed02e401b68e24b8827df4d1ed28bd6a892f48892da50a12cd2e2b2537b",
+      "coverage-check.json": "1616256f45e1ea39936352f5823aa5b759a641e3997e5fe1346d2ca21905f64b"
+    },
+    "disclosure": "Machine-specific worktree paths were omitted from this committed summary. The original audit artifacts remain preserved outside the repository and are hash-bound here."
+  }
+}

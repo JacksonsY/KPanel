@@ -1,0 +1,624 @@
+[
+  {
+    "coverage_id": "Non-systemd%20candidate%20commits%20in%20the%20pending%20RC9%20diff::Out-of-scope%20changes%20outside%20the%20systemd%20service-management%20batch::Remaining%20candidate%20diff::Scoped%20coverage%20ledger%20pending%20commits",
+    "canonical_refs": {
+      "surface": "Non-systemd candidate commits in the pending RC9 diff",
+      "boundary": "Out-of-scope changes outside the systemd service-management batch",
+      "subsystem": "Remaining candidate diff",
+      "attack_class": "Scoped coverage ledger pending commits"
+    },
+    "surface": "Non-systemd candidate commits in the pending RC9 diff",
+    "boundary": "Out-of-scope changes outside the systemd service-management batch",
+    "subsystem": "Remaining candidate diff",
+    "attack_class": "Scoped coverage ledger pending commits",
+    "starting_paths": [
+      "coverage-check.json"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "out_of_scope",
+    "agent_id": null,
+    "reviewed_paths": [],
+    "local_checks": [],
+    "result_fingerprints": [],
+    "unresolved": [
+      "The coverage check lists 84 pending commits; this scoped run reviews the 5 specified systemd commits, of which only bb14a3087886dd9ba1c7552af3a21e45670ff709 appears in the pending list. The other 83 listed pending commits remain unreviewed; see run-metadata.json.remaining_pending_commits."
+    ]
+  },
+  {
+    "coverage_id": "internal%2Fagent%2Fsystem_services.go%23bounded%20read%20gate::internal%2Fsystemmanage%2Fsystem_services.go%23output-line-cardinality-time%20limits::internal%2Fagent%2Binternal%2Fsystemmanage::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Unbounded%20buffering%20and%20cardinality",
+    "canonical_refs": {
+      "surface": "internal/agent/system_services.go#bounded read gate",
+      "boundary": "internal/systemmanage/system_services.go#output-line-cardinality-time limits",
+      "subsystem": "internal/agent+internal/systemmanage",
+      "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality"
+    },
+    "surface": "Systemd list, detail, and journal read resource bounds",
+    "boundary": "Request body, parallel reads, subprocess deadlines, output caps, entry counts, log lines, and response fan-out",
+    "subsystem": "internal/agent+internal/systemmanage",
+    "attack_class": "Unbounded buffering and cardinality",
+    "starting_paths": [
+      "internal/agent/system_services.go",
+      "internal/agent/system_services_test.go",
+      "internal/contract/system_services.go",
+      "internal/contract/system_services_test.go",
+      "internal/panel/system_services.go",
+      "internal/systemmanage/resources.go",
+      "internal/systemmanage/system_services.go",
+      "internal/systemmanage/system_services_test.go"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "reason": "No archive extraction, path traversal, file upload, or file-based operation is introduced.",
+        "block": "ATTACK-CLASSES.md#Resource and file handling"
+      },
+      {
+        "reason": "Caller authorization is assigned to the Panel and Agent access-control units.",
+        "block": "ATTACK-CLASSES.md#Access control"
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter_service_read",
+    "reviewed_paths": [
+      "internal/agent/server.go",
+      "internal/agent/system_services.go",
+      "internal/contract/system_services.go",
+      "internal/panel/agent.go",
+      "internal/panel/config.go",
+      "internal/panel/system_services.go",
+      "internal/systemmanage/resources.go",
+      "internal/systemmanage/system_services.go"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_service_read",
+        "reviewed_paths": [
+          "internal/agent/server.go",
+          "internal/agent/system_services.go",
+          "internal/contract/system_services.go",
+          "internal/systemmanage/resources.go",
+          "internal/systemmanage/system_services.go"
+        ],
+        "invariant": "Each Agent service read must cap concurrent requests, execution time, subprocess output, entry count, and log cardinality.",
+        "method": "source",
+        "result": "The Agent read gate admits at most two requests without queueing and applies a 12-second context. Manager reads apply 10-second list/log and 5-second detail contexts. List subprocess output is capped at 1 MiB per command and results at 2000 entries; detail/config output is capped at 16 KiB/256 KiB; journal output is capped at 256 KiB and 101 requested lines before returning at most 100 lines of 2048 bytes.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_service_read",
+        "reviewed_paths": [
+          "internal/panel/agent.go",
+          "internal/panel/config.go",
+          "internal/panel/system_services.go"
+        ],
+        "invariant": "The Panel-to-Agent read and response path must have finite deadlines and a bounded response buffer.",
+        "method": "source",
+        "result": "The Panel read handler applies a 14-second timeout. AgentClient reads at most configured maxAgentBytes plus one byte and rejects overflow; the default is 8 MiB and configuration is bounded to 64 MiB. The source-visible service output cardinality and field sizes are bounded below those response caps.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "internal%2Fagent%2Fsystem_services.go%23validated%20request%20to%20Manager::internal%2Fsystemmanage%2Fsystem_services.go%23fixed%20systemctl%20argv%20execution::internal%2Fsystemmanage::ATTACK-CLASSES.md%23Injection",
+    "canonical_refs": {
+      "surface": "internal/agent/system_services.go#validated request to Manager",
+      "boundary": "internal/systemmanage/system_services.go#fixed systemctl argv execution",
+      "subsystem": "internal/systemmanage",
+      "attack_class": "ATTACK-CLASSES.md#Injection"
+    },
+    "surface": "Validated service-name and action input to systemctl command sink",
+    "boundary": "Shared contract and Manager validation immediately before fixed argv without a shell",
+    "subsystem": "internal/systemmanage",
+    "attack_class": "Injection",
+    "starting_paths": [
+      "internal/agent/system_services.go",
+      "internal/contract/system_services.go",
+      "internal/contract/system_services_test.go",
+      "internal/panel/system_services.go",
+      "internal/systemmanage/manager.go",
+      "internal/systemmanage/resources.go",
+      "internal/systemmanage/system_services.go",
+      "internal/systemmanage/system_services_test.go",
+      "internal/systemmanage/system_tuning.go"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [
+      {
+        "reason": "No user-supplied filesystem path, archive, URL fetch, or file operation reaches this service action sink.",
+        "block": "ATTACK-CLASSES.md#Resource and file handling"
+      },
+      {
+        "reason": "No new cryptographic input or secret handling is part of systemctl argv construction.",
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets"
+      },
+      {
+        "reason": "Authorization and the local IPC principal are assigned to separate Panel and Agent access-control units.",
+        "block": "ATTACK-CLASSES.md#Access control"
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter_system_exec",
+    "reviewed_paths": [
+      "internal/agent/system_services.go",
+      "internal/contract/system_services.go",
+      "internal/contract/system_services_test.go",
+      "internal/panel/system_services.go",
+      "internal/systemmanage/manager.go",
+      "internal/systemmanage/resources.go",
+      "internal/systemmanage/system_services.go",
+      "internal/systemmanage/system_services_test.go",
+      "internal/systemmanage/system_tuning.go"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_system_exec",
+        "reviewed_paths": [
+          "internal/agent/system_services.go",
+          "internal/contract/system_services.go",
+          "internal/contract/system_services_test.go",
+          "internal/panel/system_services.go",
+          "internal/systemmanage/manager.go",
+          "internal/systemmanage/resources.go",
+          "internal/systemmanage/system_services.go",
+          "internal/systemmanage/system_services_test.go",
+          "internal/systemmanage/system_tuning.go"
+        ],
+        "invariant": "Only validated service names and allowlisted actions reach the privileged command runner as fixed argv, without shell interpretation or user-controlled options.",
+        "method": "source",
+        "result": "The contract bounds service names and allows six fixed actions. The Manager revalidates the request and appends the action and service name as separate arguments after --; the default runner uses exec.CommandContext directly. The adjacent system-tuning runner is not on this service-action path. No source-grounded injection path found.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "internal%2Fpanel%2Fagent.go%23configured%20Unix-socket%20Agent%20client::internal%2Fagent%2Fsocket.go%23socket%20and%20token%20group%20policy::internal%2Fagent%2Binternal%2Fpanel::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "internal/panel/agent.go#configured Unix-socket Agent client",
+      "boundary": "internal/agent/socket.go#socket and token group policy",
+      "subsystem": "internal/agent+internal/panel",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "Panel-to-Agent systemd-service dispatch over local IPC",
+    "boundary": "Shared Bearer authorization and Unix-socket peer boundary before root Agent service routes",
+    "subsystem": "internal/agent+internal/panel",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "cmd/kejilion-agent/main.go",
+      "deploy/compose/compose.yml",
+      "deploy/install.sh",
+      "deploy/systemd/agent.env.example",
+      "deploy/systemd/kejilion-agent.service",
+      "docs/system-management.md",
+      "internal/agent/server.go",
+      "internal/agent/socket.go",
+      "internal/agent/system_services.go",
+      "internal/agent/system_services_test.go",
+      "internal/agent/token_linux.go",
+      "internal/contract/system_services_test.go",
+      "internal/panel/agent.go",
+      "internal/panel/host_operations.go",
+      "internal/panel/system_services.go",
+      "internal/panel/system_services_test.go",
+      "packaging/kejilion-app/kpanel.conf"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+      "DESKTOP-MOBILE-AND-LOCAL-IPC.md#IPC peer-authentication gaps",
+      "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Privileged helper as confused deputy",
+      "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Universal moves",
+      "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Validation rules",
+      "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+      "CLOUD-AND-DEPLOYMENT.md#Security-control precedence drift",
+      "CLOUD-AND-DEPLOYMENT.md#Universal moves",
+      "CLOUD-AND-DEPLOYMENT.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "reason": "The feature does not add token creation or cryptographic protocol logic; token verification and file/socket ACLs are included in this access-control boundary.",
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets"
+      },
+      {
+        "reason": "The selected deployment question is configuration precedence and host Agent authorization; the workload-selectable container capability scenario is not this systemd service path.",
+        "block": "CLOUD-AND-DEPLOYMENT.md#Host or control-plane capability exposure"
+      },
+      {
+        "reason": "The new Agent request has no user-supplied peer identity field; current user attribution is checked at the Panel HTTP route and socket/token boundary.",
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Claimed principal versus channel identity"
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "hunter_agent_ipc",
+    "reviewed_paths": [
+      "cmd/kejilion-agent/main.go",
+      "deploy/compose/compose.yml",
+      "deploy/install.sh",
+      "deploy/systemd/agent.env.example",
+      "deploy/systemd/kejilion-agent.service",
+      "docs/system-management.md",
+      "internal/agent/server.go",
+      "internal/agent/server_test.go",
+      "internal/agent/socket.go",
+      "internal/agent/system_services.go",
+      "internal/agent/system_services_test.go",
+      "internal/agent/token_linux.go",
+      "internal/contract/system_services_test.go",
+      "internal/panel/agent.go",
+      "internal/panel/agent_test.go",
+      "internal/panel/config.go",
+      "internal/panel/host_operations.go",
+      "internal/panel/system_services.go",
+      "internal/panel/system_services_test.go",
+      "packaging/kejilion-app/kpanel.conf"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_agent_ipc",
+        "reviewed_paths": [
+          "cmd/kejilion-agent/main.go",
+          "deploy/compose/compose.yml",
+          "deploy/install.sh",
+          "deploy/systemd/agent.env.example",
+          "deploy/systemd/kejilion-agent.service",
+          "docs/system-management.md",
+          "internal/agent/server.go",
+          "internal/agent/server_test.go",
+          "internal/agent/socket.go",
+          "internal/agent/system_services.go",
+          "internal/agent/system_services_test.go",
+          "internal/agent/token_linux.go",
+          "internal/contract/system_services_test.go",
+          "internal/panel/agent.go",
+          "internal/panel/agent_test.go",
+          "internal/panel/config.go",
+          "internal/panel/host_operations.go",
+          "internal/panel/system_services.go",
+          "internal/panel/system_services_test.go",
+          "packaging/kejilion-app/kpanel.conf"
+        ],
+        "invariant": "Only the intended Panel execution context and trusted administrators can read the shared Agent Bearer token and reach root Agent service routes.",
+        "method": "source",
+        "result": "The Agent authenticates before route dispatch, uses the configured group for both token and socket permissions, and exposes the service-action route to callers with the shared Bearer token. The app-market installer reuses an existing kejilion-panel GID without checking its supplemental or primary members, then gives that GID token-file read access and socket access. A lower-trust host principal in that GID could therefore call the root Agent directly. The normal deploy/install.sh path rejects supplemental members and users with that primary GID. Actual app-market host membership and effective ACLs are not visible in source. No code or tests were executed.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "agent-token-panel-group-membership"
+    ],
+    "unresolved": [
+      "The effective supplemental and primary-group membership of kejilion-panel on an app-market deployment, and effective ACLs for the token and socket paths, are deployment facts not established by source.",
+      "The critic-requested fresh hunter result was rejected because its coverage_id did not match the canonical ledger ID; independent candidate validation and Phase-5 record verification were not completed before the declared wall-time limit."
+    ]
+  },
+  {
+    "coverage_id": "internal%2Fpanel%2Fserver.go%23system%20services%20route%20table::internal%2Fpanel%2Fsystem_services.go%23session-origin-csrf%20checks::internal%2Fpanel::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "internal/panel/server.go#system services route table",
+      "boundary": "internal/panel/system_services.go#session-origin-csrf checks",
+      "subsystem": "internal/panel",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "Browser systemd-service REST endpoints",
+    "boundary": "Panel session, Origin, and CSRF checks before host-operation dispatch",
+    "subsystem": "internal/panel",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "docs/system-management.md",
+      "internal/auth/service.go",
+      "internal/panel/config.go",
+      "internal/panel/server.go",
+      "internal/panel/system_services.go",
+      "internal/panel/system_services_test.go",
+      "web/src/components/overview/SystemServicesDialog.test.ts",
+      "web/src/components/overview/SystemServicesDialog.vue",
+      "web/src/i18n/pages/OverviewView/en-US.ts",
+      "web/src/i18n/pages/OverviewView/zh-TW.ts",
+      "web/src/i18n/pages/shared/en-US.ts",
+      "web/src/i18n/pages/shared/zh-TW.ts",
+      "web/src/lib/api.system-services.test.ts",
+      "web/src/lib/api.ts",
+      "web/src/types/systemServices.ts",
+      "web/src/views/OverviewView.test.ts",
+      "web/src/views/OverviewView.vue"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF",
+      "WEB-PROTOCOL-AND-AUTH.md#Cookie scope and transport",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "reason": "The browser route authorization unit does not analyze command sink construction; the separate Agent-to-systemctl unit owns that path.",
+        "block": "ATTACK-CLASSES.md#Injection"
+      },
+      {
+        "reason": "The new route does not create or transform credentials; session and CSRF handling are covered by the selected web companion.",
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets"
+      },
+      {
+        "reason": "The scoped feature adds no login, session rotation, logout, or revocation transition.",
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Session fixation and invalidation"
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter_panel_web",
+    "reviewed_paths": [
+      "docs/system-management.md",
+      "internal/auth/service.go",
+      "internal/contract/system_services.go",
+      "internal/panel/config.go",
+      "internal/panel/server.go",
+      "internal/panel/server_test.go",
+      "internal/panel/system_services.go",
+      "internal/panel/system_services_test.go",
+      "web/src/components/overview/SystemServicesDialog.test.ts",
+      "web/src/components/overview/SystemServicesDialog.vue",
+      "web/src/i18n/pages/OverviewView/en-US.ts",
+      "web/src/i18n/pages/OverviewView/zh-TW.ts",
+      "web/src/i18n/pages/shared/en-US.ts",
+      "web/src/i18n/pages/shared/zh-TW.ts",
+      "web/src/lib/api.system-services.test.ts",
+      "web/src/lib/api.ts",
+      "web/src/types/systemServices.ts",
+      "web/src/views/OverviewView.test.ts",
+      "web/src/views/OverviewView.vue"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_panel_web",
+        "reviewed_paths": [
+          "docs/system-management.md",
+          "internal/auth/service.go",
+          "internal/contract/system_services.go",
+          "internal/panel/config.go",
+          "internal/panel/server.go",
+          "internal/panel/server_test.go",
+          "internal/panel/system_services.go",
+          "internal/panel/system_services_test.go",
+          "web/src/components/overview/SystemServicesDialog.test.ts",
+          "web/src/components/overview/SystemServicesDialog.vue",
+          "web/src/i18n/pages/OverviewView/en-US.ts",
+          "web/src/i18n/pages/OverviewView/zh-TW.ts",
+          "web/src/i18n/pages/shared/en-US.ts",
+          "web/src/i18n/pages/shared/zh-TW.ts",
+          "web/src/lib/api.system-services.test.ts",
+          "web/src/lib/api.ts",
+          "web/src/types/systemServices.ts",
+          "web/src/views/OverviewView.test.ts",
+          "web/src/views/OverviewView.vue"
+        ],
+        "invariant": "Only an authenticated Panel session may read service endpoints; service mutations must pass Origin and session-bound CSRF checks, then bounded JSON and service-action validation before host-operation dispatch.",
+        "method": "source",
+        "result": "The route table has one POST /api/v1/system/service-actions route and a GET service path route. The read handler requires a session before dispatch. The action handler rejects raw paths and queries, checks Origin, authenticates the session, and validates the CSRF header against both the CSRF cookie and the authenticated session stored token hash before decoding JSON, validating the service name/action/version, auditing intent, or dispatching. The JSON decoder limits request size, requires application/json, rejects unknown fields and additional JSON values; the contract accepts one .service name, six fixed actions, and a 64-character lowercase hexadecimal resource version. Auth service creates a random CSRF token and stores its hash with the session. Default cookies are host-only, SameSite=Strict, and use HttpOnly for the session cookie; secure mode uses __Host- names. The web client uses fixed service API paths, sends X-CSRF-Token for mutations, and the dialog renders service fields through Vue interpolation. Source tests cover unauthenticated reads, missing CSRF, cross-origin writes, invalid actions, and invalid paths; tests were not run. No source-grounded access-control invariant failure was found.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hardening_notes": [
+      "When PublicURL is unset, checkOrigin can use a Host-derived expected origin if Origin is absent; the mutation still requires the session-bound CSRF token, so source review found no bypass."
+    ]
+  },
+  {
+    "coverage_id": "internal%2Fpanel%2Fsystem_services.go%23GET%20service%20detail%20and%20logs::internal%2Fsystemmanage%2Fsystem_services.go%23service%20output%20and%20journal%20redaction::internal%2Fsystemmanage%2Binternal%2Fpanel::ATTACK-CLASSES.md%23Feature%20abuse%20and%20data%20leakage",
+    "canonical_refs": {
+      "surface": "internal/panel/system_services.go#GET service detail and logs",
+      "boundary": "internal/systemmanage/system_services.go#service output and journal redaction",
+      "subsystem": "internal/systemmanage+internal/panel",
+      "attack_class": "ATTACK-CLASSES.md#Feature abuse and data leakage"
+    },
+    "surface": "Service details, command errors, logs, and audit event copies",
+    "boundary": "Potential alternate readers and output transformation from systemd/journal to authenticated Panel session and audit store",
+    "subsystem": "internal/systemmanage+internal/panel",
+    "attack_class": "Feature abuse and data leakage",
+    "starting_paths": [
+      "docs/system-management.md",
+      "internal/agent/server.go",
+      "internal/agent/system_services.go",
+      "internal/agent/system_services_test.go",
+      "internal/contract/system_services.go",
+      "internal/panel/server.go",
+      "internal/panel/system_services.go",
+      "internal/panel/system_services_test.go",
+      "internal/redact",
+      "internal/systemmanage/system_services.go",
+      "internal/systemmanage/system_services_test.go",
+      "web/src/components/overview/SystemServicesDialog.test.ts",
+      "web/src/components/overview/SystemServicesDialog.vue",
+      "web/src/types/systemServices.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Analytics, logs, traces, and diagnostics as alternate readers",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "reason": "The feature reads host command and journal output but adds no path-controlled file, archive, or deserialization operation.",
+        "block": "ATTACK-CLASSES.md#Resource and file handling"
+      },
+      {
+        "reason": "The feature does not export or back up stored user data.",
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Export and backup scope expansion"
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter_service_read",
+    "reviewed_paths": [
+      "internal/agent/server.go",
+      "internal/agent/system_services.go",
+      "internal/contract/system_services.go",
+      "internal/panel/agent.go",
+      "internal/panel/server.go",
+      "internal/panel/system_services.go",
+      "internal/redact/redact.go",
+      "internal/store/audit_log.go",
+      "internal/systemmanage/resources.go",
+      "internal/systemmanage/system_services.go",
+      "web/src/components/overview/SystemServicesDialog.vue",
+      "web/src/types/systemServices.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_service_read",
+        "reviewed_paths": [
+          "internal/agent/server.go",
+          "internal/agent/system_services.go",
+          "internal/contract/system_services.go",
+          "internal/redact/redact.go",
+          "internal/systemmanage/resources.go",
+          "internal/systemmanage/system_services.go"
+        ],
+        "invariant": "Service details must not expose configuration text; journal output must be redacted and bounded before returning through Agent errors and responses.",
+        "method": "source",
+        "result": "Configuration is read for hashing and is not returned. Detail output selects fixed properties, redacts descriptions, and sanitizes the fragment path. Logs are output-capped, redacted, limited to 100 lines and 2048 bytes per line. Agent error details can include bounded raw error text, but the documented feature has a single administrator and no cross-principal reader is established.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_service_read",
+        "reviewed_paths": [
+          "internal/panel/agent.go",
+          "internal/panel/server.go",
+          "internal/panel/system_services.go",
+          "internal/store/audit_log.go",
+          "web/src/components/overview/SystemServicesDialog.vue",
+          "web/src/types/systemServices.ts"
+        ],
+        "invariant": "Copies of service details and logs must not reach a broader alternate reader or be persisted in audit records.",
+        "method": "source",
+        "result": "The Panel read route requires a session and forwards the Agent response. Service-action audit events contain only the service name and action; the authenticated audit reader returns those events, not detail or journal content. The UI renders returned fields and logs through text interpolation.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hardening_notes": [
+      "Agent safeDetail truncates error text but does not apply the log redactor before including it in an Agent problem response. No cross-principal impact is established under the documented single-administrator model; use stable generic details if service-read access is later broadened."
+    ]
+  },
+  {
+    "coverage_id": "internal%2Fsystemmanage%2Fsystem_services.go%23Action%20resourceVersion%20and%20service%20mutex::internal%2Fsystemmanage%2Fsystem_services.go%23re-read%20compare%20and%20asynchronous%20systemctl%20action::internal%2Fsystemmanage::ATTACK-CLASSES.md%23Business%20logic",
+    "canonical_refs": {
+      "surface": "internal/systemmanage/system_services.go#Action resourceVersion and service mutex",
+      "boundary": "internal/systemmanage/system_services.go#re-read compare and asynchronous systemctl action",
+      "subsystem": "internal/systemmanage",
+      "attack_class": "ATTACK-CLASSES.md#Business logic"
+    },
+    "surface": "Systemd action state, stale-state checks, and completion lifecycle",
+    "boundary": "Version compare, in-process action lock, cancellation behavior, and accepted versus completed result",
+    "subsystem": "internal/systemmanage",
+    "attack_class": "Business logic",
+    "starting_paths": [
+      "docs/system-management.md",
+      "internal/agent/system_services.go",
+      "internal/agent/system_services_test.go",
+      "internal/contract/system_services.go",
+      "internal/panel/server.go",
+      "internal/panel/system_services.go",
+      "internal/panel/system_services_test.go",
+      "internal/systemmanage/system_services.go",
+      "internal/systemmanage/system_services_test.go",
+      "web/src/components/overview/SystemServicesDialog.test.ts",
+      "web/src/components/overview/SystemServicesDialog.vue",
+      "web/src/lib/api.system-services.test.ts",
+      "web/src/lib/api.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Business logic",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [
+      {
+        "reason": "The adjacent fixed-argv command construction is independently assigned to the injection unit.",
+        "block": "ATTACK-CLASSES.md#Injection"
+      },
+      {
+        "reason": "This feature is a browser Panel workflow; explicit API authorization and anti-CSRF are handled in the web-session unit, and no native IPC user-presence prompt exists.",
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Pending-action and user-presence confusion"
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter_system_exec",
+    "reviewed_paths": [
+      "docs/system-management.md",
+      "internal/agent/system_services.go",
+      "internal/agent/system_services_test.go",
+      "internal/contract/system_services.go",
+      "internal/panel/server.go",
+      "internal/panel/system_services.go",
+      "internal/panel/system_services_test.go",
+      "internal/systemmanage/system_services.go",
+      "internal/systemmanage/system_services_test.go",
+      "web/src/components/overview/SystemServicesDialog.test.ts",
+      "web/src/components/overview/SystemServicesDialog.vue",
+      "web/src/lib/api.system-services.test.ts",
+      "web/src/lib/api.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_system_exec",
+        "reviewed_paths": [
+          "docs/system-management.md",
+          "internal/agent/system_services.go",
+          "internal/agent/system_services_test.go",
+          "internal/contract/system_services.go",
+          "internal/panel/server.go",
+          "internal/panel/system_services.go",
+          "internal/panel/system_services_test.go",
+          "internal/systemmanage/system_services.go",
+          "internal/systemmanage/system_services_test.go",
+          "web/src/components/overview/SystemServicesDialog.test.ts",
+          "web/src/components/overview/SystemServicesDialog.vue",
+          "web/src/lib/api.system-services.test.ts",
+          "web/src/lib/api.ts"
+        ],
+        "invariant": "A write is rejected when its expected service version is stale; concurrent in-process writes are serialized; cancellation, acceptance, and completion are represented without claiming an asynchronous action completed.",
+        "method": "source",
+        "result": "The Manager locks writes, re-reads state and configuration, compares the resource version, and uses bounded contexts independent of caller cancellation. Lifecycle actions use --no-block and return accepted status; Panel audit, API, UI, tests, and documentation preserve the queued-versus-completed distinction and avoid automatic retries. Enable/disable omit --now and verify readback. Documentation explicitly limits the lock to one Agent and disclaims atomicity against external systemd changes. No source-grounded lifecycle invariant failure found.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hardening_notes": [
+      "The service mutex and version check do not provide cross-process atomicity against external systemd changes; the documentation states this limitation and requires refreshed state confirmation."
+    ]
+  }
+]

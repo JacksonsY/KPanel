@@ -1,0 +1,842 @@
+{
+  "target": "e2968b30962b2ac6b89c9c73f6f84dc699705558",
+  "fulls": [
+    {
+      "name": "run-1",
+      "mode": "full",
+      "status": "complete",
+      "source": "6340e0783d3e57873fd2c93a964372aefb9e1a81",
+      "dirty": true
+    },
+    {
+      "name": "run-4",
+      "mode": "full",
+      "status": "complete",
+      "source": "4c0694aa8e02e46145a775707b8d5a0355f7ce10",
+      "dirty": false
+    }
+  ],
+  "scoped": [
+    {
+      "name": "run-2",
+      "mode": "scoped",
+      "status": "complete",
+      "source": "23cbb9979ce0df84801b9fe614bd1b00d7ad8a99",
+      "dirty": false
+    },
+    {
+      "name": "run-6",
+      "mode": "scoped",
+      "status": "complete",
+      "source": "b8ba15f484c64d43241eaa3f2d4060d702b75fbd",
+      "dirty": false
+    },
+    {
+      "name": "run-7",
+      "mode": "scoped",
+      "status": "complete",
+      "source": "ce2fffa6f66c81beeb97b903e2701a76462016a5",
+      "dirty": false
+    },
+    {
+      "name": "run-9",
+      "mode": "scoped",
+      "status": "complete",
+      "source": "4fb9c16f3b97eea1342d87a48e454e3d0ba37d8c",
+      "dirty": false
+    },
+    {
+      "name": "run-10",
+      "mode": "scoped",
+      "status": "complete",
+      "source": "690f3dc24fe81377f4e17d27c68e4a174761b973",
+      "dirty": false
+    },
+    {
+      "name": "run-16",
+      "mode": "scoped",
+      "status": "complete",
+      "source": "b56362f7d7109b19f76d44b1162c0917f04b361a",
+      "dirty": false
+    },
+    {
+      "name": "run-29",
+      "mode": "scoped",
+      "status": "complete",
+      "source": "5eeecd4bac16ae4fccec5039863e476ad2054004",
+      "dirty": false,
+      "coverage_kind": "reviewed-commits",
+      "reviewed_commits": [
+        "3507b50826f1e49b1ff5079c9557a93fb5bb02e5"
+      ]
+    },
+    {
+      "name": "run-30",
+      "mode": "scoped",
+      "status": "complete",
+      "source": "5eeecd4bac16ae4fccec5039863e476ad2054004",
+      "dirty": false,
+      "coverage_kind": "reviewed-commits",
+      "reviewed_commits": [
+        "14dac0f7a3d9f48e38331cc3770bc5cd9a36e23a"
+      ]
+    }
+  ],
+  "lastFull": {
+    "name": "run-4",
+    "mode": "full",
+    "status": "complete",
+    "source": "4c0694aa8e02e46145a775707b8d5a0355f7ce10",
+    "dirty": false
+  },
+  "interrupted": [
+    {
+      "name": "run-3",
+      "mode": "scoped",
+      "status": "incomplete-platform-interruption",
+      "source": "953c30fb3e7c19d57238fe5eeb488a703e15f925",
+      "dirty": false
+    },
+    {
+      "name": "run-5",
+      "mode": "scoped",
+      "status": "interrupted-platform-policy",
+      "source": "54650283ac66405f5bdb577665f2cfec535e1e7d",
+      "dirty": false
+    },
+    {
+      "name": "run-19",
+      "mode": "scoped",
+      "status": "incomplete",
+      "source": "9bce646f1a4eff5323b9dea9085e98076de1c345",
+      "dirty": false,
+      "coverage_kind": "reviewed-commits",
+      "reviewed_commits": [
+        "659a108d8cd30c6ad35dfbe7fa97bc64fa705da7",
+        "f870d58a32fb3e9f961b4bb2c24dec290332c810",
+        "24df7e45f48ed67b7ab1ca4604df0752e0baba44",
+        "c134fa88796305c2b506ff9d2e810a6c20dc1670"
+      ]
+    },
+    {
+      "name": "run-20",
+      "mode": "scoped",
+      "status": "incomplete",
+      "source": "44bc592a3d6f8c3088536087bf965923f65ec46a",
+      "dirty": false,
+      "coverage_kind": "reviewed-commits",
+      "reviewed_commits": [
+        "285475f12f2f3c1ec56211a3865b9e2ba8f97eb2",
+        "77e09185044cbf1c45b1badade761b447db5b0a8",
+        "8669efddf6fa7889e3308d0d2539a66ee17279c7",
+        "44bc592a3d6f8c3088536087bf965923f65ec46a"
+      ]
+    },
+    {
+      "name": "run-21",
+      "mode": "scoped",
+      "status": "incomplete",
+      "source": "14dac0f7a3d9f48e38331cc3770bc5cd9a36e23a",
+      "dirty": false,
+      "coverage_kind": "reviewed-commits",
+      "reviewed_commits": [
+        "3507b50826f1e49b1ff5079c9557a93fb5bb02e5",
+        "14dac0f7a3d9f48e38331cc3770bc5cd9a36e23a"
+      ]
+    },
+    {
+      "name": "run-22",
+      "mode": "scoped",
+      "status": "partial",
+      "source": "9af89e6aee0c949bdebe891b615d421c54d0c877",
+      "dirty": false,
+      "coverage_kind": "reviewed-commits",
+      "reviewed_commits": [
+        "9af89e6aee0c949bdebe891b615d421c54d0c877"
+      ]
+    },
+    {
+      "name": "run-31",
+      "mode": "scoped",
+      "status": "incomplete",
+      "source": "f2c867b4b48ecc1eddb6ad60efef87f7a53c51dc",
+      "dirty": false,
+      "coverage_kind": "reviewed-commits",
+      "reviewed_commits": [
+        "f2c867b4b48ecc1eddb6ad60efef87f7a53c51dc"
+      ]
+    },
+    {
+      "name": "run-32",
+      "mode": "scoped",
+      "status": "incomplete",
+      "source": "0b808e7bb00ee5d058bf0b2857009c9307099965",
+      "dirty": false,
+      "coverage_kind": "reviewed-commits",
+      "reviewed_commits": [
+        "0b808e7bb00ee5d058bf0b2857009c9307099965"
+      ]
+    },
+    {
+      "name": "run-33",
+      "mode": "scoped",
+      "status": "incomplete",
+      "source": "4884b5afa78a311b76dc243986292a58ddba3ff8",
+      "dirty": false
+    }
+  ],
+  "partial": [],
+  "outside": [],
+  "fullAgeDays": 20,
+  "commits": [
+    {
+      "sha": "bb14a3087886dd9ba1c7552af3a21e45670ff709",
+      "ageDays": 0,
+      "subject": "feat(system): add bounded systemd service management"
+    },
+    {
+      "sha": "f709490b4accad6188db88c9278a0384245637ab",
+      "ageDays": 0,
+      "subject": "fix(system): bound runtime probe output pipe wait"
+    },
+    {
+      "sha": "deb6394fab219d2e258d7ca758c42a228d3c64f1",
+      "ageDays": 0,
+      "subject": "feat(system): detect Python Node Java and Go runtimes"
+    },
+    {
+      "sha": "7d1f5217cbadc3098e51fe7b8e3a6eceb40f12e3",
+      "ageDays": 0,
+      "subject": "fix(system): restore package reads and stop permanent error retries"
+    },
+    {
+      "sha": "cc540bcc18f84c0b1540cd4e990cacad5fd8e73a",
+      "ageDays": 0,
+      "subject": "fix: stabilize container versions across mount ordering"
+    },
+    {
+      "sha": "b79112052ee938d69401ad259179e8faa759a669",
+      "ageDays": 0,
+      "subject": "fix(bittorrent): backport upstream peer writer wakeup fixes"
+    },
+    {
+      "sha": "de7eb95f8766762bb1ada2dba03e0b21d7695dcd",
+      "ageDays": 0,
+      "subject": "fix(terminal): preserve startup output and bound connection waits"
+    },
+    {
+      "sha": "c7789f732416ccb6a9fc64e5fc48f11be73a4057",
+      "ageDays": 1,
+      "subject": "fix(docker): explain missing container shells"
+    },
+    {
+      "sha": "b7208ce19509bf672ee64308960b6618a4a58bab",
+      "ageDays": 1,
+      "subject": "fix(docker): restore reliable container terminal startup"
+    },
+    {
+      "sha": "b21a3bc0cf9b15517b85d85620f3f272d4511cd4",
+      "ageDays": 1,
+      "subject": "fix: wait for exact retired peers before startup redial"
+    },
+    {
+      "sha": "2e5b24999dba5ffb867969e1b520e0b1f8203201",
+      "ageDays": 1,
+      "subject": "fix: recover bounded zero-payload torrent startup peers"
+    },
+    {
+      "sha": "8267921515703a3e474e058ede9736dc356df58e",
+      "ageDays": 1,
+      "subject": "fix(terminal): retain cleanup ownership across terminal operations"
+    },
+    {
+      "sha": "81435ac92fff823ecb0e134f0432672168464830",
+      "ageDays": 1,
+      "subject": "feat(docker): reuse the shared terminal for container shells"
+    },
+    {
+      "sha": "47a8b81569917e81de393dec78184fc25da37c66",
+      "ageDays": 1,
+      "subject": "fix(terminal): honor subscription cancellation under backpressure"
+    },
+    {
+      "sha": "6d3f401bee99f7699c96ac1762f5af3444d43741",
+      "ageDays": 1,
+      "subject": "fix(files): restore session-authenticated downloads"
+    },
+    {
+      "sha": "080cb99f6d1907b1f92c62f187e4436616631d9b",
+      "ageDays": 1,
+      "subject": "fix: retain preview validation contracts and bound failed offer refreshes"
+    },
+    {
+      "sha": "a049df23b04f540aa9e095deecdf37a41134fb25",
+      "ageDays": 1,
+      "subject": "feat(release): restore the validated v1.26 preview runtime"
+    },
+    {
+      "sha": "1a23472317a7f85d359a9cb4ff321707dad22efa",
+      "ageDays": 1,
+      "subject": "fix(security): release KPanel 1.25.1 from the stable runtime baseline"
+    },
+    {
+      "sha": "223255f5d44d048135d5f5c0931300cb0067307d",
+      "ageDays": 1,
+      "subject": "fix(offers): share first loads and prune before releasing a refresh"
+    },
+    {
+      "sha": "f9ab879482cf3f9cc2f8fdfd499de8c91f3f4372",
+      "ageDays": 1,
+      "subject": "feat(offers): add the sponsored offers column"
+    },
+    {
+      "sha": "f768904a1343486c297c10a2ef471ad4a6623bb0",
+      "ageDays": 2,
+      "subject": "fix(files): require torrent metadata for private downloads"
+    },
+    {
+      "sha": "3c3106bc838d9fdc0d324dad0bc45751bf593388",
+      "ageDays": 2,
+      "subject": "fix(files): retry bounded known peers when BT capacity grows"
+    },
+    {
+      "sha": "3bf1fd341be0cf84b3c632d040fab1bd0a86d60e",
+      "ageDays": 2,
+      "subject": "fix(files): preserve downloads on failed probes and disable peer exchange"
+    },
+    {
+      "sha": "0b808e7bb00ee5d058bf0b2857009c9307099965",
+      "ageDays": 2,
+      "subject": "feat(files): add adaptive HTTP and bounded BitTorrent sources"
+    },
+    {
+      "sha": "31f2a132473eaf76af42e6ff894f0ce3969ed04d",
+      "ageDays": 2,
+      "subject": "test(files): retain acceleration as an opt-in feasibility experiment"
+    },
+    {
+      "sha": "ee243e8545ac98aeaa1b26957bc91bd6b1c3d78d",
+      "ageDays": 2,
+      "subject": "fix(files): fail closed on changed segments and strengthen transfer fixtures"
+    },
+    {
+      "sha": "ca557681050ad9b8d0380c4802a3e0f43e1d669a",
+      "ageDays": 2,
+      "subject": "feat(files): prototype bounded prefetch and segmented downloads"
+    },
+    {
+      "sha": "35dcc3df9952e301d3f7704f68c68ed2c5898ab4",
+      "ageDays": 2,
+      "subject": "fix(security): update Go and network security patches"
+    },
+    {
+      "sha": "19a44ddbc3e6175eb680023ea98379a9b971b542",
+      "ageDays": 2,
+      "subject": "release: pin compatible manual renewal script fix"
+    },
+    {
+      "sha": "2adec96cd92a6b5dd8303e95211c3fd08f4a084a",
+      "ageDays": 2,
+      "subject": "fix(sites): require systemd cleanup for manual certificate renewal"
+    },
+    {
+      "sha": "b1aa5b58351c5f5bec80877ba59cd8d3fa8661e4",
+      "ageDays": 2,
+      "subject": "release: prepare v1.26.0-rc.1 with desktop, Office and certificate renewal"
+    },
+    {
+      "sha": "f2c867b4b48ecc1eddb6ad60efef87f7a53c51dc",
+      "ageDays": 2,
+      "subject": "feat(sites): add manual certificate request for expiring sites"
+    },
+    {
+      "sha": "ff3d6876fec25748b0a8e59aad6494b873bbc829",
+      "ageDays": 3,
+      "subject": "fix(cluster): restore OpenWrt light-node recognition"
+    },
+    {
+      "sha": "0f9fa036881fdb0bbd477ee9c1811c4e73e0714a",
+      "ageDays": 3,
+      "subject": "fix(files): separate unified job index from historical cross-host state"
+    },
+    {
+      "sha": "77ac17942a34f3da9d952c83b0be57127988cada",
+      "ageDays": 3,
+      "subject": "fix(ai): fail closed when stopped Compose discovery is incomplete"
+    },
+    {
+      "sha": "8e5c947cde057e47f9ed31edb150766d928f01fc",
+      "ageDays": 3,
+      "subject": "fix(backup): retain completed automatic copy receipts on repeated uploads"
+    },
+    {
+      "sha": "4e989fb476d54712a0452410a240eef0fc6e10d0",
+      "ageDays": 3,
+      "subject": "fix(files): recover private commits independently of sibling names"
+    },
+    {
+      "sha": "970e7f92dbb5a17ecae92e9cfb76690d13256bc0",
+      "ageDays": 3,
+      "subject": "fix(ai): classify Compose sources in nested stopped projects"
+    },
+    {
+      "sha": "7b01d300551bfd68fdfde32db4ab21537caca05a",
+      "ageDays": 3,
+      "subject": "fix(backup): keep schedule health stable through cleanup and upload retries"
+    },
+    {
+      "sha": "4765ec86098951d26469a7475a74f5a947fc52d5",
+      "ageDays": 3,
+      "subject": "fix(files): publish owned objects through private staging roots"
+    },
+    {
+      "sha": "5fdc2ef443e87188c4afdfcd7cdd565acee628c5",
+      "ageDays": 3,
+      "subject": "fix(files): pin receive directories and retain granted v1 uploads"
+    },
+    {
+      "sha": "44bc592a3d6f8c3088536087bf965923f65ec46a",
+      "ageDays": 3,
+      "subject": "feat(backup): expose receipt-based schedule health and opt-in alerts"
+    },
+    {
+      "sha": "8669efddf6fa7889e3308d0d2539a66ee17279c7",
+      "ageDays": 3,
+      "subject": "fix(ai): require approval for native Compose source identities"
+    },
+    {
+      "sha": "77e09185044cbf1c45b1badade761b447db5b0a8",
+      "ageDays": 3,
+      "subject": "fix(backup): round-trip local volumes with destination daemon identities"
+    },
+    {
+      "sha": "285475f12f2f3c1ec56211a3865b9e2ba8f97eb2",
+      "ageDays": 3,
+      "subject": "fix(sites): preserve CLI configuration across failures and write races"
+    },
+    {
+      "sha": "fe7e0a922fac426c4874b53a699c56069567e945",
+      "ageDays": 3,
+      "subject": "fix(files): preserve compatibility and prove recovered commits"
+    },
+    {
+      "sha": "9af89e6aee0c949bdebe891b615d421c54d0c877",
+      "ageDays": 3,
+      "subject": "feat(files): unify durable receiving and resumable transfers"
+    },
+    {
+      "sha": "15a8dd9da19fd91af7ce0e86423d11905b1f87eb",
+      "ageDays": 4,
+      "subject": "fix(update): enforce readable release notes in both channels"
+    },
+    {
+      "sha": "c134fa88796305c2b506ff9d2e810a6c20dc1670",
+      "ageDays": 4,
+      "subject": "fix(docker): allow removal with shared configuration retained"
+    },
+    {
+      "sha": "24df7e45f48ed67b7ab1ca4604df0752e0baba44",
+      "ageDays": 4,
+      "subject": "fix(docker): keep recovery selection after partial Compose removal"
+    },
+    {
+      "sha": "f870d58a32fb3e9f961b4bb2c24dec290332c810",
+      "ageDays": 4,
+      "subject": "fix(docker): preserve Compose identity after deployment removal"
+    },
+    {
+      "sha": "659a108d8cd30c6ad35dfbe7fa97bc64fa705da7",
+      "ageDays": 4,
+      "subject": "feat(docker): add Compose project removal with data retention"
+    },
+    {
+      "sha": "b5de6daa9ef1fad16ba536d2204749962db3eea0",
+      "ageDays": 4,
+      "subject": "style: format docker run command fields"
+    },
+    {
+      "sha": "7303ceef932b0198ace6ef1ef5bc9678c2d329eb",
+      "ageDays": 4,
+      "subject": "feat(docker): preserve and report runtime settings"
+    },
+    {
+      "sha": "38b165663c8271386e33af93bdda613d3b246f59",
+      "ageDays": 4,
+      "subject": "feat(docker): show an equivalent docker run for any container"
+    },
+    {
+      "sha": "ef8387e2ad574d45bb0ded508972555cdb4628b0",
+      "ageDays": 5,
+      "subject": "perf(cluster): index light nodes for report admission"
+    },
+    {
+      "sha": "53a7ca40bae792f12290502cdfc16fa8e9b074bb",
+      "ageDays": 5,
+      "subject": "fix(cluster): prune retired Windows light-node state"
+    },
+    {
+      "sha": "f445baa30031b21c1a892802d3150e73cbbd13f0",
+      "ageDays": 5,
+      "subject": "fix(node): remove remaining Windows node platform paths"
+    },
+    {
+      "sha": "15af2f1df9485d044d4cb583a739ecd0f80334b1",
+      "ageDays": 5,
+      "subject": "fix(node): reject non-Linux light-node runtime"
+    },
+    {
+      "sha": "a58ecddc10c4551be2fbb7884077b5b69a60eebb",
+      "ageDays": 5,
+      "subject": "fix(cluster): enforce Linux-only light-node boundary"
+    },
+    {
+      "sha": "fd93225573d07a53afdb8060662d1b59dcac474b",
+      "ageDays": 5,
+      "subject": "fix(cluster): remove residual Windows light-node logic"
+    },
+    {
+      "sha": "6c2aa2c0423e0a6f349af7b4ac2154db997d01de",
+      "ageDays": 5,
+      "subject": "fix(preview): preserve Linux light-node startup"
+    },
+    {
+      "sha": "da829e348da4516f72f4ca5e6e4a4fd809a549e2",
+      "ageDays": 5,
+      "subject": "feat(preview): remove Windows light-node support"
+    },
+    {
+      "sha": "9a63e0f57bc257bfb3e8b62f136429da84827583",
+      "ageDays": 6,
+      "subject": "style(windows): apply Go 1.27 formatting"
+    },
+    {
+      "sha": "2209c4a5f0afdbf077bc176718f523ecc8ac3904",
+      "ageDays": 6,
+      "subject": "fix(windows): respect PowerShell execution policy"
+    },
+    {
+      "sha": "9d3d2689ef3bf7382fd0aa7d2bf69ce1336026a0",
+      "ageDays": 6,
+      "subject": "fix(hostbackup): archive safe in-root symbolic links"
+    },
+    {
+      "sha": "6a37a138b09b662f6ab5f8a071bfc09ee6fd31f9",
+      "ageDays": 6,
+      "subject": "feat(windows): shorten enrollment command"
+    },
+    {
+      "sha": "34e461841aefc4e2b5adc1bc7f7f4d88dde13113",
+      "ageDays": 6,
+      "subject": "fix(windows): accept standard ProgramData permissions"
+    },
+    {
+      "sha": "d17d2d6dc7bcf76b82bfb76ec363c52e1fdc19c7",
+      "ageDays": 6,
+      "subject": "fix(cluster): clarify traffic interface platform support"
+    },
+    {
+      "sha": "f48df857422b3e2f354861421c21f4aa2d023596",
+      "ageDays": 7,
+      "subject": "feat(node): integrate paired dependency bootstrap and mirror-aware updates"
+    },
+    {
+      "sha": "667bb9e7f9c250b250e2ef312b7e9de0f1be2c3c",
+      "ageDays": 7,
+      "subject": "fix: preserve Windows Office access and explain traffic selection support"
+    },
+    {
+      "sha": "fafd8a0c37f62cd28cd6f8a7c76d86301d1c0a45",
+      "ageDays": 7,
+      "subject": "fix(cluster): group virtual interfaces and keep continuity writes off the disk path"
+    },
+    {
+      "sha": "9b198ef3296afebcc2a74fefe2f51e274197fdbf",
+      "ageDays": 7,
+      "subject": "feat(cluster): choose counted traffic interfaces and keep counters continuous"
+    },
+    {
+      "sha": "7c23d8ce095eb55e00b985d1d79ac09e415c4fd5",
+      "ageDays": 7,
+      "subject": "fix(notifications): use the panel's zh-TW two-factor term"
+    },
+    {
+      "sha": "a75cbfa67b480641860be7a4be494f106684bea8",
+      "ageDays": 7,
+      "subject": "feat(notifications): notify on successful panel sign-in"
+    },
+    {
+      "sha": "b4e6e9edbb9da1844b29d9c5ba93195680c844dd",
+      "ageDays": 7,
+      "subject": "fix(files): validate the final Office edit budget independent of order"
+    },
+    {
+      "sha": "ff6c9ae23b1091ea7de8496b62260a4b063e891d",
+      "ageDays": 7,
+      "subject": "fix(files): bound Office expansion and guard calculated content"
+    },
+    {
+      "sha": "cf7f60e4c6f6a8afaf1183f8eb1841a7dc15bf0d",
+      "ageDays": 7,
+      "subject": "feat(files): add self-written lightweight Office preview and text editing"
+    },
+    {
+      "sha": "507ef0570f720d3f22d18e054ca8190143f1dcdd",
+      "ageDays": 7,
+      "subject": "feat(monitoring): chart the median latency with a lowest-to-highest band"
+    },
+    {
+      "sha": "c91372c4958edede4c2fd85f6780d9fc930c1374",
+      "ageDays": 7,
+      "subject": "fix(windows): remove external signing dependency for RC3"
+    },
+    {
+      "sha": "f259e8f014fbae6998ba59d829f79a7fbbfe8c9d",
+      "ageDays": 7,
+      "subject": "fix(windows): stop startup when an inbox module cannot load"
+    },
+    {
+      "sha": "d05d4e9f38b47cde5e73db717edd85453e8df627",
+      "ageDays": 7,
+      "subject": "fix(windows): load trusted inbox cmdlets for predictable terminal startup"
+    },
+    {
+      "sha": "7e83d7431a170b6d5401183059a9e0a2293778ad",
+      "ageDays": 7,
+      "subject": "fix(windows): isolate ConPTY standard handles across Windows builds"
+    },
+    {
+      "sha": "f1d2b0dace9ece6320c913ac6421947d8dcbff85",
+      "ageDays": 7,
+      "subject": "feat(windows): integrate full light node candidate for rc2"
+    }
+  ],
+  "covered": {
+    "run-30": 1,
+    "run-29": 1,
+    "run-16": 68,
+    "run-10": 9,
+    "run-9": 9,
+    "run-7": 7,
+    "run-6": 4
+  },
+  "files": [
+    "Dockerfile",
+    "cmd/kejilion-agent/main.go",
+    "cmd/kejilion-node/batch_enrollment_attempt.go",
+    "cmd/kejilion-node/check_status.go",
+    "cmd/kejilion-node/check_status_other.go",
+    "cmd/kejilion-node/desktop_broker_windows.go",
+    "cmd/kejilion-node/file_broker.go",
+    "cmd/kejilion-node/health.go",
+    "cmd/kejilion-node/health_other.go",
+    "cmd/kejilion-node/health_windows.go",
+    "cmd/kejilion-node/light_file.go",
+    "cmd/kejilion-node/light_terminal.go",
+    "cmd/kejilion-node/main.go",
+    "cmd/kejilion-node/monitoring.go",
+    "cmd/kejilion-node/platform_other.go",
+    "cmd/kejilion-node/platform_windows.go",
+    "cmd/kejilion-node/procd.go",
+    "cmd/kejilion-node/root_ownership_other.go",
+    "cmd/kejilion-node/service_windows.go",
+    "cmd/kejilion-node/task_health_windows.go",
+    "cmd/kejilion-node/terminal_broker.go",
+    "cmd/kejilion-node/terminal_config.go",
+    "cmd/kejilion-node/traffic_interfaces.go",
+    "cmd/kejilion-node/update_runtime/source.json",
+    "cmd/kejilion-node/update_runtime/update.sh",
+    "deploy/systemd/kejilion-agent.service",
+    "deploy/tests/install-safety.sh",
+    "deploy/windows/install.ps1",
+    "internal/agent/file_handler.go",
+    "internal/agent/file_policy_other.go",
+    "internal/agent/file_policy_windows.go",
+    "internal/agent/file_receives.go",
+    "internal/agent/file_write_policy.go",
+    "internal/agent/files.go",
+    "internal/agent/server.go",
+    "internal/agent/system_services.go",
+    "internal/agent/terminals.go",
+    "internal/agent/traffic_interfaces.go",
+    "internal/ai/runtime.go",
+    "internal/backupremote/store.go",
+    "internal/bittorrent/bounded.go",
+    "internal/bittorrent/engine.go",
+    "internal/bittorrent/metadata.go",
+    "internal/bittorrent/metadata_guard.go",
+    "internal/bittorrent/network.go",
+    "internal/bittorrent/space_other.go",
+    "internal/bittorrent/space_unix.go",
+    "internal/bittorrent/storage.go",
+    "internal/bittorrent/trackers.go",
+    "internal/cluster/bootstrap-windows.ps1",
+    "internal/cluster/desktop_policy.go",
+    "internal/cluster/desktop_stream.go",
+    "internal/cluster/file_stream.go",
+    "internal/cluster/file_stream_transport.go",
+    "internal/cluster/file_transfer_v2.go",
+    "internal/cluster/history.go",
+    "internal/cluster/history_transport.go",
+    "internal/cluster/light_batch_service.go",
+    "internal/cluster/light_enrollment_command.go",
+    "internal/cluster/light_file.go",
+    "internal/cluster/light_platform.go",
+    "internal/cluster/light_service.go",
+    "internal/cluster/light_store.go",
+    "internal/cluster/light_windows_install.go",
+    "internal/cluster/protocol_v2.go",
+    "internal/cluster/service.go",
+    "internal/cluster/service_v2.go",
+    "internal/cluster/store.go",
+    "internal/cluster/terminal_input.go",
+    "internal/cluster/terminal_v2.go",
+    "internal/cluster/types.go",
+    "internal/contract/files.go",
+    "internal/contract/monitoring.go",
+    "internal/contract/system_packages.go",
+    "internal/contract/system_services.go",
+    "internal/contract/traffic_interfaces.go",
+    "internal/contract/types.go",
+    "internal/desktopbridge/bridge.go",
+    "internal/desktopbridge/local_other.go",
+    "internal/desktopbridge/local_windows.go",
+    "internal/desktopbridge/protocol.go",
+    "internal/desktopcredentials/store.go",
+    "internal/desktopworkspace/workspace.go",
+    "internal/dockerx/client.go",
+    "internal/dockerx/compose.go",
+    "internal/dockerx/compose_source.go",
+    "internal/dockerx/maintenance.go",
+    "internal/dockerx/run_command.go",
+    "internal/dockerx/terminal.go",
+    "internal/dockerx/terminal_linux.go",
+    "internal/dockerx/terminal_other.go",
+    "internal/filemanager/chmod_other.go",
+    "internal/filemanager/chmod_windows.go",
+    "internal/filemanager/create_access_other.go",
+    "internal/filemanager/create_access_windows.go",
+    "internal/filemanager/manager.go",
+    "internal/filemanager/office.go",
+    "internal/filemanager/office_sheets.go",
+    "internal/filemanager/office_slides.go",
+    "internal/filemanager/office_word.go",
+    "internal/filemanager/office_xml.go",
+    "internal/filemanager/owner_windows.go",
+    "internal/filemanager/receive.go",
+    "internal/filemanager/receive_identity_linux.go",
+    "internal/filemanager/receive_identity_other.go",
+    "internal/filemanager/rename_noreplace_linux.go",
+    "internal/filemanager/rename_noreplace_other.go",
+    "internal/filemanager/rename_noreplace_windows.go",
+    "internal/filemanager/rename_windows.go",
+    "internal/filemanager/root_other.go",
+    "internal/filemanager/root_windows.go",
+    "internal/filemanager/share_identity_linux.go",
+    "internal/filemanager/share_identity_other.go",
+    "internal/filemanager/share_identity_windows.go",
+    "internal/filemanager/sync_unix.go",
+    "internal/filemanager/sync_windows.go",
+    "internal/filemanager/transfer.go",
+    "internal/filemanager/xattr_other.go",
+    "internal/filemanager/xattr_windows.go",
+    "internal/hostbackup/archive.go",
+    "internal/hostbackup/engine.go",
+    "internal/hostbackup/native.go",
+    "internal/hostbackup/owner_unix.go",
+    "internal/hostbackup/owner_windows.go",
+    "internal/hostbackup/restore.go",
+    "internal/hostpty/process_other.go",
+    "internal/hostpty/process_windows.go",
+    "internal/httpstream/prefetch.go",
+    "internal/monitoring/hourly.go",
+    "internal/monitoring/icmp_other.go",
+    "internal/monitoring/icmp_windows.go",
+    "internal/monitoring/operator_latency.go",
+    "internal/monitoring/service.go",
+    "internal/notification/backup.go",
+    "internal/notification/history.go",
+    "internal/notification/history_delivery.go",
+    "internal/notification/panel_login.go",
+    "internal/notification/service.go",
+    "internal/notification/types.go",
+    "internal/offers/images.go",
+    "internal/offers/manifest.go",
+    "internal/offers/service.go",
+    "internal/panel/ai_tools.go",
+    "internal/panel/backup_handlers.go",
+    "internal/panel/backup_health.go",
+    "internal/panel/backup_remote.go",
+    "internal/panel/cluster.go",
+    "internal/panel/cluster_share.go",
+    "internal/panel/config.go",
+    "internal/panel/desktop_credentials.go",
+    "internal/panel/desktop_sessions.go",
+    "internal/panel/file_cross_transfer_runner.go",
+    "internal/panel/file_proxy.go",
+    "internal/panel/file_receives.go",
+    "internal/panel/file_remote_download_jobs.go",
+    "internal/panel/file_remote_download_runner.go",
+    "internal/panel/file_remote_downloads.go",
+    "internal/panel/file_torrent_downloads.go",
+    "internal/panel/file_transfer_receiver.go",
+    "internal/panel/file_transfer_sources.go",
+    "internal/panel/files.go",
+    "internal/panel/light_file.go",
+    "internal/panel/login_notification.go",
+    "internal/panel/offers.go",
+    "internal/panel/passkey.go",
+    "internal/panel/server.go",
+    "internal/panel/sites.go",
+    "internal/panel/system_services.go",
+    "internal/panel/terminal.go",
+    "internal/panel/terminal_stream.go",
+    "internal/panel/traffic_interfaces.go",
+    "internal/remotedownload/adaptive.go",
+    "internal/remotedownload/client.go",
+    "internal/remotedownload/jobs.go",
+    "internal/remotedownload/segmented.go",
+    "internal/selfupdate/source.go",
+    "internal/sites/certificate_renew.go",
+    "internal/sites/cli_update.go",
+    "internal/sites/manager.go",
+    "internal/systeminfo/collector.go",
+    "internal/systeminfo/runtime_other.go",
+    "internal/systeminfo/runtime_windows.go",
+    "internal/systeminfo/traffic_interfaces.go",
+    "internal/systemmanage/manager.go",
+    "internal/systemmanage/resources.go",
+    "internal/systemmanage/system_packages.go",
+    "internal/systemmanage/system_runtimes.go",
+    "internal/systemmanage/system_services.go",
+    "internal/terminal/executable_owner_other.go",
+    "internal/terminal/input.go",
+    "internal/terminal/manager.go",
+    "internal/terminal/starter_other.go",
+    "internal/terminal/starter_windows.go",
+    "internal/windowsnode/desktop_account_api_windows.go",
+    "internal/windowsnode/desktop_account_windows.go",
+    "internal/windowsnode/integrity_windows.go",
+    "internal/windowsnode/login_windows.go",
+    "internal/windowsnode/paths_windows.go",
+    "internal/windowsnode/security_windows.go",
+    "internal/windowsnode/service_windows.go",
+    "internal/windowsnode/signature_windows.go",
+    "internal/windowsnode/update_windows.go",
+    "packaging/kejilion-app/kpanel.conf",
+    "packaging/release-runner/Dockerfile",
+    "packaging/tests/app-conf-lifecycle.sh"
+  ],
+  "newPackages": [
+    "internal/bittorrent",
+    "internal/offers"
+  ],
+  "reasons": [
+    "new boundary packages: internal/bittorrent, internal/offers"
+  ],
+  "nextScoped": {
+    "comparison_base": "4c0694aa8e02e46145a775707b8d5a0355f7ce10",
+    "source_ref": "e2968b30962b2ac6b89c9c73f6f84dc699705558"
+  },
+  "oldestAgeDays": 7,
+  "decision": "scoped-required"
+}
