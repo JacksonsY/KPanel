@@ -38,6 +38,21 @@ function directory(path: string, entries: FileEntry[], nextOffset?: number): Fil
 }
 
 describe('gallery folder loader', () => {
+  it('keeps cached child media visible while a warm parent revalidates', async () => {
+    const cache = new GalleryFolderCache()
+    const root = () => directory('/library', [folder('/library/Album')])
+    await loadGalleryFolder({ list: async (path) => path === '/library' ? root()
+      : directory(path, [file(`${path}/a.jpg`)]) }, '/library', undefined, undefined, cache)
+    let finish!: (value: FileDirectory) => void
+    const updates: GalleryFolderSnapshot[] = []
+    const pending = loadGalleryFolder({ list: async (path) => path === '/library' ? root()
+      : new Promise((resolve) => { finish = resolve }) }, '/library', (snapshot) => updates.push(snapshot), undefined, cache)
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    expect(updates.every((snapshot) => snapshot.items.length === 1)).toBe(true)
+    finish(directory('/library/Album', [file('/library/Album/b.jpg')]))
+    expect((await pending).items[0]?.entry.name).toBe('b.jpg')
+  })
+
   it('does not let an aborted, non-cooperative host response repopulate the navigation cache', async () => {
     const cache = new GalleryFolderCache()
     let finish!: (value: FileDirectory) => void

@@ -205,6 +205,10 @@ export async function loadGalleryFolder(
   signal?.throwIfAborted()
   const cached = cache?.read(path)
   if (cached) onUpdate?.(cached)
+  const publish = (value: GalleryFolderSnapshot) => {
+    // Keep a warm album stable until the replacement scan is complete.
+    if (!cached || !value.scanning) onUpdate?.(value)
+  }
   let listing: FolderListing
   try {
     listing = await listFolder(api, path, GALLERY_FOLDER_PAGES, signal, (partial) => {
@@ -254,7 +258,7 @@ export async function loadGalleryFolder(
     }
   }
   const scanTargets = albums.slice(0, GALLERY_ALBUM_SCAN_LIMIT)
-  onUpdate?.(snapshot(scanTargets.length > 0))
+  publish(snapshot(scanTargets.length > 0))
 
   let cursor = 0
   let completed = 0
@@ -282,7 +286,7 @@ export async function loadGalleryFolder(
         albums[index] = { ...album, scanned: true, failed: true }
       }
       completed += 1
-      if (completed < scanTargets.length) onUpdate?.(snapshot(true))
+      if (completed < scanTargets.length) publish(snapshot(true))
     }
   }))
   const final = snapshot(false)
