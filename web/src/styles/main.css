@@ -92,6 +92,7 @@
 .log-viewer,
 .log-view,
 .batch-result pre {
+  --scrollbar-track: transparent;
   --terminal-canvas-background: #00000000;
   --terminal-wallpaper-veil: color-mix(in srgb, var(--terminal-shell-background, #0b1214) var(--terminal-wallpaper-opacity, 84%), transparent);
   --terminal-wallpaper-background: linear-gradient(var(--terminal-wallpaper-veil), var(--terminal-wallpaper-veil)), var(--terminal-wallpaper-image, var(--classic-wallpaper-image, url('/wallpapers/kpanel-desktop.webp'))) var(--desktop-wallpaper-position, center) / cover no-repeat var(--terminal-shell-background, #0b1214);
@@ -650,9 +651,10 @@ html {
 .code-editor-shell,
 .diagnostic-log,
 .interactive-terminal,
+.host-terminal,
 .log-view,
 .log-viewer {
-  --scrollbar-track: var(--terminal-shell-background);
+  --scrollbar-track: var(--terminal-canvas-background, var(--terminal-shell-background));
   --scrollbar-thumb: var(--terminal-shell-scrollbar);
   --scrollbar-thumb-hover: var(--terminal-shell-scrollbar-hover);
   --scrollbar-thumb-active: var(--brand);

@@ -428,5 +428,4 @@ onBeforeUnmount(() => {
 .host-terminal__composer button { border:0; border-radius:8px; padding:0 16px; color:var(--on-brand,#05251c); background:var(--brand-action,#35cba6); font-weight: 700; }
 /* Workspace dialogs run the terminal to the window edges. */
 :global(.modal-panel--workspace .host-terminal) { border:0; border-radius:0; box-shadow:none; }
-.host-terminal :deep(.xterm-viewport) { scrollbar-color:var(--terminal-shell-scrollbar,#35474a) var(--terminal-shell-background,#0b1214); }
 </style>
