@@ -137,6 +137,7 @@ import type {
   TOTPEnrollment,
   TOTPRecoveryCodes,
   TOTPStatus,
+  TutorialVideoMetadata,
   TerminalOutput,
   TerminalQuickCommands,
   TerminalQuickCommandsUpdate,
@@ -1281,6 +1282,10 @@ async function resizeAppTerminal(id: string, rows: number, columns: number): Pro
 }
 
 export const api = {
+  tutorials: {
+    metadata: (url: string, signal?: AbortSignal): Promise<TutorialVideoMetadata> =>
+      request<TutorialVideoMetadata>('/tutorials/metadata', { query: { url }, signal }),
+  },
   auth: {
     passkeys: {
       status: (signal?: AbortSignal) => request<{ available: boolean; origin?: string; detectedOrigin?: string; configurable: boolean; originManaged: boolean }>('/auth/passkeys/status', { signal }),

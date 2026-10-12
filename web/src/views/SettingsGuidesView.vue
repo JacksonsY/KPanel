@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { ExternalLink, LayoutDashboard, Search, ShieldCheck } from '@lucide/vue'
+import { api } from '@/lib/api'
 import { usePhraseCatalog } from '@/i18n/phrase'
+import type { TutorialVideoMetadata } from '@/types/api'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { useI18n } from '@/i18n'
 
@@ -12,24 +14,140 @@ usePhraseCatalog((locale) => locale === 'en-US'
 
 const i18n = useI18n()
 const isEnglish = computed(() => i18n.locale.value === 'en-US')
+const platform = computed(() => isEnglish.value ? 'YouTube' : 'Bilibili')
 
-const video = computed(() => isEnglish.value
-  ? {
-      href: 'https://www.youtube.com/watch?v=HLTtsALHlpw&hl=en',
-      poster: '/tutorials/kpanel-overview-en.webp',
-      title: i18n.t('tutorials.video.titleEn'),
-      description: i18n.t('tutorials.video.descriptionEn'),
-      alt: i18n.t('tutorials.video.altEn'),
-      platform: 'YouTube',
+type TutorialVideoId = 'release125' | 'webssh' | 'cluster' | 'security' | 'theme' | 'desktop' | 'release124' | 'overview' | 'launch'
+
+// New entries need only a platform URL; copy keys and local covers are optional fallbacks.
+interface TutorialVideoEntry {
+  id?: TutorialVideoId
+  bilibiliUrl?: string
+  youtubeUrl?: string
+  bilibiliFallback?: string
+  youtubeFallback?: string
+  englishAudio?: boolean
+}
+
+const videoCatalog: TutorialVideoEntry[] = [
+  {
+    id: 'release125',
+    bilibiliUrl: 'https://www.bilibili.com/video/BV13xpb6tEq7/',
+    bilibiliFallback: '/tutorials/kpanel-release-125-zh.webp',
+    youtubeUrl: 'https://www.youtube.com/watch?v=3HwmSTCtozg',
+    youtubeFallback: '/tutorials/kpanel-release-125-en.webp',
+    englishAudio: true,
+  },
+  {
+    id: 'webssh',
+    bilibiliUrl: 'https://www.bilibili.com/video/BV1J2HX6ME7p/',
+    bilibiliFallback: '/tutorials/kpanel-webssh-zh.webp',
+    youtubeUrl: 'https://www.youtube.com/watch?v=kNBMTGF4G1k',
+    youtubeFallback: '/tutorials/kpanel-webssh-en.webp',
+    englishAudio: true,
+  },
+  {
+    id: 'cluster',
+    bilibiliUrl: 'https://www.bilibili.com/video/BV1jNe46WEjf/',
+    bilibiliFallback: '/tutorials/kpanel-cluster-zh.webp',
+  },
+  {
+    id: 'security',
+    bilibiliUrl: 'https://www.bilibili.com/video/BV1rvpe6dE9k/',
+    bilibiliFallback: '/tutorials/kpanel-security-zh.webp',
+    youtubeUrl: 'https://www.youtube.com/watch?v=6OFR8TxFguo',
+    youtubeFallback: '/tutorials/kpanel-security-en.webp',
+    englishAudio: true,
+  },
+  {
+    id: 'theme',
+    bilibiliUrl: 'https://www.bilibili.com/video/BV1YKaY6FEzk/',
+    bilibiliFallback: '/tutorials/kpanel-theme-zh.webp',
+  },
+  {
+    id: 'desktop',
+    bilibiliUrl: 'https://www.bilibili.com/video/BV145by6kEgG/',
+    bilibiliFallback: '/tutorials/kpanel-desktop-zh.webp',
+  },
+  {
+    id: 'release124',
+    bilibiliUrl: 'https://www.bilibili.com/video/BV14UH66EEZ9/',
+    bilibiliFallback: '/tutorials/kpanel-release-124-zh.webp',
+    youtubeUrl: 'https://www.youtube.com/watch?v=vl7ulAKvah4',
+    youtubeFallback: '/tutorials/kpanel-release-124-en.webp',
+    englishAudio: true,
+  },
+  {
+    id: 'overview',
+    bilibiliUrl: 'https://www.bilibili.com/video/BV1e7ar69EfD/',
+    bilibiliFallback: '/tutorials/kpanel-overview-zh.webp',
+    youtubeUrl: 'https://www.youtube.com/watch?v=HLTtsALHlpw',
+    youtubeFallback: '/tutorials/kpanel-overview-en.webp',
+    englishAudio: true,
+  },
+  {
+    id: 'launch',
+    bilibiliUrl: 'https://www.bilibili.com/video/BV1c5GG6vExw/',
+    bilibiliFallback: '/tutorials/kpanel-launch-zh.webp',
+  },
+]
+
+const videos = computed(() => videoCatalog
+  .filter((entry) => isEnglish.value ? Boolean(entry.youtubeUrl) : Boolean(entry.bilibiliUrl))
+  .map((entry) => {
+    const href = isEnglish.value ? englishYouTubeURL(entry.youtubeUrl!) : entry.bilibiliUrl!
+    const fallbackTitle = entry.id
+      ? i18n.t(`tutorials.videos.${entry.id}.title`)
+      : i18n.t('tutorials.video.defaultTitle')
+    const description = entry.id
+      ? i18n.t(`tutorials.videos.${entry.id}.description`)
+      : i18n.t('tutorials.video.defaultDescription')
+
+    return {
+      href,
+      fallbackPoster: (isEnglish.value ? entry.youtubeFallback : entry.bilibiliFallback) || '/tutorials/kpanel-video-placeholder.svg',
+      fallbackTitle,
+      description,
+      audioLabel: isEnglish.value && entry.englishAudio ? i18n.t('tutorials.video.englishAudio') : '',
+      platform: isEnglish.value ? 'YouTube' : 'Bilibili',
     }
-  : {
-      href: 'https://www.bilibili.com/video/BV1e7ar69EfD/',
-      poster: '/tutorials/kpanel-overview-zh.webp',
-      title: i18n.t('tutorials.video.titleZh'),
-      description: i18n.t('tutorials.video.descriptionZh'),
-      alt: i18n.t('tutorials.video.altZh'),
-      platform: 'Bilibili',
-    })
+  }))
+
+function englishYouTubeURL(videoURL: string): string {
+  const parsed = new URL(videoURL)
+  parsed.searchParams.set('hl', 'en')
+  return parsed.toString()
+}
+
+const videoMetadata = ref<Record<string, TutorialVideoMetadata>>({})
+
+watch(videos, (currentVideos, _previousVideos, onCleanup) => {
+  const controller = new AbortController()
+  videoMetadata.value = {}
+  onCleanup(() => controller.abort())
+
+  void Promise.all(currentVideos.map(async (video) => {
+    try {
+      return [video.href, await api.tutorials.metadata(video.href, controller.signal)] as const
+    } catch {
+      return null
+    }
+  })).then((results) => {
+    if (controller.signal.aborted) return
+    const resolved = results.filter((result): result is readonly [string, TutorialVideoMetadata] => result !== null)
+    videoMetadata.value = Object.fromEntries(resolved)
+  })
+}, { immediate: true })
+
+function videoTitle(video: (typeof videos.value)[number]): string {
+  return videoMetadata.value[video.href]?.title || video.fallbackTitle
+}
+
+function fallbackToLocalPoster(event: Event, fallbackPoster: string): void {
+  const image = event.currentTarget
+  if (!(image instanceof HTMLImageElement) || image.dataset.fallbackApplied === 'true') return
+  image.dataset.fallbackApplied = 'true'
+  image.src = fallbackPoster
+}
 
 const quickSteps = computed(() => [
   {
@@ -72,41 +190,50 @@ const quickSteps = computed(() => [
           <h2 id="guide-video-heading">{{ i18n.t('tutorials.video.heading') }}</h2>
           <p>{{ i18n.t('tutorials.video.summary') }}</p>
         </div>
-        <span class="guide-platform">{{ video.platform }}</span>
+        <span class="guide-platform">{{ platform }}</span>
       </div>
 
-      <a
-        class="guide-video panel-card"
-        data-testid="tutorial-video-link"
-        :href="video.href"
-        target="_blank"
-        rel="noopener noreferrer"
-        referrerpolicy="no-referrer"
-        :aria-label="i18n.t('tutorials.video.open', { platform: video.platform, title: video.title })"
-      >
-        <span class="guide-video__poster">
-          <img
-            :src="video.poster"
-            :alt="video.alt"
-            width="1280"
-            height="720"
-            loading="lazy"
-            decoding="async"
-          />
-          <span class="guide-video__play" aria-hidden="true">
-            <span>▶</span>
-          </span>
-        </span>
-        <span class="guide-video__content">
-          <span class="guide-video__meta">{{ video.platform }} · KPanel</span>
-          <strong>{{ video.title }}</strong>
-          <span class="guide-video__description">{{ video.description }}</span>
-          <span class="guide-video__action">
-            {{ i18n.t('tutorials.video.watch', { platform: video.platform }) }}
-            <ExternalLink :size="16" aria-hidden="true" />
-          </span>
-        </span>
-      </a>
+      <ul class="guide-video-grid" data-testid="tutorial-video-grid">
+        <li v-for="video in videos" :key="video.href">
+          <a
+            class="guide-video panel-card"
+            data-testid="tutorial-video-link"
+            :href="video.href"
+            target="_blank"
+            rel="noopener noreferrer"
+            referrerpolicy="no-referrer"
+            :aria-label="i18n.t('tutorials.video.open', { platform: video.platform, title: videoTitle(video) })"
+          >
+            <span class="guide-video__poster">
+              <img
+                :src="videoMetadata[video.href]?.thumbnailUrl || video.fallbackPoster"
+                :alt="i18n.t('tutorials.video.coverAlt', { title: videoTitle(video) })"
+                width="1280"
+                height="720"
+                loading="lazy"
+                decoding="async"
+                referrerpolicy="no-referrer"
+                @error="fallbackToLocalPoster($event, video.fallbackPoster)"
+              />
+              <span class="guide-video__play" aria-hidden="true">
+                <span>▶</span>
+              </span>
+            </span>
+            <span class="guide-video__content">
+              <span class="guide-video__meta">
+                {{ video.platform }} · KPanel
+                <span v-if="video.audioLabel" class="guide-video__audio">{{ video.audioLabel }}</span>
+              </span>
+              <strong>{{ videoTitle(video) }}</strong>
+              <span class="guide-video__description">{{ video.description }}</span>
+              <span class="guide-video__action">
+                {{ i18n.t('tutorials.video.watch', { platform: video.platform }) }}
+                <ExternalLink :size="16" aria-hidden="true" />
+              </span>
+            </span>
+          </a>
+        </li>
+      </ul>
 
       <p class="guide-video-note">{{ i18n.t('tutorials.video.externalNote') }}</p>
       <p v-if="isEnglish" class="guide-video-note">{{ i18n.t('tutorials.video.audioNote') }}</p>
@@ -209,9 +336,24 @@ const quickSteps = computed(() => [
   font-weight: 600;
 }
 
-.guide-video {
+.guide-video-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(250px, 0.75fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-video-grid > li {
+  min-width: 0;
+}
+
+.guide-video {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--border);
   color: inherit;
@@ -277,25 +419,50 @@ const quickSteps = computed(() => [
 
 .guide-video__content {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
-  padding: clamp(18px, 3vw, 26px);
+  gap: 9px;
+  min-width: 0;
+  padding: 17px;
 }
 
 .guide-video__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   color: var(--brand-strong);
   font-size: 0.8125rem;
   font-weight: 600;
 }
 
+.guide-video__audio {
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, transparent);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
 .guide-video__content strong {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 2.8em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   color: var(--text);
-  font-size: 1.125rem;
+  font-size: 1rem;
   line-height: 1.4;
 }
 
 .guide-video__description {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 4.65em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
   color: var(--text-soft);
   font-size: 0.875rem;
   line-height: 1.55;
@@ -366,12 +533,9 @@ const quickSteps = computed(() => [
 }
 
 @media (max-width: 760px) {
-  .guide-video {
-    grid-template-columns: 1fr;
-  }
-
+  .guide-video-grid,
   .guide-steps {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -385,9 +549,9 @@ const quickSteps = computed(() => [
     width: 100%;
   }
 
-  .guide-video__content {
-    gap: 9px;
-    padding: 17px;
+  .guide-video-grid,
+  .guide-steps {
+    grid-template-columns: 1fr;
   }
 
   .guide-step {
