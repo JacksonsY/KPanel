@@ -12,17 +12,17 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "7d8cb6312aab83626856dbfc60ba4d2728d71ab6a0d46fd025680f913a2965d3",
-  "firstPartySourceSha256": "497138842eb4bc58d755b4a00ff8191897467e788477bb3c4b33dcb95e4dfd2c",
+  "firstPartySourceSha256": "093e3efcfe092cccdfe19a28d8cb70b7801a4ec835b9e646ef986e0f0d932e13",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.2; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
     "state": "reviewed",
     "reviewerRole": "Independent source and dependency evidence reviewer",
-    "evidenceSha256": "afb7f99b6f1e49454ada7c58e88f72649e906f2773e8d8544bcddca4c036a4bb",
+    "evidenceSha256": "eeda219aaa01403b57c428c4c9eb4c96ece9c3b79f5f2636b2a21496c70289d7",
     "advisoryEvidenceSha256": "32c054b8eebcda02c82748fd29981fa8c3988fa19605e1deed1628d7a6ab4607",
     "additionalSelectedEvidenceSha256": "93a256970a82a7c224c5e38aadbb21431fdbd8e5f6621da469473d7955d80bf2",
-    "summary": "RC12 release verifier re-hashed all 901 first-party Go files after test-only offers refresh teardown synchronization and version metadata. Source filenames/imports/build tags, dependency manifests and build targets are unchanged, so the six verified RC11 closure rows and module counts are reused; full L3 re-computes actual/original closure equality and scanner results. Production Service.Close is unchanged; this is source identity review, not complete CF coverage."
+    "summary": "RC13 changes web presentation and media scheduling plus internal/version/version.go metadata only. All Go file names, imports, build tags, manifests, build targets and production closure rows are unchanged from RC12. Full L3 recomputes identity and all scanners."
   },
   "findings": [
     {
