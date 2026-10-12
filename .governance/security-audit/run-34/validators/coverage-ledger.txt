@@ -1,0 +1,4 @@
+command=wsl.exe -d Ubuntu -- node /mnt/c/GitHub/_codex-tmp/security-audit-skill-20260919/skills/security-audit/validate-coverage-ledger.cjs /mnt/c/GitHub/_codex-evidence/kpanel-settings-user-guides-security-audit-run-34-c4ef4c5d/coverage-ledger.json
+runtime=Ubuntu WSL Node 24.18.1
+exit_code=0
+PASS: 5 coverage units valid

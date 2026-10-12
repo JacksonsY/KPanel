@@ -1,0 +1,591 @@
+[
+  {
+    "coverage_id": "internal%2Fpanel%2Ftutorial_metadata.go%23handleTutorialThumbnail::internal%2Fpanel%2Ftutorial_metadata.go%23private%20tutorial%20response%20headers::internal%2Fpanel%2Ftutorial_metadata.go%23thumbnail%20response%20and%20browser%20cache::WEB-PROTOCOL-AND-AUTH.md%23Cache%20deception%20and%20private-response%20caching",
+    "canonical_refs": {
+      "surface": "internal/panel/tutorial_metadata.go#handleTutorialThumbnail",
+      "boundary": "internal/panel/tutorial_metadata.go#private tutorial response headers",
+      "subsystem": "internal/panel/tutorial_metadata.go#thumbnail response and browser cache",
+      "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Cache deception and private-response caching"
+    },
+    "surface": "tutorial metadata and thumbnail API responses",
+    "boundary": "authenticated response to browser or intermediary cache",
+    "subsystem": "tutorial response cache policy, ETag, and session lifecycle",
+    "attack_class": "Cache deception and private-response caching",
+    "starting_paths": [
+      "internal/panel/server.go",
+      "internal/panel/tutorial_metadata.go",
+      "internal/panel/site_icons.go",
+      "internal/panel/tutorial_metadata_test.go",
+      "web/src/lib/api.ts"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Cache deception and private-response caching",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+        "reason": "Response fields are public video titles and public provider thumbnails; this unit checks cache identity and route privacy rather than private-record disclosure."
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Search, cache, and index ACL drift",
+        "reason": "No tenant or user-owned data is copied into the metadata cache; deployment cache behavior is assessed only if a concrete private response path exists."
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Web cache poisoning through unkeyed input",
+        "reason": "No untrusted input changes a cacheable response variant beyond the fixed provider video identity; selected private-response class covers this response policy."
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter_auth_cache",
+    "reviewed_paths": [
+      "internal/panel/server.go",
+      "internal/panel/site_icons.go",
+      "internal/panel/tutorial_metadata.go",
+      "web/src/lib/api.ts",
+      "web/src/views/SettingsGuidesView.vue"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_auth_cache",
+        "reviewed_paths": [
+          "internal/panel/server.go",
+          "internal/panel/tutorial_metadata.go"
+        ],
+        "invariant": "Authenticated dynamic responses must not become shared-cacheable or be reached through an alternate path interpretation.",
+        "method": "source",
+        "result": "ServeHTTP sets Cache-Control: no-store for /api/ requests. The tutorial routes are matched by exact URL.Path; successful metadata and thumbnail handlers replace the default only after session authentication and successful provider work, with private cache directives. Error responses retain no-store. No suffix or path-parameter route variant was found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_auth_cache",
+        "reviewed_paths": [
+          "internal/panel/site_icons.go",
+          "internal/panel/tutorial_metadata.go"
+        ],
+        "invariant": "Thumbnail validators must identify the response body, and conditional responses must retain the private cache policy.",
+        "method": "source",
+        "result": "The thumbnail ETag is a SHA-256 digest of the fetched body, and matching If-None-Match requests receive 304 after private cache headers are set. The sibling authenticated site-icon route follows the same private-cache and digest-ETag pattern. The tutorial cache key is based on platform, video ID, and the English-thumbnail flag; cached metadata is public provider content.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_auth_cache",
+        "reviewed_paths": [
+          "web/src/lib/api.ts",
+          "web/src/views/SettingsGuidesView.vue"
+        ],
+        "invariant": "The UI must not introduce an identity-sensitive cache key omission for tutorial responses.",
+        "method": "source",
+        "result": "Metadata fetches use cache: no-store and same-origin credentials. The view uses the returned same-origin thumbnail proxy URL for its image source. Metadata and thumbnails contain public provider content, and no user-specific data or credentials are returned.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_hardening": [
+      "Deployed reverse-proxy cache behavior is not source-visible. The application marks successful tutorial responses private, errors no-store, and the metadata fetch no-store; the response content is public provider data, so no source-grounded cross-user disclosure was established."
+    ]
+  },
+  {
+    "coverage_id": "internal%2Fpanel%2Ftutorial_metadata.go%23tutorialJSONRequest::internal%2Fpanel%2Ftutorial_metadata.go%23provider%20response%20parser::internal%2Fpanel%2Ftutorial_metadata.go%23provider%20response%20parsing%20and%20buffering::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Unbounded%20buffering%20and%20cardinality",
+    "canonical_refs": {
+      "surface": "internal/panel/tutorial_metadata.go#tutorialJSONRequest",
+      "boundary": "internal/panel/tutorial_metadata.go#provider response parser",
+      "subsystem": "internal/panel/tutorial_metadata.go#provider response parsing and buffering",
+      "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality"
+    },
+    "surface": "provider responses fetched by the authenticated tutorial handlers",
+    "boundary": "remote provider response to Panel process memory and metadata",
+    "subsystem": "tutorial JSON and HTML parser plus image-response buffering",
+    "attack_class": "Unbounded buffering and cardinality",
+    "starting_paths": [
+      "internal/panel/tutorial_metadata.go",
+      "internal/panel/site_icons.go",
+      "internal/panel/server.go",
+      "internal/panel/tutorial_metadata_test.go"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Superlinear parsing, matching, or evaluation",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "This unit is specifically provider-controlled response size, parsing complexity, and process buffering; URL routing and SSRF are assigned to a separate unit."
+      },
+      {
+        "block": "DATA-ISOLATION-AND-LIFECYCLE.md#Search, cache, and index ACL drift",
+        "reason": "The metadata cache stores public provider titles and validated image URLs, not tenant records or private derivatives."
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#File descriptor, handle, and temporary-resource leaks",
+        "reason": "The source path does not create temporary files, persistent handles, or asynchronous work; response body close paths are reviewed under the bounded fetch path."
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [
+      {
+        "wave": 1,
+        "status": "covered",
+        "agent_id": "hunter_url_egress",
+        "reviewed_paths": [
+          "internal/panel/server.go",
+          "internal/panel/site_icons.go",
+          "internal/panel/tutorial_metadata.go"
+        ],
+        "local_checks": [
+          {
+            "agent_id": "hunter_url_egress",
+            "reviewed_paths": [
+              "internal/panel/server.go",
+              "internal/panel/tutorial_metadata.go"
+            ],
+            "invariant": "Provider metadata retained in the process cache has bounded lifetime and cardinality.",
+            "method": "source",
+            "result": "The process-local metadata cache expires entries after six hours and evicts an entry when the map reaches its 128-entry limit. Successful provider results only are cached.",
+            "artifact": null
+          },
+          {
+            "agent_id": "hunter_url_egress",
+            "reviewed_paths": [
+              "internal/panel/site_icons.go",
+              "internal/panel/tutorial_metadata.go"
+            ],
+            "invariant": "Remote response buffering and parsing are bounded and have no source-visible superlinear path.",
+            "method": "source",
+            "result": "JSON, YouTube page, and thumbnail reads use LimitReader with respective 1 MiB, 4 MiB, and 2 MiB limits plus one byte to detect overflow. JSON parsing and title cleanup operate on bounded data; the YouTube parser performs three fixed regex scans over the bounded page, with an 11-character quoted video ID. Thumbnail bodies are limited to supported image types and checked against their signatures.",
+            "artifact": null
+          }
+        ],
+        "result_fingerprints": [],
+        "unresolved": [],
+        "reassignment_reason": "Independent post-wave coverage critic requested reassignment for explicit concurrent cache-miss and aggregate upstream-request review."
+      }
+    ],
+    "wave": 2,
+    "status": "covered",
+    "agent_id": "hunter_resource_concurrency",
+    "reviewed_paths": [
+      "cmd/paneld/main.go",
+      "internal/auth/service.go",
+      "internal/panel/config.go",
+      "internal/panel/server.go",
+      "internal/panel/tutorial_metadata.go",
+      "internal/panel/tutorial_metadata_test.go",
+      "web/src/lib/api.ts",
+      "web/src/views/SettingsGuidesView.vue"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_resource_concurrency",
+        "reviewed_paths": [
+          "internal/panel/tutorial_metadata.go",
+          "internal/panel/server.go",
+          "internal/auth/service.go",
+          "internal/panel/config.go",
+          "internal/panel/tutorial_metadata_test.go"
+        ],
+        "invariant": "Metadata and thumbnail requests must authenticate before performing provider work.",
+        "method": "source",
+        "result": "Both handlers call requireSession before URL parsing or upstream access. The session cookie is HttpOnly and SameSite=Strict; source tests assert unauthenticated tutorial requests receive 401. No unauthenticated provider work is visible.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_resource_concurrency",
+        "reviewed_paths": [
+          "internal/panel/tutorial_metadata.go"
+        ],
+        "invariant": "Concurrent cache misses should not cause unbounded duplicate provider work or unbounded cache growth.",
+        "method": "source",
+        "result": "The cache is capped at 128 entries with a six-hour TTL, but lookup unlocks before fetching and no in-flight key or concurrency gate exists. Simultaneous same-key misses each fetch independently; successful unique IDs can churn the bounded cache and failures are not cached. This is a hardening gap without a demonstrated attacker path beyond a valid panel session.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_resource_concurrency",
+        "reviewed_paths": [
+          "internal/panel/tutorial_metadata.go",
+          "cmd/paneld/main.go",
+          "internal/panel/server.go"
+        ],
+        "invariant": "Per-request time and body bounds should cap aggregate resource cost.",
+        "method": "source",
+        "result": "Each outbound call uses the request context and an eight-second HTTP timeout; metadata, localized page, and image reads cap at 1 MiB, 4 MiB, and 2 MiB plus one byte. Server header/read/write limits bound individual requests, but no source-level inbound concurrency cap or provider-request semaphore exists; ServeHTTP request tracking is for shutdown, not limiting.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_resource_concurrency",
+        "reviewed_paths": [
+          "internal/panel/server.go",
+          "internal/panel/tutorial_metadata.go",
+          "web/src/views/SettingsGuidesView.vue",
+          "web/src/lib/api.ts"
+        ],
+        "invariant": "Attacker-controlled URLs must not select arbitrary upstream hosts or evade request validation.",
+        "method": "source",
+        "result": "The API accepts only constrained HTTPS YouTube/Bilibili video URLs and the UI uses a fixed catalog, but a caller with a valid panel session can submit other supported IDs directly. This increases possible cache churn; no arbitrary host selection is possible.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_hardening": [
+      "normalizeTutorialThumbnailURL has no separate thumbnail-URL length limit, so a provider-derived path or query can be large within the response-body caps and be retained in the cache. The response caps and 128-entry limit bound this path; source review did not establish attacker control of such provider data or a concrete cross-user availability impact. A URL-length or cache-byte budget would reduce worst-case retained memory.",
+      "Concurrent misses are not coalesced and there is no global or per-session provider-fetch semaphore; consider singleflight plus a concurrency bound. Authenticated valid IDs can churn the bounded cache, but source review found no plausible cross-site path without a same-site sibling-origin deployment condition.",
+      "Tutorial GET routes do not validate Origin or Fetch Metadata. SameSite=Strict reduces cross-site cookie sending; whether an attacker-controlled sibling origin can trigger same-site requests depends on deployment topology and was not established in this source-only audit."
+    ]
+  },
+  {
+    "coverage_id": "internal%2Fpanel%2Ftutorial_metadata.go%23tutorialVideoRequestURL::internal%2Fpanel%2Ftutorial_metadata.go%23fixed%20provider%20HTTP%20client::internal%2Fpanel%2Ftutorial_metadata.go%23tutorial%20metadata%20fetch::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+    "canonical_refs": {
+      "surface": "internal/panel/tutorial_metadata.go#tutorialVideoRequestURL",
+      "boundary": "internal/panel/tutorial_metadata.go#fixed provider HTTP client",
+      "subsystem": "internal/panel/tutorial_metadata.go#tutorial metadata fetch",
+      "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+    },
+    "surface": "authenticated tutorial metadata and thumbnail API query",
+    "boundary": "untrusted video URL to provider network requests",
+    "subsystem": "tutorial URL parsing and fixed-host outbound fetch",
+    "attack_class": "Resource and file handling",
+    "starting_paths": [
+      "internal/panel/tutorial_metadata.go",
+      "internal/panel/server.go",
+      "web/src/views/SettingsGuidesView.vue",
+      "web/src/lib/api.ts",
+      "internal/panel/tutorial_metadata_test.go"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Pre-authentication work imbalance",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "This feature consumes no secret, key, token material, or cryptographic policy beyond ordinary session authentication."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "No security-relevant state transition or value transfer is introduced by this read-only guide surface."
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Request framing and desynchronization",
+        "reason": "The source uses Go net/http request parsing and does not implement a second HTTP parser; no parser disagreement is changed by this feature."
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Worker, pool, and priority starvation",
+        "reason": "No shared worker pool or scheduler is introduced; assess bounded per-request upstream work and auth ordering in the selected class."
+      },
+      {
+        "block": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Retry storm and fail-open amplification",
+        "reason": "The new path has no retry loop or retry policy."
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter_url_egress",
+    "reviewed_paths": [
+      "cmd/paneld/main.go",
+      "internal/panel/server.go",
+      "internal/panel/tutorial_metadata.go"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_url_egress",
+        "reviewed_paths": [
+          "internal/panel/server.go",
+          "internal/panel/tutorial_metadata.go"
+        ],
+        "invariant": "Tutorial routes authenticate before parsing caller input or performing provider fetches.",
+        "method": "source",
+        "result": "The exact route dispatches to GET-only handlers; each calls requireSession before tutorialVideoRequestURL and before any network call. No pre-authentication provider work is visible.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_url_egress",
+        "reviewed_paths": [
+          "internal/panel/tutorial_metadata.go"
+        ],
+        "invariant": "Untrusted video URLs cannot select arbitrary outbound hosts or redirect destinations.",
+        "method": "source",
+        "result": "The decoded video URL is limited to 2048 bytes and must parse as HTTPS without user info, opaque form, or RawPath. Exact supported host, path, port, and fixed-format video ID checks reduce it to a platform and ID. Metadata requests use fixed Bilibili or YouTube endpoints; thumbnail URLs are separately host/path allowlisted. Redirects are rejected and each HTTP request has an eight-second timeout.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_url_egress",
+        "reviewed_paths": [
+          "cmd/paneld/main.go",
+          "internal/panel/tutorial_metadata.go"
+        ],
+        "invariant": "Query parsing and outbound work have effective input and time bounds.",
+        "method": "source",
+        "result": "The panel server sets MaxHeaderBytes to 1 MiB and ReadHeaderTimeout to five seconds. The handler authenticates before ParseQuery; accepted video URLs are then capped at 2048 bytes. Provider calls use request contexts and the eight-second client timeout.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "web%2Fsrc%2Flib%2Fapi.ts%23api.tutorials.metadata::internal%2Fpanel%2Fserver.go%23requireSession::internal%2Fpanel%2Ftutorial_metadata.go%23GET%20metadata%20and%20thumbnail%20routes::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "web/src/lib/api.ts#api.tutorials.metadata",
+      "boundary": "internal/panel/server.go#requireSession",
+      "subsystem": "internal/panel/tutorial_metadata.go#GET metadata and thumbnail routes",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "Settings Guides API requests to the Panel tutorial endpoints",
+    "boundary": "browser session to authenticated tutorial route",
+    "subsystem": "tutorial route registration, authentication, and caller authority",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "web/src/lib/api.ts",
+      "web/src/types/api.ts",
+      "internal/panel/server.go",
+      "internal/panel/tutorial_metadata.go",
+      "internal/auth/service.go",
+      "internal/panel/tutorial_metadata_test.go"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Session fixation and invalidation",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "This feature consumes no secret, key, token material, or cryptographic policy beyond ordinary session authentication."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "No security-relevant state transition or value transfer is introduced by this read-only guide surface."
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF",
+        "reason": "Both new endpoints are GET-only and expose public video metadata without a state mutation; check session and request semantics but a CSRF claim lacks a protected state change."
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Cookie scope and transport",
+        "reason": "Cookie issuance and transport are shared auth configuration outside this feature; this path only consumes the configured session via requireSession."
+      },
+      {
+        "block": "WEB-PROTOCOL-AND-AUTH.md#Federated-identity attack classes",
+        "reason": "The tutorial handlers do not accept federated identity artifacts or callbacks."
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter_auth_cache",
+    "reviewed_paths": [
+      "internal/auth/service.go",
+      "internal/panel/server.go",
+      "internal/panel/tutorial_metadata.go",
+      "internal/panel/tutorial_metadata_test.go",
+      "web/src/lib/api.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_auth_cache",
+        "reviewed_paths": [
+          "internal/panel/server.go",
+          "internal/panel/tutorial_metadata.go"
+        ],
+        "invariant": "Both tutorial endpoints must authenticate the caller before parsing the requested video or reaching provider-backed work.",
+        "method": "source",
+        "result": "The router matches the two exact tutorial paths. Each handler allows only GET and calls requireSession before parsing the URL or invoking metadata and thumbnail fetches.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_auth_cache",
+        "reviewed_paths": [
+          "internal/panel/server.go",
+          "internal/auth/service.go"
+        ],
+        "invariant": "A request must present a current session token bound to an existing user.",
+        "method": "source",
+        "result": "requireSession rejects missing or empty cookies and clears cookies and returns 401 when Authenticate fails. Authenticate hashes the token, looks up the session at the service clock, loads its user, and returns that user in the session. The auth service creates the initial account with the admin role; no weaker tutorial-specific access path was found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_auth_cache",
+        "reviewed_paths": [
+          "web/src/lib/api.ts",
+          "internal/panel/tutorial_metadata_test.go"
+        ],
+        "invariant": "The supported UI request must carry the same-origin session, and unauthenticated requests to either endpoint must be rejected.",
+        "method": "source",
+        "result": "The shared API request uses credentials: same-origin and cache: no-store. The source test checks that requests to both tutorial endpoints without a session return 401; tests were read but not executed.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "web%2Fsrc%2Fviews%2FSettingsGuidesView.vue%23videoCatalog::internal%2Fpanel%2Ftutorial_metadata.go%23provider%20title%20response%20to%20Vue%20interpolation::web%2Fsrc%2Fviews%2FSettingsGuidesView.vue%23tutorial%20title%20image%20and%20external-link%20rendering::CLIENT-SIDE.md%23DOM-based%20XSS",
+    "canonical_refs": {
+      "surface": "web/src/views/SettingsGuidesView.vue#videoCatalog",
+      "boundary": "internal/panel/tutorial_metadata.go#provider title response to Vue interpolation",
+      "subsystem": "web/src/views/SettingsGuidesView.vue#tutorial title image and external-link rendering",
+      "attack_class": "CLIENT-SIDE.md#DOM-based XSS"
+    },
+    "surface": "Settings Guides page and tutorial catalog",
+    "boundary": "provider-controlled metadata and trusted local fallback to browser DOM/navigation",
+    "subsystem": "video title, description, cover, and external-link rendering",
+    "attack_class": "DOM-based XSS",
+    "starting_paths": [
+      "web/src/views/SettingsGuidesView.vue",
+      "web/src/views/SettingsGuidesView.test.ts",
+      "web/src/lib/api.ts",
+      "web/src/types/api.ts",
+      "web/src/components/problem-report/ProblemReportHelp.vue",
+      "web/src/i18n/messages/en-US.ts",
+      "web/src/i18n/messages/zh-CN.ts",
+      "web/src/i18n/messages/zh-TW.ts",
+      "web/public/tutorials/kpanel-cluster-zh.webp",
+      "web/public/tutorials/kpanel-desktop-zh.webp",
+      "web/public/tutorials/kpanel-launch-zh.webp",
+      "web/public/tutorials/kpanel-release-124-en.webp",
+      "web/public/tutorials/kpanel-release-124-zh.webp",
+      "web/public/tutorials/kpanel-release-125-en.webp",
+      "web/public/tutorials/kpanel-release-125-zh.webp",
+      "web/public/tutorials/kpanel-security-en.webp",
+      "web/public/tutorials/kpanel-security-zh.webp",
+      "web/public/tutorials/kpanel-theme-zh.webp",
+      "web/public/tutorials/kpanel-video-placeholder.svg",
+      "web/public/tutorials/kpanel-webssh-en.webp",
+      "web/public/tutorials/kpanel-webssh-zh.webp"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+    "selected_companion_blocks": [
+      "CLIENT-SIDE.md#Core discipline",
+      "CLIENT-SIDE.md#DOM-based XSS",
+      "CLIENT-SIDE.md#Universal moves",
+      "CLIENT-SIDE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "CLIENT-SIDE.md#DOM clobbering",
+        "reason": "The changed template creates no attacker-controlled id/name markup; provider title and description are interpolated text."
+      },
+      {
+        "block": "CLIENT-SIDE.md#Prototype pollution and gadget chain",
+        "reason": "The metadata contract is fixed JSON fields and the changed UI performs no recursive writes or object-path assignment."
+      },
+      {
+        "block": "CLIENT-SIDE.md#Cross-origin messaging and network attack classes",
+        "reason": "No postMessage, cross-origin frame, worker, WebSocket, or CORS messaging is added."
+      },
+      {
+        "block": "CLIENT-SIDE.md#Service-worker and browser-storage attack classes",
+        "reason": "The changed UI adds no service worker or persistent browser storage; API requests use no-store."
+      },
+      {
+        "block": "CLIENT-SIDE.md#UI-redress and navigation attack classes",
+        "reason": "Navigation targets are fixed source-catalog URLs with noopener/noreferrer and no-referrer; inspect them as part of the DOM/navigation sink path."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Resource and file handling",
+        "reason": "Local poster assets are fixed repository paths; remote image fetch is a separate server-side unit."
+      }
+    ],
+    "prior_status": "new",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "hunter_browser_render",
+    "reviewed_paths": [
+      "internal/panel/tutorial_metadata.go",
+      "web/public/tutorials/kpanel-cluster-zh.webp",
+      "web/public/tutorials/kpanel-desktop-zh.webp",
+      "web/public/tutorials/kpanel-launch-zh.webp",
+      "web/public/tutorials/kpanel-overview-en.webp",
+      "web/public/tutorials/kpanel-overview-zh.webp",
+      "web/public/tutorials/kpanel-release-124-en.webp",
+      "web/public/tutorials/kpanel-release-124-zh.webp",
+      "web/public/tutorials/kpanel-release-125-en.webp",
+      "web/public/tutorials/kpanel-release-125-zh.webp",
+      "web/public/tutorials/kpanel-security-en.webp",
+      "web/public/tutorials/kpanel-security-zh.webp",
+      "web/public/tutorials/kpanel-theme-zh.webp",
+      "web/public/tutorials/kpanel-video-placeholder.svg",
+      "web/public/tutorials/kpanel-webssh-en.webp",
+      "web/public/tutorials/kpanel-webssh-zh.webp",
+      "web/src/components/problem-report/ProblemReportHelp.vue",
+      "web/src/i18n/messages/en-US.ts",
+      "web/src/i18n/messages/zh-CN.ts",
+      "web/src/i18n/messages/zh-TW.ts",
+      "web/src/lib/api.ts",
+      "web/src/types/api.ts",
+      "web/src/views/SettingsGuidesView.test.ts",
+      "web/src/views/SettingsGuidesView.vue"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter_browser_render",
+        "reviewed_paths": [
+          "internal/panel/tutorial_metadata.go",
+          "web/src/lib/api.ts",
+          "web/src/types/api.ts",
+          "web/src/views/SettingsGuidesView.vue"
+        ],
+        "invariant": "Provider-controlled titles remain data and cannot become executable markup when passed through the metadata response to the guide view.",
+        "method": "source",
+        "result": "Provider titles are whitespace-normalized and capped at 300 Unicode code points in cleanTutorialVideoTitle, then returned as JSON. The frontend requests metadata for catalog URLs and stores each response under that fixed URL. videoTitle supplies the returned title or a local translation fallback; no HTML-rendering escape hatch is used for it.",
+        "artifact": null
+      },
+      {
+        "agent_id": "hunter_browser_render",
+        "reviewed_paths": [
+          "web/src/views/SettingsGuidesView.vue",
+          "web/src/views/SettingsGuidesView.test.ts",
+          "web/src/components/problem-report/ProblemReportHelp.vue",
+          "web/src/i18n/messages/en-US.ts",
+          "web/src/i18n/messages/zh-CN.ts",
+          "web/src/i18n/messages/zh-TW.ts",
+          "web/public/tutorials/kpanel-cluster-zh.webp",
+          "web/public/tutorials/kpanel-desktop-zh.webp",
+          "web/public/tutorials/kpanel-launch-zh.webp",
+          "web/public/tutorials/kpanel-overview-en.webp",
+          "web/public/tutorials/kpanel-overview-zh.webp",
+          "web/public/tutorials/kpanel-release-124-en.webp",
+          "web/public/tutorials/kpanel-release-124-zh.webp",
+          "web/public/tutorials/kpanel-release-125-en.webp",
+          "web/public/tutorials/kpanel-release-125-zh.webp",
+          "web/public/tutorials/kpanel-security-en.webp",
+          "web/public/tutorials/kpanel-security-zh.webp",
+          "web/public/tutorials/kpanel-theme-zh.webp",
+          "web/public/tutorials/kpanel-video-placeholder.svg",
+          "web/public/tutorials/kpanel-webssh-en.webp",
+          "web/public/tutorials/kpanel-webssh-zh.webp"
+        ],
+        "invariant": "Provider titles cannot inject DOM markup or change the external navigation destination; local covers remain fixed fallbacks.",
+        "method": "source",
+        "result": "The title is rendered through Vue interpolation in text and passed only into bound aria-label and alt strings. The anchor href comes from the fixed catalog, with target=_blank, rel=noopener noreferrer, and referrerpolicy=no-referrer. Fallback cover paths are local constants; the placeholder SVG contains only static geometry, gradient, and text. ProblemReportHelp is separate and does not consume tutorial metadata. The existing view test reads a normal title and link attributes; no browser or test execution was performed.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_hardening": [
+      "现有 SettingsGuidesView 测试只覆盖普通标题；可补充含 HTML 标签及引号的标题用例，确认其仍作为文本和属性值处理。此测试缺口本身不是安全发现."
+    ]
+  }
+]
