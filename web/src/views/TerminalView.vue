@@ -5,6 +5,7 @@ import { ListChecks, LoaderCircle, Menu, PanelLeftClose, PanelLeftOpen, Plus, Re
 import { translatePhrase } from '@/i18n/phrase'
 import BatchTerminalPanel from '@/components/terminal/BatchTerminalPanel.vue'
 import HostTerminal from '@/components/terminal/HostTerminal.vue'
+import TerminalWorkspace from '@/components/terminal/TerminalWorkspace.vue'
 import TerminalQuickCommands from '@/components/terminal/TerminalQuickCommands.vue'
 import TerminalToolbar from '@/components/terminal/TerminalToolbar.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -70,6 +71,10 @@ const mobileConnectionsOpen = ref(false)
 const quickCommandsOpen = ref(false)
 const clusterHostOrderRevision = ref(0)
 const terminalRefs = new Map<string, HostTerminalHandle>()
+const workspaceRef = ref<InstanceType<typeof TerminalWorkspace>>()
+const workspaceSessions = computed(() => sessions.value.map((item) => ({
+  ...item, label: sessionLabel(item), stateLabel: sessionStateLabel(item.state),
+})))
 const route = useRoute()
 let controller: AbortController | undefined
 let initialHostLoad = true
@@ -77,7 +82,7 @@ let unsubscribeClusterHostOrder: (() => void) | undefined
 const connectionsCollapsedStorageKey = 'kpanel:terminal:connections-collapsed'
 
 function refreshActiveTerminal(): void {
-  terminalRefs.get(activeSessionId.value)?.scheduleResize()
+  for (const handle of terminalRefs.values()) handle.scheduleResize()
 }
 
 function focusActiveTerminal(): void {
@@ -182,6 +187,11 @@ async function openSession(host: ClusterHost): Promise<void> {
 	const item: OpenTerminal = { id: opened.sessionId, hostId: host.id, hostName: host.name, ordinal: nextOrdinal(host.id), offset: opened.offset, state: 'connecting' }
     sessions.value.push(item)
     activeSessionId.value = item.id
+    void nextTick(() => {
+      workspaceRef.value?.selectSession(item.id)
+      refreshActiveTerminal()
+      focusActiveTerminal()
+    })
   } catch (reason) {
     if (reason instanceof ApiError && reason.code === 'terminal_limit') limitReached.value = true
     else errorMessage.value = t('terminal.connectionFailed')
@@ -247,6 +257,7 @@ function setTerminalRef(
 
 function selectSession(id: string): void {
   activeSessionId.value = id
+  workspaceRef.value?.selectSession(id)
   void nextTick(() => {
     refreshActiveTerminal()
     focusActiveTerminal()
@@ -255,6 +266,11 @@ function selectSession(id: string): void {
 
 function updateSessionState(item: OpenTerminal, state: OpenTerminal['state']): void {
   item.state = state
+}
+
+function updateWorkspaceSessionState(id: string, state: OpenTerminal['state']): void {
+  const item = sessions.value.find((session) => session.id === id)
+  if (item) updateSessionState(item, state)
 }
 
 function toggleQuickCommands(): void {
@@ -667,9 +683,15 @@ onBeforeUnmount(() => {
           />
         </div>
         <div v-if="!sessions.length" class="terminal-empty"><span><SquareTerminal :size="32" /></span><h2>{{ t('terminal.emptyTitle') }}</h2><p>{{ t('terminal.emptyDescription') }}</p></div>
-        <template v-for="item in sessions" :key="item.id">
-          <HostTerminal v-show="item.id === activeSessionId" :ref="(instance) => setTerminalRef(item.id, instance)" :session-id="item.id" :host-name="sessionLabel(item)" :initial-offset="item.offset" @state-change="updateSessionState(item, $event)" />
-        </template>
+        <TerminalWorkspace v-if="sessions.length" ref="workspaceRef" :sessions="workspaceSessions" :active-id="activeSessionId"
+          @activate="activeSessionId = $event" @close="closeSession" @resize="refreshActiveTerminal"
+          @choose-host="connectionsCollapsed = false; mobileConnectionsOpen = true">
+          <template #default="{ item, visible }">
+            <HostTerminal :ref="(instance) => setTerminalRef(item.id, instance)" :session-id="item.id"
+              :host-name="item.label" :initial-offset="item.offset" :visible="visible && terminalMode === 'interactive'" :auto-focus="false"
+              @state-change="updateWorkspaceSessionState(item.id, $event)" />
+          </template>
+        </TerminalWorkspace>
         <TerminalQuickCommands
           :open="quickCommandsOpen && terminalMode === 'interactive'"
           :disabled="!activeSession || activeSession.state === 'finished'"
@@ -807,6 +829,7 @@ onBeforeUnmount(() => {
 .terminal-tabs { display:flex; min-width:0; flex:1; gap:5px; overflow-x:auto; scrollbar-width:thin; }
 /* Follows the last tab, and stays on the visible edge once the tabs scroll. */
 .terminal-stage :deep(.host-terminal) { grid-row:2; grid-column:1; border:0; border-radius:0; box-shadow:none; }
+.terminal-stage>.terminal-pane-workspace { grid-row:2; grid-column:1; }
 .terminal-stage :deep(.terminal-quick-commands) { grid-row:2; grid-column:2; }
 .terminal-tab { display:flex; flex:0 0 auto; align-items:center; gap:7px; max-width:220px; border:1px solid var(--terminal-shell-border,#29383a); border-radius:8px; padding:7px 9px; color:var(--terminal-shell-muted,#8a9695); background:var(--terminal-shell-panel,#111a1d); }
 .terminal-tab.is-active { color:var(--terminal-shell-text,#d8dddc); border-color:var(--brand); }

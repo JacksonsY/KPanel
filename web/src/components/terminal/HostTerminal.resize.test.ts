@@ -26,10 +26,13 @@ describe('HostTerminal resize sync', () => {
     mocks.writes.length = 0
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
     vi.stubGlobal('requestAnimationFrame', () => 0)
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400)
   })
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('retries a failed resize instead of recording the unsent size as synced', async () => {
@@ -73,6 +76,27 @@ describe('HostTerminal resize sync', () => {
     expect(mocks.output).toHaveBeenCalledTimes(4)
     expect(mocks.resize).toHaveBeenCalledTimes(2)
     expect(mocks.resize).toHaveBeenLastCalledWith('resize-id', 24, 80)
+    wrapper.unmount()
+  })
+
+  it('does not fit or resize hidden panes, then syncs when shown', async () => {
+    mocks.output.mockReturnValue(new Promise(() => {}))
+    mocks.resize.mockResolvedValue({ accepted: true })
+    const wrapper = mount(HostTerminal, { props: { ...props, visible: false } })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(mocks.resize).not.toHaveBeenCalled()
+    await wrapper.setProps({ visible: true })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(mocks.resize).toHaveBeenCalledWith('resize-id', 24, 80)
+    wrapper.unmount()
+  })
+
+  it('ignores a zero-size container while its desktop window is minimized', async () => {
+    mocks.output.mockReturnValue(new Promise(() => {}))
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(0)
+    const wrapper = mount(HostTerminal, { props })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(mocks.resize).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })
