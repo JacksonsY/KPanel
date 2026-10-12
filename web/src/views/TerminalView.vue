@@ -583,7 +583,7 @@ onBeforeUnmount(() => {
           </template>
           <template v-else>
             <label v-for="host in hosts" :key="host.id" class="terminal-host terminal-host--batch" :class="{ 'is-active': selectedBatchHostIDs.has(host.id), 'is-disabled': !host.terminalAvailable }" @click.prevent="selectBatchHost(host, $event)">
-              <input type="checkbox" :checked="selectedBatchHostIDs.has(host.id)" :disabled="batchRunning || !host.terminalAvailable" @click.stop="selectBatchHost(host, $event, true)" />
+              <input type="checkbox" :checked="selectedBatchHostIDs.has(host.id)" :disabled="batchRunning || !host.terminalAvailable" @click.stop.prevent="selectBatchHost(host, $event, true)" />
               <OperatingSystemIcon class="terminal-host__os" :distro="hostOperatingSystemIdentity(host).key" :label="hostOperatingSystemIdentity(host).label" :show-tooltip="false" />
               <span class="terminal-host__content">
                 <strong>{{ host.name }}</strong>
