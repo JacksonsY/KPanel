@@ -36,11 +36,13 @@ const { colors: themeColors, resolved: resolvedTheme } = useTheme()
 // without closing the server session while it is minimized or the tab hidden.
 const { streaming } = useTerminalActivity()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   sessionId: string
   hostName: string
   initialOffset: number
-}>()
+  visible?: boolean
+  autoFocus?: boolean
+}>(), { visible: true, autoFocus: true })
 
 const emit = defineEmits<{
   stateChange: [state: 'connecting' | 'connected' | 'reconnecting' | 'finished']
@@ -126,7 +128,7 @@ function writeTerminalOutput(data: string | Uint8Array, done?: () => void): void
 }
 
 function focusTerminal(): void {
-  if (isTouchPrimary()) return
+  if (isTouchPrimary() || props.visible === false) return
   terminal?.focus()
 }
 
@@ -331,7 +333,7 @@ function queueResize(delay: number): void {
 // transient failure is retried (bounded) instead of leaving the browser and
 // PTY permanently out of step. A reconnect clears the synced size and resends.
 async function syncResize(): Promise<void> {
-  if (disposed || state.value === 'finished') return
+  if (disposed || state.value === 'finished' || props.visible === false || !host.value || host.value.clientWidth <= 0 || host.value.clientHeight <= 0) return
   fitAddon?.fit()
   const rows = terminal?.rows || 0
   const columns = terminal?.cols || 0
@@ -352,6 +354,8 @@ async function syncResize(): Promise<void> {
 }
 
 defineExpose({ focusTerminal, executeCommand, executePresentedCommand, scheduleResize, closeSession })
+
+watch(() => props.visible, (visible) => { if (visible !== false) scheduleResize() })
 
 watch(streaming, (active) => {
   if (active) startOutput()
@@ -407,7 +411,7 @@ onMounted(() => {
     observer = new ResizeObserver(scheduleResize)
     observer.observe(host.value)
     scheduleResize()
-    window.requestAnimationFrame(focusTerminal)
+    if (props.autoFocus !== false) window.requestAnimationFrame(focusTerminal)
   }
   startOutput()
   duplexInput.flush()

@@ -271,7 +271,7 @@ describe('multi-host terminal workspace layout', () => {
 
   it('keeps session tabs and terminal actions in one dark toolbar row', () => {
     expect(terminalSource).toContain('class="terminal-tab__status"')
-    expect(terminalSource).toContain('@state-change="updateSessionState(item, $event)"')
+    expect(terminalSource).toContain('@state-change="updateWorkspaceSessionState(item.id, $event)"')
     expect(terminalSource).toContain('class="terminal-tabs-bar"')
     expect(terminalSource).toContain('<TerminalToolbar')
     expect(terminalSource).toContain('@toggle-quick-commands="toggleQuickCommands"')

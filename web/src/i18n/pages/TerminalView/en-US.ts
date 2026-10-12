@@ -1,6 +1,18 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['终端布局', 'Terminal layout'],
+  ['单屏', 'Single pane'],
+  ['左右分屏', 'Side by side'],
+  ['上下分屏', 'Stacked'],
+  ['四宫格', 'Four panes'],
+  ['窗口较小，已显示当前窗格', 'Small window: showing the current pane'],
+  ['恢复分屏', 'Restore panes'],
+  ['最大化窗格', 'Maximize pane'],
+  ['选择主机或新建终端', 'Choose a host or create a terminal'],
+  ['已有终端可从顶部标签切换到此窗格', 'Select an open terminal tab to place it here'],
+  ['调整左右分屏比例', 'Resize columns'],
+  ['调整上下分屏比例', 'Resize rows'],
   ["等待登录","Awaiting sign-in"],
   ['关闭未确认，会话已保留。请检查目标主机连接后重试。', 'Close was not confirmed. The session is retained. Check the host connection and retry.'],
   ['重试关闭', 'Retry close'],
