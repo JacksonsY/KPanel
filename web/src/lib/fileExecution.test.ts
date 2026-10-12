@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { canExecuteFile, fileExecutionCommand } from './fileExecution'
+import { canExecuteFile, fileExecutionCommand, fileExecutionDisplayCommand } from './fileExecution'
 import type { FileEntry } from '@/types/api'
 
 const entry = (path: string, mode = '-rw-r--r--'): FileEntry => ({
@@ -17,6 +17,17 @@ const bash = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' 
 afterEach(() => { for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true }) })
 
 describe('file execution', () => {
+  it.each([
+    ['/root/demo.sh', 'cd -- /root && bash ./demo.sh'],
+    ['/root/demo.py', 'cd -- /root && python3 ./demo.py'],
+    ['/apps/Dockerfile', 'cd -- /apps && docker build --file ./Dockerfile .'],
+    ['/apps/compose.yaml', 'cd -- /apps && docker compose --file ./compose.yaml up -d'],
+    ['/root/server', 'cd -- /root && ./server'],
+    ['/my files/a b.sh', "cd -- '/my files' && bash './a b.sh'"],
+  ])('shows a concise command for %s', (path, display) => {
+    expect(fileExecutionDisplayCommand(entry(path, '-rwxr-xr-x'))).toBe(display)
+  })
+
   it.each([['sh', 'bash'], ['bash', 'bash'], ['py', 'python3'], ['js', 'node'], ['mjs', 'node'], ['cjs', 'node'], ['php', 'php']])('runs .%s using %s', (extension, interpreter) => {
     const file = entry(`/home/test.${extension}`)
     expect(canExecuteFile(file)).toBe(true)
@@ -83,8 +94,9 @@ describe('file execution', () => {
     expect(existsSync(join(work, 'PWNED'))).toBe(false)
   })
 
-  it.each(['/home/a\ncommand.sh', '/home/a\rcommand.sh', '/home/a\tcommand.sh', '/home/a\x00.sh', '/home/a\x7f.sh', 'relative.sh', '/home/../a.sh', '/home//a.sh', '/home/'])('rejects unsafe terminal paths: %j', (path) => {
+  it.each(['/home/a\ncommand.sh', '/home/a\rcommand.sh', '/home/a\tcommand.sh', '/home/a\x00.sh', '/home/a\x7f.sh', '/home/a\x9b31m.sh', 'relative.sh', '/home/../a.sh', '/home//a.sh', '/home/'])('rejects unsafe terminal paths: %j', (path) => {
     expect(fileExecutionCommand(entry(path), messages)).toBeUndefined()
+    expect(fileExecutionDisplayCommand(entry(path))).toBeUndefined()
   })
 
   it('never accepts a directory, symlink, special file, or inherited interpreter property', () => {

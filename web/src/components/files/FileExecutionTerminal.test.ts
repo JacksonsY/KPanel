@@ -12,7 +12,7 @@ vi.mock('@/lib/api', () => ({
 }))
 const HostTerminal = defineComponent({
   name: 'HostTerminal', props: ['sessionId', 'hostName', 'initialOffset'], emits: ['stateChange'],
-  setup(_, { expose }) { expose({ executeCommand: mocks.execute, closeSession: mocks.childClose }); return () => null },
+  setup(_, { expose }) { expose({ executePresentedCommand: mocks.execute, closeSession: mocks.childClose }); return () => null },
 })
 const file: FileEntry = { path: '/home/script.sh', name: 'script.sh', kind: 'file', mode: '-rw-r--r--', resourceVersion: 'v1', sizeBytes: 5, owner: 'root', group: 'root', modifiedAt: '', editable: true, previewable: true }
 const opened: TerminalSession = { sessionId: 'session-1', hostId: 'remote-1', offset: 0, createdAt: '' }
@@ -51,6 +51,7 @@ describe('file execution terminal lifecycle', () => {
     await flushPromises()
     expect(mocks.execute).toHaveBeenCalledTimes(1)
     expect(mocks.execute.mock.calls[0]![0]).toContain("command bash './script.sh'")
+    expect(mocks.execute.mock.calls[0]![1]).toBe('cd -- /home && bash ./script.sh')
   })
 
   it('refuses a replaced file before opening a terminal', async () => {

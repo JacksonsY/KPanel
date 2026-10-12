@@ -24,6 +24,7 @@ import { terminalCursorOptions } from '@/lib/terminalCursor'
 import { installTerminalCursorReport } from '@/lib/terminalCursorReport'
 import { readTerminalTheme } from '@/lib/terminalTheme'
 import { TerminalWriteFlow } from '@/lib/terminalWriteFlow'
+import { TerminalCommandPresentation } from '@/lib/terminalCommandPresentation'
 import { useI18n } from '@/i18n'
 import { useTerminalActivity } from '@/composables/useTerminalActivity'
 import { useTheme } from '@/stores/theme'
@@ -48,6 +49,9 @@ const host = ref<HTMLElement>()
 const clipboardMenu = ref<InstanceType<typeof TerminalContextMenu>>()
 const pendingLine = ref('')
 const inputBlocked = ref(false)
+const presentingCommand = ref(false)
+let commandPresentation: TerminalCommandPresentation | undefined
+let presentationTimer: number | undefined
 let duplexInput: TerminalDuplexInput | undefined
 const state = ref<'connecting' | 'connected' | 'reconnecting' | 'finished'>('connecting')
 let terminal: Terminal | undefined
@@ -106,13 +110,14 @@ function isFollowingOutput(): boolean {
   return !buffer || buffer.viewportY >= buffer.baseY
 }
 
-function writeTerminalOutput(data: string | Uint8Array): void {
+function writeTerminalOutput(data: string | Uint8Array, done?: () => void): void {
   if (!terminal || data.length === 0) return
   const follow = isFollowingOutput()
   const parsed = writeFlow.track(data.length)
   terminal.write(data, () => {
     parsed()
     if (follow) terminal?.scrollToBottom()
+    done?.()
   })
   // The offset is kept, so output resumes exactly where it paused.
   if (writeFlow.blocked) stopOutput()
@@ -139,8 +144,8 @@ function flushInput(): void {
   duplexInput?.flush()
 }
 
-function queueInput(data: string): boolean {
-  if (disposed || inputBlocked.value || state.value === 'finished') return false
+function queueInput(data: string, initialCommand = false): boolean {
+  if (disposed || inputBlocked.value || state.value === 'finished' || (presentingCommand.value && !initialCommand)) return false
   if (!duplexInput?.append(data)) return false
   if (terminalInputShouldFlushImmediately(data) || duplexInput.byteLength >= 2048) {
     void flushInput()
@@ -163,6 +168,34 @@ function executeCommand(command: string): boolean {
   return true
 }
 
+function finishPresentation(): void {
+  if (presentationTimer) window.clearTimeout(presentationTimer)
+  presentationTimer = undefined
+  commandPresentation = undefined
+  presentingCommand.value = false
+}
+
+async function executePresentedCommand(command: string, displayCommand: string): Promise<boolean> {
+  if (!terminal || disposed || inputBlocked.value || state.value !== 'connected' || presentingCommand.value
+    || !command.trim() || !displayCommand.trim() || /[\x00-\x1f\x7f-\x9f]/.test(displayCommand)) return false
+  presentingCommand.value = true
+  // Let xterm parse the command and the browser paint it before sending input.
+  // Readline's echoed mode changes are part of the hidden startup line. Disable
+  // bracketed paste here so interactive programs inherit the normal input mode.
+  await new Promise<void>((resolve) => writeTerminalOutput(`${displayCommand}\r\n\x1b[?2004l`, resolve))
+  await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())))
+  if (disposed || inputBlocked.value || state.value !== 'connected') { finishPresentation(); return false }
+  const presentation = new TerminalCommandPresentation(command)
+  commandPresentation = presentation
+  if (!queueInput(terminalLineSubmission(presentation.command), true)) { finishPresentation(); return false }
+  presentationTimer = window.setTimeout(() => {
+    writeTerminalOutput(presentation.release())
+    finishPresentation()
+  }, 15000)
+  focusTerminal()
+  return true
+}
+
 function handlePendingLineEnter(event: KeyboardEvent): void {
   if (!terminalEnterShouldSubmit(event)) return
   event.preventDefault()
@@ -170,8 +203,15 @@ function handlePendingLineEnter(event: KeyboardEvent): void {
 }
 
 function applyChunk(chunk: TerminalOutput): void {
-  if (chunk.truncated) writeTerminalOutput(`\r\n\x1b[33m[KPanel] ${t('terminal.outputTruncated')}\x1b[0m\r\n`)
-  if (chunk.data) writeTerminalOutput(decodeBase64(chunk.data))
+  if (chunk.truncated) {
+    if (commandPresentation) { writeTerminalOutput(commandPresentation.release()); finishPresentation() }
+    writeTerminalOutput(`\r\n\x1b[33m[KPanel] ${t('terminal.outputTruncated')}\x1b[0m\r\n`)
+  }
+  if (chunk.data) {
+    const data = decodeBase64(chunk.data)
+    writeTerminalOutput(commandPresentation ? commandPresentation.push(data) : data)
+    if (commandPresentation && !commandPresentation.pending) finishPresentation()
+  }
   offset = chunk.nextOffset
   const recovered = state.value === 'reconnecting'
   state.value = chunk.closed || chunk.exitedAt ? 'finished' : 'connected'
@@ -183,8 +223,12 @@ function applyChunk(chunk: TerminalOutput): void {
     scheduleResize()
   }
   if (state.value === 'connected' && duplexInput?.byteLength) flushInput()
+  if (state.value === 'finished') {
+    if (commandPresentation) writeTerminalOutput(commandPresentation.release())
+    finishPresentation()
+    stopOutput(); duplexInput?.close()
+  }
   if (chunk.exitError) writeTerminalOutput(`\r\n\x1b[31m[KPanel] ${chunk.exitError}\x1b[0m\r\n`)
-  if (state.value === 'finished') { stopOutput(); duplexInput?.close() }
 }
 
 // applyChunk may finish the session; read the state through a call so the
@@ -303,7 +347,7 @@ async function syncResize(): Promise<void> {
   }
 }
 
-defineExpose({ focusTerminal, executeCommand, scheduleResize, closeSession })
+defineExpose({ focusTerminal, executeCommand, executePresentedCommand, scheduleResize, closeSession })
 
 watch(streaming, (active) => {
   if (active) startOutput()
@@ -351,7 +395,7 @@ onMounted(() => {
   terminal.parser.registerOscHandler(8, () => true)
   terminal.parser.registerOscHandler(52, () => true)
   terminal.attachCustomKeyEventHandler((event) => clipboardMenu.value?.handleKeyEvent(event) ?? true)
-  terminal.onData(queueInput)
+  terminal.onData((data) => queueInput(data))
   cursorReport = installTerminalCursorReport(terminal)
   if (host.value) {
     terminal.open(host.value)
@@ -367,6 +411,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopPageHideClose?.()
   disposed = true
+  finishPresentation()
   mounted = false
   stopOutput()
   duplexInput?.close()
@@ -404,15 +449,15 @@ onBeforeUnmount(() => {
         spellcheck="false"
         maxlength="8192"
         :placeholder="t('terminal.inputPlaceholder')"
-        :disabled="state === 'finished' || inputBlocked"
+        :disabled="state === 'finished' || inputBlocked || presentingCommand"
         @keydown.enter="handlePendingLineEnter"
       />
-      <button type="submit" :disabled="state === 'finished' || inputBlocked">{{ t('terminal.send') }}</button>
+      <button type="submit" :disabled="state === 'finished' || inputBlocked || presentingCommand">{{ t('terminal.send') }}</button>
     </form>
     <TerminalContextMenu
       ref="clipboardMenu"
       :get-terminal="() => terminal"
-      :can-paste="state !== 'finished' && !inputBlocked"
+      :can-paste="state !== 'finished' && !inputBlocked && !presentingCommand"
     />
   </section>
 </template>

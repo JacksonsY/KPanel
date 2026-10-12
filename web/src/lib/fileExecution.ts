@@ -7,7 +7,7 @@ const interpreters: Record<string, string> = {
 function fileParts(entry: FileEntry): { directory: string; file: string; extension: string } | undefined {
   // Terminal input normalizes line endings. Never allow a path to become a second command.
   if (entry.kind !== 'file' || !entry.path.startsWith('/') || entry.path.length > 4096
-    || /[\x00-\x1f\x7f]/.test(entry.path)) return undefined
+    || /[\x00-\x1f\x7f-\x9f]/.test(entry.path)) return undefined
   const parts = entry.path.split('/').slice(1)
   if (parts.some((part) => !part || part === '.' || part === '..')) return undefined
   const name = parts.pop()!
@@ -28,6 +28,19 @@ function dockerFileKind(file: string): 'build' | 'compose' | undefined {
 
 function quote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+export function fileExecutionDisplayCommand(entry: FileEntry): string | undefined {
+  const parts = fileParts(entry)
+  if (!parts || !canExecuteFile(entry)) return undefined
+  const displayQuote = (value: string) => /^[a-zA-Z0-9_./-]+$/.test(value) ? value : quote(value)
+  const file = displayQuote(parts.file)
+  const kind = dockerFileKind(parts.file)
+  const interpreter = Object.hasOwn(interpreters, parts.extension) ? interpreters[parts.extension] : undefined
+  const execute = kind === 'build' ? `docker build --file ${file} .`
+    : kind === 'compose' ? `docker compose --file ${file} up -d`
+    : interpreter ? `${interpreter} ${file}` : file
+  return `cd -- ${displayQuote(parts.directory)} && ${execute}`
 }
 
 export function fileExecutionCommand(entry: FileEntry, messages: {
