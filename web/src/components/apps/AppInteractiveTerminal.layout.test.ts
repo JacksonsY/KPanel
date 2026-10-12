@@ -55,10 +55,10 @@ describe('interactive task terminal layout', () => {
     )
   })
 
-  it('contains wheel scrolling inside the xterm viewport', () => {
+  it('contains xterm scrolling without drawing a second native scrollbar', () => {
     expect(terminalSource).toContain('@wheel="containTerminalWheel"')
     expect(terminalSource).toMatch(
-      /\.interactive-terminal__screen :deep\(\.xterm-viewport\)\s*\{[^}]*overflow-y: scroll !important;[^}]*overscroll-behavior: contain;/,
+      /\.interactive-terminal__screen :deep\(\.xterm-viewport\)\s*\{[^}]*overflow: hidden !important;[^}]*overscroll-behavior: contain;/,
     )
     expect(terminalSource).toMatch(
       /\.interactive-terminal__screen :deep\(\.xterm-scrollable-element\)\s*\{[^}]*overscroll-behavior: contain;/,

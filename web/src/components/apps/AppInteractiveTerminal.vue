@@ -751,7 +751,8 @@ onBeforeUnmount(() => {
 }
 
 .interactive-terminal__screen :deep(.xterm-viewport) {
-  overflow-y: scroll !important;
+  /* xterm 6 scrolls via .xterm-scrollable-element; hide the legacy native rail. */
+  overflow: hidden !important;
   overscroll-behavior: contain;
   background: transparent;
 }
