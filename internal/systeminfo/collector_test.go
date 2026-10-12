@@ -167,6 +167,22 @@ func TestDiskSummariesKeepsVirtualAndReadOnlyRootsExcluded(t *testing.T) {
 	}
 }
 
+func TestDiskSummariesSkipsAutofsMountWithoutUsageProbe(t *testing.T) {
+	mounts := "systemd-1 /mnt/smb/xxx autofs rw,relatime,fd=42,pgrp=1,timeout=300,minproto=5,maxproto=5,direct 0 0\n" +
+		"/dev/sda1 /mnt/data ext4 rw 0 0\n"
+	var probed []string
+	disks := diskSummaries(mounts, func(mountPoint string) (uint64, uint64, float64, bool) {
+		probed = append(probed, mountPoint)
+		return 100, 10, 10, true
+	})
+	if len(disks) != 1 || disks[0].MountPoint != "/mnt/data" || disks[0].FileSystem != "ext4" {
+		t.Fatalf("disk summaries = %#v, want only the ext4 data mount", disks)
+	}
+	if len(probed) != 1 || probed[0] != "/mnt/data" {
+		t.Fatalf("usage probes = %#v, want only /mnt/data", probed)
+	}
+}
+
 func TestCollectRuntimeSkipsNetworkIdentityAndManagementProbes(t *testing.T) {
 	root := filepath.Join("testdata", "root")
 	lookupCalls := 0
