@@ -969,10 +969,6 @@ onBeforeUnmount(() => {
   touch-action: auto;
 }
 
-.gallery-viewer__stage.is-interacting .gallery-viewer__media {
-  transition: opacity .28s ease;
-}
-
 .gallery-viewer__stage.is-zoomed {
   cursor: grab;
 }
@@ -1011,7 +1007,8 @@ onBeforeUnmount(() => {
   background: #000;
 }
 
-.gallery-viewer__stage.is-zoomed .gallery-viewer__media {
+.gallery-viewer__stage.is-zoomed .gallery-viewer__media,
+.gallery-viewer__stage.is-interacting .gallery-viewer__media {
   transition: opacity .28s ease;
 }
 
