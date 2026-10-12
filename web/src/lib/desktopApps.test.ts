@@ -54,8 +54,8 @@ describe('desktop app catalogue', () => {
     expect(desktopApps).toHaveLength(16)
   })
 
-  it('lets only the optional sponsored page be hidden from the desktop', () => {
-    expect([...removableDesktopAppKeys]).toEqual(['nav:/offers'])
+  it('lets every fixed system entry be hidden from the desktop', () => {
+    expect([...removableDesktopAppKeys]).toEqual(desktopApps.map((app) => `nav:${app.path}`))
   })
 
   it('gives every app a distinct gradient', () => {

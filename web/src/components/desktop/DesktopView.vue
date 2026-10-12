@@ -364,18 +364,18 @@ const visibleDesktopWidgets = computed(() => desktopWidgets.filter((widget) => !
 const visibleDynamicEntries = computed(() =>
   (entries.value?.visible || []).filter((entry) => !hiddenEntryKeys.value.has(entry.key)),
 )
-// Optional fixed pages (the sponsored page) can be hidden like apps and sites.
+// Fixed system pages can be hidden like installed apps and sites.
 const visibleDesktopApps = computed(() =>
-  desktopApps.filter((app) => !removableDesktopAppKeys.has(`nav:${app.path}`) || !hiddenEntryKeys.value.has(`nav:${app.path}`)),
+  desktopApps.filter((app) => !hiddenEntryKeys.value.has(`nav:${app.path}`)),
 )
 function removableNavEntry(app: DesktopApp): DesktopEntry {
   return { key: `nav:${app.path}`, kind: 'app', id: app.path, name: i18n.t(app.labelKey), launch: 'external', iconURL: app.desktopIconURL }
 }
 const visibleRemovableNavEntries = computed(() =>
-  visibleDesktopApps.value.filter((app) => app.removable).map(removableNavEntry),
+  visibleDesktopApps.value.map(removableNavEntry),
 )
 const hiddenEntries = computed(() => [
-  ...desktopApps.filter((app) => app.removable && hiddenEntryKeys.value.has(`nav:${app.path}`)).map(removableNavEntry),
+  ...desktopApps.filter((app) => hiddenEntryKeys.value.has(`nav:${app.path}`)).map(removableNavEntry),
   ...(entries.value?.visible || []).filter((entry) => hiddenEntryKeys.value.has(entry.key)),
 ])
 const shortcuts = computed<DesktopShortcut[]>(() => workspace.value.shortcuts.map((shortcut) => ({
@@ -3946,7 +3946,7 @@ function removeEntryMessage(entry: DesktopEntry): string {
 }
 
 function requestRemoveNavApp(): void {
-  const app = desktopApps.find((candidate) => candidate.removable && candidate.path === menuNavPath.value)
+  const app = desktopApps.find((candidate) => removableDesktopAppKeys.has(`nav:${candidate.path}`) && candidate.path === menuNavPath.value)
   closeContextMenu()
   if (app) removingEntry.value = removableNavEntry(app)
 }

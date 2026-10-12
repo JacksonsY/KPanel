@@ -83,19 +83,19 @@ func TestReplaceValidatesWorkspaceContract(t *testing.T) {
 		detail string
 	}{
 		{
-			name: "hidden navigation entry",
+			name: "malformed hidden navigation entry",
 			input: func() ReplaceInput {
 				input := validReplaceInput(base.ResourceVersion)
-				input.HiddenEntryKeys = []string{"nav:/overview"}
+				input.HiddenEntryKeys = []string{"nav:/Overview"}
 				return input
 			},
 			field: "hiddenEntryKeys",
 		},
 		{
-			name: "hidden unknown navigation entry",
+			name: "malformed hidden navigation path",
 			input: func() ReplaceInput {
 				input := validReplaceInput(base.ResourceVersion)
-				input.HiddenEntryKeys = []string{"nav:/offers-extra"}
+				input.HiddenEntryKeys = []string{"nav:/system/extra"}
 				return input
 			},
 			field: "hiddenEntryKeys",
@@ -354,16 +354,16 @@ func TestReplaceAllowsPagedVerticalPosition(t *testing.T) {
 	}
 }
 
-func TestReplaceAllowsHidingOptionalOffersEntry(t *testing.T) {
+func TestReplaceAllowsHidingSystemNavigationEntries(t *testing.T) {
 	store := openTestStore(t)
 	input := validReplaceInput(store.Workspace().ResourceVersion)
-	input.HiddenEntryKeys = []string{"nav:/offers", "app:builtin-1"}
+	input.HiddenEntryKeys = []string{"nav:/overview", "nav:/settings", "nav:/offers", "app:builtin-1"}
 
 	saved, err := store.Replace(input)
 	if err != nil {
 		t.Fatalf("hiding the offers entry was rejected: %v", err)
 	}
-	if want := []string{"app:builtin-1", "nav:/offers"}; !reflect.DeepEqual(saved.HiddenEntryKeys, want) {
+	if want := []string{"app:builtin-1", "nav:/offers", "nav:/overview", "nav:/settings"}; !reflect.DeepEqual(saved.HiddenEntryKeys, want) {
 		t.Fatalf("hidden entry keys = %#v, want %#v", saved.HiddenEntryKeys, want)
 	}
 }

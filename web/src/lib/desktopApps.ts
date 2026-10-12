@@ -34,11 +34,6 @@ export interface DesktopApp {
   allowMultiple: boolean
   /** App-tile gradient so each icon reads like a distinct application. */
   gradient: [string, string]
-  /**
-   * Optional content the administrator may hide from the desktop. The
-   * workspace only accepts `nav:` keys listed here; management pages stay pinned.
-   */
-  removable?: boolean
   /** First-open window size for content-heavy pages; a remembered size still wins. */
   windowSize?: { width: number; height: number }
 }
@@ -171,15 +166,14 @@ export const desktopApps: DesktopApp[] = [
     desktopIconURL: '/desktop-icons/offers-kpanel-flat-v1.webp',
     allowMultiple: false,
     gradient: ['#fdba74', '#c2410c'],
-    removable: true,
     // Wide enough for the three-column banner wall on common desktop screens.
     windowSize: { width: 1200, height: 820 },
   },
 ]
 
-/** Workspace keys of fixed entries that may be hidden from the desktop. */
+/** Workspace keys of fixed desktop entries; every system icon can be hidden. */
 export const removableDesktopAppKeys: ReadonlySet<string> = new Set(
-  desktopApps.filter((app) => app.removable).map((app) => `nav:${app.path}`),
+  desktopApps.map((app) => `nav:${app.path}`),
 )
 
 /** Taskbar metadata for dynamic per-application script terminal windows. */
