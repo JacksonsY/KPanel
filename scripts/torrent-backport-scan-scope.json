@@ -12,17 +12,17 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "7d8cb6312aab83626856dbfc60ba4d2728d71ab6a0d46fd025680f913a2965d3",
-  "firstPartySourceSha256": "286e7b4ba0d677bb237b2f2cd9d3b89e6091080b8bada41ce42b31fdf798b78c",
+  "firstPartySourceSha256": "bdf39350e77aade5b64ca7680d633d3686c9dc58c6319c9f3cd7a18b288a8436",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.2; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
     "state": "reviewed",
     "reviewerRole": "Independent source and dependency evidence reviewer",
-    "evidenceSha256": "af77b5c46723b8d625ffdb825ce37314549f80ce85cc7f25887c133767e4158d",
+    "evidenceSha256": "3a9cb1e66e1f0b223c738f0796275400ed1b8657215ff9b541da23e3880c637b",
     "advisoryEvidenceSha256": "32c054b8eebcda02c82748fd29981fa8c3988fa19605e1deed1628d7a6ab4607",
     "additionalSelectedEvidenceSha256": "93a256970a82a7c224c5e38aadbb21431fdbd8e5f6621da469473d7955d80bf2",
-    "summary": "RC10 assembled first-party source inventory (901 Go files) and all six Go 1.27.2 production target closures were re-hashed by the release verifier in the pinned Linux Runner. The two Linux identities change with tutorial metadata entering the Panel; all four Darwin/Windows identities match RC9. The selected and production module counts, dependency manifests, build contracts, and 36 bounded scan-scope records are unchanged. New source files are tutorial_metadata.go and its test; existing-source changes are desktop visibility preferences, autofs sampling/regression and release metadata. Actual/original closure equality, the official vulnerability scanner, and the full security audit remain separate checks and are not claimed here."
+    "summary": "RC11 release verifier re-hashed all 901 first-party Go files. Changes are bounded nested desktop navigation-key validation, regression coverage, and version metadata. Go imports, source filenames/build tags, dependency manifests and build targets are unchanged, so the six verified RC10 closure rows and module counts are reused; the full L3 independently recomputes actual/original closure equality and scanner results. This is a source identity review, not complete CF coverage."
   },
   "findings": [
     {
