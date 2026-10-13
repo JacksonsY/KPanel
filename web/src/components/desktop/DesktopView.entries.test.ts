@@ -184,7 +184,14 @@ describe('DesktopView dynamic entries', () => {
     await flushPromises()
     await wrapper.get('[data-icon-key="shortcut:' + id + '"] button').trigger('dblclick')
     await flushPromises()
-    expect(wrapper.get('[data-testid="command-terminal"]').text()).toBe('uptime')
+    const desktop = useDesktopMode()
+    const path = '/command-shortcut/' + id
+    expect(desktop.windows.value.filter(window => window.path === path)).toHaveLength(1)
+    const windowId = desktop.windows.value.find(window => window.path === path)!.id
+    desktop.minimizeWindow(windowId)
+    await wrapper.get('[data-icon-key="shortcut:' + id + '"] button').trigger('dblclick')
+    expect(desktop.windows.value.filter(window => window.path === path)).toHaveLength(1)
+    expect(desktop.windows.value.find(window => window.id === windowId)?.minimized).toBe(false)
     expect(window.open).not.toHaveBeenCalled()
     wrapper.unmount()
   })

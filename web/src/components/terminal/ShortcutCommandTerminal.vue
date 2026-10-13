@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { inject, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { LoaderCircle } from '@lucide/vue'
-import ModalDialog from '@/components/common/ModalDialog.vue'
+import { desktopWindowCloseGuardKey } from '@/lib/desktopRouteKeys'
 import HostTerminal from '@/components/terminal/HostTerminal.vue'
 import { api, ApiError } from '@/lib/api'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
@@ -9,6 +9,9 @@ import type { TerminalSession } from '@/types/api'
 
 const props = defineProps<{ name: string; command: string; hostName: string }>()
 const emit = defineEmits<{ close: [] }>()
+const closeGuards = inject(desktopWindowCloseGuardKey, undefined)
+let unregisterCloseGuard: (() => void) | undefined
+let openingRequest: Promise<void> | undefined
 const terminal = ref<InstanceType<typeof HostTerminal>>()
 const session = ref<TerminalSession>()
 const opening = ref(true)
@@ -56,10 +59,11 @@ async function onStateChange(state: string): Promise<void> {
   if (!sent && !disposed && !closing.value) error.value = phrase('命令未发送，请关闭窗口后重新执行。')
 }
 
-async function close(): Promise<void> {
-  if (closing.value) return
+async function close(): Promise<boolean> {
+  if (closing.value) return false
   closing.value = true
   try {
+    await openingRequest
     if (session.value) {
       if (terminal.value) await terminal.value.closeSession()
       else await reclaim(session.value)
@@ -67,15 +71,21 @@ async function close(): Promise<void> {
     }
     disposed = true
     emit('close')
+    return true
   } catch {
     error.value = phrase('终端关闭失败，请重试关闭。')
+    return false
   } finally {
     closing.value = false
   }
 }
 
-onMounted(open)
+onMounted(() => {
+  unregisterCloseGuard = closeGuards?.register(close)
+  openingRequest = open()
+})
 onBeforeUnmount(() => {
+  unregisterCloseGuard?.()
   disposed = true
   // HostTerminal owns mounted sessions, including page-hide cleanup.
   if (session.value && !terminal.value) {
@@ -86,17 +96,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ModalDialog :open="true" :title="`${phrase('在终端中执行')} · ${name}`" :description="hostName" variant="workspace" allow-fullscreen :close-disabled="closing" @close="close">
-    <div class="shortcut-command-terminal">
+  <section class="shortcut-command-terminal" :aria-label="name">
       <div v-if="opening" class="shortcut-command-terminal__state" role="status"><LoaderCircle class="spin" :size="20" />{{ phrase('正在连接终端…') }}</div>
       <div v-if="error" class="inline-alert inline-alert--danger" role="alert">{{ error }}</div>
       <HostTerminal v-if="session" ref="terminal" :session-id="session.sessionId" :host-name="hostName" :initial-offset="session.offset" @state-change="onStateChange" />
-    </div>
-  </ModalDialog>
+  </section>
 </template>
 
 <style scoped>
-.shortcut-command-terminal { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+.shortcut-command-terminal { height: 100%; overflow: hidden; background: var(--terminal-wallpaper-background, var(--terminal-shell-background)); display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
 .shortcut-command-terminal__state { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 14px; }
 .shortcut-command-terminal > .inline-alert { margin: 16px; }
 .shortcut-command-terminal > :deep(.host-terminal) { flex: 1 1 auto; height: auto; }

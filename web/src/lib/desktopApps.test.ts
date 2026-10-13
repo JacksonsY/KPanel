@@ -118,3 +118,9 @@ describe('desktop app catalogue', () => {
     expect(DEFAULT_WINDOW_GRADIENT[0]).toMatch(/^#/)
   })
 })
+
+it('recognizes command shortcut windows without adding a static launcher', () => {
+  expect(findDesktopApp('/command-shortcut/' + 'a'.repeat(32))?.allowMultiple).toBe(false)
+  expect(findDesktopApp('/command-shortcut/not-an-id')).toBeUndefined()
+  expect(desktopApps.some(app => app.path === '/command-shortcut')).toBe(false)
+})

@@ -124,12 +124,14 @@ const WINDOW_ROUTE_PLACEHOLDER: Component = {}
 export function resolveWindowComponent(path: string): Promise<Component> {
   if (path === '/ai' || path.startsWith('/ai/s/')) return aiComponentLoader()()
   if (/^\/app-script\/[A-Za-z0-9_-]{1,128}$/.test(path)) return appScriptComponentLoader()()
+  if (/^\/command-shortcut\/[a-f0-9]{32}$/.test(path)) return import('@/components/terminal/ShortcutCommandWorkspace.vue').then(module => module.default)
   return loadNavigationRoute(path as NavigationPath).then((module) => module.default)
 }
 
 /** Build the complete route table used by every desktop window. */
 export function windowRouteRecords(): RouteRecordRaw[] {
   return [
+    { path: '/command-shortcut/:shortcutId([a-f0-9]{32})', name: 'command-shortcut', component: WINDOW_ROUTE_PLACEHOLDER },
     { path: '/', redirect: '/overview' },
     {
       path: '/setup',

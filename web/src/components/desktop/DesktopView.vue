@@ -184,8 +184,6 @@ const emit = defineEmits<{
 
 const desktop = useDesktopMode()
 const desktopIcons = useDesktopIcons()
-const ShortcutCommandTerminal = defineAsyncComponent(() => import('@/components/terminal/ShortcutCommandTerminal.vue'))
-const commandShortcut = ref<DesktopShortcut>()
 const FileExecutionTerminal = defineAsyncComponent(() => import('@/components/files/FileExecutionTerminal.vue'))
 const executionTarget = ref<FileEntry>()
 let executionOpener: HTMLElement | undefined
@@ -1305,7 +1303,10 @@ function openKPanelUpdate(): void {
 
 function openEntry(entry: DesktopEntry): void {
   if (entry.launch === 'command' && entry.shortcut?.command) {
-    commandShortcut.value = { ...entry.shortcut }
+    const windowId = desktop.openWindow(
+      '/command-shortcut/' + entry.id, 'desktop.shortcutTypeCommand', false, true,
+    )
+    if (windowId === 0) toast.show(i18n.t('desktop.windowLimitTitle'), { message: i18n.t('desktop.windowLimitMessage') })
     return
   }
   if (entry.kind === 'app' && entry.launch === 'script') {
@@ -1505,8 +1506,13 @@ function scriptWindowEntry(path: string): DesktopEntry | undefined {
     ?? entries.value?.visible.find((entry) => entry.kind === 'app' && entry.id === appID)
 }
 
+function commandWindowShortcut(path: string): DesktopShortcut | undefined {
+  const id = path.match(/^\/command-shortcut\/([a-f0-9]{32})(?:[?#]|$)/)?.[1]
+  return shortcuts.value.find(shortcut => shortcut.id === id && shortcut.targetType === 'command')
+}
+
 function windowIconURL(path: string): string | undefined {
-  return findDesktopApp(path)?.desktopIconURL ?? scriptWindowEntry(path)?.iconURL
+  return commandWindowShortcut(path)?.iconURL ?? findDesktopApp(path)?.desktopIconURL ?? scriptWindowEntry(path)?.iconURL
 }
 
 const failedTaskbarIconURLs = ref(new Set<string>())
@@ -1523,6 +1529,8 @@ function onTaskbarIconError(path: string): void {
 }
 
 function windowTitle(titleKey: string, path?: string): string {
+  const shortcut = path ? commandWindowShortcut(path) : undefined
+  if (shortcut) return i18n.t('desktop.namedCommandWindowTitle', { name: shortcut.name })
   const scriptEntry = path ? scriptWindowEntry(path) : undefined
   if (scriptEntry) return i18n.t('desktop.namedScriptWindowTitle', { name: scriptEntry.name })
   if (path?.startsWith('/files?')) {
@@ -5645,14 +5653,6 @@ function onViewportResize(): void {
         </button>
       </template>
     </ModalDialog>
-    <ShortcutCommandTerminal
-      v-if="commandShortcut"
-      :key="commandShortcut.id"
-      :name="commandShortcut.name"
-      :command="commandShortcut.command || ''"
-      :host-name="i18n.t('terminal.hostKind.local')"
-      @close="commandShortcut = undefined"
-    />
     <FileExecutionTerminal
       v-if="executionTarget"
       :entry="executionTarget"

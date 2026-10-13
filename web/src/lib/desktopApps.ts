@@ -194,6 +194,15 @@ export const desktopScriptApp: DesktopApp = {
   gradient: ['#64748b', '#0f172a'],
 }
 
+/** Command shortcuts use the same desktop window chrome as script management. */
+export const desktopCommandApp: DesktopApp = {
+  path: '/command-shortcut',
+  labelKey: 'desktop.shortcutTypeCommand',
+  icon: SquareTerminal,
+  allowMultiple: false,
+  gradient: ['#64748b', '#0f172a'],
+}
+
 /** Neutral gradient for windows whose app is not in the catalogue. */
 export const DEFAULT_WINDOW_GRADIENT: [string, string] = ['#a78bfa', '#6d28d9']
 
@@ -218,5 +227,6 @@ export function canonicalDesktopAppPath(path: string): string {
 export function findDesktopApp(path: string): DesktopApp | undefined {
   const appPath = canonicalDesktopAppPath(path)
   if (/^\/app-script\/[A-Za-z0-9_-]{1,128}$/.test(appPath)) return desktopScriptApp
+  if (/^\/command-shortcut\/[a-f0-9]{32}$/.test(appPath)) return desktopCommandApp
   return desktopApps.find((app) => app.path === appPath)
 }
