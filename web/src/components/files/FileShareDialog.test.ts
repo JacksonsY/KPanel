@@ -232,6 +232,20 @@ describe('FileShareDialog hash-only sharing', () => {
     expect(document.body.textContent).not.toContain('分享状态或文件已发生变化')
   })
 
+  it('explains a retryable verification timeout without marking the file unavailable', async () => {
+    mocks.createShare.mockRejectedValueOnce(new ApiError('timeout', 504, 'file_share_fingerprint_timeout'))
+    mountDialog()
+    await flushPromises()
+    button('创建分享').click()
+    await flushPromises()
+    expect(document.body.textContent).toContain('文件校验超时，请稍后重试。')
+    expect(document.body.textContent).not.toContain('文件分享仅支持不超过')
+    expect(button('重试').disabled).toBe(false)
+    button('重试').click()
+    await flushPromises()
+    expect(button('创建分享').disabled).toBe(false)
+  })
+
   it('rechecks share state after an ambiguous create failure', async () => {
     const recovered = activeShare(false)
     mocks.share

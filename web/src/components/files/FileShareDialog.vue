@@ -81,6 +81,9 @@ function friendlyError(reason: unknown, action: 'load' | 'create' | 'delete'): s
   if (reason instanceof ApiError && (reason.code === 'file_share_too_large' || reason.status === 413)) {
     return '文件分享仅支持不超过 10 GiB 的文件。'
   }
+  if (reason instanceof ApiError && reason.code === 'file_share_fingerprint_timeout') {
+    return '文件校验超时，请稍后重试。'
+  }
   if (reason instanceof ApiError && reason.code === 'file_share_limit_reached') {
     return '文件分享数量已达上限，请在分享管理中停止不再使用的分享后重试。'
   }

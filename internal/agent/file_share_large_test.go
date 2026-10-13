@@ -1,16 +1,46 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/contract"
 	"github.com/kejilion/kejilion-panel/internal/filemanager"
 )
+
+func TestFileShareRoutesKeepDeadlineExceededRetryable(t *testing.T) {
+	server := testServer(t)
+	root := t.TempDir()
+	manager, err := filemanager.New(filemanager.Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	server.files = manager
+	// Use a deterministic already-expired deadline, without sleeps or slow disks.
+	ctx, stop := context.WithDeadline(context.Background(), time.Unix(1, 0))
+	defer stop()
+	for _, target := range []string{"/v1/files/share-entry?path=%2Flarge.iso", "/v1/files/share-content?path=%2Flarge.iso"} {
+		request := httptest.NewRequest(http.MethodGet, target, nil).WithContext(ctx)
+		request.Header.Set("Authorization", "Bearer "+strings.Repeat("x", 32))
+		request.Header.Set("If-Match", `"sha256:`+strings.Repeat("a", 64)+`"`)
+		request.Header.Set(contract.FileShareVersionHeader, "sha256:"+strings.Repeat("b", 64))
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, request)
+		if response.Code != http.StatusGatewayTimeout || response.Header().Get("Retry-After") != "60" ||
+			!strings.Contains(response.Body.String(), `"code":"file_share_fingerprint_timeout"`) {
+			t.Fatalf("%s deadline response=%d %s", target, response.Code, response.Body.String())
+		}
+	}
+}
 
 func TestLargeFileShareContentSupportsHeadRangeAndRevalidation(t *testing.T) {
 	size := int64(512<<20) + 1

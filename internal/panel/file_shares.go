@@ -156,10 +156,14 @@ func (s *Server) handleFileShareLookup(w http.ResponseWriter, r *http.Request) {
 	entry, status, entryErr := s.loadFileShareEntry(fingerprintContext, value.Path)
 	if entryErr != nil {
 		if errors.Is(entryErr, context.DeadlineExceeded) {
-			s.writeProblem(w, r, http.StatusGatewayTimeout, "file_share_fingerprint_timeout", "文件指纹计算超时，请稍后重试", "")
+			s.writeFileShareFingerprintTimeout(w, r)
 			return
 		}
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "agent_unavailable", "Agent unavailable", "")
+		return
+	}
+	if status == http.StatusGatewayTimeout {
+		s.writeFileShareFingerprintTimeout(w, r)
 		return
 	}
 	if fileShareAgentUnavailableStatus(status) {
@@ -199,13 +203,17 @@ func (s *Server) handleFileShareCreate(w http.ResponseWriter, r *http.Request) {
 	entry, status, err := s.loadFileShareEntry(fingerprintContext, input.Path)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			s.writeProblem(w, r, http.StatusGatewayTimeout, "file_share_fingerprint_timeout", "文件指纹计算超时，请稍后重试", "")
+			s.writeFileShareFingerprintTimeout(w, r)
 			return
 		}
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "agent_unavailable", "Agent unavailable", "")
 		return
 	}
 	if status != http.StatusOK {
+		if status == http.StatusGatewayTimeout {
+			s.writeFileShareFingerprintTimeout(w, r)
+			return
+		}
 		if fileShareAgentUnavailableStatus(status) {
 			s.writeProblem(w, r, http.StatusServiceUnavailable, "agent_unavailable", "Agent unavailable", "")
 			return
@@ -449,6 +457,9 @@ func (s *Server) handlePublicFileShareContent(w http.ResponseWriter, r *http.Req
 		w.Header().Set("Retry-After", "1")
 		s.writeProblem(w, r, http.StatusTooManyRequests, "file_share_stream_limit", "文件分享下载繁忙", "")
 		return
+	case http.StatusGatewayTimeout:
+		s.writeFileShareFingerprintTimeout(w, r)
+		return
 	case http.StatusForbidden, http.StatusNotFound, http.StatusConflict, http.StatusPreconditionFailed,
 		http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
 		http.NotFound(w, r)
@@ -506,6 +517,11 @@ func forceFileShareAttachment(header http.Header) {
 		return
 	}
 	header.Set("Content-Disposition", formatted)
+}
+
+func (s *Server) writeFileShareFingerprintTimeout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Retry-After", "60")
+	s.writeProblem(w, r, http.StatusGatewayTimeout, "file_share_fingerprint_timeout", "文件校验超时，请稍后重试", "")
 }
 
 func (s *Server) loadFileShareEntry(ctx context.Context, filePath string) (contract.FileShareEntry, int, error) {

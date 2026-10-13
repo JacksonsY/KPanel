@@ -278,6 +278,34 @@ func TestFileShareCreateRejectsOversizedFiles(t *testing.T) {
 	}
 }
 
+func TestFileShareAgentDeadlineDoesNotInvalidateShare(t *testing.T) {
+	server, tokenPath := newTestServer(t)
+	session, csrf := bootstrapCookies(t, server, tokenPath)
+	agent := &fileStubAgent{
+		stubAgent:    &stubAgent{response: fileShareEntryResponse("/large.iso", "large.iso", "application/octet-stream", 2<<30)},
+		streamStatus: http.StatusGatewayTimeout,
+	}
+	server.agent = agent
+	body, _ := json.Marshal(fileShareCreateInput{Path: "/large.iso", ExpectedResourceVersion: testFileShareVersion, ExpiresIn: "7d"})
+	created := createPanelFileShare(t, server, session, csrf, body)
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		response := performRequest(server, method, created.DirectPath, nil, nil)
+		if response.Code != http.StatusGatewayTimeout || response.Header().Get("Retry-After") != "60" {
+			t.Fatalf("%s timeout misreported: %d", method, response.Code)
+		}
+	}
+	agent.stubAgent.response = AgentResponse{StatusCode: http.StatusGatewayTimeout}
+	query := url.Values{"path": {"/large.iso"}, "resourceVersion": {testFileShareVersion}}
+	lookup := authenticatedRequest(server, http.MethodGet, fileSharesAdminPath+"?"+query.Encode(), nil, session, csrf, nil)
+	if lookup.Code != http.StatusGatewayTimeout || !strings.Contains(lookup.Body.String(), "file_share_fingerprint_timeout") {
+		t.Fatalf("lookup timeout misreported: %d %s", lookup.Code, lookup.Body.String())
+	}
+	token := strings.TrimPrefix(created.DirectPath, fileShareRawPrefix)
+	if _, err := server.store.FileShareByToken(token, time.Now().UTC()); err != nil {
+		t.Fatalf("transient timeout invalidated the share: %v", err)
+	}
+}
+
 func TestFileShareLargeFileCreationAndResumedStream(t *testing.T) {
 	for _, size := range []int64{(512 << 20) + 1, 2 << 30, contract.MaxFileShareBytes} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
@@ -333,6 +361,12 @@ func TestFileShareCreateMapsFingerprintConflictAndTimeout(t *testing.T) {
 		{
 			name:       "fingerprint timeout",
 			agent:      &stubAgent{err: context.DeadlineExceeded},
+			wantStatus: http.StatusGatewayTimeout,
+			wantCode:   "file_share_fingerprint_timeout",
+		},
+		{
+			name:       "Agent fingerprint timeout response",
+			agent:      &stubAgent{response: AgentResponse{StatusCode: http.StatusGatewayTimeout}},
 			wantStatus: http.StatusGatewayTimeout,
 			wantCode:   "file_share_fingerprint_timeout",
 		},
