@@ -38,7 +38,7 @@ const serverRejectedTooLarge = ref(false)
 let controller: AbortController | undefined
 let loadSequence = 0
 
-const MAX_FILE_SHARE_BYTES = 512 * 1024 * 1024
+const MAX_FILE_SHARE_BYTES = 10 * 1024 * 1024 * 1024
 
 function phrase(value: string): string {
   phraseCatalogVersion.value
@@ -79,7 +79,10 @@ function inferredExpiry(expiresAt?: string): FileShareExpiry {
 
 function friendlyError(reason: unknown, action: 'load' | 'create' | 'delete'): string {
   if (reason instanceof ApiError && (reason.code === 'file_share_too_large' || reason.status === 413)) {
-    return '文件分享仅支持不超过 512 MiB 的文件。'
+    return '文件分享仅支持不超过 10 GiB 的文件。'
+  }
+  if (reason instanceof ApiError && reason.code === 'file_share_fingerprint_timeout') {
+    return '文件校验超时，请稍后重试。'
   }
   if (reason instanceof ApiError && reason.code === 'file_share_limit_reached') {
     return '文件分享数量已达上限，请在分享管理中停止不再使用的分享后重试。'
@@ -237,6 +240,10 @@ onBeforeUnmount(() => {
         </span>
       </section>
 
+      <p v-if="entry.sizeBytes > 512 * 1024 * 1024 && !fileTooLarge" class="file-share-dialog__hint" role="status">
+        {{ phrase('大文件需要校验，生成链接和开始下载前可能需要等待。支持断点续传。') }}
+      </p>
+
       <div v-if="loading" class="file-share-dialog__state" role="status" aria-live="polite">
         <LoaderCircle class="spin" :size="20" />
         <span>{{ phrase('正在读取分享状态…') }}</span>
@@ -258,7 +265,7 @@ onBeforeUnmount(() => {
         >
           <TriangleAlert :size="18" />
           <p>
-            <strong>{{ phrase('文件分享仅支持不超过 512 MiB 的文件。') }}</strong>
+            <strong>{{ phrase('文件分享仅支持不超过 10 GiB 的文件。') }}</strong>
             {{ phrase(share ? '当前链接已无法访问；可停止分享，或压缩文件后重新生成。' : '请压缩或拆分文件后重试。') }}
           </p>
         </div>

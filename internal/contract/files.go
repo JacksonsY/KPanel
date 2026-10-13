@@ -5,10 +5,16 @@ import "time"
 const MaxFileEntryBatch = 64
 
 // MaxFileShareBytes bounds the O(file size) proof for anonymous file responses.
-const MaxFileShareBytes int64 = 512 << 20
+const MaxFileShareBytes int64 = 10 << 30
 
-// Managed transfers have independent limits; increasing them must not expand
-// the cost of proving a public share. Directory extraction keeps its own budget.
+// Legacy single-request uploads retain their independent compatibility limit.
+const MaxLegacyFileUploadBytes int64 = 512 << 20
+
+// A full content proof remains bounded independently of the download lifetime.
+const FileShareFingerprintTimeout = 5 * time.Minute
+
+// Managed transfers and public shares have independent budgets even when their
+// maximum file sizes match. Directory extraction keeps its own budget.
 const MaxFileTransferBytes int64 = 10 << 30
 const FileTransferChunkBytes = 8 << 20
 

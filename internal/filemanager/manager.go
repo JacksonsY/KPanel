@@ -27,7 +27,7 @@ const (
 	MaxDirectoryEntries = 500
 	MaxBatchItems       = 100
 	MaxTextBytes        = 2 << 20
-	MaxUploadBytes      = contract.MaxFileShareBytes
+	MaxUploadBytes      = contract.MaxLegacyFileUploadBytes
 	MaxDirectoryScan    = 20_000
 	MaxSearchBytes      = 128
 	MaxTrashEntries     = 10_000
@@ -392,7 +392,9 @@ func (m *Manager) OpenShare(
 		_ = file.Close()
 		return nil, contract.FileEntry{}, ErrConflict
 	}
-	version, err := contentShareVersion(ctx, entry.Path, entry.ResourceVersion, versionFile)
+	fingerprintContext, cancel := context.WithTimeout(ctx, contract.FileShareFingerprintTimeout)
+	defer cancel()
+	version, err := contentShareVersion(fingerprintContext, entry.Path, entry.ResourceVersion, versionFile)
 	if err != nil {
 		_ = file.Close()
 		return nil, contract.FileEntry{}, err

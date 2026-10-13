@@ -130,9 +130,10 @@ func (s *Server) fileShareEntry(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, requestID, http.StatusBadRequest, "invalid_query", "文件查询参数无效", "")
 		return
 	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(contract.FileShareFingerprintTimeout + fileTransferIdleTimeout))
 	entry, err := s.files.ShareEntry(r.Context(), query.Get("path"))
 	if err != nil {
-		writeFileProblem(w, requestID, err)
+		writeFileShareProblem(w, requestID, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, entry)
@@ -494,12 +495,17 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 	var entry contract.FileEntry
 	var err error
 	if shareContent {
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(contract.FileShareFingerprintTimeout + fileTransferIdleTimeout))
 		file, entry, err = s.files.OpenShare(transferContext, values.Get("path"), shareResourceVersion)
 	} else {
 		file, entry, err = s.files.Open(transferContext, values.Get("path"))
 	}
 	if err != nil {
-		writeFileProblem(w, requestID, err)
+		if shareContent {
+			writeFileShareProblem(w, requestID, err)
+		} else {
+			writeFileProblem(w, requestID, err)
+		}
 		return
 	}
 	defer file.Close()
@@ -1094,6 +1100,15 @@ func fileContentSecurityPolicy(contentType string) string {
 		return "default-src 'none'"
 	}
 	return "default-src 'none'; sandbox"
+}
+
+func writeFileShareProblem(w http.ResponseWriter, requestID string, err error) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		w.Header().Set("Retry-After", "60")
+		writeProblem(w, requestID, http.StatusGatewayTimeout, "file_share_fingerprint_timeout", "文件指纹计算超时，请稍后重试", "")
+		return
+	}
+	writeFileProblem(w, requestID, err)
 }
 
 func writeFileProblem(w http.ResponseWriter, requestID string, err error) {

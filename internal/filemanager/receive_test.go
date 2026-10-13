@@ -212,12 +212,12 @@ func TestReceiveStreamRequiresRealTransportEndBeforePublishing(t *testing.T) {
 	}
 }
 
-func TestReceiveLargeFilesKeepShareLimitAndBoundReservations(t *testing.T) {
+func TestReceiveLargeFilesKeepLegacyUploadLimitAndBoundReservations(t *testing.T) {
 	m := newReceiveManager(t, t.TempDir())
 	ctx := context.Background()
 	input := testReceiveInput(600 << 20)
-	if contract.MaxFileShareBytes != 512<<20 {
-		t.Fatal("public share proof budget changed")
+	if MaxUploadBytes != 512<<20 || contract.MaxFileShareBytes != 10<<30 {
+		t.Fatal("legacy uploads and public shares must have independent limits")
 	}
 	if _, err := m.BeginReceive(ctx, input); err != nil {
 		t.Fatalf("large managed transfer rejected: %v", err)

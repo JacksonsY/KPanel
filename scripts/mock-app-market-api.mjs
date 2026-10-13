@@ -250,6 +250,13 @@ const mockFiles = [
   ...mockEditorFiles,
   ...mockOfficeFiles,
   ...[
+    ['large-share-demo.iso', 2 * 1024 ** 3],
+    ['share-limit-demo.iso', 10 * 1024 ** 3 + 1],
+  ].map(([name, sizeBytes]) => ({ name, path: `/${name}`, kind: 'file', sizeBytes,
+    mime: 'application/octet-stream', mode: '-rw-r--r--', owner: 'demo', group: 'demo',
+    modifiedAt: '2026-10-13T00:00:00Z', resourceVersion: mockFileVersion,
+    editable: false, previewable: false })),
+  ...[
     ['settings.json', true], ['report.csv', true], ['data.sqlite', false],
     ['slides.pptx', false], ['installer.deb', false], ['certificate.pem', true],
     ['recording.mp4', false], ['artifact.bin', false],
@@ -2237,6 +2244,10 @@ createServer(async (request, response) => {
       send(response, 409, { title: '文件已发生变化，请刷新后重试', status: 409, code: 'file_share_changed' })
       return
     }
+    if (entry.sizeBytes > 10 * 1024 ** 3) {
+      send(response, 413, { title: '文件超过 10 GiB', status: 413, code: 'file_share_too_large' })
+      return
+    }
     const currentShare = mockFileShares.find((item) => item.path === input.path)
     if ((currentShare && input.expectedShareID !== currentShare.id)
       || (!currentShare && input.expectedShareID)) {
@@ -2281,8 +2292,10 @@ createServer(async (request, response) => {
       send(response, 404, { title: 'Not found', status: 404, code: 'not_found' })
       return
     }
+    const sharedEntry = mockFiles.find((entry) => entry.path === record.path)
     send(response, 200, {
-      name: 'kpanel-desktop.webp', mime: 'image/webp', sizeBytes: mockSharedImage.length,
+      name: sharedEntry?.name || 'kpanel-desktop.webp', mime: sharedEntry?.mime || 'image/webp',
+      sizeBytes: sharedEntry?.sizeBytes ?? mockSharedImage.length,
       ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
       directPath: `/f/${publicFileShareMatch[1]}`,
       downloadPath: `/f/${publicFileShareMatch[1]}?download=1`,
@@ -2293,6 +2306,11 @@ createServer(async (request, response) => {
   if ((request.method === 'GET' || request.method === 'HEAD') && publicFileContentMatch) {
     if (!mockShareTokens.has(publicFileContentMatch[1])) {
       send(response, 404, { title: 'Not found', status: 404, code: 'not_found' })
+      return
+    }
+    const sharedRecord = mockShareTokens.get(publicFileContentMatch[1])
+    if (sharedRecord.path.endsWith('-demo.iso')) {
+      send(response, 501, { title: '模拟预览不提供大型文件内容', status: 501, code: 'mock_content_unavailable' })
       return
     }
     if (request.method === 'HEAD') {

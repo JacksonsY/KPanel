@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -21,6 +22,33 @@ import (
 const testFileShareVersion = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const testFileShareStrongVersion = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 const testFileShareStrongVersion2 = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+type fileShareDeadlineWriter struct {
+	http.ResponseWriter
+	deadline *time.Time
+}
+
+func (w *fileShareDeadlineWriter) SetWriteDeadline(deadline time.Time) error {
+	*w.deadline = deadline
+	return nil
+}
+
+func TestFileShareCreationExtendsOrdinaryWriteDeadline(t *testing.T) {
+	server, tokenPath := newTestServer(t)
+	session, csrf := bootstrapCookies(t, server, tokenPath)
+	server.agent = &fileStubAgent{stubAgent: &stubAgent{response: fileShareEntryResponse("/large.iso", "large.iso", "application/octet-stream", 2<<30)}}
+	var deadline time.Time
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.ServeHTTP(&fileShareDeadlineWriter{ResponseWriter: w, deadline: &deadline}, r)
+	})
+	body, _ := json.Marshal(fileShareCreateInput{Path: "/large.iso", ExpectedResourceVersion: testFileShareVersion, ExpiresIn: "7d"})
+	started := time.Now()
+	response := authenticatedRequest(handler, http.MethodPost, fileSharesAdminPath, body, session, csrf,
+		map[string]string{"Content-Type": "application/json", "Origin": "http://panel.test", "X-CSRF-Token": csrf.Value})
+	if response.Code != http.StatusCreated || deadline.Before(started.Add(contract.FileShareFingerprintTimeout)) {
+		t.Fatalf("creation deadline did not cover proof: status=%d deadline=%s", response.Code, deadline)
+	}
+}
 
 func TestFileShareLifecycleUsesOneGenericPublicLink(t *testing.T) {
 	server, tokenPath := newTestServer(t)
@@ -250,6 +278,70 @@ func TestFileShareCreateRejectsOversizedFiles(t *testing.T) {
 	}
 }
 
+func TestFileShareAgentDeadlineDoesNotInvalidateShare(t *testing.T) {
+	server, tokenPath := newTestServer(t)
+	session, csrf := bootstrapCookies(t, server, tokenPath)
+	agent := &fileStubAgent{
+		stubAgent:    &stubAgent{response: fileShareEntryResponse("/large.iso", "large.iso", "application/octet-stream", 2<<30)},
+		streamStatus: http.StatusGatewayTimeout,
+	}
+	server.agent = agent
+	body, _ := json.Marshal(fileShareCreateInput{Path: "/large.iso", ExpectedResourceVersion: testFileShareVersion, ExpiresIn: "7d"})
+	created := createPanelFileShare(t, server, session, csrf, body)
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		response := performRequest(server, method, created.DirectPath, nil, nil)
+		if response.Code != http.StatusGatewayTimeout || response.Header().Get("Retry-After") != "60" {
+			t.Fatalf("%s timeout misreported: %d", method, response.Code)
+		}
+	}
+	agent.stubAgent.response = AgentResponse{StatusCode: http.StatusGatewayTimeout}
+	query := url.Values{"path": {"/large.iso"}, "resourceVersion": {testFileShareVersion}}
+	lookup := authenticatedRequest(server, http.MethodGet, fileSharesAdminPath+"?"+query.Encode(), nil, session, csrf, nil)
+	if lookup.Code != http.StatusGatewayTimeout || !strings.Contains(lookup.Body.String(), "file_share_fingerprint_timeout") {
+		t.Fatalf("lookup timeout misreported: %d %s", lookup.Code, lookup.Body.String())
+	}
+	token := strings.TrimPrefix(created.DirectPath, fileShareRawPrefix)
+	if _, err := server.store.FileShareByToken(token, time.Now().UTC()); err != nil {
+		t.Fatalf("transient timeout invalidated the share: %v", err)
+	}
+}
+
+func TestFileShareLargeFileCreationAndResumedStream(t *testing.T) {
+	for _, size := range []int64{(512 << 20) + 1, 2 << 30, contract.MaxFileShareBytes} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			server, tokenPath := newTestServer(t)
+			session, csrf := bootstrapCookies(t, server, tokenPath)
+			agent := &fileStubAgent{
+				stubAgent:      &stubAgent{response: fileShareEntryResponse("/large.iso", "large.iso", "application/octet-stream", size)},
+				streamStatus:   http.StatusPartialContent,
+				streamHeaders:  http.Header{"Content-Range": {fmt.Sprintf("bytes %d-%d/%d", size-4, size-1, size)}, "Content-Length": {"4"}},
+				streamResponse: []byte("tail"),
+			}
+			server.agent = agent
+			body, _ := json.Marshal(fileShareCreateInput{Path: "/large.iso", ExpectedResourceVersion: testFileShareVersion, ExpiresIn: "7d"})
+			created := createPanelFileShare(t, server, session, csrf, body)
+			for range 2 {
+				response := performRequest(server, http.MethodGet, created.DirectPath, nil, map[string]string{"Range": "bytes=-4"})
+				if response.Code != http.StatusPartialContent || response.Body.String() != "tail" {
+					t.Fatalf("large resumed download = %d %q", response.Code, response.Body.String())
+				}
+			}
+			if calls := agent.snapshotStreamCalls(); len(calls) != 2 || calls[1].headers.Get("Range") != "bytes=-4" {
+				t.Fatalf("resume header lost: %#v", calls)
+			}
+			limited := performRequest(server, http.MethodGet, created.DirectPath, nil, nil)
+			if limited.Code != http.StatusTooManyRequests || len(agent.snapshotStreamCalls()) != 2 {
+				t.Fatalf("third expensive proof was not limited before Agent open: %d", limited.Code)
+			}
+			stopped := authenticatedRequest(server, http.MethodDelete, fileSharesAdminPath+"/"+created.ID, nil, session, csrf,
+				map[string]string{"Origin": "http://panel.test", "X-CSRF-Token": csrf.Value})
+			if stopped.Code != http.StatusNoContent || performRequest(server, http.MethodGet, created.DirectPath, nil, nil).Code != http.StatusNotFound {
+				t.Fatalf("large share revocation failed: %d", stopped.Code)
+			}
+		})
+	}
+}
+
 func TestFileShareCreateMapsFingerprintConflictAndTimeout(t *testing.T) {
 	for _, test := range []struct {
 		name       string
@@ -269,6 +361,12 @@ func TestFileShareCreateMapsFingerprintConflictAndTimeout(t *testing.T) {
 		{
 			name:       "fingerprint timeout",
 			agent:      &stubAgent{err: context.DeadlineExceeded},
+			wantStatus: http.StatusGatewayTimeout,
+			wantCode:   "file_share_fingerprint_timeout",
+		},
+		{
+			name:       "Agent fingerprint timeout response",
+			agent:      &stubAgent{response: AgentResponse{StatusCode: http.StatusGatewayTimeout}},
 			wantStatus: http.StatusGatewayTimeout,
 			wantCode:   "file_share_fingerprint_timeout",
 		},
@@ -520,7 +618,10 @@ func TestFileShareValidationBudgetIsSizeWeightedAndResets(t *testing.T) {
 		{name: "8 MiB", sizeBytes: 8 << 20, admissions: 128},
 		{name: "12 MiB", sizeBytes: 12 << 20, admissions: 85},
 		{name: "64 MiB", sizeBytes: 64 << 20, admissions: 16},
-		{name: "512 MiB", sizeBytes: contract.MaxFileShareBytes, admissions: 2},
+		{name: "512 MiB", sizeBytes: 512 << 20, admissions: 2},
+		{name: "512 MiB plus one", sizeBytes: (512 << 20) + 1, admissions: 2},
+		{name: "2 GiB", sizeBytes: 2 << 30, admissions: 2},
+		{name: "10 GiB", sizeBytes: contract.MaxFileShareBytes, admissions: 2},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			server := &Server{}
@@ -538,10 +639,10 @@ func TestFileShareValidationBudgetIsSizeWeightedAndResets(t *testing.T) {
 	global := &Server{}
 	if !global.allowFileShareValidation("/large-a.bin", contract.MaxFileShareBytes, now) ||
 		!global.allowFileShareValidation("/large-b.bin", contract.MaxFileShareBytes, now) {
-		t.Fatal("global budget rejected one of two 512 MiB validations")
+		t.Fatal("global budget rejected one of two maximum-size validations")
 	}
 	if global.allowFileShareValidation("/large-c.bin", contract.MaxFileShareBytes, now) {
-		t.Fatal("global budget allowed more than 1 GiB of validation per minute")
+		t.Fatal("global budget allowed more than two maximum-size validations per minute")
 	}
 	if !global.allowFileShareValidation(
 		"/large-c.bin", contract.MaxFileShareBytes, now.Add(fileShareValidationWindow),
