@@ -16,6 +16,12 @@ const i18n = useI18n()
 const isEnglish = computed(() => i18n.locale.value === 'en-US')
 const platform = computed(() => isEnglish.value ? 'YouTube' : 'Bilibili')
 
+const moreVideoLinks = computed(() => {
+  const bilibili = { href: 'https://search.bilibili.com/all?keyword=kpanel&order=pubdate', label: i18n.t('tutorials.more.bilibili') }
+  const youtube = { href: 'https://www.youtube.com/playlist?list=PLH8p8Llp_SZM', label: i18n.t('tutorials.more.youtube') }
+  return isEnglish.value ? [youtube, bilibili] : [bilibili, youtube]
+})
+
 type TutorialVideoId = 'release125' | 'webssh' | 'cluster' | 'security' | 'theme' | 'desktop' | 'release124' | 'overview' | 'launch'
 
 // New entries need only a platform URL; copy keys and local covers are optional fallbacks.
@@ -235,7 +241,30 @@ const quickSteps = computed(() => [
         </li>
       </ul>
 
-      <p class="guide-video-note">{{ i18n.t('tutorials.video.externalNote') }}</p>
+      <div class="guide-more panel-card" aria-labelledby="guide-more-heading">
+        <div class="guide-more__copy">
+          <h3 id="guide-more-heading">{{ i18n.t('tutorials.more.heading') }}</h3>
+          <p>{{ i18n.t('tutorials.more.summary') }}</p>
+        </div>
+        <div class="guide-more__links">
+          <a
+            v-for="link in moreVideoLinks"
+            :key="link.href"
+            class="button button--secondary"
+            data-testid="tutorial-more-link"
+            :href="link.href"
+            target="_blank"
+            rel="noopener noreferrer"
+            referrerpolicy="no-referrer"
+            :aria-label="i18n.t('tutorials.more.open', { title: link.label })"
+          >
+            {{ link.label }}
+            <ExternalLink :size="16" aria-hidden="true" />
+          </a>
+        </div>
+      </div>
+
+      <p class="guide-video-note">{{ i18n.t('tutorials.more.externalNote') }}</p>
       <p v-if="isEnglish" class="guide-video-note">{{ i18n.t('tutorials.video.audioNote') }}</p>
     </section>
 
@@ -371,6 +400,7 @@ const quickSteps = computed(() => [
 }
 
 .guide-video:focus-visible,
+.guide-more__links a:focus-visible,
 .guide-back:focus-visible {
   outline: 3px solid var(--brand);
   outline-offset: 3px;
@@ -485,6 +515,52 @@ const quickSteps = computed(() => [
   line-height: 1.55;
 }
 
+.guide-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 20px;
+  padding: 20px;
+}
+
+.guide-more__copy {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.guide-more__copy h3 {
+  margin: 0 0 5px;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.guide-more__copy p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.guide-more__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.guide-more__links a {
+  gap: 8px;
+  min-height: 44px;
+  white-space: normal;
+  text-decoration: none;
+}
+
+.guide-more__links svg {
+  flex-shrink: 0;
+}
+
 .guide-steps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -540,6 +616,19 @@ const quickSteps = computed(() => [
 }
 
 @media (max-width: 540px) {
+  .guide-more {
+    padding: 16px;
+  }
+
+  .guide-more__copy {
+    flex-basis: 100%;
+  }
+
+  .guide-more__links {
+    width: 100%;
+    flex-direction: column;
+  }
+
   .guide-intro {
     flex-direction: column;
     padding: 18px;
