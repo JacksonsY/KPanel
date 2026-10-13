@@ -42,6 +42,7 @@ describe('shared host switcher in shortcut dialogs', () => {
     await trigger.trigger('keydown', { key: 'ArrowDown' })
     await flushPromises()
     expect(body().get('.host-switcher__menu').element.parentElement).toBe(document.body)
+    expect(body().get('.host-switcher__menu').classes()).toContain('is-in-modal')
     expect(Number((body().get('.host-switcher__menu').element as HTMLElement).style.zIndex)).toBeGreaterThanOrEqual(101)
     await body().get('input').trigger('keydown', { key: 'Tab' })
     expect(document.activeElement).toBe(body().get('.host-switcher__refresh').element)

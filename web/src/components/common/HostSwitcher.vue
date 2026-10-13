@@ -227,6 +227,7 @@ defineExpose({ close, isOpen })
         :id="menuId"
         ref="menu"
         class="host-switcher__menu"
+        :class="{ 'is-in-modal': position.zIndex !== undefined }"
         :style="position"
         role="dialog"
         :aria-label="phrase('切换主机')"
