@@ -2408,7 +2408,8 @@ body.desktop-mode-open::-webkit-scrollbar {
   place-items: center;
 }
 
-.desktop-window__body:has(> .app-script-page) {
+.desktop-window__body:has(> .app-script-page),
+.desktop-window__body:has(> .shortcut-command-page) {
   overflow: hidden;
   background: var(--terminal-shell-background);
   scrollbar-gutter: auto;

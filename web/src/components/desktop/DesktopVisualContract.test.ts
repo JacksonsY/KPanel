@@ -283,7 +283,7 @@ describe('desktop visual and interaction contract', () => {
   })
 
   it('does not reserve a light outer scrollbar gutter around script terminals', () => {
-    expect(styles).toMatch(/\.desktop-window__body:has\(> \.app-script-page\)\s*\{[^}]*overflow:\s*hidden;[^}]*background:\s*var\(--terminal-shell-background\);[^}]*scrollbar-gutter:\s*auto;/)
+    expect(styles).toMatch(/\.desktop-window__body:has\(> \.app-script-page\),\s*\.desktop-window__body:has\(> \.shortcut-command-page\)\s*\{[^}]*overflow:\s*hidden;[^}]*background:\s*var\(--terminal-shell-background\);[^}]*scrollbar-gutter:\s*auto;/)
   })
 
   it('lets the application market choose card columns from its own width', () => {

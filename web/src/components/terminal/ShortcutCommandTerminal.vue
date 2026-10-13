@@ -109,5 +109,5 @@ onBeforeUnmount(() => {
 .shortcut-command-terminal { height: 100%; overflow: hidden; background: var(--terminal-wallpaper-background, var(--terminal-shell-background)); display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
 .shortcut-command-terminal__state { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 14px; }
 .shortcut-command-terminal > .inline-alert { margin: 16px; }
-.shortcut-command-terminal > :deep(.host-terminal) { flex: 1 1 auto; height: auto; }
+.shortcut-command-terminal > :deep(.host-terminal) { flex: 1 1 auto; height: auto; min-width: 0; border: 0; border-radius: 0; box-shadow: none; }
 </style>
