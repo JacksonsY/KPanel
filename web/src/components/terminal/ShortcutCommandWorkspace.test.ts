@@ -34,6 +34,7 @@ describe('command shortcut desktop workspace', () => {
     const w = await create(false)
     expect(w.find('[data-testid="terminal"]').exists()).toBe(false)
     expect(w.text()).toContain('不会自动重复执行')
+    expect(w.get('button').text()).toBe('执行“Load”')
     mocks.workspace.mockResolvedValue({ available: true, shortcuts: [{ ...shortcut, command: 'df -h' }] })
     await w.get('button').trigger('click'); await flushPromises()
     expect(w.get('[data-testid="terminal"]').text()).toBe('df -h')

@@ -70,7 +70,7 @@ onBeforeUnmount(() => {
     <div v-else class="shortcut-command-page__state">
       <strong>{{ shortcut?.name }}</strong>
       <p>{{ t('desktop.shortcutCommandIdle') }}</p>
-      <button class="button button--primary" @click="load(true)"><Play :size="16" />{{ t('terminal.quickCommandsRun') }}</button>
+      <button class="button button--primary" @click="load(true)"><Play :size="16" />{{ t('terminal.quickCommandsRun', { name: shortcut?.name || '' }) }}</button>
     </div>
   </section>
 </template>
