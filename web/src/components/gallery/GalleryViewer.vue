@@ -725,7 +725,7 @@ onBeforeUnmount(() => {
         :aria-label="thumb.item.entry.name"
         @click="emit('navigate', thumb.index)"
       >
-        <GalleryImage v-if="sources(thumb.item).preview" :src="sources(thumb.item).preview!" alt="" draggable="false" />
+        <GalleryImage v-if="sources(thumb.item).preview" :src="sources(thumb.item).preview!" :version="thumb.item.entry.resourceVersion" alt="" draggable="false" />
         <span v-else>{{ galleryFileExtension(thumb.item.entry.name).toUpperCase() }}</span>
       </button>
     </nav>

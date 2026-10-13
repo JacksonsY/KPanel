@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue'
+import { GalleryImageCache, galleryImageCacheKey } from '@/lib/galleryImageCache'
 import { useRoute, useRouter } from 'vue-router'
 import { createGalleryTouchSelection } from '@/lib/galleryTouchSelection'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
@@ -170,6 +171,8 @@ const showHostSwitcher = computed(() => hosts.value.length > 1 || Boolean(hostId
 
 const snapshot = shallowRef<GalleryFolderSnapshot>()
 const folderCache = new GalleryFolderCache()
+const imageCache = new GalleryImageCache()
+provide(galleryImageCacheKey, imageCache)
 const loading = ref(true)
 const loadError = ref('')
 let loadController: AbortController | undefined
@@ -576,6 +579,7 @@ watch([currentPath, hostId, hostsLoaded], ([nextPath, nextHost], [previousPath, 
   if (nextPath === previousPath && nextHost === previousHost && !nextHost) return
   if (nextHost !== previousHost) {
     folderCache.clear()
+    imageCache.clear()
     loadController?.abort()
     loadController = undefined
     ++loadSequence
@@ -1210,6 +1214,7 @@ onMounted(() => {
   unsubscribeChanges = subscribeFileDirectoryChanges((directories, _origin, moves, changedHost) => {
     if ((changedHost || '') !== hostId.value) return
     folderCache.clear()
+    imageCache.clear()
     if (!snapshot.value) return
     const watched = new Set([currentPath.value, ...snapshot.value.albums.map((album) => album.path)])
     const touched = [...directories].some((directory) => watched.has(directory))
@@ -1228,6 +1233,7 @@ watch(desktopWindowActive, (active) => {
 })
 
 onBeforeUnmount(() => {
+  imageCache.dispose()
   touchSelection.cancel()
   unmounted = true
   loadController?.abort()
@@ -1260,7 +1266,7 @@ onBeforeUnmount(() => {
     <div ref="scroller" class="gallery-scroll">
       <section class="gallery-hero" :class="{ 'gallery-hero--photo': heroUrl, 'gallery-hero--menu-open': moreMenuOpen }">
         <div v-if="heroUrl" class="gallery-hero__backdrop" aria-hidden="true">
-          <GalleryImage :key="heroItem?.entry.resourceVersion" :src="heroUrl" alt="" eager />
+          <GalleryImage :key="heroItem?.entry.resourceVersion" :src="heroUrl" :version="heroItem?.entry.resourceVersion" alt="" eager />
         </div>
         <div class="gallery-hero__content">
           <nav v-if="trail.length > 1 || !insideLibrary" class="gallery-trail" aria-label="图库位置">
@@ -1441,6 +1447,7 @@ onBeforeUnmount(() => {
                   <GalleryImage
                     v-if="album.cover && tileUrls(album.cover).image"
                     :key="album.cover.entry.resourceVersion"
+                    :version="album.cover.entry.resourceVersion"
                     :src="tileUrls(album.cover).image!"
                     :fallback="tileUrls(album.cover).fallback"
                     alt=""

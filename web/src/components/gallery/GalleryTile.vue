@@ -129,6 +129,7 @@ onBeforeUnmount(() => {
       <GalleryImage
         v-if="showsImage"
         :key="item.entry.resourceVersion"
+        :version="item.entry.resourceVersion"
         class="gallery-tile__media"
         :src="source!"
         :fallback="fallbackUrl"

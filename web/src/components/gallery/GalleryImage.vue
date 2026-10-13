@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { fetchGalleryImage, GalleryImageError, galleryIntersectionRoot } from '@/lib/galleryMedia'
+import { galleryImageCacheKey, type GalleryImageLease } from '@/lib/galleryImageCache'
 
-const props = defineProps<{ src: string; fallback?: string; eager?: boolean }>()
+const props = defineProps<{ src: string; fallback?: string; eager?: boolean; version?: string }>()
 const emit = defineEmits<{ load: [event: Event]; error: [] }>()
 const element = ref<HTMLImageElement>()
 const objectUrl = ref<string>()
@@ -11,11 +12,14 @@ let observer: IntersectionObserver | undefined
 let visible = false
 let stopped = false
 let fallbackUsed = false
+const cache = inject(galleryImageCacheKey, undefined)
+let lease: GalleryImageLease | undefined
 
 function release(): void {
   controller?.abort()
   controller = undefined
-  if (objectUrl.value) URL.revokeObjectURL(objectUrl.value)
+  if (lease) { lease.release(); lease = undefined }
+  else if (objectUrl.value) URL.revokeObjectURL(objectUrl.value)
   objectUrl.value = undefined
 }
 
@@ -24,10 +28,17 @@ async function load(fallback = false): Promise<void> {
   release()
   const current = new AbortController()
   controller = current
+  const src = fallback ? props.fallback! : props.src
+  const version = cache && (props.version || new URL(src, location.href).searchParams.get('version'))
+  const key = version ? `${src}\0${version}` : undefined
+  const generation = cache?.generation
   try {
-    const blob = await fetchGalleryImage(fallback ? props.fallback! : props.src, current.signal)
+    const cached = key ? cache?.acquire(key) : undefined
+    if (cached) { lease = cached; objectUrl.value = cached.url; return }
+    const blob = await fetchGalleryImage(src, current.signal)
     if (current.signal.aborted || stopped || controller !== current) return
-    objectUrl.value = URL.createObjectURL(blob)
+    lease = key ? cache?.store(key, blob, generation) : undefined
+    objectUrl.value = lease?.url ?? URL.createObjectURL(blob)
   } catch (error) {
     if (current.signal.aborted || stopped || controller !== current) return
     if (!fallback && props.fallback && error instanceof GalleryImageError && [413, 422].includes(error.status)) {
@@ -39,13 +50,20 @@ async function load(fallback = false): Promise<void> {
 
 function onDecodeError(): void {
   if (!visible || stopped || !objectUrl.value) return
+  lease?.invalidate()
   if (props.fallback && !fallbackUsed) {
     fallbackUsed = true
     void load(true)
   } else emit('error')
 }
 
-watch(() => props.src, () => {
+function onLoad(event: Event): void {
+  const image = event.currentTarget as HTMLImageElement
+  lease?.decoded(image.naturalWidth, image.naturalHeight)
+  emit('load', event)
+}
+
+watch([() => props.src, () => props.version], () => {
   release()
   fallbackUsed = false
   if (visible) void load()
@@ -62,7 +80,7 @@ onMounted(() => {
     if (next === visible) return
     visible = next
     if (visible) void load()
-    // Keep blobs and queued work proportional to the visible area, not scroll history.
+    // Release the visible lease; recent small images remain in the bounded page cache.
     else release()
   }, { root: galleryIntersectionRoot(element.value), rootMargin: '160px 0px' })
   if (element.value) observer.observe(element.value)
@@ -72,5 +90,5 @@ onBeforeUnmount(() => { stopped = true; observer?.disconnect(); release() })
 </script>
 
 <template>
-  <img ref="element" :src="objectUrl" decoding="async" @load="emit('load', $event)" @error="onDecodeError" />
+  <img ref="element" :src="objectUrl" decoding="async" @load="onLoad" @error="onDecodeError" />
 </template>
