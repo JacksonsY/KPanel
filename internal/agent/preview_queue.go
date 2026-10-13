@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/contract"
 	"github.com/kejilion/kejilion-panel/internal/filemanager"
@@ -31,6 +32,8 @@ type previewQueue struct {
 	queued     []*previewJob
 	running    bool
 	workerDone chan struct{}
+	quietUntil time.Time
+	wake       chan struct{}
 	closed     bool
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -38,7 +41,7 @@ type previewQueue struct {
 
 func newPreviewQueue(s *Server, stateDir string) *previewQueue {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &previewQueue{server: s, disk: newPreviewDisk(stateDir), jobs: make(map[string]*previewJob), ctx: ctx, cancel: cancel}
+	return &previewQueue{server: s, disk: newPreviewDisk(stateDir), jobs: make(map[string]*previewJob), ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1)}
 }
 func screenPreviewKey(entry contract.FileEntry) string {
 	return "preview\x00" + thumbnailCacheKey(entry.Path, entry.ResourceVersion)
@@ -49,6 +52,12 @@ func (q *previewQueue) submit(entry contract.FileEntry, foreground bool) (*previ
 	defer q.mu.Unlock()
 	if q.closed {
 		return nil, context.Canceled
+	}
+	if foreground {
+		select {
+		case q.wake <- struct{}{}:
+		default:
+		}
 	}
 	key := screenPreviewKey(entry)
 	if job := q.jobs[key]; job != nil {
@@ -114,6 +123,10 @@ func (q *previewQueue) warm(entry contract.FileEntry) {
 	if _, _, ok := q.server.previews.get(screenPreviewKey(entry)); ok {
 		return
 	}
+	// Give the initial grid a quiet CPU window; new thumbnails extend it.
+	q.mu.Lock()
+	q.quietUntil = time.Now().Add(250 * time.Millisecond)
+	q.mu.Unlock()
 	_, _ = q.submit(entry, false)
 }
 
@@ -132,6 +145,18 @@ func (q *previewQueue) run(done chan struct{}) {
 				index = i
 				break
 			}
+		}
+		if !q.queued[index].foreground && time.Now().Before(q.quietUntil) {
+			delay := time.Until(q.quietUntil)
+			q.mu.Unlock()
+			timer := time.NewTimer(delay)
+			select {
+			case <-timer.C:
+			case <-q.wake:
+			case <-q.ctx.Done():
+			}
+			timer.Stop()
+			continue
 		}
 		job := q.queued[index]
 		q.queued = append(q.queued[:index], q.queued[index+1:]...)

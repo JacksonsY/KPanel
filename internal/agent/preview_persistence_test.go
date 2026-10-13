@@ -347,6 +347,29 @@ func TestPreviewQueueWarmupAndVersionChange(t *testing.T) {
 	}
 }
 
+func TestPreviewQueueForegroundWakesIdleWarmup(t *testing.T) {
+	s, entries, _ := previewFixture(t, 1)
+	q := s.previewJobs
+	q.mu.Lock()
+	q.quietUntil = time.Now().Add(time.Hour)
+	q.mu.Unlock()
+	job, err := q.submit(entries[0], false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Let the optional worker enter its idle select, then promote that exact job.
+	// Completion is asserted, rather than a machine-specific decode duration.
+	time.Sleep(20 * time.Millisecond)
+	promoted, err := q.submit(entries[0], true)
+	if err != nil || promoted != job {
+		t.Fatal("warmup not promoted")
+	}
+	awaitPreview(t, job.done)
+	if job.err != nil {
+		t.Fatal(job.err)
+	}
+}
+
 func TestPreviewPersistentHandlerRestartRevalidatesSource(t *testing.T) {
 	s, entries, root := previewFixture(t, 1)
 	stateDir := t.TempDir()
