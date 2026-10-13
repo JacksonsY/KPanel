@@ -159,6 +159,8 @@ type Service struct {
 	localExpires  time.Time
 	localInFlight chan struct{}
 	localError    error
+	localCancel   context.CancelFunc
+	localClosed   bool
 }
 
 func NewService(config ServiceConfig) (*Service, error) {
@@ -374,6 +376,16 @@ func (s *Service) Start(parent context.Context) {
 }
 
 func (s *Service) Close() error {
+	s.localMu.Lock()
+	s.localClosed = true
+	localCancel, localPending := s.localCancel, s.localInFlight
+	s.localMu.Unlock()
+	if localCancel != nil {
+		localCancel()
+	}
+	if localPending != nil {
+		<-localPending
+	}
 	if s.fileStreamHub != nil {
 		s.fileStreamHub.closeAll()
 	}
@@ -1181,13 +1193,17 @@ func (s *Service) localHostSummary(ctx context.Context) Host {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	telemetryCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
-	defer cancel()
-	startedAt := s.now().UTC()
-	telemetry, err := s.localTelemetry(telemetryCtx)
-	finishedAt := s.now().UTC()
+	_, _ = s.localTelemetry(ctx)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return localPublicHost(s.store.NodeID(), s.hostname, s.store.LocalName(), s.panelVersion, s.localHost, s.now().UTC())
+}
 
+// Only a completed collection changes host health. Readers and canceled
+// browser requests must never multiply one failed sample into three failures.
+func (s *Service) recordLocalTelemetry(telemetry contract.HostTelemetry, err error, startedAt, finishedAt time.Time) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	current := s.localHost
 	current.lastAttemptAt = timePointer(finishedAt)
 	if err != nil {
@@ -1224,28 +1240,33 @@ func (s *Service) localHostSummary(ctx context.Context) Host {
 		current.panelVersion = s.panelVersion
 	}
 	s.localHost = current
-	public := localPublicHost(
-		s.store.NodeID(), s.hostname, s.store.LocalName(),
-		s.panelVersion, current, finishedAt,
-	)
-	s.mu.Unlock()
-	return public
 }
 
 func (s *Service) invalidateLocalTelemetry() {
 	s.localMu.Lock()
-	s.localExpires = time.Time{}
+	// Manual refresh may bypass a good snapshot, but not the failure cooldown.
+	if s.localError == nil {
+		s.localExpires = time.Time{}
+	}
 	s.localMu.Unlock()
 }
 
 func (s *Service) localTelemetry(ctx context.Context) (contract.HostTelemetry, error) {
 	for {
+		if err := ctx.Err(); err != nil {
+			return contract.HostTelemetry{}, err
+		}
 		now := s.now().UTC()
 		s.localMu.Lock()
-		if now.Before(s.localExpires) && !s.localValue.CollectedAt.IsZero() {
-			value := cloneTelemetry(s.localValue)
+		if s.localClosed {
 			s.localMu.Unlock()
-			return value, nil
+			return contract.HostTelemetry{}, context.Canceled
+		}
+		if now.Before(s.localExpires) {
+			value := cloneTelemetry(s.localValue)
+			err := s.localError
+			s.localMu.Unlock()
+			return value, err
 		}
 		if pending := s.localInFlight; pending != nil {
 			s.localMu.Unlock()
@@ -1258,22 +1279,36 @@ func (s *Service) localTelemetry(ctx context.Context) (contract.HostTelemetry, e
 		}
 		pending := make(chan struct{})
 		s.localInFlight = pending
+		// Collection belongs to the service, not whichever reader arrived first.
+		collectionCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		s.localCancel = cancel
 		s.localMu.Unlock()
-
-		value, err := s.telemetry.Telemetry(ctx)
-		if err == nil {
-			err = validateTelemetry(value, now)
-		}
-		s.localMu.Lock()
-		if err == nil {
-			s.localValue = cloneTelemetry(value)
-			s.localExpires = now.Add(5 * time.Second)
-		}
-		s.localError = err
-		s.localInFlight = nil
-		close(pending)
-		s.localMu.Unlock()
-		return cloneTelemetry(value), err
+		go func() {
+			defer cancel()
+			value, err := s.telemetry.Telemetry(collectionCtx)
+			if err == nil {
+				err = collectionCtx.Err()
+			}
+			finishedAt := s.now().UTC()
+			if err == nil {
+				err = validateTelemetry(value, finishedAt)
+			}
+			s.localMu.Lock()
+			defer s.localMu.Unlock()
+			if !s.localClosed {
+				s.localValue = cloneTelemetry(value)
+				s.localError = err
+				ttl := 5 * time.Second
+				if err != nil {
+					ttl = defaultPollInterval
+				}
+				s.localExpires = finishedAt.Add(ttl)
+				s.recordLocalTelemetry(value, err, now, finishedAt)
+			}
+			s.localCancel = nil
+			s.localInFlight = nil
+			close(pending)
+		}()
 	}
 }
 

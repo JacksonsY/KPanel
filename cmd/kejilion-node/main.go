@@ -338,7 +338,7 @@ func collectAndReport(
 ) (nodeConfig, int64, error) {
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
-	summary, collectErr := collector.Collect(ctx)
+	summary, collectErr := collector.CollectTelemetry(ctx)
 	if collectErr != nil && summary.Hostname == "" {
 		return config, 0, fmt.Errorf("collect host telemetry: %w", collectErr)
 	}

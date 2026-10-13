@@ -191,6 +191,7 @@ func newServiceV2Remote(t *testing.T) (*RemoteClient, *serviceV2RoundTripper) {
 		Transport: transport,
 		Timeout:   5 * time.Second,
 	}
+	client.summaryClient = client.client
 	return client, transport
 }
 

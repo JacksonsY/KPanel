@@ -20,7 +20,9 @@ export function fileHostStatus(host: ClusterHost): FileHostStatus {
       ? { action: 'select', tone: 'online', label: '文件管理已就绪' }
       : { action: 'manage', tone: 'warning', label: '文件代理未就绪' }
   }
-  if (['offline', 'auth_failed', 'tls_error', 'incompatible'].includes(host.state)) {
+  // Summary failures do not revoke a file grant or prove its relay is down.
+  // Allow the authenticated file request to report its own connection result.
+  if (['auth_failed', 'tls_error', 'incompatible'].includes(host.state)) {
     return { action: 'manage', tone: 'offline', label: '主机连接异常' }
   }
   if (['pairing', 'revoking'].includes(host.state)) {

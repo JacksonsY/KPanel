@@ -572,8 +572,18 @@ func TestServiceAvailabilityAlertsAndRecovers(t *testing.T) {
 	}
 	clock.Advance(time.Second)
 	source.setState(cluster.HostOnline)
-	if err := service.evaluate(context.Background()); err != nil {
-		t.Fatal(err)
+	for sample := 1; sample <= 3; sample++ {
+		now := clock.Now()
+		source.mu.Lock()
+		source.host.LastSuccessAt = &now
+		source.mu.Unlock()
+		if err := service.evaluate(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if sample < 3 && telegram.messageCount() != 1 {
+			t.Fatal("recovered before three successful samples")
+		}
+		clock.Advance(time.Second)
 	}
 	if telegram.messageCount() != 2 {
 		t.Fatalf("offline recovery messages = %d, want 2", telegram.messageCount())
