@@ -26,6 +26,10 @@ const (
 	pairPath    = "/api/v1/federation/pair"
 	summaryPath = "/api/v1/federation/summary"
 	revokePath  = "/api/v1/federation/revoke"
+	// The remote Panel has a 4s local summary budget. Allow network overhead
+	// before headers, then additional time to receive the bounded response body.
+	defaultSummaryTimeout = 10 * time.Second
+	summaryHeaderTimeout  = 6 * time.Second
 )
 
 type resolver interface {
@@ -74,7 +78,7 @@ func (e *RemoteError) Error() string {
 func NewRemoteClient(config RemoteClientConfig) (*RemoteClient, error) {
 	summaryTimeout := config.Timeout
 	if summaryTimeout == 0 {
-		summaryTimeout = 10 * time.Second
+		summaryTimeout = defaultSummaryTimeout
 	}
 	allowed := make([]netip.Prefix, 0, len(config.PrivateCIDRs))
 	for _, raw := range config.PrivateCIDRs {
@@ -131,13 +135,13 @@ func NewRemoteClient(config RemoteClientConfig) (*RemoteClient, error) {
 	// Monitoring has its own bounded connection pool. A slow summary must not
 	// occupy the two connections used by terminal/control requests (or vice versa).
 	summaryTransport := transport.Clone()
-	summaryTransport.ResponseHeaderTimeout = min(6*time.Second, summaryTimeout)
+	summaryTransport.ResponseHeaderTimeout = min(summaryHeaderTimeout, summaryTimeout)
 	remote.summaryClient = &http.Client{
 		Transport: tlsfallback.New(summaryTransport, curveCache),
 		Timeout:   summaryTimeout, CheckRedirect: remote.client.CheckRedirect,
 	}
-	// Long file relays must not occupy the two connections that interactive
-	// terminal requests and summaries share with the same host.
+	// Long file relays use their own pool, separate from both terminal/control
+	// requests and monitoring summaries for the same host.
 	streamTransport := transport.Clone()
 	streamTransport.MaxConnsPerHost = 4
 	streamTransport.MaxIdleConnsPerHost = 4

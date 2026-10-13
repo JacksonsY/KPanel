@@ -166,6 +166,7 @@ export default [
   ["远端图库未打开", "Remote gallery did not open"],
   ["浏览器阻止了新标签页，请允许弹出窗口后重试。", "The browser blocked the new tab. Allow pop-ups and try again."],
   ["当前面板", "Current panel"],
+  ["监控离线 · 可尝试连接", "Monitoring offline · Try connecting"],
   ["文件管理已就绪", "File management ready"],
   ["文件代理未就绪", "File broker is not ready"],
   ["主机连接异常", "Host connection issue"],

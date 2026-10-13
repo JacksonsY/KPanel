@@ -27,6 +27,9 @@ const (
 	maxPollBackoff      = 5 * time.Minute
 	staleAfter          = 90 * time.Second
 	maxSafeJSONInteger  = uint64(1<<53 - 1)
+	// Agent telemetry has a 2s budget; allow optional checks and local transport
+	// to finish before the remote summary response-header deadline (6s).
+	localTelemetryTimeout = 4 * time.Second
 )
 
 type TelemetrySource interface {
@@ -1280,7 +1283,7 @@ func (s *Service) localTelemetry(ctx context.Context) (contract.HostTelemetry, e
 		pending := make(chan struct{})
 		s.localInFlight = pending
 		// Collection belongs to the service, not whichever reader arrived first.
-		collectionCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		collectionCtx, cancel := context.WithTimeout(context.Background(), localTelemetryTimeout)
 		s.localCancel = cancel
 		s.localMu.Unlock()
 		go func() {

@@ -7,6 +7,9 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/contract"
 )
 
+// Leave room for Panel's local summary budget (4s), including optional checks.
+const telemetryCollectionTimeout = 2 * time.Second
+
 type telemetryCollection struct {
 	done  chan struct{}
 	ctx   context.Context
@@ -20,7 +23,7 @@ type telemetryCollection struct {
 // Timed-out work never becomes a fresh heartbeat or starts replacement workers.
 func (c *Collector) CollectTelemetry(ctx context.Context) (contract.SystemSummary, error) {
 	c.prepareDefaults()
-	return c.collectTelemetry(ctx, 2*time.Second, func(ctx context.Context) (contract.SystemSummary, error) {
+	return c.collectTelemetry(ctx, telemetryCollectionTimeout, func(ctx context.Context) (contract.SystemSummary, error) {
 		value, err := c.collectRuntime(ctx)
 		if c.PublicNetworkLookupEnabled {
 			value.PublicNetwork = c.readPublicNetwork(ctx)

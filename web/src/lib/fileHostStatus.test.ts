@@ -15,6 +15,11 @@ describe('file transport availability', () => {
     }
     expect(fileHostStatus({ ...host, state: 'offline', fileManagementAvailable: false }).action).not.toBe('select')
   })
+  it('does not present an offline summary as a verified file connection', () => {
+    expect(fileHostStatus({ ...host, state: 'offline' })).toEqual({
+      action: 'select', tone: 'warning', label: '监控离线 · 可尝试连接',
+    })
+  })
   it('continues to use the independent light file broker capability', () => {
     expect(fileHostStatus({ ...host, kind: 'light_node', state: 'offline' }).action).toBe('select')
     expect(fileHostStatus({ ...host, kind: 'light_node', state: 'online', fileManagementAvailable: false }).action).toBe('manage')

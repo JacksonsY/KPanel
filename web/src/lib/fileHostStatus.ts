@@ -29,6 +29,9 @@ export function fileHostStatus(host: ClusterHost): FileHostStatus {
     return { action: 'manage', tone: 'warning', label: '主机状态处理中' }
   }
   if (host.kind === 'panel' && host.fileManagementAvailable === true) {
+    if (host.state === 'offline') {
+      return { action: 'select', tone: 'warning', label: '监控离线 · 可尝试连接' }
+    }
     return { action: 'select', tone: 'online', label: '文件管理已就绪' }
   }
   if (host.mutualFileTransferAvailable) {
