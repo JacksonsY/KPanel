@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
-import { flushPromises, mount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/lib/api'
 import SettingsGuidesView from './SettingsGuidesView.vue'
 import { resetLocaleForTest, setLocale } from '@/i18n'
+
+enableAutoUnmount(afterEach)
 
 async function mountGuides() {
   const router = createRouter({
@@ -90,5 +92,35 @@ describe('SettingsGuidesView', () => {
     expect(wrapper.find('strong').text()).toBe('KPanel video title from YouTube')
     expect(wrapper.find('img').attributes('src')).toBe('/api/v1/tutorials/thumbnail?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3HwmSTCtozg%26hl%3Den')
     expect(wrapper.find('img').attributes('referrerpolicy')).toBe('no-referrer')
+  })
+
+  it('keeps more-video destinations usable when metadata fails and reorders them on language changes', async () => {
+    const wrapper = await mountGuides()
+    await flushPromises()
+    const bilibili = 'https://search.bilibili.com/all?keyword=kpanel&order=pubdate'
+    const youtube = 'https://www.youtube.com/playlist?list=PLH8p8Llp_SZM'
+    const links = () => wrapper.findAll('[data-testid="tutorial-more-link"]')
+
+    expect(links().map(link => link.attributes('href'))).toEqual([bilibili, youtube])
+    expect(links().map(link => link.text())).toEqual(['B站最新视频', 'YouTube 教程合集'])
+    expect(links().every(link => link.attributes('aria-label')?.includes('在新标签页打开'))).toBe(true)
+    expect(api.tutorials.metadata).toHaveBeenCalledTimes(9)
+
+    await setLocale('en-US')
+    await flushPromises()
+    expect(links().map(link => link.attributes('href'))).toEqual([youtube, bilibili])
+    expect(links()[0]?.text()).toBe('YouTube tutorial playlist')
+    expect(links().every(link => link.attributes('aria-label')?.includes('opens in a new tab'))).toBe(true)
+    expect(api.tutorials.metadata).toHaveBeenCalledTimes(14)
+
+    await setLocale('zh-TW')
+    await flushPromises()
+    expect(links().map(link => link.attributes('href'))).toEqual([bilibili, youtube])
+    expect(links()[0]?.text()).toBe('B站最新影片')
+    expect(links().every(link => link.attributes('target') === '_blank'
+      && link.attributes('rel') === 'noopener noreferrer'
+      && link.attributes('referrerpolicy') === 'no-referrer')).toBe(true)
+    expect(vi.mocked(api.tutorials.metadata).mock.calls.every(([url]) => url !== bilibili && url !== youtube)).toBe(true)
+    wrapper.unmount()
   })
 })
