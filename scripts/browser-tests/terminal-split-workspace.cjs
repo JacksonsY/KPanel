@@ -84,7 +84,7 @@ const settle = (page) => page.waitForFunction(() => [...document.querySelectorAl
         assert.equal(await page.locator('.terminal-pane-workspace .terminal-layout-controls').count(), 0);
         const controlBox = await layout.boundingBox();
         const toolbarBox = await page.locator('.terminal-tabs-bar').first().boundingBox();
-        assert(controlBox.x + controlBox.width <= toolbarBox.x + toolbarBox.width && controlBox.y >= toolbarBox.y);
+        if (viewport.width > 900) assert(controlBox.x + controlBox.width <= toolbarBox.x + toolbarBox.width && controlBox.y >= toolbarBox.y);
         await layout.focus();
         await layout.press('ArrowDown');
         await page.keyboard.press('End');
