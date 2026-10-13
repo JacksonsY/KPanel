@@ -12,7 +12,7 @@
 | feature/guides-more-videos | 79797bcfda3bbbc88ecc48ea52d4fdcced8be3d0 | 三种语言的 B站最新视频和 YouTube 教程合集外链。 |
 | fix/gallery-mobile-viewer-20261013 | 0e4abb03ae866b929090fcc01063f524350d6067 | 手机关闭栏常显、视频适配、缩略图条与视频控件独立占位。 |
 
-系统中心 systemd 管理已随 RC9 发布，offers 为既有内容；旧文件快捷方式图标、分页、文件页旧布局继续排除。历史替代来源和未完成审计文档不当作新产品。唯一 release/v1.26.0-candidate 保留在上述产品 SHA。三个来源 tip 已在标签祖先中逐项核对，远端无对应活跃任务分支；可从不可变 tag 按表中 SHA 恢复。本地作者分支、工作树和预览保持作者所有权并保留；这些内容已交付，不再计待发布。验收文档使用独立 docs/v126-rc18-acceptance 分支，待同 SHA 主线 CI 通过后单独归档，最终远端回执留在本版外部证据。
+系统中心 systemd 管理已随 RC9 发布，offers 为既有内容；旧文件快捷方式图标、分页、文件页旧布局继续排除。历史替代来源和未完成审计文档不当作新产品。唯一 release/v1.26.0-candidate 保留在上述产品 SHA。三个来源 tip 已在标签祖先中逐项核对，远端无对应活跃任务分支；可从不可变 tag 按表中 SHA 恢复。本地作者分支、工作树和预览保持作者所有权并保留；这些内容已交付，不再计待发布。收尾使用独立 docs/v126-rc18-acceptance 分支；测试夹具修复与验收事实分别提交，组合 L1 候选待同 SHA 主线 CI 通过后归档，最终远端回执留在本版外部证据。
 
 ## 业务、安全与数据边界
 
@@ -47,6 +47,12 @@ acceptance visual-composition Mock预览绑定精确产品，arena-154独立非r
 | 体验与可访问性 | 已验证 | Chromium完整路径、WebKit键盘及绘制、响应式/三语言；WebKit指针/H264、实体机/读屏限制如上。 |
 | 数据与迁移 | 已验证 | 新类型持久化及旧UI远端屏障回归；旧Panel读取新类型不保证，回滚需工作区备份。 |
 
+## 发布后收尾测试夹具修复
+
+原文档提交037ab4c6的候选CI38442727775成功，主线CI38443829388在既有MCP撤权测试失败，原始记录不改写。executeMCPOperation持久化claim并最多等待100ms后可返回executing；原测试错误要求立即得到failed。专用test提交ee92d730加入受控channel阻塞预检，使测试明确覆盖异步返回，再以8秒上界轮询持久化终态，检查authorization_revoked_before_dispatch和零Agent写入。受控旧测试两种路径均失败，修复后20轮通过；Linux race及组合最终CI以本版外部最终回执为准。
+
+生产Go源码与已独立复核的RC18逐字节相同，没有新运行时修复、重新发布或镜像变更。当前main的一方全量源摘要因一个_test.go变化而资格化为cb1e63fa0d8bde0641ccc4156f62edd65611b60f2a5e9a28eecf7ed2907c4805；发布标签的原摘要5647d7ed仍保持正确。生产闭包、依赖、36项发现处置及到期日均不改变。源码资格化保留原生产独立复核，不把维护者自测称为独立审计。
+
 ## 公开产物与收尾
 
 版本镜像与preview均 sha256:b139b32d3ae8f7e60ee6da0e8cfc7102e833a184b3658ee862de6a752f41c8bb；双架构实际 Registry version/revision 匹配。GitHub Latest仍v1.25.1、Docker latest仍sha256:1894b5e3aa76edbd75efef2de1164f44d38734cb3a27dc11aa2f75c420c1b325。15附件已在arena-154下载、从磁盘重读大小与API SHA256全通过，SHA256SUMS11项通过，许可/修改组件元数据保留。公开不可变镜像由冻结源码 image-e2e.sh 验证 image_e2e=pass；E2E独立容器/网络及18080已清理，不等于生产验证。
@@ -65,7 +71,7 @@ prod-108/108禁用全部KPanel操作，本次未连接、未部署、未核对�
 <!-- kpanel-release-metrics:end -->
 
 <!-- kpanel-release-process-metrics:start -->
-- 已记录发布流程异常或无效证据拦截次数：11
+- 已记录发布流程异常或无效证据拦截次数：13
 - 其中生产写操作开始后异常次数：0
 <!-- kpanel-release-process-metrics:end -->
 
@@ -152,6 +158,24 @@ prod-108/108禁用全部KPanel操作，本次未连接、未部署、未核对�
     "impact": "Cleanup mutations and receipt succeeded; final shell cat command carried a CR from Windows Set-Content and returned path-not-found. Subsequent scp succeeded; this is not a clean initial shell result.",
     "recoveryEvidence": "Original cleanup-browser.sh preserved. Independent exact SSH cat and local browser-cleanup.json agree; removed clone/node_modules absence confirmed; observedNetReleased3558674432 bytes.",
     "permanentAction": "Subsequent Linux helper files are written with explicit LF using Node; do not rerun the completed delete operation. No claim of global adapter repair.",
+    "historicalReleases": []
+  },
+  {
+    "fingerprint": "closeout/ci-race/mcp-async-preflight-terminal-state",
+    "position": "before-production-write",
+    "count": 1,
+    "impact": "Initial documentation main CI38443829388 failed TestMCPRevocationDuringPreflightPreventsDispatch after the bounded100msAPIwait returned a durable executing claim; writes0. Runtime guard code unchanged.",
+    "recoveryEvidence": "First failed JSON/log retained. Controlled channel barrier reproduces the old false failure for both local and delegated paths. Corrected test waits bounded terminal state, checks exact revocation error and zero writes;20targeted repeats passed. Final combined CI receipts retained separately.",
+    "permanentAction": "Dedicated test-only commit ee92d730c8e71bc24537ff09b458ddf34a632c63 adds controlled preflight release and bounded terminal-state poll; no production Go path/hash changes versus published RC18. Do not weaken revocation/writes assertions or rewrite published artifacts.",
+    "historicalReleases": []
+  },
+  {
+    "fingerprint": "diagnostic/go-overlay/wrong-worktree-binding",
+    "position": "before-production-write",
+    "count": 1,
+    "impact": "Initial controlled-red overlay mapped the dedicated fix worktree while Go ran from the docs worktree, so the intended barrier was not applied; successful baseline result is invalid red evidence.",
+    "recoveryEvidence": "Original red.log/tool failure retained; red-r2.log runs from mapped fix worktree and reproduces expected executing/writes0 failure for both subcases. Corrected green and frozen20-repeat logs pass.",
+    "permanentAction": "Bind overlay replacement absolute path and command cwd to same qualified worktree; controlled red expected failure is separate from publication gate failures.",
     "historicalReleases": []
   }
 ]
