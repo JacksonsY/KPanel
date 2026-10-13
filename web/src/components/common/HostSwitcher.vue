@@ -23,11 +23,13 @@ const props = withDefaults(defineProps<{
   activeId: string
   /** Name shown on the button for the current host. */
   label: string
+  disabled?: boolean
   loading?: boolean
   error?: boolean
   /** Status line, tone and action for each host, already translated. */
   statusOf: (host: ClusterHost) => HostSwitcherStatus
 }>(), {
+  disabled: false,
   loading: false,
   error: false,
 })
@@ -52,7 +54,7 @@ const searchInput = ref<HTMLInputElement>()
 const isOpen = ref(false)
 const search = ref('')
 const menuId = `host-switcher-${useId()}`
-const position = ref({ left: '0px', top: '0px' })
+const position = ref<{ left: string; top: string; zIndex?: string }>({ left: '0px', top: '0px' })
 
 const filteredHosts = computed(() => {
   const needle = search.value.trim().toLocaleLowerCase()
@@ -79,6 +81,7 @@ function close(restoreFocus = false): void {
 }
 
 function toggle(): void {
+  if (props.disabled) return
   if (isOpen.value) {
     close()
     return
@@ -108,7 +111,10 @@ function reposition(): void {
   const height = Math.min(list.offsetHeight, openAbove ? above : below, 440)
   const y = openAbove ? anchor.top - 6 - height : anchor.bottom + 6
   const placement = placeContextMenu(list, { x: anchor.left, y }, button)
-  position.value = { left: `${placement.x}px`, top: `${placement.y}px` }
+  const modal = button.closest('.modal-backdrop')
+  position.value = { left: `${placement.x}px`, top: `${placement.y}px`,
+    zIndex: modal ? String((Number(window.getComputedStyle(modal).zIndex) || 100) + 1) : undefined,
+  }
 }
 
 function onMenuKeydown(event: KeyboardEvent): void {
@@ -118,9 +124,20 @@ function onMenuKeydown(event: KeyboardEvent): void {
     close(true)
     return
   }
+  // A body-teleported menu must handle Tab before its owning modal's focus trap.
+  if (event.key === 'Tab' && trigger.value?.closest('.modal-panel')) {
+    const controls = Array.from(menu.value?.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled)') || [])
+    const current = controls.indexOf(document.activeElement as HTMLElement)
+    const next = current + (event.shiftKey ? -1 : 1)
+    event.preventDefault()
+    event.stopPropagation()
+    if (next < 0 || next >= controls.length) close(true)
+    else controls[next]?.focus()
+    return
+  }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
   if (event.target === searchInput.value && ['Home', 'End'].includes(event.key)) return
-  const options = Array.from(menu.value?.querySelectorAll<HTMLButtonElement>('[data-host-id]') || [])
+  const options = Array.from(menu.value?.querySelectorAll<HTMLButtonElement>('[data-host-id]:not(:disabled)') || [])
   if (!options.length) return
   const current = options.indexOf(document.activeElement as HTMLButtonElement)
   let index: number
@@ -156,6 +173,8 @@ function onScroll(event: Event): void {
   reposition()
 }
 
+watch(() => props.disabled, disabled => { if (disabled) close() })
+
 watch([isOpen, filteredHosts, () => props.loading, () => props.error], async () => {
   await nextTick()
   reposition()
@@ -188,11 +207,13 @@ defineExpose({ close, isOpen })
       ref="trigger"
       class="host-switcher__trigger"
       type="button"
+      :disabled="disabled"
       aria-haspopup="dialog"
       :aria-controls="menuId"
       :aria-expanded="isOpen"
       :title="phrase('切换主机')"
       @click.stop="toggle"
+      @keydown.esc="isOpen && onMenuKeydown($event)"
       @keydown.down.prevent="openFromKeyboard"
       @keydown.up.prevent="openFromKeyboard"
     >
@@ -207,6 +228,7 @@ defineExpose({ close, isOpen })
         :id="menuId"
         ref="menu"
         class="host-switcher__menu"
+        :class="{ 'is-in-modal': position.zIndex !== undefined }"
         :style="position"
         role="dialog"
         :aria-label="phrase('切换主机')"
@@ -248,10 +270,11 @@ defineExpose({ close, isOpen })
               class="host-switcher__item"
               :class="{ 'is-active': row.active, 'is-manage': row.action === 'manage' }"
               type="button"
+              :disabled="disabled || row.status.disabled"
               :aria-pressed="row.active"
               :title="`${row.name} · ${row.status.label}`"
               :data-host-id="row.host.id"
-              @click="emit('select', row.host)"
+              @click="!disabled && !row.status.disabled && emit('select', row.host)"
             >
               <OperatingSystemIcon
                 class="host-switcher__os"
@@ -470,7 +493,13 @@ defineExpose({ close, isOpen })
   transition: background-color .14s ease;
 }
 
-.host-switcher__item:hover {
+.host-switcher__trigger:disabled,
+.host-switcher__item:disabled {
+  cursor: not-allowed;
+  opacity: .6;
+}
+
+.host-switcher__item:hover:not(:disabled) {
   background: var(--interaction-hover);
 }
 

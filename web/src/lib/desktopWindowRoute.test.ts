@@ -8,6 +8,7 @@ import {
   windowRouterCanGoBack,
 } from './desktopWindowRoute'
 
+vi.mock('@/components/terminal/ShortcutCommandWorkspace.vue', () => ({ default: { name: 'ShortcutCommandWorkspace' } }))
 vi.mock('@/views/AppScriptView.vue', () => ({
   default: { name: 'AppScriptView' },
 }))
@@ -228,4 +229,12 @@ describe('desktop window route', () => {
     expect(historyNavigation.mock.calls).toEqual([[-1], [-3], [1]])
     expect(router.currentRoute.value.path).toBe('/monitoring')
   })
+})
+
+it('routes command shortcut ids to an independent terminal workspace', async () => {
+  const path = '/command-shortcut/' + 'a'.repeat(32)
+  expect((await resolveWindowComponent(path) as { name: string }).name).toBe('ShortcutCommandWorkspace')
+  const router = createWindowRouter(path)
+  await router.push(path)
+  expect(router.currentRoute.value.params.shortcutId).toBe('a'.repeat(32))
 })

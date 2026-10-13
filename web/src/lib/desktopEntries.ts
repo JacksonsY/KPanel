@@ -12,7 +12,7 @@ import type { AppMarketItem, DesktopShortcut, PublicNetworkSummary, Site } from 
  */
 
 export type DesktopEntryKind = 'app' | 'site' | 'shortcut'
-export type DesktopEntryLaunch = 'external' | 'script' | 'file' | 'directory'
+export type DesktopEntryLaunch = 'external' | 'script' | 'file' | 'directory' | 'command'
 
 export interface DesktopEntry {
   /** Stable key: `${kind}:${id}` so Vue can key icons reliably. */

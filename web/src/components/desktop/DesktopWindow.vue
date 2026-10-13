@@ -13,6 +13,7 @@ import {
   desktopWindowActiveKey,
   desktopWindowCloseKey,
   desktopWindowLaunchKey,
+  desktopWindowTitleKey,
   desktopCloseGuardCoordinatorKey,
   desktopWindowCloseGuardKey,
   desktopWindowVisibleKey,
@@ -64,6 +65,8 @@ const router = createWindowRouter(
 // Vue component definitions must stay raw. A deep ref proxies object-based
 // SFCs and triggers a runtime warning every time a desktop window opens.
 const component = shallowRef<Component>()
+const contentTitle = ref<string>()
+provide(desktopWindowTitleKey, value => { contentTitle.value = value })
 const open = ref(false)
 const closing = ref(false)
 const loading = ref(true)
@@ -106,7 +109,7 @@ provide(desktopWindowCloseGuardKey, {
   },
 })
 
-const title = computed(() => props.title || i18n.t(props.windowState.titleKey as Parameters<typeof i18n.t>[0]))
+const title = computed(() => contentTitle.value || props.title || i18n.t(props.windowState.titleKey as Parameters<typeof i18n.t>[0]))
 const filePreviewPath = computed(() => {
   // The initial router replacement is asynchronous; classify before the first paint.
   const route = router.resolve(props.windowState.path)
@@ -298,6 +301,7 @@ async function loadComponent(path: string): Promise<void> {
   const nextComponentPath = componentPath(path)
   if (component.value && loadedComponentPath === nextComponentPath) return
   const sequence = ++loadSequence
+  contentTitle.value = undefined
   component.value = undefined
   loading.value = true
   loadError.value = false

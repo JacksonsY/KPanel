@@ -30,6 +30,9 @@ export const desktopWindowVisibleKey = Symbol('desktop-window-visible') as Injec
 /** Consume the one-time launch intent of a newly opened window, never a restored window. */
 export const desktopWindowLaunchKey = Symbol('desktop-window-launch') as InjectionKey<() => boolean>
 
+/** Title supplied by the mounted page and its resolved session target. */
+export const desktopWindowTitleKey = Symbol('desktop-window-title') as InjectionKey<(title?: string) => void>
+
 /** Request the owning desktop window to close through its registered guards. */
 export const desktopWindowCloseKey = Symbol('desktop-window-close') as InjectionKey<() => Promise<void>>
 

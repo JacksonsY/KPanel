@@ -325,8 +325,14 @@ func changedShortcutCount(left []desktopworkspace.Shortcut, right []desktopworks
 	changed := 0
 	for id, leftValue := range leftByID {
 		rightValue, ok := rightByID[id]
+		if ok && desktopworkspace.IsCommandTargetType(rightValue.TargetType) && desktopworkspace.IsCommandTargetType(leftValue.TargetType) && rightValue.HostID == "" {
+			rightValue.HostID = leftValue.HostID
+		}
+		if rightValue.TargetType == desktopworkspace.ShortcutTargetCommand && rightValue.HostID != "" && rightValue.HostID != "local" {
+			rightValue.TargetType = desktopworkspace.ShortcutTargetRemoteCommand
+		}
 		if !ok || leftValue.Name != rightValue.Name || leftValue.Description != rightValue.Description ||
-			leftValue.TargetType != rightValue.TargetType || leftValue.URL != rightValue.URL || leftValue.Path != rightValue.Path {
+			leftValue.TargetType != rightValue.TargetType || leftValue.URL != rightValue.URL || leftValue.Path != rightValue.Path || leftValue.Command != rightValue.Command || leftValue.HostID != rightValue.HostID {
 			changed++
 		}
 	}

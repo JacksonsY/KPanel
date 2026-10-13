@@ -27,7 +27,7 @@ describe('desktop visual and interaction contract', () => {
     expect(styles).toMatch(/\.desktop\s*\{[^}]*z-index:\s*1000;/)
     expect(styles).toContain('z-index: 1200;')
     expect(styles).toContain('z-index: 2800 !important;')
-    expect(styles).toMatch(/\.desktop-mode-open :is\(\.file-context-menu, \.docker-context-menu, \.host-switcher__menu\)\s*\{[^}]*z-index:\s*4500 !important;/)
+    expect(styles).toMatch(/\.desktop-mode-open :is\(\.file-context-menu, \.docker-context-menu, \.host-switcher__menu:not\(\.is-in-modal\)\)\s*\{[^}]*z-index:\s*4500 !important;/)
     expect(styles).toContain('z-index: 5000 !important;')
     expect(styles).toContain('z-index: 5200 !important;')
   })
@@ -283,7 +283,7 @@ describe('desktop visual and interaction contract', () => {
   })
 
   it('does not reserve a light outer scrollbar gutter around script terminals', () => {
-    expect(styles).toMatch(/\.desktop-window__body:has\(> \.app-script-page\)\s*\{[^}]*overflow:\s*hidden;[^}]*background:\s*var\(--terminal-shell-background\);[^}]*scrollbar-gutter:\s*auto;/)
+    expect(styles).toMatch(/\.desktop-window__body:has\(> \.app-script-page\),\s*\.desktop-window__body:has\(> \.shortcut-command-page\)\s*\{[^}]*overflow:\s*hidden;[^}]*background:\s*var\(--terminal-shell-background\);[^}]*scrollbar-gutter:\s*auto;/)
   })
 
   it('lets the application market choose card columns from its own width', () => {

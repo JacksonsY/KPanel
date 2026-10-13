@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isDesktopCommandShortcut } from '@/lib/desktopCommandShortcuts'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import {
@@ -388,14 +389,14 @@ const shortcutEntries = computed<DesktopEntry[]>(() => shortcuts.value.map((shor
   kind: 'shortcut',
   id: shortcut.id,
   name: shortcut.name,
-  description: shortcut.description || shortcut.path,
-  launch: shortcut.targetType === 'url' ? 'external' : shortcut.targetType,
+  description: shortcut.description || shortcut.path || shortcut.command,
+  launch: shortcut.targetType === 'url' ? 'external' : shortcut.targetType === 'remote-command' ? 'command' : shortcut.targetType,
   url: shortcut.url,
   path: shortcut.path,
   iconURL: shortcut.iconURL,
   icon: shortcut.targetType === 'file' || shortcut.targetType === 'directory'
     ? shortcutFileIcon(shortcut.name, shortcut.targetType)
-    : undefined,
+    : isDesktopCommandShortcut(shortcut) ? SquareTerminal : undefined,
   shortcut,
 })))
 
@@ -1249,7 +1250,7 @@ function entryFallbackBackground(entry: DesktopEntry): string | undefined {
   let colors: [string, string] | undefined
   if (entry.kind === 'site') {
     colors = SITE_GRADIENTS[stableSiteColorIndex(entry)] ?? SITE_GRADIENTS[0]
-  } else if (entry.kind === 'shortcut' && entry.launch === 'external') {
+  } else if (entry.kind === 'shortcut' && (entry.launch === 'external' || entry.launch === 'command')) {
     colors = ['#38bdf8', '#0369a1']
   }
   if (!colors) return undefined
@@ -1302,6 +1303,13 @@ function openKPanelUpdate(): void {
 }
 
 function openEntry(entry: DesktopEntry): void {
+  if (entry.launch === 'command' && entry.shortcut?.command) {
+    const windowId = desktop.openWindow(
+      '/command-shortcut/' + entry.id, 'desktop.shortcutTypeCommand', false, true,
+    )
+    if (windowId === 0) toast.show(i18n.t('desktop.windowLimitTitle'), { message: i18n.t('desktop.windowLimitMessage') })
+    return
+  }
   if (entry.kind === 'app' && entry.launch === 'script') {
     openAppScriptEntry(entry)
     return
@@ -1499,8 +1507,13 @@ function scriptWindowEntry(path: string): DesktopEntry | undefined {
     ?? entries.value?.visible.find((entry) => entry.kind === 'app' && entry.id === appID)
 }
 
+function commandWindowShortcut(path: string): DesktopShortcut | undefined {
+  const id = path.match(/^\/command-shortcut\/([a-f0-9]{32})(?:[?#]|$)/)?.[1]
+  return shortcuts.value.find(shortcut => shortcut.id === id && isDesktopCommandShortcut(shortcut))
+}
+
 function windowIconURL(path: string): string | undefined {
-  return findDesktopApp(path)?.desktopIconURL ?? scriptWindowEntry(path)?.iconURL
+  return commandWindowShortcut(path)?.iconURL ?? findDesktopApp(path)?.desktopIconURL ?? scriptWindowEntry(path)?.iconURL
 }
 
 const failedTaskbarIconURLs = ref(new Set<string>())
@@ -1517,6 +1530,8 @@ function onTaskbarIconError(path: string): void {
 }
 
 function windowTitle(titleKey: string, path?: string): string {
+  const shortcut = path ? commandWindowShortcut(path) : undefined
+  if (shortcut) return i18n.t('desktop.namedCommandWindowTitle', { name: shortcut.name })
   const scriptEntry = path ? scriptWindowEntry(path) : undefined
   if (scriptEntry) return i18n.t('desktop.namedScriptWindowTitle', { name: scriptEntry.name })
   if (path?.startsWith('/files?')) {
@@ -4038,7 +4053,7 @@ async function toggleWidgetVisibility(key: string, visible: boolean): Promise<vo
 }
 
 function openShortcutDialog(shortcut?: DesktopShortcut): void {
-  if (shortcut && shortcut.targetType !== 'url') return
+  if (shortcut && shortcut.targetType !== 'url' && !isDesktopCommandShortcut(shortcut)) return
   pendingShortcutID = ''
   editingShortcut.value = shortcut
   shortcutError.value = ''
@@ -4070,6 +4085,8 @@ async function saveShortcut(
         description: draft.description,
         targetType: draft.targetType,
         url: draft.url,
+        command: draft.command,
+        hostId: draft.hostId,
       }
       const index = workspaceDraft.shortcuts.findIndex((shortcut) => shortcut.id === id)
       if (index >= 0) workspaceDraft.shortcuts.splice(index, 1, next)
@@ -4118,7 +4135,7 @@ async function confirmDeleteShortcut(): Promise<void> {
 function editMenuShortcut(): void {
   const shortcut = menuEntry.value?.shortcut
   closeContextMenu()
-  if (shortcut?.targetType === 'url') openShortcutDialog(shortcut)
+  if (shortcut?.targetType === 'url' || isDesktopCommandShortcut(shortcut)) openShortcutDialog(shortcut)
 }
 
 function onTaskbarClick(windowId: number): void {
@@ -4895,6 +4912,7 @@ function onViewportResize(): void {
             <FolderOpen v-else-if="menuEntry.launch === 'directory'" :size="15" aria-hidden="true" />
             <File v-else-if="menuEntry.launch === 'file'" :size="15" aria-hidden="true" />
             <AppWindow v-else-if="menuEntry.url" :size="15" aria-hidden="true" />
+            <SquareTerminal v-else-if="menuEntry.launch === 'command'" :size="15" aria-hidden="true" />
             <ExternalLink v-else :size="15" aria-hidden="true" />
             {{ menuEntry.launch === 'script'
               ? i18n.t('desktop.entryScriptManage')
@@ -4940,7 +4958,7 @@ function onViewportResize(): void {
             {{ i18n.t('desktop.entryRename') }}
           </button>
           <button
-            v-if="menuEntry.kind === 'shortcut' && menuEntry.shortcut?.targetType === 'url'"
+            v-if="menuEntry.kind === 'shortcut' && (menuEntry.shortcut?.targetType === 'url' || isDesktopCommandShortcut(menuEntry.shortcut))"
             type="button"
             role="menuitem"
             @click="editMenuShortcut"
@@ -5413,14 +5431,15 @@ function onViewportResize(): void {
               : i18n.t('desktop.detailShortcut') }}</dd>
           <dt>{{ i18n.t('desktop.detailDescription') }}</dt>
           <dd>{{ detailEntry.description || i18n.t('desktop.detailNoDescription') }}</dd>
-          <dt>{{ detailEntry.path ? i18n.t('desktop.detailPath') : i18n.t('desktop.detailURL') }}</dt>
-          <dd class="desktop__detail-url">{{ detailEntry.path || detailEntry.url }}</dd>
+          <dt>{{ detailEntry.launch === 'command' ? i18n.t('desktop.shortcutTypeCommand') : detailEntry.path ? i18n.t('desktop.detailPath') : i18n.t('desktop.detailURL') }}</dt>
+          <dd class="desktop__detail-url">{{ detailEntry.path || detailEntry.url || detailEntry.shortcut?.command }}</dd>
         </template>
       </dl>
       <template #footer>
         <button class="button button--primary" type="button" @click="onDetailEntryOpen">
           <FolderOpen v-if="detailEntry?.launch === 'directory'" :size="15" aria-hidden="true" />
           <File v-else-if="detailEntry?.launch === 'file'" :size="15" aria-hidden="true" />
+          <SquareTerminal v-else-if="detailEntry?.launch === 'command'" :size="15" aria-hidden="true" />
           <ExternalLink v-else :size="15" aria-hidden="true" />
           {{ i18n.t('desktop.entryOpen') }}
         </button>

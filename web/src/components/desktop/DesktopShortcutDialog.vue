@@ -1,16 +1,21 @@
 <script setup lang="ts">
+import { isDesktopCommandShortcut } from '@/lib/desktopCommandShortcuts'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { AlignLeft, ImagePlus, Link2, Trash2, Type } from '@lucide/vue'
+import { AlignLeft, ImagePlus, Link2, Terminal, Trash2, Type } from '@lucide/vue'
+import TerminalHostPicker from '@/components/terminal/TerminalHostPicker.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import { useI18n } from '@/i18n'
+import { useTerminalCommands } from '@/stores/terminalCommands'
 import type { DesktopShortcut } from '@/types/api'
 
 export interface DesktopShortcutDraft {
   id: string
   name: string
   description: string
-  targetType: 'url'
-  url: string
+  targetType: 'url' | 'command' | 'remote-command'
+  url?: string
+  command?: string
+  hostId?: string
 }
 
 const props = defineProps<{
@@ -29,6 +34,39 @@ const i18n = useI18n()
 const name = ref('')
 const description = ref('')
 const url = ref('')
+const targetType = ref<'url' | 'command'>('url')
+const command = ref('')
+const hostId = ref('local')
+const hostValid = ref(true)
+const commandStore = useTerminalCommands()
+const importError = ref('')
+const importing = ref(false)
+let importController: AbortController | undefined
+async function loadCommands(): Promise<void> {
+  importController?.abort()
+  const controller = new AbortController()
+  importController = controller
+  importError.value = ''
+  importing.value = true
+  try {
+    const result = await commandStore.load(controller.signal)
+    if (!controller.signal.aborted && !result.available) importError.value = i18n.t('terminal.quickCommandsLoadFailed')
+  } catch {
+    if (!controller.signal.aborted) importError.value = i18n.t('terminal.quickCommandsLoadFailed')
+  } finally {
+    if (importController === controller) importing.value = false
+  }
+}
+function importCommand(event: Event): void {
+  const select = event.target as HTMLSelectElement
+  const item = commandStore.commands.value.items.find(item => item.id === select.value)
+  if (item) { name.value = item.name; command.value = item.command }
+  select.value = ''
+}
+watch(() => [props.open, targetType.value] as const, ([open, type]) => {
+  if (open && type === 'command') void loadCommands()
+  else { importController?.abort(); importing.value = false }
+}, { immediate: true })
 const icon = ref<File>()
 const iconPreviewURL = ref('')
 const removeIcon = ref(false)
@@ -61,6 +99,11 @@ function reset(): void {
   clearPreview()
   name.value = props.shortcut?.name || ''
   description.value = props.shortcut?.description || ''
+  targetType.value = isDesktopCommandShortcut(props.shortcut) ? 'command' : 'url'
+  command.value = props.shortcut?.command || ''
+  hostId.value = props.shortcut?.hostId || 'local'
+  hostValid.value = hostId.value === 'local'
+  importError.value = ''
   url.value = props.shortcut?.targetType === 'url' ? props.shortcut.url || '' : ''
   icon.value = undefined
   removeIcon.value = false
@@ -70,7 +113,7 @@ function reset(): void {
 watch(() => [props.open, props.shortcut?.id] as const, ([open]) => {
   if (open) reset()
   else clearPreview()
-})
+}, { immediate: true })
 
 function readIconPreview(file: File): void {
   const sequence = ++previewSequence
@@ -152,7 +195,15 @@ function submit(): void {
     validationMessage.value = i18n.t('desktop.shortcutNameRequired')
     return
   }
-  if (!normalized) {
+  if (targetType.value === 'command' && (!command.value.trim() || new TextEncoder().encode(command.value).length > 8192 || /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(command.value))) {
+    validationMessage.value = i18n.t('desktop.shortcutCommandInvalid')
+    return
+  }
+  if (targetType.value === 'command' && !hostValid.value) {
+    validationMessage.value = i18n.t('desktop.shortcutHostUnavailable')
+    return
+  }
+  if (targetType.value === 'url' && !normalized) {
     validationMessage.value = i18n.t('desktop.shortcutURLInvalid')
     return
   }
@@ -160,12 +211,12 @@ function submit(): void {
     id: props.shortcut?.id || '',
     name: trimmedName,
     description: trimmedDescription,
-    targetType: 'url',
-    url: normalized,
+    targetType: targetType.value === 'command' && hostId.value !== 'local' ? 'remote-command' : targetType.value,
+    ...(targetType.value === 'command' ? { command: command.value, hostId: hostId.value } : { url: normalized }),
   }, icon.value, removeIcon.value)
 }
 
-onBeforeUnmount(clearPreview)
+onBeforeUnmount(() => { clearPreview(); importController?.abort() })
 </script>
 
 <template>
@@ -174,6 +225,7 @@ onBeforeUnmount(clearPreview)
       <div class="desktop-shortcut-form__identity">
         <span class="desktop-shortcut-form__preview" aria-hidden="true">
           <img v-if="visibleIconURL" :src="visibleIconURL" alt="" />
+          <Terminal v-else-if="targetType === 'command'" :size="28" :stroke-width="1.8" />
           <Link2 v-else :size="28" :stroke-width="1.8" />
         </span>
         <div class="desktop-shortcut-form__icon-actions">
@@ -202,6 +254,23 @@ onBeforeUnmount(clearPreview)
       </div>
 
       <label class="desktop-shortcut-form__field">
+        <span class="desktop-shortcut-form__field-heading">{{ i18n.t('desktop.shortcutType') }}</span>
+        <select v-model="targetType" class="desktop-shortcut-form__control" :disabled="saving" data-testid="shortcut-type">
+          <option value="url">{{ i18n.t('desktop.shortcutTypeURL') }}</option>
+          <option value="command">{{ i18n.t('desktop.shortcutTypeCommand') }}</option>
+        </select>
+      </label>
+      <TerminalHostPicker v-if="targetType === 'command'" v-model="hostId" :active="open" :disabled="saving" @validity="hostValid = $event" />
+      <div v-if="targetType === 'command'" class="desktop-shortcut-form__field">
+        <label class="desktop-shortcut-form__field-heading" for="shortcut-import">{{ i18n.t('desktop.shortcutImportCommand') }}</label>
+        <select id="shortcut-import" class="desktop-shortcut-form__control" :disabled="saving || importing || !!importError" @change="importCommand">
+          <option value="">{{ importing ? i18n.t('common.loading') : i18n.t('desktop.shortcutImportPlaceholder') }}</option>
+          <option v-for="item in commandStore.commands.value.items" :key="item.id" :value="item.id">{{ item.name }}</option>
+        </select>
+        <p v-if="importError" role="alert">{{ importError }} <button type="button" class="button button--ghost" @click="loadCommands">{{ i18n.t('common.retry') }}</button></p>
+        <small v-else-if="!importing && !commandStore.commands.value.items.length">{{ i18n.t('terminal.quickCommandsEmptyTitle') }}</small>
+      </div>
+      <label class="desktop-shortcut-form__field">
         <span class="desktop-shortcut-form__field-heading">
           <span>{{ i18n.t('desktop.shortcutName') }}</span>
         </span>
@@ -217,7 +286,7 @@ onBeforeUnmount(clearPreview)
           />
         </span>
       </label>
-      <label class="desktop-shortcut-form__field">
+      <label v-if="targetType === 'url'" class="desktop-shortcut-form__field">
         <span class="desktop-shortcut-form__field-heading">
           <span>{{ i18n.t('desktop.shortcutURL') }}</span>
         </span>
@@ -234,6 +303,14 @@ onBeforeUnmount(clearPreview)
             required
           />
         </span>
+      </label>
+      <label v-if="targetType === 'command'" class="desktop-shortcut-form__field">
+        <span class="desktop-shortcut-form__field-heading">{{ i18n.t('desktop.shortcutTypeCommand') }}</span>
+        <span class="desktop-shortcut-form__control desktop-shortcut-form__control--textarea">
+          <Terminal :size="16" aria-hidden="true" />
+          <textarea v-model="command" rows="4" maxlength="8192" spellcheck="false" :disabled="saving" :placeholder="i18n.t('desktop.shortcutCommandPlaceholder')" data-testid="shortcut-command" />
+        </span>
+        <small>{{ i18n.t('desktop.shortcutCommandHint') }}</small>
       </label>
       <label class="desktop-shortcut-form__field">
         <span class="desktop-shortcut-form__field-heading">
@@ -265,3 +342,10 @@ onBeforeUnmount(clearPreview)
     </template>
   </ModalDialog>
 </template>
+
+<style scoped>
+.desktop-shortcut-form__field-heading { font-size: 14px; }
+select.desktop-shortcut-form__control { width: 100%; min-width: 0; color: var(--text); font-size: 14px; }
+.desktop-shortcut-form__field > small { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.desktop-shortcut-form__field > p { margin: 0; color: var(--danger); font-size: 14px; }
+</style>
