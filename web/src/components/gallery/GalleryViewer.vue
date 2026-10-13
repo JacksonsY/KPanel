@@ -430,7 +430,14 @@ function onPointerUp(event: PointerEvent): void {
   }
 }
 
+function isCurrentImage(event: Event): boolean {
+  const image = event.currentTarget as HTMLImageElement
+  const source = originalUrl.value || screenUrl.value
+  return Boolean(source && stage.value?.contains(image) && image.getAttribute('src') === source)
+}
+
 function onImageLoad(event: Event): void {
+  if (!isCurrentImage(event)) return
   const image = event.currentTarget as HTMLImageElement
   const lease = originalUrl.value ? originalLease : screenLease
   lease?.decoded(image.naturalWidth, image.naturalHeight)
@@ -439,10 +446,23 @@ function onImageLoad(event: Event): void {
   preloadNeighbours()
 }
 
-function onImageError(): void {
+function onImageError(event: Event): void {
+  if (!isCurrentImage(event)) return
+  // A Blob decode failure need not mean the authenticated image URL is unusable.
+  // Try native loading once; a native failure continues through the usual fallback.
+  if (!originalUrl.value && screenUrl.value?.startsWith('blob:')) {
+    screenLease?.invalidate(); screenLease?.release(); screenLease = undefined
+    screenUrl.value = itemSources.value?.screen
+    return
+  }
   if (!originalUrl.value && screenUrl.value) {
     screenLease?.invalidate(); screenLease?.release(); screenLease = undefined; screenUrl.value = undefined
     void loadOriginal(); return
+  }
+  if (originalUrl.value?.startsWith('blob:')) {
+    originalLease?.invalidate(); releaseOriginal()
+    originalUrl.value = itemSources.value?.original
+    return
   }
   if (originalUrl.value && screenUrl.value) {
     originalLease?.invalidate(); releaseOriginal(); resetView(); originalError.value = true; return
@@ -767,7 +787,8 @@ onBeforeUnmount(() => {
               draggable="false"
             />
             <img
-              :key="`${itemSources?.original}:${item.entry.resourceVersion}:${retryKey}`"
+              v-if="originalUrl || screenUrl"
+              :key="`${originalUrl || screenUrl}:${retryKey}`"
               class="gallery-viewer__media"
               :class="{ 'is-loaded': loaded }"
               :src="originalUrl || screenUrl"
