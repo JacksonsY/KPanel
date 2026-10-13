@@ -61,9 +61,14 @@ const settle = (page) => page.waitForFunction(() => [...document.querySelectorAl
         // Keep the exact xterm nodes to detect remounts during layout changes.
         await page.evaluate(() => { window.__splitNodes = [...document.querySelectorAll('.xterm')]; });
         const layout = page.locator('.terminal-layout-trigger');
+        assert.equal(await layout.locator('span').isVisible(), viewport.width > 900);
+        assert.equal(await layout.locator('svg:visible').count(), viewport.width <= 900 ? 1 : 2);
+        assert.match(await layout.getAttribute('aria-label'), /Terminal layout|终端布局/);
+        if (viewport.width <= 900) assert.equal((await layout.boundingBox()).width, 34);
         const chooseLayout = async (value) => {
           await layout.click();
           assert.equal(await page.locator('.terminal-layout-menu button svg:first-child').count(), 4);
+          assert.equal(await page.locator('.terminal-layout-menu button span:visible').count(), 4);
           if (width === 1600 && theme === 'dark' && zoom === 1 && language === 'zh-CN') {
             await page.screenshot({ path: path.join(out, `layout-menu-${mode}.png`), fullPage: true });
           }
