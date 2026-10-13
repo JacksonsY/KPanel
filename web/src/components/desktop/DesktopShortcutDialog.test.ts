@@ -217,7 +217,7 @@ it('saves an explicitly selected remote host and sends local when switched back'
   await flushPromises()
   document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
   await nextTick()
-  expect(w.emitted('save')?.[0]?.[0]).toMatchObject({ hostId: remote })
+  expect(w.emitted('save')?.[0]?.[0]).toMatchObject({ targetType: 'remote-command', hostId: remote })
   document.body.querySelector<HTMLButtonElement>('.shortcut-host-picker__selected')!.click()
   await nextTick()
   const local = document.body.querySelector<HTMLInputElement>('input[type="radio"][value="local"]')!
@@ -225,6 +225,6 @@ it('saves an explicitly selected remote host and sends local when switched back'
   await nextTick()
   document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
   await nextTick()
-  expect(w.emitted('save')?.[1]?.[0]).toMatchObject({ hostId: 'local' })
+  expect(w.emitted('save')?.[1]?.[0]).toMatchObject({ targetType: 'command', hostId: 'local' })
   w.unmount(); hostSpy.mockRestore(); commandSpy.mockRestore()
 })

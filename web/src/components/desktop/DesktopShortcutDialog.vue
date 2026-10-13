@@ -12,7 +12,7 @@ export interface DesktopShortcutDraft {
   id: string
   name: string
   description: string
-  targetType: 'url' | 'command'
+  targetType: 'url' | 'command' | 'remote-command'
   url?: string
   command?: string
   hostId?: string
@@ -211,7 +211,7 @@ function submit(): void {
     id: props.shortcut?.id || '',
     name: trimmedName,
     description: trimmedDescription,
-    targetType: targetType.value,
+    targetType: targetType.value === 'command' && hostId.value !== 'local' ? 'remote-command' : targetType.value,
     ...(targetType.value === 'command' ? { command: command.value, hostId: hostId.value } : { url: normalized }),
   }, icon.value, removeIcon.value)
 }
