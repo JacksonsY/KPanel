@@ -42,7 +42,7 @@ const (
 
 var (
 	fileShareMetadataTimeout    = 8 * time.Second
-	fileShareFingerprintTimeout = 30 * time.Second
+	fileShareFingerprintTimeout = contract.FileShareFingerprintTimeout
 )
 
 const fileShareContentSecurityPolicy = "default-src 'none'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
@@ -150,6 +150,7 @@ func (s *Server) handleFileShareLookup(w http.ResponseWriter, r *http.Request) {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "file_share_storage_unavailable", "文件分享存储不可用", "")
 		return
 	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(fileShareFingerprintTimeout + panelFileTransferIdleTimeout))
 	fingerprintContext, cancelFingerprint := context.WithTimeout(r.Context(), fileShareFingerprintTimeout)
 	defer cancelFingerprint()
 	entry, status, entryErr := s.loadFileShareEntry(fingerprintContext, value.Path)
@@ -192,6 +193,7 @@ func (s *Server) handleFileShareCreate(w http.ResponseWriter, r *http.Request) {
 		s.writeProblem(w, r, http.StatusUnprocessableEntity, "file_share_request_invalid", "文件分享参数无效", "")
 		return
 	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(fileShareFingerprintTimeout + panelFileTransferIdleTimeout))
 	fingerprintContext, cancelFingerprint := context.WithTimeout(r.Context(), fileShareFingerprintTimeout)
 	defer cancelFingerprint()
 	entry, status, err := s.loadFileShareEntry(fingerprintContext, input.Path)
@@ -209,7 +211,7 @@ func (s *Server) handleFileShareCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if status == http.StatusRequestEntityTooLarge {
-			s.writeProblem(w, r, status, "file_share_too_large", "文件超过 512 MiB，无法创建轻量分享", "")
+			s.writeProblem(w, r, status, "file_share_too_large", "文件超过 10 GiB，无法创建轻量分享", "")
 			return
 		}
 		if status == http.StatusConflict {
@@ -224,7 +226,7 @@ func (s *Server) handleFileShareCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if entry.SizeBytes < 0 || entry.SizeBytes > contract.MaxFileShareBytes {
-		s.writeProblem(w, r, http.StatusRequestEntityTooLarge, "file_share_too_large", "文件超过 512 MiB，无法创建轻量分享", "")
+		s.writeProblem(w, r, http.StatusRequestEntityTooLarge, "file_share_too_large", "文件超过 10 GiB，无法创建轻量分享", "")
 		return
 	}
 	if entry.ResourceVersion != input.ExpectedResourceVersion {
@@ -410,6 +412,14 @@ func (s *Server) handlePublicFileShareContent(w http.ResponseWriter, r *http.Req
 			headers.Set(key, headerValue)
 		}
 	}
+	// The server's ordinary write deadline must not expire while the Agent
+	// verifies a large file before returning response headers. Streaming writes
+	// below restore the per-write idle deadline.
+	fingerprintDeadline := time.Now().Add(fileShareFingerprintTimeout + panelFileTransferIdleTimeout)
+	if deadline.Before(fingerprintDeadline) {
+		fingerprintDeadline = deadline
+	}
+	_ = http.NewResponseController(w).SetWriteDeadline(fingerprintDeadline)
 	response, err := streamer.OpenStream(
 		transferContext, r.Method, "/v1/files/share-content", query.Encode(), requestID(r),
 		http.NoBody, headers, 0,
@@ -708,6 +718,10 @@ func (s *Server) allowFileShareValidation(key string, sizeBytes int64, now time.
 	if units < 1 {
 		units = 1
 	}
+	// Preserve the existing small-file request budget. Large files spend half
+	// the window, allowing at most two full proofs (20 GiB) per minute globally,
+	// including HEAD, conditional requests and resumed downloads.
+	units = min(units, fileShareValidationShare/2)
 
 	s.fileShareValidationMu.Lock()
 	defer s.fileShareValidationMu.Unlock()

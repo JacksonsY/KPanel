@@ -130,6 +130,7 @@ func (s *Server) fileShareEntry(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, requestID, http.StatusBadRequest, "invalid_query", "文件查询参数无效", "")
 		return
 	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(contract.FileShareFingerprintTimeout + fileTransferIdleTimeout))
 	entry, err := s.files.ShareEntry(r.Context(), query.Get("path"))
 	if err != nil {
 		writeFileProblem(w, requestID, err)
@@ -494,6 +495,7 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 	var entry contract.FileEntry
 	var err error
 	if shareContent {
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(contract.FileShareFingerprintTimeout + fileTransferIdleTimeout))
 		file, entry, err = s.files.OpenShare(transferContext, values.Get("path"), shareResourceVersion)
 	} else {
 		file, entry, err = s.files.Open(transferContext, values.Get("path"))

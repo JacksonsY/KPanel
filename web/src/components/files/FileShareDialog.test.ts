@@ -103,7 +103,7 @@ afterEach(() => {
 })
 
 describe('FileShareDialog hash-only sharing', () => {
-  const maxFileShareBytes = 512 * 1024 * 1024
+  const maxFileShareBytes = 10 * 1024 * 1024 * 1024
 
   it('defaults to seven days and shows newly created links exactly once', async () => {
     const created = activeShare(true)
@@ -291,7 +291,7 @@ describe('FileShareDialog hash-only sharing', () => {
     await flushPromises()
 
     expect(mocks.share).toHaveBeenCalledOnce()
-    expect(document.body.textContent).toContain('文件分享仅支持不超过 512 MiB 的文件。')
+    expect(document.body.textContent).toContain('文件分享仅支持不超过 10 GiB 的文件。')
     expect(document.body.textContent).toContain('请压缩或拆分文件后重试。')
     expect(document.querySelector('.file-share-dialog__expiry')).toBeNull()
     expect(button('创建分享').disabled).toBe(true)
@@ -304,7 +304,19 @@ describe('FileShareDialog hash-only sharing', () => {
     await flushPromises()
 
     expect(button('创建分享').disabled).toBe(false)
-    expect(document.body.textContent).not.toContain('文件分享仅支持不超过 512 MiB 的文件。')
+    expect(document.body.textContent).not.toContain('文件分享仅支持不超过 10 GiB 的文件。')
+  })
+
+  it.each([512 * 1024 * 1024 + 1, 2 * 1024 * 1024 * 1024])('creates a large-file share for %i bytes', async (sizeBytes) => {
+    mocks.createShare.mockResolvedValueOnce(activeShare(true))
+    mountDialog(entry({ sizeBytes }))
+    await flushPromises()
+    expect(document.body.textContent).toContain('大文件需要校验')
+    expect(button('创建分享').disabled).toBe(false)
+    button('创建分享').click()
+    await flushPromises()
+    expect(mocks.createShare).toHaveBeenCalledOnce()
+    expect(document.body.textContent).toContain('分享已创建')
   })
 
   it('handles an authoritative too-large response without offering a state retry', async () => {
@@ -319,7 +331,7 @@ describe('FileShareDialog hash-only sharing', () => {
     button('创建分享').click()
     await flushPromises()
 
-    expect(document.body.textContent).toContain('文件分享仅支持不超过 512 MiB 的文件。')
+    expect(document.body.textContent).toContain('文件分享仅支持不超过 10 GiB 的文件。')
     expect(document.body.textContent).not.toContain('暂时无法生成分享链接')
     expect([...document.querySelectorAll('button')].some((candidate) => candidate.textContent?.includes('重试')))
       .toBe(false)
@@ -362,7 +374,7 @@ describe('FileShareDialog hash-only sharing', () => {
     mountDialog(entry({ sizeBytes: maxFileShareBytes + 1 }))
     await flushPromises()
 
-    expect(document.body.textContent).toContain('File sharing supports files up to 512 MiB.')
+    expect(document.body.textContent).toContain('File sharing supports files up to 10 GiB.')
     expect(document.body.textContent).toContain('Compress or split the file and try again.')
     expect(document.body.textContent).not.toContain('文件分享仅支持')
   })
