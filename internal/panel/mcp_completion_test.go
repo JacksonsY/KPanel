@@ -116,7 +116,9 @@ func TestMCPRevocationDuringPreflightPreventsDispatch(t *testing.T) {
 			bootstrapCookiesForOrigin(t, s, setup, "https://panel.test")
 			client, _ := mcpDomainClient(t, s, []string{"files"}, true)
 			active := true
+			resumePreflight := make(chan struct{})
 			agent := &mcpCompletionAgent{get: func(string, string) AgentResponse {
+				<-resumePreflight
 				active = false
 				if !delegated {
 					_, err := s.mcp.access.Revoke(client.ID, s.mcp.access.Snapshot().ResourceVersion)
@@ -138,8 +140,18 @@ func TestMCPRevocationDuringPreflightPreventsDispatch(t *testing.T) {
 				call.controllerID = "test-controller"
 			}
 			result, err := s.executeMCPOperation(context.Background(), call, o.ID, o.Digest)
-			if err != nil || result.State != "failed" || agent.writes != 0 {
-				t.Fatalf("revoked preflight dispatched: %#v writes=%d err=%v", result, agent.writes, err)
+			close(resumePreflight)
+			// The API may return its durable claim before the asynchronous worker finishes.
+			deadline := time.Now().Add(8 * time.Second)
+			for err == nil && result.State == "executing" && time.Now().Before(deadline) {
+				time.Sleep(20 * time.Millisecond)
+				result, err = s.mcp.operations.Get(o.ID)
+			}
+			if err != nil || result.State != "failed" {
+				t.Fatalf("revoked preflight did not finish: %#v err=%v", result, err)
+			}
+			if result.Error != "authorization_revoked_before_dispatch" || agent.writes != 0 {
+				t.Fatalf("revoked preflight dispatched: %#v writes=%d", result, agent.writes)
 			}
 		})
 	}
