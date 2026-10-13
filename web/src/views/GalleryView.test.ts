@@ -403,6 +403,7 @@ describe('GalleryView', () => {
     await flushPromises()
     expect(harness.upload).toHaveBeenCalledTimes(2)
     view.unmount()
+    expect(harness.upload.mock.calls.every((call) => (call[4] as AbortSignal).reason === 'file-transfer-detach')).toBe(true)
     wrapper = undefined
     await flushPromises()
     expect(harness.upload).toHaveBeenCalledTimes(2)
@@ -451,8 +452,8 @@ describe('GalleryView', () => {
     const view = await mountGallery()
     harness.upload.mockRejectedValueOnce(new ApiError('exists', 409, 'file_exists'))
     const input = view.get<HTMLInputElement>('input[type="file"]')
-    const photo = new File(['x'], 'sunset.jpg', { type: 'image/jpeg' })
-    const fresh = new File(['y'], 'fresh.jpg', { type: 'image/jpeg' })
+    const photo = new File(['x'], 'sunset.jpg', { type: 'image/jpeg', lastModified: 1234 })
+    const fresh = new File(['y'], 'fresh.jpg', { type: 'image/jpeg', lastModified: 5678 })
     const pdf = new File(['z'], 'report.pdf', { type: 'application/pdf' })
     Object.defineProperty(input.element, 'files', { value: [photo, fresh, pdf], configurable: true })
     await input.trigger('change')
@@ -461,6 +462,7 @@ describe('GalleryView', () => {
     const names = harness.upload.mock.calls.map((call) => (call[1] as File).name)
     // The known duplicate is renamed before upload; a server-side conflict picks the next name.
     expect(names).toEqual(['sunset (2).jpg', 'fresh.jpg', 'sunset (3).jpg'])
+    expect(harness.upload.mock.calls.map((call) => (call[1] as File).lastModified)).toEqual([1234, 5678, 1234])
     expect(harness.upload.mock.calls.every((call) => call[2] === false)).toBe(true)
     expect(names).not.toContain('report.pdf')
     expect(harness.toast.show).toHaveBeenCalledWith('已跳过非图片或视频文件', expect.anything())
@@ -470,6 +472,7 @@ describe('GalleryView', () => {
   it('opens the viewer, pages with the keyboard and closes with Escape', async () => {
     const view = await mountGallery()
     await view.findAll('.gallery-tile__open')[0]!.trigger('click')
+    await flushPromises()
     const viewer = view.get('.gallery-viewer')
     expect(viewer.get('.gallery-viewer__title strong').text()).toBe('sunset.jpg')
     expect(viewer.get('img.gallery-viewer__media:not(.gallery-viewer__media--preview)').attributes('src')).toBe('/content/home/gallery/sunset.jpg')

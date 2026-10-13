@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -438,7 +439,7 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 		return
 	}
 	readMode := values.Get("mode")
-	if readMode != "" && readMode != "text" && readMode != "thumbnail" && readMode != "office" {
+	if readMode != "" && readMode != "text" && readMode != "thumbnail" && readMode != "preview" && readMode != "office" {
 		writeProblem(w, requestID, http.StatusBadRequest, "invalid_file_mode", "文件读取模式无效", "")
 		return
 	}
@@ -461,12 +462,12 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 			return
 		}
 	}
-	if readMode != "thumbnail" && values.Get("version") != "" {
+	if readMode != "thumbnail" && readMode != "preview" && values.Get("version") != "" {
 		writeProblem(w, requestID, http.StatusBadRequest, "invalid_file_version", "文件版本参数无效", "")
 		return
 	}
 	transferTimeout := fileTransferMaxDuration
-	if readMode == "thumbnail" {
+	if readMode == "thumbnail" || readMode == "preview" {
 		if disposition != "inline" || values.Get("version") == "" || len(values.Get("version")) > 256 {
 			writeProblem(w, requestID, http.StatusBadRequest, "invalid_thumbnail_request", "缩略图请求无效", "")
 			return
@@ -506,22 +507,67 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 		w.WriteHeader(http.StatusPreconditionFailed)
 		return
 	}
-	if readMode == "thumbnail" {
+	if readMode == "thumbnail" || readMode == "preview" {
 		if values.Get("version") != entry.ResourceVersion {
 			writeProblem(w, requestID, http.StatusConflict, "file_conflict", "文件状态已变化", "")
 			return
 		}
 		// Revalidation and cache hits never decode the image or wait for the
 		// generation gate; only a miss spends CPU on a resize.
-		etag := `"thumbnail-` + entry.ResourceVersion + `"`
+		etag := `"` + readMode + `-` + entry.ResourceVersion + `"`
 		if r.Header.Get("If-None-Match") == etag {
 			w.Header().Set("ETag", etag)
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
 		cacheKey := thumbnailCacheKey(entry.Path, entry.ResourceVersion)
-		content, contentType, cached := s.thumbnails.get(cacheKey)
+		cache := s.thumbnails
+		if readMode == "preview" {
+			cacheKey = "preview\x00" + cacheKey
+			cache = s.previews
+		}
+		content, contentType, cached := cache.get(cacheKey)
+		if readMode == "preview" && !cached && s.previewJobs != nil {
+			// Do not hold a source download slot while waiting for background work.
+			_ = file.Close()
+			content, contentType, err = s.previewJobs.get(transferContext, entry)
+			if err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					writeProblem(w, requestID, http.StatusRequestTimeout, "preview_timeout", "预览生成超时", "")
+				} else if errors.Is(err, errPreviewQueueFull) {
+					writeProblem(w, requestID, http.StatusServiceUnavailable, "preview_busy", "预览队列繁忙", "")
+				} else if errors.Is(err, errThumbnailUnavailable) {
+					writeProblem(w, requestID, http.StatusUnprocessableEntity, "file_thumbnail_unavailable", "无法生成文件缩略图", "")
+				} else {
+					writeFileProblem(w, requestID, err)
+				}
+				return
+			}
+			// Cancellation or queued work must not bypass current file access checks.
+			check, current, checkErr := s.files.Open(transferContext, entry.Path)
+			if checkErr != nil {
+				writeFileProblem(w, requestID, checkErr)
+				return
+			}
+			_ = check.Close()
+			if current.ResourceVersion != entry.ResourceVersion {
+				writeProblem(w, requestID, http.StatusConflict, "file_conflict", "文件状态已变化", "")
+				return
+			}
+			cached = true
+		}
 		if !cached {
+			// Preview decoding is serialized and also shares the thumbnail gate.
+			// This bounds combined work without blocking cached responses.
+			if readMode == "preview" {
+				select {
+				case s.previewGate <- struct{}{}:
+					defer func() { <-s.previewGate }()
+				case <-transferContext.Done():
+					writeProblem(w, requestID, http.StatusRequestTimeout, "preview_timeout", "缩略图生成超时", "")
+					return
+				}
+			}
 			select {
 			case s.thumbnailGate <- struct{}{}:
 			case <-transferContext.Done():
@@ -529,7 +575,11 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 				return
 			}
 			var thumbnailErr error
-			content, contentType, thumbnailErr = makeFileThumbnail(file, entry.SizeBytes)
+			if readMode == "preview" {
+				content, contentType, thumbnailErr = makeFilePreview(file, entry.SizeBytes)
+			} else {
+				content, contentType, thumbnailErr = makeFileThumbnail(file, entry.SizeBytes)
+			}
 			<-s.thumbnailGate
 			if thumbnailErr != nil {
 				status, code, title := http.StatusUnprocessableEntity, "file_thumbnail_unavailable", "无法生成文件缩略图"
@@ -539,7 +589,10 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 				writeProblem(w, requestID, status, code, title, "")
 				return
 			}
-			s.thumbnails.put(cacheKey, content, contentType)
+			cache.put(cacheKey, content, contentType)
+		}
+		if readMode == "thumbnail" && s.previewJobs != nil {
+			s.previewJobs.warm(entry)
 		}
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Content-Disposition", "inline")
@@ -592,6 +645,14 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 }
 
 func makeFileThumbnail(file io.ReadSeeker, size int64) ([]byte, string, error) {
+	return makeFileImage(file, size, fileThumbnailMaxWidth, fileThumbnailMaxHeight, fileThumbnailMaxPixels, false)
+}
+
+func makeFilePreview(file io.ReadSeeker, size int64) ([]byte, string, error) {
+	return makeFileImage(file, size, 1440, 1440, 24_000_000, true)
+}
+
+func makeFileImage(file io.ReadSeeker, size int64, maxWidth, maxHeight, maxPixels int, preview bool) ([]byte, string, error) {
 	if size <= 0 || size > fileThumbnailMaxBytes {
 		return nil, "", filemanager.ErrTooLarge
 	}
@@ -600,24 +661,48 @@ func makeFileThumbnail(file io.ReadSeeker, size int64) ([]byte, string, error) {
 		return nil, "", errThumbnailUnavailable
 	}
 	if config.Width <= 0 || config.Height <= 0 ||
-		config.Width > fileThumbnailMaxPixels/config.Height {
+		config.Width > maxPixels/config.Height {
 		return nil, "", filemanager.ErrTooLarge
+	}
+	if preview && format == "gif" { // Preserve animation through the native original path.
+		return nil, "", errThumbnailUnavailable
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return nil, "", err
+	}
+	orientation := 1
+	if preview && format == "png" {
+		if !filePNGStatic(file) {
+			return nil, "", errThumbnailUnavailable
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return nil, "", err
+		}
+	}
+	if preview && format == "jpeg" {
+		orientation = fileJPEGOrientation(file)
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return nil, "", err
+		}
 	}
 	source, decodedFormat, err := image.Decode(io.LimitReader(file, fileThumbnailMaxBytes+1))
 	if err != nil || decodedFormat != format {
 		return nil, "", errThumbnailUnavailable
 	}
-	width, height := thumbnailDimensions(config.Width, config.Height)
+	width, height := fitImageDimensions(config.Width, config.Height, maxWidth, maxHeight)
 	thumbnail := resizeBilinear(source, width, height)
 	var output bytes.Buffer
 	if format == "jpeg" {
 		if err := jpeg.Encode(&output, thumbnail, &jpeg.Options{Quality: 84}); err != nil {
 			return nil, "", err
 		}
-		return output.Bytes(), "image/jpeg", nil
+		content := output.Bytes()
+		if orientation > 1 {
+			// Keep only orientation, not EXIF GPS or embedded original thumbnails.
+			segment := []byte{0xff, 0xe1, 0, 34, 'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 1, 3, 0, 1, 0, 0, 0, byte(orientation), 0, 0, 0, 0, 0, 0, 0}
+			content = append(append(append([]byte{}, content[:2]...), segment...), content[2:]...)
+		}
+		return content, "image/jpeg", nil
 	}
 	encoder := png.Encoder{CompressionLevel: png.BestSpeed}
 	if err := encoder.Encode(&output, thumbnail); err != nil {
@@ -627,11 +712,15 @@ func makeFileThumbnail(file io.ReadSeeker, size int64) ([]byte, string, error) {
 }
 
 func thumbnailDimensions(width, height int) (int, int) {
-	if width <= fileThumbnailMaxWidth && height <= fileThumbnailMaxHeight {
+	return fitImageDimensions(width, height, fileThumbnailMaxWidth, fileThumbnailMaxHeight)
+}
+
+func fitImageDimensions(width, height, maxWidth, maxHeight int) (int, int) {
+	if width <= maxWidth && height <= maxHeight {
 		return width, height
 	}
-	scaleWidth := float64(fileThumbnailMaxWidth) / float64(width)
-	scaleHeight := float64(fileThumbnailMaxHeight) / float64(height)
+	scaleWidth := float64(maxWidth) / float64(width)
+	scaleHeight := float64(maxHeight) / float64(height)
 	scale := scaleWidth
 	if scaleHeight < scale {
 		scale = scaleHeight
@@ -1055,4 +1144,104 @@ func writeFileProblem(w http.ResponseWriter, requestID string, err error) {
 		status, code, title = http.StatusUnprocessableEntity, "file_type_invalid", "文件类型不支持此操作"
 	}
 	writeProblem(w, requestID, status, code, title, safeDetail(err))
+}
+
+// fileJPEGOrientation reads only bounded JPEG headers; malformed EXIF is ignored.
+func fileJPEGOrientation(file io.Reader) int {
+	r := io.LimitReader(file, 256<<10)
+	var marker [2]byte
+	if _, err := io.ReadFull(r, marker[:]); err != nil || marker != [2]byte{0xff, 0xd8} {
+		return 1
+	}
+	for {
+		if _, err := io.ReadFull(r, marker[:]); err != nil || marker[0] != 0xff {
+			return 1
+		}
+		// JPEG B.1.1.2 allows arbitrary FF fill bytes before a marker.
+		for marker[1] == 0xff {
+			if _, err := io.ReadFull(r, marker[1:]); err != nil {
+				return 1
+			}
+		}
+		if marker[1] == 0xda || marker[1] == 0xd9 || marker[1] == 0 {
+			return 1
+		}
+		if marker[1] == 0x01 || (marker[1] >= 0xd0 && marker[1] <= 0xd7) {
+			continue
+		}
+		var length [2]byte
+		if _, err := io.ReadFull(r, length[:]); err != nil {
+			return 1
+		}
+		n := int(binary.BigEndian.Uint16(length[:])) - 2
+		if n < 0 {
+			return 1
+		}
+		data := make([]byte, n)
+		if _, err := io.ReadFull(r, data); err != nil {
+			return 1
+		}
+		if marker[1] != 0xe1 || len(data) < 14 || string(data[:6]) != "Exif\x00\x00" {
+			continue
+		}
+		tiff := data[6:]
+		var order binary.ByteOrder
+		switch string(tiff[:2]) {
+		case "II":
+			order = binary.LittleEndian
+		case "MM":
+			order = binary.BigEndian
+		default:
+			return 1
+		}
+		if order.Uint16(tiff[2:4]) != 42 {
+			return 1
+		}
+		offset := uint64(order.Uint32(tiff[4:8]))
+		if offset+2 > uint64(len(tiff)) {
+			return 1
+		}
+		count := int(order.Uint16(tiff[offset : offset+2]))
+		for i := 0; i < count; i++ {
+			start := offset + 2 + uint64(i)*12
+			if start+12 > uint64(len(tiff)) {
+				return 1
+			}
+			field := tiff[start : start+12]
+			if order.Uint16(field[:2]) == 0x112 && order.Uint16(field[2:4]) == 3 && order.Uint32(field[4:8]) == 1 {
+				value := int(order.Uint16(field[8:10]))
+				if value >= 1 && value <= 8 {
+					return value
+				}
+				return 1
+			}
+		}
+		return 1
+	}
+}
+
+// PNG animation control precedes IDAT. Uncertain/oversized headers use the
+// native original rather than silently flattening APNG into its first frame.
+func filePNGStatic(file io.Reader) bool {
+	r := io.LimitReader(file, 256<<10)
+	var signature [8]byte
+	if _, err := io.ReadFull(r, signature[:]); err != nil || string(signature[:]) != "\x89PNG\r\n\x1a\n" {
+		return false
+	}
+	for {
+		var header [8]byte
+		if _, err := io.ReadFull(r, header[:]); err != nil {
+			return false
+		}
+		switch string(header[4:]) {
+		case "acTL":
+			return false
+		case "IDAT":
+			return true
+		}
+		length := int64(binary.BigEndian.Uint32(header[:4]))
+		if _, err := io.CopyN(io.Discard, r, length+4); err != nil {
+			return false
+		}
+	}
 }

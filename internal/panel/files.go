@@ -919,7 +919,7 @@ const thumbnailBrowserCacheSeconds = 3600
 
 func setFileContentCacheControl(w http.ResponseWriter, r *http.Request, status int) {
 	query := r.URL.Query()
-	if (status == http.StatusOK || status == http.StatusNotModified) && query.Get("mode") == "thumbnail" && query.Get("version") != "" {
+	if (status == http.StatusOK || status == http.StatusNotModified) && (query.Get("mode") == "thumbnail" || query.Get("mode") == "preview") && query.Get("version") != "" {
 		w.Header().Set("Cache-Control", "private, max-age="+strconv.Itoa(thumbnailBrowserCacheSeconds))
 		w.Header().Del("Pragma")
 		return

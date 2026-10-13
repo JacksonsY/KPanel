@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GalleryViewer from './GalleryViewer.vue'
@@ -36,7 +36,93 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
+  vi.unstubAllGlobals()
   vi.useRealTimers()
+})
+
+function mockOriginals() {
+  let sequence = 0
+  const NativeURL = URL
+  vi.stubGlobal('URL', class extends NativeURL {
+    static createObjectURL = vi.fn(() => `blob:original-${++sequence}`)
+    static revokeObjectURL = vi.fn()
+  })
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response('jpeg')))
+  vi.stubGlobal('fetch', fetch)
+  return fetch
+}
+
+describe('viewer recent original cache', () => {
+  it('reuses a recent original on back navigation and releases all URLs on close', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ filmstrip: false })
+    await flushPromises()
+    const first = view.get('img.gallery-viewer__media').attributes('src')
+    await view.setProps({ index: 2 }); await flushPromises()
+    await view.setProps({ index: 1 }); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(first)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    view.unmount(); wrapper = undefined
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
+  })
+
+  it('reloads changed versions and retries a failed decode instead of retaining it', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ filmstrip: false })
+    await flushPromises()
+    const changed = item('b.jpg'); changed.entry.resourceVersion = 'v2'
+    await view.setProps({ items: [item('a.jpg'), changed, item('c.jpg')] }); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    await view.get('img.gallery-viewer__media').trigger('error')
+    await view.get('.gallery-viewer__notice-actions button').trigger('click'); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
+    expect(document.activeElement).toBe(view.element)
+  })
+
+  it('bypasses unknown and oversized originals and falls back to native loading after fetch failure', async () => {
+    const fetch = mockOriginals()
+    const huge = item('huge.jpg'); huge.entry.sizeBytes = 20 * 1024 * 1024
+    const unknown = item('unknown.jpg'); unknown.entry.sizeBytes = 0
+    const view = mountViewer({ items: [huge, unknown, item('c.jpg')], index: 0, filmstrip: false })
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe('/content/home/gallery/huge.jpg')
+    await view.setProps({ index: 1 }); await flushPromises()
+    expect(fetch).not.toHaveBeenCalled()
+    fetch.mockRejectedValueOnce(new Error('offline'))
+    await view.setProps({ index: 2 }); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe('/content/home/gallery/c.jpg')
+    expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
+  })
+
+  it('aborts obsolete requests, ignores late completion and cancels on close', async () => {
+    const fetch = mockOriginals()
+    let complete!: (response: Response) => void
+    fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
+    const view = mountViewer({ filmstrip: false }); await flushPromises()
+    const signal = fetch.mock.calls[0]![1].signal as AbortSignal
+    await view.setProps({ index: 2 }); await flushPromises()
+    expect(signal.aborted).toBe(true)
+    const current = view.get('img.gallery-viewer__media').attributes('src')
+    complete(new Response('late')); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(current)
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+    view.unmount(); wrapper = undefined
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
+  })
+
+  it('evicts old originals after three retained entries and bypasses excessive decoded dimensions', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ items: ['a','b','c','d'].map(n => item(`${n}.jpg`)), index: 0, filmstrip: false })
+    await flushPromises()
+    for (const index of [1,2,3,0]) { await view.setProps({ index }); await flushPromises() }
+    expect(fetch).toHaveBeenCalledTimes(5)
+    const image = view.get('img.gallery-viewer__media')
+    Object.defineProperties(image.element, { naturalWidth: { value: 6000 }, naturalHeight: { value: 4000 } })
+    await image.trigger('load')
+    await view.setProps({ index: 1 }); await flushPromises()
+    await view.setProps({ index: 0 }); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(7)
+  })
 })
 
 async function dispatchPointer(element: Element, type: string, init: MouseEventInit & { pointerId: number; pointerType: string }) {
@@ -188,4 +274,89 @@ describe('GalleryViewer controls', () => {
     expect(view.find('button[aria-label="隐藏缩略图条"]').exists()).toBe(false)
     expect(view.find('.gallery-viewer__strip').exists()).toBe(false)
   })
+})
+
+
+describe('adaptive screen preview', () => {
+  const sources = (value: GalleryItem) => ({ original: '/original/'+value.entry.name, screen: '/screen/'+value.entry.name })
+  it('shows the screen preview, requests original only on zoom, keeps preview during upgrade and frees both caches', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ sources, filmstrip: false })
+    await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/b.jpg'])
+    const preview = view.get('img.gallery-viewer__media').attributes('src')
+    // Save-data prevents optional neighbours, not the visible preview.
+    Object.defineProperty(navigator, 'connection', { configurable: true, value: { saveData: true } })
+    await view.get('img.gallery-viewer__media').trigger('load')
+    let complete!: (response: Response) => void
+    fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
+    await view.get('button[aria-label="放大"]').trigger('click'); await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/b.jpg', '/original/b.jpg'])
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(preview)
+    complete(new Response('original')); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).not.toBe(preview)
+    await view.get('img.gallery-viewer__media').trigger('error')
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(preview)
+    expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
+    await view.get('.gallery-viewer__retry button').trigger('click'); await flushPromises()
+    expect(fetch.mock.calls.filter(call => call[0] === '/original/b.jpg')).toHaveLength(2)
+    expect(document.activeElement).toBe(view.element)
+    view.unmount(); wrapper = undefined
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3)
+    Object.defineProperty(navigator, 'connection', { configurable: true, value: undefined })
+  })
+  it('joins neighbour preload on navigation and reuses previews on back navigation', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ sources, filmstrip: false })
+    await flushPromises()
+    let complete!: (response: Response) => void
+    fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
+    await view.get('img.gallery-viewer__media').trigger('load'); await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/b.jpg', '/screen/c.jpg'])
+    await view.setProps({ index: 2 }); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    complete(new Response('neighbour')); await flushPromises()
+    await view.setProps({ index: 1 }); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    const changed = item('b.jpg'); changed.entry.resourceVersion = 'new-version'
+    await view.setProps({ items: [item('a.jpg'), changed, item('c.jpg')] }); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+  it('falls back for an old Agent or corrupt preview and aborts obsolete work on close', async () => {
+    const fetch = mockOriginals()
+    fetch.mockResolvedValueOnce(new Response('unsupported', { status: 400 }))
+    const view = mountViewer({ sources, filmstrip: false })
+    await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/b.jpg', '/original/b.jpg'])
+    await view.setProps({ index: 2 }); await flushPromises()
+    await view.get('img.gallery-viewer__media').trigger('error'); await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toContain('/original/c.jpg')
+    let complete!: (response: Response) => void
+    fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
+    await view.setProps({ index: 0 }); await flushPromises()
+    const signal = fetch.mock.calls.at(-1)![1].signal as AbortSignal
+    view.unmount(); wrapper = undefined
+    expect(signal.aborted).toBe(true)
+    const urls = vi.mocked(URL.createObjectURL).mock.calls.length
+    complete(new Response('late')); await flushPromises()
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(urls)
+  })
+})
+
+
+it('keeps the preview and allows retry when zoom original network fails', async () => {
+  const fetch = mockOriginals()
+  Object.defineProperty(navigator, 'connection', { configurable: true, value: { saveData: true } })
+  const view = mountViewer({ sources: () => ({ screen: '/screen/current', original: '/original/current' }), filmstrip: false })
+  await flushPromises()
+  const preview = view.get('img.gallery-viewer__media').attributes('src')
+  await view.get('img.gallery-viewer__media').trigger('load')
+  fetch.mockRejectedValueOnce(new Error('offline'))
+  await view.get('button[aria-label="放大"]').trigger('click'); await flushPromises()
+  expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(preview)
+  expect(view.find('[role="alert"]').exists()).toBe(true)
+  await view.get('.gallery-viewer__retry button').trigger('click'); await flushPromises()
+  expect(view.get('img.gallery-viewer__media').attributes('src')).not.toBe(preview)
+  expect(document.activeElement).toBe(view.element)
+  Object.defineProperty(navigator, 'connection', { configurable: true, value: undefined })
 })

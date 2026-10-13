@@ -20,15 +20,16 @@ type thumbnailCacheEntry struct {
 }
 
 type thumbnailCache struct {
-	mu      sync.Mutex
-	limit   int
-	size    int
-	order   *list.List
-	entries map[string]*list.Element
+	mu       sync.Mutex
+	limit    int
+	maxEntry int
+	size     int
+	order    *list.List
+	entries  map[string]*list.Element
 }
 
 func newThumbnailCache(limit int) *thumbnailCache {
-	return &thumbnailCache{limit: limit, order: list.New(), entries: make(map[string]*list.Element)}
+	return &thumbnailCache{maxEntry: thumbnailCacheMaxEntry, limit: limit, order: list.New(), entries: make(map[string]*list.Element)}
 }
 
 func thumbnailCacheKey(path, version string) string { return version + "\x00" + path }
@@ -49,7 +50,7 @@ func (c *thumbnailCache) get(key string) ([]byte, string, bool) {
 }
 
 func (c *thumbnailCache) put(key string, content []byte, contentType string) {
-	if c == nil || len(content) == 0 || len(content) > thumbnailCacheMaxEntry || len(content) > c.limit {
+	if c == nil || len(content) == 0 || len(content) > c.maxEntry || len(content) > c.limit {
 		return
 	}
 	c.mu.Lock()
@@ -69,4 +70,10 @@ func (c *thumbnailCache) put(key string, content []byte, contentType string) {
 		delete(c.entries, entry.key)
 		c.size -= len(entry.content)
 	}
+}
+
+func newPreviewCache() *thumbnailCache {
+	c := newThumbnailCache(8 << 20)
+	c.maxEntry = 2 << 20
+	return c
 }

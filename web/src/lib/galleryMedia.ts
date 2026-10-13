@@ -2,7 +2,7 @@
 export function createGalleryQueue(limit: number) {
   let active = 0
   const waiting: Array<() => void> = []
-  return async function run<T>(job: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  return async function run<T>(job: () => Promise<T>, signal: AbortSignal, priority = false): Promise<T> {
     signal.throwIfAborted()
     await new Promise<void>((resolve, reject) => {
       const start = () => {
@@ -17,6 +17,7 @@ export function createGalleryQueue(limit: number) {
       }
       signal.addEventListener('abort', cancel, { once: true })
       if (active < limit) start()
+      else if (priority) waiting.unshift(start)
       else waiting.push(start)
     })
     try {
@@ -73,7 +74,7 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /** Retry congestion, never mistake a busy file service for an unsupported decoder. */
-export async function fetchGalleryImage(url: string, signal: AbortSignal): Promise<Blob> {
+export async function fetchGalleryImage(url: string, signal: AbortSignal, priority = false): Promise<Blob> {
   return queueGalleryImage(async () => {
     const controller = new AbortController()
     const cancel = () => controller.abort(signal.reason)
@@ -95,7 +96,7 @@ export async function fetchGalleryImage(url: string, signal: AbortSignal): Promi
       clearTimeout(timer)
       signal.removeEventListener('abort', cancel)
     }
-  }, signal)
+  }, signal, priority)
 }
 
 export function galleryAllowsPrefetch(bytes: number): boolean {

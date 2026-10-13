@@ -13,6 +13,10 @@ func TestFileContentCacheControlOnlyCachesVersionedThumbnails(t *testing.T) {
 		want   string
 	}{
 		{"/api/v1/files/content?path=%2Fa.png&mode=thumbnail&version=v1", http.StatusOK, "private, max-age=3600"},
+		{"/api/v1/files/content?path=%2Fa.png&mode=preview&version=v1", http.StatusOK, "private, max-age=3600"},
+		{"/api/v1/files/content?path=%2Fa.png&mode=preview&version=v1", http.StatusNotModified, "private, max-age=3600"},
+		{"/api/v1/files/content?path=%2Fa.png&mode=preview&version=v1", http.StatusUnprocessableEntity, "private, no-store"},
+		{"/api/v1/files/content?path=%2Fa.png&mode=preview", http.StatusOK, "private, no-store"},
 		{"/api/v1/files/content?path=%2Fa.png&mode=thumbnail&version=v1", http.StatusNotModified, "private, max-age=3600"},
 		{"/api/v1/files/content?path=%2Fa.png&mode=thumbnail&version=v1", http.StatusNotFound, "private, no-store"},
 		{"/api/v1/files/content?path=%2Fa.png&mode=thumbnail", http.StatusOK, "private, no-store"},

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue'
+import { GalleryImageCache, galleryImageCacheKey } from '@/lib/galleryImageCache'
 import { useRoute, useRouter } from 'vue-router'
 import { createGalleryTouchSelection } from '@/lib/galleryTouchSelection'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
@@ -170,6 +171,8 @@ const showHostSwitcher = computed(() => hosts.value.length > 1 || Boolean(hostId
 
 const snapshot = shallowRef<GalleryFolderSnapshot>()
 const folderCache = new GalleryFolderCache()
+const imageCache = new GalleryImageCache()
+provide(galleryImageCacheKey, imageCache)
 const loading = ref(true)
 const loadError = ref('')
 let loadController: AbortController | undefined
@@ -450,6 +453,10 @@ function viewerSources(item: GalleryItem): GalleryViewerSources {
   else if (item.kind === 'video') preview = readGalleryPoster(galleryPosterKey(item.entry, api.contentUrl(item.entry.path, 'inline')))?.poster
   return {
     preview,
+    // Preserve animated GIF and browser-only formats; small files need no derivative.
+    screen: item.kind === 'image' && /\.(jpe?g|png)$/i.test(item.entry.name)
+      && item.entry.resourceVersion && item.entry.sizeBytes > 256 * 1024 && item.entry.sizeBytes <= 12 * 1024 * 1024
+      ? api.previewUrl(item.entry.path, item.entry.resourceVersion) : undefined,
     original: api.contentUrl(item.entry.path, 'inline'),
   }
 }
@@ -576,6 +583,7 @@ watch([currentPath, hostId, hostsLoaded], ([nextPath, nextHost], [previousPath, 
   if (nextPath === previousPath && nextHost === previousHost && !nextHost) return
   if (nextHost !== previousHost) {
     folderCache.clear()
+    imageCache.clear()
     loadController?.abort()
     loadController = undefined
     ++loadSequence
@@ -767,7 +775,7 @@ async function runUpload(task: UploadTask): Promise<void> {
     await ensureFolder(task.target, task.hostId)
     for (let attempt = 0; ; attempt += 1) {
       try {
-        await api.upload(task.target, new File([task.file], name, { type: task.file.type }), false, (progress) => {
+        await api.upload(task.target, new File([task.file], name, { type: task.file.type, lastModified: task.file.lastModified }), false, (progress) => {
           updateTask(task.id, { progress })
         }, controller.signal)
         break
@@ -1210,6 +1218,7 @@ onMounted(() => {
   unsubscribeChanges = subscribeFileDirectoryChanges((directories, _origin, moves, changedHost) => {
     if ((changedHost || '') !== hostId.value) return
     folderCache.clear()
+    imageCache.clear()
     if (!snapshot.value) return
     const watched = new Set([currentPath.value, ...snapshot.value.albums.map((album) => album.path)])
     const touched = [...directories].some((directory) => watched.has(directory))
@@ -1228,6 +1237,7 @@ watch(desktopWindowActive, (active) => {
 })
 
 onBeforeUnmount(() => {
+  imageCache.dispose()
   touchSelection.cancel()
   unmounted = true
   loadController?.abort()
@@ -1236,7 +1246,7 @@ onBeforeUnmount(() => {
   window.clearTimeout(reloadTimer)
   window.clearTimeout(uploadClearTimer)
   document.removeEventListener('pointerdown', closeMenus)
-  for (const task of uploads.value) task.controller?.abort()
+  for (const task of uploads.value) task.controller?.abort('file-transfer-detach')
 })
 </script>
 
@@ -1260,7 +1270,7 @@ onBeforeUnmount(() => {
     <div ref="scroller" class="gallery-scroll">
       <section class="gallery-hero" :class="{ 'gallery-hero--photo': heroUrl, 'gallery-hero--menu-open': moreMenuOpen }">
         <div v-if="heroUrl" class="gallery-hero__backdrop" aria-hidden="true">
-          <GalleryImage :key="heroItem?.entry.resourceVersion" :src="heroUrl" alt="" eager />
+          <GalleryImage :key="heroItem?.entry.resourceVersion" :src="heroUrl" :version="heroItem?.entry.resourceVersion" alt="" eager />
         </div>
         <div class="gallery-hero__content">
           <nav v-if="trail.length > 1 || !insideLibrary" class="gallery-trail" aria-label="图库位置">
@@ -1441,6 +1451,7 @@ onBeforeUnmount(() => {
                   <GalleryImage
                     v-if="album.cover && tileUrls(album.cover).image"
                     :key="album.cover.entry.resourceVersion"
+                    :version="album.cover.entry.resourceVersion"
                     :src="tileUrls(album.cover).image!"
                     :fallback="tileUrls(album.cover).fallback"
                     alt=""

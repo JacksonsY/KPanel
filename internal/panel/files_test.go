@@ -573,3 +573,42 @@ func TestFileActionAuditsPartialFailure(t *testing.T) {
 	}
 	t.Fatalf("partial failure audit missing: %#v", events)
 }
+
+func TestFileScreenPreviewQueryIsAuthenticatedAndForwarded(t *testing.T) {
+	server, tokenPath := newTestServer(t)
+	sessionCookie, csrfCookie := bootstrapCookies(t, server, tokenPath)
+	agent := &fileStubAgent{
+		stubAgent:      &stubAgent{},
+		streamStatus:   http.StatusOK,
+		streamResponse: []byte("preview"),
+		streamHeaders:  http.Header{"Content-Type": []string{"image/png"}},
+	}
+	server.agent = agent
+
+	unauthenticated := performRequest(
+		server,
+		http.MethodGet,
+		"/api/v1/files/content?path=%2Fphoto.png&disposition=inline&mode=preview&version=version-1",
+		nil,
+		nil,
+	)
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated preview status=%d", unauthenticated.Code)
+	}
+	response := authenticatedRequest(
+		server,
+		http.MethodGet,
+		"/api/v1/files/content?path=%2Fphoto.png&disposition=inline&mode=preview&version=version-1",
+		nil,
+		sessionCookie,
+		csrfCookie,
+		nil,
+	)
+	if response.Code != http.StatusOK || response.Body.String() != "preview" {
+		t.Fatalf("preview response=%d %q", response.Code, response.Body.String())
+	}
+	calls := agent.snapshotStreamCalls()
+	if len(calls) != 1 || calls[0].rawQuery != "path=%2Fphoto.png&disposition=inline&mode=preview&version=version-1" {
+		t.Fatalf("preview stream call=%#v", calls)
+	}
+}

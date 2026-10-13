@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createGalleryReceiver } from './mock-gallery-receiver.mjs'
 
 const ROOT = '/home/gallery'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -178,7 +179,23 @@ function validName(name) {
   return typeof name === 'string' && name.trim() && !name.includes('/') && name !== '.' && name !== '..'
 }
 
+const receive = createGalleryReceiver({
+  find: (path) => nodes.get(path),
+  publish: (path, data, modifiedAt) => {
+    const entry = makeEntry(path, 'file', data.length, modifiedAt)
+    nodes.set(path, { entry, data })
+    return entry
+  },
+  readBody,
+  delayMs: process.env.KPANEL_MOCK_RECEIVE_DELAY_MS,
+  failChunks: process.env.KPANEL_MOCK_RECEIVE_FAIL_CHUNKS,
+  observe: (event) => {
+    if (process.env.KPANEL_MOCK_RECEIVE_TRACE === '1') console.log('mock_receive', JSON.stringify(event))
+  },
+})
+
 export async function mockGallery(request, response, url, send, readJSON) {
+  if (await receive(request, response, url, send, readJSON)) return true
   const path = url.searchParams.get('path')
   const acceptsPath = inScope
   if (request.method === 'GET' && url.pathname === '/api/v1/files' && acceptsPath(path)) {

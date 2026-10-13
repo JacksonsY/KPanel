@@ -30,6 +30,7 @@ import {
 } from '@/lib/gallery'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import { fetchGalleryImage, galleryAllowsPrefetch } from '@/lib/galleryMedia'
+import { GalleryImageCache, type GalleryImageLease } from '@/lib/galleryImageCache'
 import GalleryImage from './GalleryImage.vue'
 
 function phrase(value: string): string {
@@ -48,6 +49,8 @@ export interface GalleryCoverOption {
 export interface GalleryViewerSources {
   /** Small image shown at once while the original loads, and in the filmstrip. */
   preview?: string
+  /** Versioned medium image for fit-to-screen viewing; original is fetched on zoom. */
+  screen?: string
   original: string
 }
 
@@ -109,6 +112,95 @@ const contacts = new Map<number, { x: number; y: number }>()
 let pinch: { distance: number; x: number; y: number } | undefined
 const interacting = ref(false)
 const swipeOffset = ref(0)
+// Separate from the page thumbnail cache, and disposed as soon as the viewer closes.
+const originalCache = new GalleryImageCache({ count: 3, bytes: 8 * 1024 * 1024, decoded: 32 * 1024 * 1024, itemBytes: 4 * 1024 * 1024, ttl: 60_000 })
+const originalUrl = ref<string>()
+const screenUrl = ref<string>()
+const originalError = ref(false)
+const screenCache = new GalleryImageCache({ count: 3, bytes: 6 * 1024 * 1024, decoded: 24 * 1024 * 1024, itemBytes: 2 * 1024 * 1024, ttl: 60_000 })
+let screenLease: GalleryImageLease | undefined
+let screenEpoch = 0
+const pendingScreens = new Map<string, { controller: AbortController; promise: Promise<Blob> }>()
+function screenKey(source: string, value: GalleryItem): string { return `${source}\0${value.entry.resourceVersion}` }
+function requestScreen(source: string, key: string, priority = false): Promise<Blob> {
+  const pending = pendingScreens.get(key)
+  if (pending) return pending.promise
+  const controller = new AbortController()
+  const promise = fetchGalleryImage(source, controller.signal, priority).finally(() => {
+    if (pendingScreens.get(key)?.controller === controller) pendingScreens.delete(key)
+  })
+  pendingScreens.set(key, { controller, promise })
+  return promise
+}
+async function loadCurrent(): Promise<void> {
+  const epoch = ++screenEpoch
+  releaseOriginal()
+  screenLease?.release(); screenLease = undefined; screenUrl.value = undefined
+  originalError.value = false
+  const value = item.value, source = itemSources.value?.screen
+  const relevant = new Set(props.items.slice(Math.max(0, props.index - 1), props.index + 2).flatMap(value => {
+    const source = props.sources(value).screen
+    return source ? [screenKey(source, value)] : []
+  }))
+  for (const [key, pending] of pendingScreens) if (!relevant.has(key)) { pending.controller.abort(); pendingScreens.delete(key) }
+  if (!value || value.kind !== 'image' || !canShow.value) return
+  if (!source) { await loadOriginal(); return }
+  const key = screenKey(source, value)
+  screenLease = screenCache.acquire(key)
+  if (screenLease) { screenUrl.value = screenLease.url; return }
+  try {
+    const blob = await requestScreen(source, key, true)
+    if (epoch !== screenEpoch) return
+    screenLease = screenCache.store(key, blob)
+    screenUrl.value = screenLease.url
+  } catch {
+    // Old Agents, unsupported/oversized images and generation failures remain viewable.
+    if (epoch === screenEpoch) await loadOriginal()
+  }
+}
+let originalLease: GalleryImageLease | undefined
+let originalController: AbortController | undefined
+
+function releaseOriginal(): void {
+  originalController?.abort()
+  originalController = undefined
+  originalLease?.release()
+  originalLease = undefined
+  originalUrl.value = undefined
+}
+
+async function loadOriginal(): Promise<void> {
+  releaseOriginal()
+  const currentItem = item.value
+  const source = itemSources.value?.original
+  originalError.value = false
+  if (!currentItem || currentItem.kind !== 'image' || !canShow.value || !source) return
+  const { resourceVersion, sizeBytes } = currentItem.entry
+  // Preserve native loading for unknown sizes and large originals, including progressive decoding.
+  if (!resourceVersion || sizeBytes <= 0 || sizeBytes > 12 * 1024 * 1024 || (!screenUrl.value && sizeBytes > 4 * 1024 * 1024)) {
+    originalUrl.value = source
+    return
+  }
+  const key = `${source}\0${resourceVersion}`
+  const cached = originalCache.acquire(key)
+  if (cached) { originalLease = cached; originalUrl.value = cached.url; return }
+  const controller = new AbortController()
+  originalController = controller
+  try {
+    // The visible original must not queue behind offscreen/filmstrip thumbnails.
+    const blob = await fetchGalleryImage(source, controller.signal, true)
+    if (controller.signal.aborted || originalController !== controller) return
+    originalLease = originalCache.store(key, blob)
+    originalUrl.value = originalLease.url
+  } catch {
+    if (controller.signal.aborted || originalController !== controller) return
+    if (screenUrl.value) { originalError.value = true; resetView(); return }
+    // Keep native loading available when no screen preview exists.
+    originalUrl.value = source
+  } finally {
+    if (originalController === controller) originalController = undefined
+  }
+}
 
 const item = computed(() => props.items[props.index])
 const itemSources = computed(() => item.value ? props.sources(item.value) : undefined)
@@ -210,7 +302,7 @@ watch(() => props.filmstrip, (visible) => {
   if (visible) void nextTick(scrollStripToCurrent)
 })
 
-watch(() => item.value?.entry.path, () => {
+watch([() => itemSources.value?.original, () => item.value?.entry.resourceVersion, () => item.value?.kind], () => {
   coverMenuOpen.value = false
   resetMedia()
   neighbourController?.abort()
@@ -340,12 +432,23 @@ function onPointerUp(event: PointerEvent): void {
 
 function onImageLoad(event: Event): void {
   const image = event.currentTarget as HTMLImageElement
+  const lease = originalUrl.value ? originalLease : screenLease
+  lease?.decoded(image.naturalWidth, image.naturalHeight)
   naturalSize.value = { width: image.naturalWidth, height: image.naturalHeight }
   loaded.value = true
   preloadNeighbours()
 }
 
 function onImageError(): void {
+  if (!originalUrl.value && screenUrl.value) {
+    screenLease?.invalidate(); screenLease?.release(); screenLease = undefined; screenUrl.value = undefined
+    void loadOriginal(); return
+  }
+  if (originalUrl.value && screenUrl.value) {
+    originalLease?.invalidate(); releaseOriginal(); resetView(); originalError.value = true; return
+  }
+  originalLease?.invalidate()
+  releaseOriginal()
   failed.value = true
   failureDetail.value = '原图读取失败，请检查网络或文件是否仍然存在。'
 }
@@ -375,13 +478,44 @@ function onVideoError(event: Event): void {
     : '视频读取失败，请检查网络或文件是否仍然存在。'
 }
 
+function retryOriginal(): void {
+  void loadOriginal()
+  void nextTick(() => root.value?.focus({ preventScroll: true }))
+}
+
 function retry(): void {
   resetMedia()
+  originalLease?.invalidate()
   retryKey.value += 1
+  // The retry button disappears; keep keyboard paging and Escape inside the modal.
+  void nextTick(() => root.value?.focus({ preventScroll: true }))
 }
 
 let neighbourController: AbortController | undefined
+watch([() => itemSources.value?.original, () => item.value?.entry.resourceVersion, () => item.value?.kind, retryKey], () => { void loadCurrent() }, { immediate: true })
+watch(zoomed, value => { if (value && screenUrl.value && !originalUrl.value && !originalController) void loadOriginal() })
+async function preloadScreens(): Promise<void> {
+  const epoch = screenEpoch
+  if (!galleryAllowsPrefetch(256 * 1024)) return
+  // Serialize neighbours. A visible request can join pending work by versioned URL.
+  for (const step of [1, -1]) {
+    if (epoch !== screenEpoch) return
+    const value = props.items[props.index + step]
+    if (!value || value.kind !== 'image') continue
+    const source = props.sources(value).screen
+    if (!source) continue
+    const key = screenKey(source, value)
+    const cached = screenCache.acquire(key)
+    if (cached) { cached.release(); continue }
+    try {
+      const blob = await requestScreen(source, key)
+      if (epoch !== screenEpoch) return
+      const lease = screenCache.store(key, blob); lease.release()
+    } catch { /* Optional preloading must not interfere with the visible image. */ }
+  }
+}
 function preloadNeighbours(): void {
+  if (itemSources.value?.screen) { void preloadScreens(); return }
   neighbourController?.abort()
   neighbourController = new AbortController()
   for (const step of [1, -1]) {
@@ -483,6 +617,12 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  releaseOriginal()
+  originalCache.dispose()
+  screenEpoch += 1
+  screenLease?.release(); screenCache.dispose()
+  for (const pending of pendingScreens.values()) pending.controller.abort()
+  pendingScreens.clear()
   cancelGesture()
   neighbourController?.abort()
   window.clearTimeout(chromeTimer)
@@ -627,10 +767,10 @@ onBeforeUnmount(() => {
               draggable="false"
             />
             <img
-              :key="`${item.entry.path}:${retryKey}`"
+              :key="`${itemSources?.original}:${item.entry.resourceVersion}:${retryKey}`"
               class="gallery-viewer__media"
               :class="{ 'is-loaded': loaded }"
-              :src="itemSources?.original"
+              :src="originalUrl || screenUrl"
               :alt="item.entry.name"
               :style="{ transform: mediaTransform }"
               decoding="async"
@@ -638,6 +778,10 @@ onBeforeUnmount(() => {
               @load="onImageLoad"
               @error="onImageError"
             />
+            <div v-if="originalError" class="gallery-viewer__retry gallery-viewer__notice-actions" :class="{ 'gallery-viewer__retry--filmstrip': filmstrip }" role="alert">
+              <span>{{ phrase('原图读取失败，请检查网络或文件是否仍然存在。') }}</span>
+              <button class="btn btn-secondary" @click="retryOriginal">{{ phrase('重试') }}</button>
+            </div>
             <span v-if="!loaded" class="gallery-viewer__spinner" role="status" :aria-label="phrase('正在加载原图')" />
           </template>
           <video
@@ -725,7 +869,7 @@ onBeforeUnmount(() => {
         :aria-label="thumb.item.entry.name"
         @click="emit('navigate', thumb.index)"
       >
-        <GalleryImage v-if="sources(thumb.item).preview" :src="sources(thumb.item).preview!" alt="" draggable="false" />
+        <GalleryImage v-if="sources(thumb.item).preview" :src="sources(thumb.item).preview!" :version="thumb.item.entry.resourceVersion" alt="" draggable="false" />
         <span v-else>{{ galleryFileExtension(thumb.item.entry.name).toUpperCase() }}</span>
       </button>
     </nav>
@@ -1072,6 +1216,24 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
+.gallery-viewer__retry {
+  position: absolute;
+  bottom: 1rem;
+  z-index: 2;
+  inset-inline: 1rem;
+  width: fit-content;
+  max-width: calc(100% - 2rem);
+  margin-inline: auto;
+  padding: 0.75rem;
+  color: var(--viewer-text);
+  background: var(--viewer-bg);
+  border: 1px solid var(--viewer-line);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 1.5;
+}
+/* The strip overlays the stage; keep the recovery action above its 90px box. */
+.gallery-viewer__retry--filmstrip { bottom: 104px; }
 .gallery-viewer__notice-actions {
   display: flex;
   flex-wrap: wrap;
