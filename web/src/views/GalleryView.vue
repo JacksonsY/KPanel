@@ -1825,6 +1825,8 @@ onBeforeUnmount(() => {
 .gallery-scroll {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  /* A bounded window must scroll full sections, never shrink their grid tracks. */
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 18px;
 }

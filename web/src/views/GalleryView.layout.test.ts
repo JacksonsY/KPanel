@@ -11,6 +11,11 @@ function rule(selector: string): string {
 }
 
 describe('GalleryView layout contract', () => {
+  it('keeps full section heights when the desktop scroll frame is shorter than its content', () => {
+    expect(rule('.gallery-scroll')).toMatch(/grid-auto-rows:\s*max-content;/)
+    expect(rule('.gallery-page--windowed .gallery-scroll')).toMatch(/overflow:\s*auto;/)
+  })
+
   it('lets the cover actions menu drop below the cover instead of being clipped by it', () => {
     // The menu hangs under the "更多操作" button, outside the cover's box, so the
     // cover itself must not clip; the photo layer rounds and clips on its own.
