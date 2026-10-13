@@ -182,7 +182,7 @@ func previewFixture(t *testing.T, count int) (*Server, []contract.FileEntry, str
 	root := t.TempDir()
 	s := testServer(t)
 	s.files = writeTestPhoto(t, root)
-	picture := image.NewNRGBA(image.Rect(0, 0, 1600, 1200))
+	picture := image.NewNRGBA(image.Rect(0, 0, 512, 384))
 	state := uint32(1)
 	for i := 0; i < len(picture.Pix); i += 4 {
 		state = state*1664525 + 1013904223
@@ -196,6 +196,11 @@ func previewFixture(t *testing.T, count int) (*Server, []contract.FileEntry, str
 	var data bytes.Buffer
 	if err := jpeg.Encode(&data, picture, &jpeg.Options{Quality: 85}); err != nil {
 		t.Fatal(err)
+	}
+	// Keep queue/race tests focused on scheduling, not expensive resampling.
+	// Legal trailing JPEG padding exercises the real >256KiB warmup condition.
+	if data.Len() < 300<<10 {
+		data.Write(make([]byte, (300<<10)-data.Len()))
 	}
 	entries := make([]contract.FileEntry, 0, count)
 	for i := range count {
