@@ -94,11 +94,11 @@ describe('desktop icon workspace store', () => {
 
 it('preserves saved commands during unrelated desktop layout writes', async () => {
   resetDesktopIconsForTest()
-  const shortcut = { id: 'a'.repeat(32), name: 'Load', description: '', targetType: 'command' as const, command: 'uptime\ndf -h', createdAt: '', updatedAt: '' }
+  const shortcut = { id: 'a'.repeat(32), name: 'Load', description: '', targetType: 'command' as const, command: 'uptime\ndf -h', hostId: 'b'.repeat(32), createdAt: '', updatedAt: '' }
   vi.spyOn(api.desktop, 'workspace').mockResolvedValue(workspace({ shortcuts: [shortcut] }))
   const update = vi.spyOn(api.desktop, 'updateWorkspace').mockResolvedValue(workspace({ shortcuts: [shortcut] }))
   const store = useDesktopIcons()
   await store.load()
   await store.mutate(draft => { draft.labels['nav:/files'] = 'Files' })
-  expect(update.mock.calls[0]?.[0].shortcuts[0]).toMatchObject({ targetType: 'command', command: shortcut.command })
+  expect(update.mock.calls[0]?.[0].shortcuts[0]).toMatchObject({ targetType: 'command', command: shortcut.command, hostId: shortcut.hostId })
 })

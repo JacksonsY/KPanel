@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isDesktopCommandShortcut } from '@/lib/desktopCommandShortcuts'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import {
@@ -389,13 +390,13 @@ const shortcutEntries = computed<DesktopEntry[]>(() => shortcuts.value.map((shor
   id: shortcut.id,
   name: shortcut.name,
   description: shortcut.description || shortcut.path || shortcut.command,
-  launch: shortcut.targetType === 'url' ? 'external' : shortcut.targetType,
+  launch: shortcut.targetType === 'url' ? 'external' : shortcut.targetType === 'remote-command' ? 'command' : shortcut.targetType,
   url: shortcut.url,
   path: shortcut.path,
   iconURL: shortcut.iconURL,
   icon: shortcut.targetType === 'file' || shortcut.targetType === 'directory'
     ? shortcutFileIcon(shortcut.name, shortcut.targetType)
-    : shortcut.targetType === 'command' ? SquareTerminal : undefined,
+    : isDesktopCommandShortcut(shortcut) ? SquareTerminal : undefined,
   shortcut,
 })))
 
@@ -1508,7 +1509,7 @@ function scriptWindowEntry(path: string): DesktopEntry | undefined {
 
 function commandWindowShortcut(path: string): DesktopShortcut | undefined {
   const id = path.match(/^\/command-shortcut\/([a-f0-9]{32})(?:[?#]|$)/)?.[1]
-  return shortcuts.value.find(shortcut => shortcut.id === id && shortcut.targetType === 'command')
+  return shortcuts.value.find(shortcut => shortcut.id === id && isDesktopCommandShortcut(shortcut))
 }
 
 function windowIconURL(path: string): string | undefined {
@@ -4052,7 +4053,7 @@ async function toggleWidgetVisibility(key: string, visible: boolean): Promise<vo
 }
 
 function openShortcutDialog(shortcut?: DesktopShortcut): void {
-  if (shortcut && shortcut.targetType !== 'url' && shortcut.targetType !== 'command') return
+  if (shortcut && shortcut.targetType !== 'url' && !isDesktopCommandShortcut(shortcut)) return
   pendingShortcutID = ''
   editingShortcut.value = shortcut
   shortcutError.value = ''
@@ -4085,6 +4086,7 @@ async function saveShortcut(
         targetType: draft.targetType,
         url: draft.url,
         command: draft.command,
+        hostId: draft.hostId,
       }
       const index = workspaceDraft.shortcuts.findIndex((shortcut) => shortcut.id === id)
       if (index >= 0) workspaceDraft.shortcuts.splice(index, 1, next)
@@ -4133,7 +4135,7 @@ async function confirmDeleteShortcut(): Promise<void> {
 function editMenuShortcut(): void {
   const shortcut = menuEntry.value?.shortcut
   closeContextMenu()
-  if (shortcut?.targetType === 'url' || shortcut?.targetType === 'command') openShortcutDialog(shortcut)
+  if (shortcut?.targetType === 'url' || isDesktopCommandShortcut(shortcut)) openShortcutDialog(shortcut)
 }
 
 function onTaskbarClick(windowId: number): void {
@@ -4956,7 +4958,7 @@ function onViewportResize(): void {
             {{ i18n.t('desktop.entryRename') }}
           </button>
           <button
-            v-if="menuEntry.kind === 'shortcut' && (menuEntry.shortcut?.targetType === 'url' || menuEntry.shortcut?.targetType === 'command')"
+            v-if="menuEntry.kind === 'shortcut' && (menuEntry.shortcut?.targetType === 'url' || isDesktopCommandShortcut(menuEntry.shortcut))"
             type="button"
             role="menuitem"
             @click="editMenuShortcut"

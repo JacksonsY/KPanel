@@ -52,10 +52,11 @@ const maxNavKeyBytes = 256
 type ShortcutTargetType string
 
 const (
-	ShortcutTargetCommand   ShortcutTargetType = "command"
-	ShortcutTargetURL       ShortcutTargetType = "url"
-	ShortcutTargetFile      ShortcutTargetType = "file"
-	ShortcutTargetDirectory ShortcutTargetType = "directory"
+	ShortcutTargetCommand       ShortcutTargetType = "command"
+	ShortcutTargetRemoteCommand ShortcutTargetType = "remote-command"
+	ShortcutTargetURL           ShortcutTargetType = "url"
+	ShortcutTargetFile          ShortcutTargetType = "file"
+	ShortcutTargetDirectory     ShortcutTargetType = "directory"
 )
 
 const unavailableWarning = "desktop_workspace_unavailable"
@@ -86,6 +87,7 @@ type ShortcutInput struct {
 	Description string             `json:"description"`
 	TargetType  ShortcutTargetType `json:"targetType,omitempty"`
 	Command     string             `json:"command,omitempty"`
+	HostID      string             `json:"hostId,omitempty"`
 	URL         string             `json:"url,omitempty"`
 	Path        string             `json:"path,omitempty"`
 }
@@ -96,6 +98,7 @@ type Shortcut struct {
 	Description string             `json:"description"`
 	TargetType  ShortcutTargetType `json:"targetType"`
 	Command     string             `json:"command,omitempty"`
+	HostID      string             `json:"hostId,omitempty"`
 	URL         string             `json:"url,omitempty"`
 	Path        string             `json:"path,omitempty"`
 	IconVersion string             `json:"iconVersion,omitempty"`
@@ -150,6 +153,7 @@ type shortcutRecord struct {
 	Description string             `json:"description"`
 	TargetType  ShortcutTargetType `json:"targetType,omitempty"`
 	Command     string             `json:"command,omitempty"`
+	HostID      string             `json:"hostId,omitempty"`
 	URL         string             `json:"url,omitempty"`
 	Path        string             `json:"path,omitempty"`
 	CreatedAt   time.Time          `json:"createdAt"`
@@ -346,7 +350,7 @@ func (s *Store) workspaceLocked() Workspace {
 	for _, item := range state.Shortcuts {
 		shortcuts = append(shortcuts, Shortcut{
 			ID: item.ID, Name: item.Name, Description: item.Description,
-			TargetType: item.TargetType, URL: item.URL, Path: item.Path, Command: item.Command,
+			TargetType: item.TargetType, URL: item.URL, Path: item.Path, Command: item.Command, HostID: item.HostID,
 			IconVersion: s.iconVersions[item.ID], CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 		})
 	}
@@ -550,22 +554,31 @@ func buildPersistedWorkspace(input ReplaceInput, current persistedWorkspace, now
 		currentByID[item.ID] = item
 	}
 	for _, item := range input.Shortcuts {
-		if err := validateShortcutCommand(item.TargetType, item.Command); err != nil {
+		hostID := item.HostID
+		// An older client omits hostId; it must not silently retarget a remote command to local.
+		if previous, ok := currentByID[item.ID]; ok && IsCommandTargetType(item.TargetType) && IsCommandTargetType(previous.TargetType) && hostID == "" {
+			hostID = previous.HostID
+		}
+		requestedType := item.TargetType
+		if requestedType == ShortcutTargetCommand && hostID != "" && hostID != "local" {
+			requestedType = ShortcutTargetRemoteCommand
+		}
+		if err := validateShortcutCommandTarget(requestedType, item.Command, hostID); err != nil {
 			return persistedWorkspace{}, err
 		}
-		targetType, targetURL, targetPath, err := normalizedShortcutTarget(item.TargetType, item.URL, item.Path)
+		targetType, targetURL, targetPath, err := normalizedShortcutTarget(requestedType, item.URL, item.Path)
 		if err != nil {
 			return persistedWorkspace{}, err
 		}
 		record := shortcutRecord{
 			ID: item.ID, Name: item.Name, Description: item.Description,
-			TargetType: targetType, URL: targetURL, Path: targetPath, Command: item.Command,
+			TargetType: targetType, URL: targetURL, Path: targetPath, Command: item.Command, HostID: hostID,
 			CreatedAt: now, UpdatedAt: now,
 		}
 		if previous, ok := currentByID[item.ID]; ok {
 			record.CreatedAt = previous.CreatedAt
 			if previous.Name == item.Name && previous.Description == item.Description &&
-				previous.TargetType == targetType && previous.URL == targetURL && previous.Path == targetPath && previous.Command == item.Command {
+				previous.TargetType == targetType && previous.URL == targetURL && previous.Path == targetPath && previous.Command == item.Command && previous.HostID == hostID {
 				record.UpdatedAt = previous.UpdatedAt
 			}
 		}
@@ -632,7 +645,7 @@ func validatePersistedWorkspace(state persistedWorkspace) error {
 		if !utf8.ValidString(item.Description) || utf8.RuneCountInString(item.Description) > MaxDescriptionRunes || hasControl(item.Description) {
 			return &ValidationError{Field: "shortcuts.description", Detail: "shortcut description must contain at most 160 characters without controls"}
 		}
-		if err := validateShortcutCommand(item.TargetType, item.Command); err != nil {
+		if err := validateShortcutCommandTarget(item.TargetType, item.Command, item.HostID); err != nil {
 			return err
 		}
 		if _, _, _, err := normalizedShortcutTarget(item.TargetType, item.URL, item.Path); err != nil {
@@ -719,7 +732,7 @@ func normalizedShortcutTarget(targetType ShortcutTargetType, targetURL, targetPa
 		targetType = ShortcutTargetURL
 	}
 	switch targetType {
-	case ShortcutTargetCommand:
+	case ShortcutTargetCommand, ShortcutTargetRemoteCommand:
 		if targetURL != "" || targetPath != "" {
 			return "", "", "", &ValidationError{Field: "shortcuts.command", Detail: "command shortcuts cannot include a URL or path"}
 		}
@@ -741,7 +754,7 @@ func normalizedShortcutTarget(targetType ShortcutTargetType, targetURL, targetPa
 		}
 		return targetType, "", targetPath, nil
 	default:
-		return "", "", "", &ValidationError{Field: "shortcuts.targetType", Detail: "shortcut targetType must be url, command, file, or directory"}
+		return "", "", "", &ValidationError{Field: "shortcuts.targetType", Detail: "shortcut targetType must be url, command, remote-command, file, or directory"}
 	}
 }
 
@@ -1044,7 +1057,7 @@ func syncDirectory(path string) error {
 
 // Commands are inert workspace data; execution uses the authenticated terminal API.
 func validateShortcutCommand(targetType ShortcutTargetType, command string) error {
-	if targetType != ShortcutTargetCommand {
+	if !IsCommandTargetType(targetType) {
 		if command != "" {
 			return &ValidationError{Field: "shortcuts.command", Detail: "only command shortcuts may include a command"}
 		}
@@ -1059,4 +1072,28 @@ func validateShortcutCommand(targetType ShortcutTargetType, command string) erro
 		}
 	}
 	return nil
+}
+
+func validateShortcutCommandTarget(targetType ShortcutTargetType, command, hostID string) error {
+	if err := validateShortcutCommand(targetType, command); err != nil {
+		return err
+	}
+	if targetType == ShortcutTargetRemoteCommand {
+		if !shortcutIDPattern.MatchString(hostID) {
+			return &ValidationError{Field: "shortcuts.hostId", Detail: "remote commands require a cluster host ID"}
+		}
+		return nil
+	}
+	if hostID == "" {
+		return nil
+	} // Existing local commands omit hostId.
+	if targetType != ShortcutTargetCommand || hostID != "local" {
+		return &ValidationError{Field: "shortcuts.hostId", Detail: "hostId must be local or a cluster host ID on command shortcuts"}
+	}
+	return nil
+}
+
+// IsCommandTargetType includes remote commands, which legacy clients cannot launch locally.
+func IsCommandTargetType(targetType ShortcutTargetType) bool {
+	return targetType == ShortcutTargetCommand || targetType == ShortcutTargetRemoteCommand
 }

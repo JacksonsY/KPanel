@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { isDesktopCommandShortcut } from '@/lib/desktopCommandShortcuts'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { AlignLeft, ImagePlus, Link2, Terminal, Trash2, Type } from '@lucide/vue'
+import TerminalHostPicker from '@/components/terminal/TerminalHostPicker.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import { useI18n } from '@/i18n'
 import { useTerminalCommands } from '@/stores/terminalCommands'
@@ -13,6 +15,7 @@ export interface DesktopShortcutDraft {
   targetType: 'url' | 'command'
   url?: string
   command?: string
+  hostId?: string
 }
 
 const props = defineProps<{
@@ -33,6 +36,8 @@ const description = ref('')
 const url = ref('')
 const targetType = ref<'url' | 'command'>('url')
 const command = ref('')
+const hostId = ref('local')
+const hostValid = ref(true)
 const commandStore = useTerminalCommands()
 const importError = ref('')
 const importing = ref(false)
@@ -94,8 +99,10 @@ function reset(): void {
   clearPreview()
   name.value = props.shortcut?.name || ''
   description.value = props.shortcut?.description || ''
-  targetType.value = props.shortcut?.targetType === 'command' ? 'command' : 'url'
+  targetType.value = isDesktopCommandShortcut(props.shortcut) ? 'command' : 'url'
   command.value = props.shortcut?.command || ''
+  hostId.value = props.shortcut?.hostId || 'local'
+  hostValid.value = hostId.value === 'local'
   importError.value = ''
   url.value = props.shortcut?.targetType === 'url' ? props.shortcut.url || '' : ''
   icon.value = undefined
@@ -192,6 +199,10 @@ function submit(): void {
     validationMessage.value = i18n.t('desktop.shortcutCommandInvalid')
     return
   }
+  if (targetType.value === 'command' && !hostValid.value) {
+    validationMessage.value = i18n.t('desktop.shortcutHostUnavailable')
+    return
+  }
   if (targetType.value === 'url' && !normalized) {
     validationMessage.value = i18n.t('desktop.shortcutURLInvalid')
     return
@@ -201,7 +212,7 @@ function submit(): void {
     name: trimmedName,
     description: trimmedDescription,
     targetType: targetType.value,
-    ...(targetType.value === 'command' ? { command: command.value } : { url: normalized }),
+    ...(targetType.value === 'command' ? { command: command.value, hostId: hostId.value } : { url: normalized }),
   }, icon.value, removeIcon.value)
 }
 
@@ -249,6 +260,7 @@ onBeforeUnmount(() => { clearPreview(); importController?.abort() })
           <option value="command">{{ i18n.t('desktop.shortcutTypeCommand') }}</option>
         </select>
       </label>
+      <TerminalHostPicker v-if="targetType === 'command'" v-model="hostId" :active="open" :disabled="saving" @validity="hostValid = $event" />
       <div v-if="targetType === 'command'" class="desktop-shortcut-form__field">
         <label class="desktop-shortcut-form__field-heading" for="shortcut-import">{{ i18n.t('desktop.shortcutImportCommand') }}</label>
         <select id="shortcut-import" class="desktop-shortcut-form__control" :disabled="saving || importing || !!importError" @change="importCommand">

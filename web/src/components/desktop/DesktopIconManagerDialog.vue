@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isDesktopCommandShortcut } from '@/lib/desktopCommandShortcuts'
 import { computed } from 'vue'
 import {
   Eye,
@@ -139,7 +140,7 @@ function isWidgetVisible(key: string): boolean {
                   :kind="shortcut.targetType"
                   :name="shortcut.name"
                 />
-                <SquareTerminal v-else-if="shortcut.targetType === 'command'" :size="20" />
+                <SquareTerminal v-else-if="isDesktopCommandShortcut(shortcut)" :size="20" />
                 <Link2 v-else :size="20" />
               </span>
               <div>
@@ -148,7 +149,7 @@ function isWidgetVisible(key: string): boolean {
               </div>
               <span class="desktop-icon-manager__actions">
                 <button
-                  v-if="shortcut.targetType === 'url' || shortcut.targetType === 'command'"
+                  v-if="shortcut.targetType === 'url' || isDesktopCommandShortcut(shortcut)"
                   class="button button--ghost button--icon"
                   type="button"
                   :title="i18n.t('desktop.shortcutEdit')"

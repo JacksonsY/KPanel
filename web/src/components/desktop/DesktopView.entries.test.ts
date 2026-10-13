@@ -179,7 +179,7 @@ describe('DesktopView dynamic entries', () => {
 
   it('opens a saved command shortcut in the interactive terminal on double click', async () => {
     const id = 'a'.repeat(32)
-    mockedWorkspace.mockResolvedValue(makeWorkspace({ shortcuts: [{ id, name: 'Command', description: '', targetType: 'command', command: 'uptime', createdAt: '', updatedAt: '' }] }))
+    mockedWorkspace.mockResolvedValue(makeWorkspace({ shortcuts: [{ id, name: 'Command', description: '', targetType: 'remote-command', hostId: 'b'.repeat(32), command: 'uptime', createdAt: '', updatedAt: '' }] }))
     const wrapper = mount(DesktopView, { attachTo: document.body, global: { stubs: { ShortcutCommandTerminal: { props: ['name', 'command', 'hostName'], template: '<div data-testid="command-terminal">{{ command }}</div>' } } } })
     await flushPromises()
     await wrapper.get('[data-icon-key="shortcut:' + id + '"] button').trigger('dblclick')
@@ -188,6 +188,7 @@ describe('DesktopView dynamic entries', () => {
     const path = '/command-shortcut/' + id
     expect(desktop.windows.value.filter(window => window.path === path)).toHaveLength(1)
     const windowId = desktop.windows.value.find(window => window.path === path)!.id
+    expect(wrapper.findComponent({ name: 'DesktopWindow' }).props('title')).toContain('Command')
     desktop.minimizeWindow(windowId)
     await wrapper.get('[data-icon-key="shortcut:' + id + '"] button').trigger('dblclick')
     expect(desktop.windows.value.filter(window => window.path === path)).toHaveLength(1)

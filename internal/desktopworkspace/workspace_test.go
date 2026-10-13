@@ -800,3 +800,61 @@ func TestCommandShortcutPersistenceAndValidation(t *testing.T) {
 		t.Fatalf("stale write: %v", err)
 	}
 }
+
+func TestCommandShortcutHostPersistenceAndLegacyClient(t *testing.T) {
+	root := t.TempDir()
+	store, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := validReplaceInput(store.Workspace().ResourceVersion)
+	input.Shortcuts[0].TargetType = ShortcutTargetCommand
+	input.Shortcuts[0].URL = ""
+	input.Shortcuts[0].Command = "uptime"
+	remoteID := strings.Repeat("b", 32)
+	input.Shortcuts[0].HostID = remoteID
+	saved, err := store.Replace(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Workspace().Shortcuts[0].HostID != remoteID || reopened.Workspace().Shortcuts[0].TargetType != ShortcutTargetRemoteCommand {
+		t.Fatal("remote host lost on restart")
+	}
+	input.ExpectedResourceVersion = saved.ResourceVersion
+	input.Shortcuts[0].HostID = "" // Cached clients do not understand this field.
+	input.Positions["nav:/files"] = Position{X: 0.2, Y: 0.2}
+	preserved, err := store.Replace(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preserved.Shortcuts[0].HostID != remoteID || preserved.Shortcuts[0].TargetType != ShortcutTargetRemoteCommand {
+		t.Fatal("legacy write silently retargeted command")
+	}
+	input.ExpectedResourceVersion = preserved.ResourceVersion
+	input.Shortcuts[0].HostID = "local"
+	local, err := store.Replace(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.Shortcuts[0].HostID != "local" || local.Shortcuts[0].TargetType != ShortcutTargetCommand {
+		t.Fatal("explicit local selection was not saved")
+	}
+	input.ExpectedResourceVersion = local.ResourceVersion
+	for _, hostID := range []string{"../host", "https://evil.test", "remote-1", strings.Repeat("b", 33)} {
+		input.Shortcuts[0].HostID = hostID
+		if _, err := store.Replace(input); validationField(err) != "shortcuts.hostId" {
+			t.Fatalf("hostID=%q error=%v", hostID, err)
+		}
+	}
+	input.Shortcuts[0].HostID = "local"
+	input.Shortcuts[0].TargetType = ShortcutTargetURL
+	input.Shortcuts[0].Command = ""
+	input.Shortcuts[0].URL = "https://example.com"
+	if _, err := store.Replace(input); validationField(err) != "shortcuts.hostId" {
+		t.Fatalf("host accepted on URL: %v", err)
+	}
+}

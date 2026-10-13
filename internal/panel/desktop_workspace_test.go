@@ -281,7 +281,7 @@ func TestDesktopCommandShortcutAPI(t *testing.T) {
 	if err := json.Unmarshal(get.Body.Bytes(), &initial); err != nil {
 		t.Fatal(err)
 	}
-	input := desktopworkspace.ReplaceInput{ExpectedResourceVersion: initial.ResourceVersion, Shortcuts: []desktopworkspace.ShortcutInput{{ID: panelTestShortcutID, Name: "Command", TargetType: desktopworkspace.ShortcutTargetCommand, Command: "printf 'secret-command'\nuptime"}}}
+	input := desktopworkspace.ReplaceInput{ExpectedResourceVersion: initial.ResourceVersion, Shortcuts: []desktopworkspace.ShortcutInput{{ID: panelTestShortcutID, Name: "Command", TargetType: desktopworkspace.ShortcutTargetCommand, Command: "printf 'secret-command'\nuptime", HostID: strings.Repeat("b", 32)}}}
 	body, _ := json.Marshal(input)
 	headers := map[string]string{"Content-Type": "application/json", "Origin": "http://panel.test", "X-CSRF-Token": csrf.Value}
 	response := authenticatedRequest(server, http.MethodPut, path, body, session, csrf, headers)
@@ -292,7 +292,7 @@ func TestDesktopCommandShortcutAPI(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &saved); err != nil {
 		t.Fatal(err)
 	}
-	if saved.Shortcuts[0].Command != input.Shortcuts[0].Command {
+	if saved.Shortcuts[0].Command != input.Shortcuts[0].Command || saved.Shortcuts[0].HostID != input.Shortcuts[0].HostID || saved.Shortcuts[0].TargetType != desktopworkspace.ShortcutTargetRemoteCommand {
 		t.Fatal("command lost in response")
 	}
 	get = authenticatedRequest(server, http.MethodGet, path, nil, session, csrf, nil)
@@ -300,6 +300,14 @@ func TestDesktopCommandShortcutAPI(t *testing.T) {
 		t.Fatal("command lost on readback")
 	}
 	input.ExpectedResourceVersion = saved.ResourceVersion
+	input.Shortcuts[0].HostID = ""
+	if changedShortcutCount(saved.Shortcuts, input.Shortcuts) != 0 {
+		t.Fatal("omitted host was counted as retarget")
+	}
+	input.Shortcuts[0].HostID = "local"
+	if changedShortcutCount(saved.Shortcuts, input.Shortcuts) != 1 {
+		t.Fatal("host edit omitted from audit")
+	}
 	input.Shortcuts[0].Command = "df -h"
 	if changedShortcutCount(saved.Shortcuts, input.Shortcuts) != 1 {
 		t.Fatal("command edit omitted from audit count")

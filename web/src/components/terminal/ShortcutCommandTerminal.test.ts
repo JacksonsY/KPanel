@@ -18,9 +18,9 @@ const HostTerminal = defineComponent({
 const opened: TerminalSession = { sessionId: 'session-1', hostId: 'remote-1', offset: 0, createdAt: '' }
 const wrappers: VueWrapper[] = []
 let closeGuard: () => boolean | Promise<boolean>
-function create() {
+function create(hostId?: string, hostName = 'Local server') {
   const wrapper = mount(ShortcutCommandTerminal, {
-    props: { name: 'Load', command: 'uptime\ndf -h', hostName: 'Local server' },
+    props: { name: 'Load', command: 'uptime\ndf -h', hostName, hostId },
     global: { provide: { [desktopWindowCloseGuardKey as symbol]: { register: (guard: () => boolean | Promise<boolean>) => { closeGuard = guard; return () => undefined } } }, stubs: { HostTerminal, ModalDialog: { name: 'ModalDialog', props: ['closeDisabled'], emits: ['close'], template: '<div><slot /></div>' } } },
   })
   wrappers.push(wrapper)
@@ -111,4 +111,17 @@ it('reclaims a late open after unmount and falls back if close fails', async () 
   await flushPromises()
   expect(mocks.closeOnUnload).toHaveBeenCalledWith(opened.sessionId)
   expect(mocks.execute).not.toHaveBeenCalled()
+})
+
+it('snapshots the selected host and never retargets a pending session when props change', async () => {
+  let resolveOpen!: (value: TerminalSession) => void
+  mocks.open.mockReturnValue(new Promise(resolve => { resolveOpen = resolve }))
+  const remote = 'b'.repeat(32)
+  const w = create(remote, 'Remote A')
+  await w.setProps({ hostId: 'local', hostName: 'Changed local target' })
+  resolveOpen(opened); await flushPromises()
+  expect(mocks.open).toHaveBeenCalledOnce()
+  expect(mocks.open).toHaveBeenCalledWith(remote, 30, 120)
+  expect(w.get('[data-testid="command-target-host"]').text()).toContain('Remote A')
+  expect(w.get('[data-testid="command-target-host"]').text()).not.toContain('Changed local target')
 })

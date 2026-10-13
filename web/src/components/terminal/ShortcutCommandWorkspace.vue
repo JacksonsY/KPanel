@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { isDesktopCommandShortcut } from '@/lib/desktopCommandShortcuts'
 import { inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { LoaderCircle, Play, RefreshCw } from '@lucide/vue'
 import ShortcutCommandTerminal from '@/components/terminal/ShortcutCommandTerminal.vue'
 import { useI18n } from '@/i18n'
 import { api } from '@/lib/api'
+import { isUnsupportedLightNode } from '@/lib/nodeFeatureHosts'
 import { desktopWindowCloseGuardKey, desktopWindowLaunchKey } from '@/lib/desktopRouteKeys'
 import type { DesktopShortcut } from '@/types/api'
 
@@ -16,6 +18,7 @@ const shortcut = ref<DesktopShortcut>()
 const loading = ref(false)
 const error = ref('')
 const running = ref(false)
+const targetHost = ref<{ id: string; name: string }>()
 let controller: AbortController | undefined
 let unregisterCloseGuard: (() => void) | undefined
 let disposed = false
@@ -31,8 +34,19 @@ async function load(run = false): Promise<void> {
     if (!/^[a-f0-9]{32}$/.test(id)) { error.value = t('desktop.shortcutCommandMissing'); return }
     const workspace = await api.desktop.workspace(request.signal)
     if (disposed || request.signal.aborted || controller !== request) return
-    const item = workspace.available && workspace.shortcuts.find(item => item.id === id && item.targetType === 'command' && item.command)
+    const item = workspace.available && workspace.shortcuts.find(item => item.id === id && isDesktopCommandShortcut(item) && item.command)
     if (!item) { error.value = t('desktop.shortcutCommandMissing'); return }
+    const hostId = item.hostId || 'local'
+    if (item.targetType === 'remote-command' && (!/^[a-f0-9]{32}$/.test(hostId) || hostId === 'local')) { error.value = t('desktop.shortcutHostUnavailable'); return }
+    let hostName = t('terminal.hostKind.local')
+    if (hostId !== 'local') {
+      const inventory = await api.cluster.hosts(request.signal)
+      if (disposed || request.signal.aborted || controller !== request) return
+      const host = inventory.items.find(host => host.id === hostId && !host.isLocal)
+      if (!host?.terminalAvailable || isUnsupportedLightNode(host)) { error.value = t('desktop.shortcutHostUnavailable'); return }
+      hostName = host.name
+    }
+    targetHost.value = { id: hostId, name: hostName }
     shortcut.value = { ...item }
     running.value = run
   } catch {
@@ -66,7 +80,7 @@ onBeforeUnmount(() => {
       <strong>{{ error }}</strong>
       <button class="button" @click="load()"><RefreshCw :size="16" />{{ t('common.retry') }}</button>
     </div>
-    <ShortcutCommandTerminal v-else-if="running && shortcut" :name="shortcut.name" :command="shortcut.command || ''" :host-name="t('terminal.hostKind.local')" />
+    <ShortcutCommandTerminal v-else-if="running && shortcut" :name="shortcut.name" :command="shortcut.command || ''" :host-id="targetHost?.id" :host-name="targetHost?.name || t('terminal.hostKind.local')" />
     <div v-else class="shortcut-command-page__state">
       <strong>{{ shortcut?.name }}</strong>
       <p>{{ t('desktop.shortcutCommandIdle') }}</p>

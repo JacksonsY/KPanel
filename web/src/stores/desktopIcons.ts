@@ -28,7 +28,7 @@ function emptyWorkspace(): DesktopWorkspace {
 }
 
 function cloneShortcuts(shortcuts: DesktopShortcut[]): DesktopWorkspaceDraft['shortcuts'] {
-  return shortcuts.map(({ id, name, description, targetType, url, path, command }) => ({
+  return shortcuts.map(({ id, name, description, targetType, url, path, command, hostId }) => ({
     id,
     name,
     description,
@@ -36,6 +36,7 @@ function cloneShortcuts(shortcuts: DesktopShortcut[]): DesktopWorkspaceDraft['sh
     ...(url ? { url } : {}),
     ...(path ? { path } : {}),
     ...(command ? { command } : {}),
+    ...(hostId ? { hostId } : {}),
   }))
 }
 
