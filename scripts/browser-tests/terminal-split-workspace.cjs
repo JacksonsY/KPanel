@@ -76,6 +76,7 @@ const settle = (page) => page.waitForFunction(() => [...document.querySelectorAl
           await page.locator(`[data-layout="${value}"]`).click();
           if (viewport.width <= 900) {
             await page.setViewportSize(viewport);
+            await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
             assert.equal(await layout.isVisible(), false);
           }
         };
