@@ -4,6 +4,20 @@ import { createGalleryQueue, fetchGalleryImage, GalleryImageError } from './gall
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('gallery request scheduling', () => {
+  it('starts the visible original ahead of queued thumbnails without exceeding concurrency', async () => {
+    const queue = createGalleryQueue(1)
+    const order: string[] = []
+    let finish!: () => void
+    const active = queue(() => new Promise<void>(resolve => { finish = resolve }), new AbortController().signal)
+    await Promise.resolve()
+    const thumbnail = queue(async () => { order.push('thumbnail') }, new AbortController().signal)
+    const original = queue(async () => { order.push('original') }, new AbortController().signal, true)
+    expect(order).toEqual([])
+    finish()
+    await Promise.all([active, thumbnail, original])
+    expect(order).toEqual(['original', 'thumbnail'])
+  })
+
   it('bounds concurrency and removes cancelled queued work', async () => {
     const queue = createGalleryQueue(1)
     let finish!: () => void

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GalleryViewer from './GalleryViewer.vue'
@@ -36,7 +36,92 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
+  vi.unstubAllGlobals()
   vi.useRealTimers()
+})
+
+function mockOriginals() {
+  let sequence = 0
+  const NativeURL = URL
+  vi.stubGlobal('URL', class extends NativeURL {
+    static createObjectURL = vi.fn(() => `blob:original-${++sequence}`)
+    static revokeObjectURL = vi.fn()
+  })
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response('jpeg')))
+  vi.stubGlobal('fetch', fetch)
+  return fetch
+}
+
+describe('viewer recent original cache', () => {
+  it('reuses a recent original on back navigation and releases all URLs on close', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ filmstrip: false })
+    await flushPromises()
+    const first = view.get('img.gallery-viewer__media').attributes('src')
+    await view.setProps({ index: 2 }); await flushPromises()
+    await view.setProps({ index: 1 }); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(first)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    view.unmount(); wrapper = undefined
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
+  })
+
+  it('reloads changed versions and retries a failed decode instead of retaining it', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ filmstrip: false })
+    await flushPromises()
+    const changed = item('b.jpg'); changed.entry.resourceVersion = 'v2'
+    await view.setProps({ items: [item('a.jpg'), changed, item('c.jpg')] }); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    await view.get('img.gallery-viewer__media').trigger('error')
+    await view.get('.gallery-viewer__notice-actions button').trigger('click'); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
+  })
+
+  it('bypasses unknown and oversized originals and falls back to native loading after fetch failure', async () => {
+    const fetch = mockOriginals()
+    const huge = item('huge.jpg'); huge.entry.sizeBytes = 20 * 1024 * 1024
+    const unknown = item('unknown.jpg'); unknown.entry.sizeBytes = 0
+    const view = mountViewer({ items: [huge, unknown, item('c.jpg')], index: 0, filmstrip: false })
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe('/content/home/gallery/huge.jpg')
+    await view.setProps({ index: 1 }); await flushPromises()
+    expect(fetch).not.toHaveBeenCalled()
+    fetch.mockRejectedValueOnce(new Error('offline'))
+    await view.setProps({ index: 2 }); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe('/content/home/gallery/c.jpg')
+    expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
+  })
+
+  it('aborts obsolete requests, ignores late completion and cancels on close', async () => {
+    const fetch = mockOriginals()
+    let complete!: (response: Response) => void
+    fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
+    const view = mountViewer({ filmstrip: false }); await flushPromises()
+    const signal = fetch.mock.calls[0]![1].signal as AbortSignal
+    await view.setProps({ index: 2 }); await flushPromises()
+    expect(signal.aborted).toBe(true)
+    const current = view.get('img.gallery-viewer__media').attributes('src')
+    complete(new Response('late')); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(current)
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+    view.unmount(); wrapper = undefined
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
+  })
+
+  it('evicts old originals after three retained entries and bypasses excessive decoded dimensions', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ items: ['a','b','c','d'].map(n => item(`${n}.jpg`)), index: 0, filmstrip: false })
+    await flushPromises()
+    for (const index of [1,2,3,0]) { await view.setProps({ index }); await flushPromises() }
+    expect(fetch).toHaveBeenCalledTimes(5)
+    const image = view.get('img.gallery-viewer__media')
+    Object.defineProperties(image.element, { naturalWidth: { value: 6000 }, naturalHeight: { value: 4000 } })
+    await image.trigger('load')
+    await view.setProps({ index: 1 }); await flushPromises()
+    await view.setProps({ index: 0 }); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(7)
+  })
 })
 
 async function dispatchPointer(element: Element, type: string, init: MouseEventInit & { pointerId: number; pointerType: string }) {

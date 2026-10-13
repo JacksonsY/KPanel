@@ -30,6 +30,7 @@ import {
 } from '@/lib/gallery'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import { fetchGalleryImage, galleryAllowsPrefetch } from '@/lib/galleryMedia'
+import { GalleryImageCache, type GalleryImageLease } from '@/lib/galleryImageCache'
 import GalleryImage from './GalleryImage.vue'
 
 function phrase(value: string): string {
@@ -109,6 +110,48 @@ const contacts = new Map<number, { x: number; y: number }>()
 let pinch: { distance: number; x: number; y: number } | undefined
 const interacting = ref(false)
 const swipeOffset = ref(0)
+// Separate from the page thumbnail cache, and disposed as soon as the viewer closes.
+const originalCache = new GalleryImageCache({ count: 3, bytes: 8 * 1024 * 1024, decoded: 32 * 1024 * 1024, itemBytes: 4 * 1024 * 1024, ttl: 60_000 })
+const originalUrl = ref<string>()
+let originalLease: GalleryImageLease | undefined
+let originalController: AbortController | undefined
+
+function releaseOriginal(): void {
+  originalController?.abort()
+  originalController = undefined
+  originalLease?.release()
+  originalLease = undefined
+  originalUrl.value = undefined
+}
+
+async function loadOriginal(): Promise<void> {
+  releaseOriginal()
+  const currentItem = item.value
+  const source = itemSources.value?.original
+  if (!currentItem || currentItem.kind !== 'image' || !canShow.value || !source) return
+  const { resourceVersion, sizeBytes } = currentItem.entry
+  // Preserve native loading for unknown sizes and large originals, including progressive decoding.
+  if (!resourceVersion || sizeBytes <= 0 || sizeBytes > 4 * 1024 * 1024) {
+    originalUrl.value = source
+    return
+  }
+  const key = `${source}\0${resourceVersion}`
+  const cached = originalCache.acquire(key)
+  if (cached) { originalLease = cached; originalUrl.value = cached.url; return }
+  const controller = new AbortController()
+  originalController = controller
+  try {
+    // The visible original must not queue behind offscreen/filmstrip thumbnails.
+    const blob = await fetchGalleryImage(source, controller.signal, true)
+    if (controller.signal.aborted || originalController !== controller) return
+    originalLease = originalCache.store(key, blob)
+    originalUrl.value = originalLease.url
+  } catch {
+    if (controller.signal.aborted || originalController !== controller) return
+    // Keep the native image/error/retry path available if the bounded fetch cannot be used.
+    originalUrl.value = source
+  }
+}
 
 const item = computed(() => props.items[props.index])
 const itemSources = computed(() => item.value ? props.sources(item.value) : undefined)
@@ -210,7 +253,7 @@ watch(() => props.filmstrip, (visible) => {
   if (visible) void nextTick(scrollStripToCurrent)
 })
 
-watch(() => item.value?.entry.path, () => {
+watch([() => itemSources.value?.original, () => item.value?.entry.resourceVersion, () => item.value?.kind], () => {
   coverMenuOpen.value = false
   resetMedia()
   neighbourController?.abort()
@@ -340,12 +383,15 @@ function onPointerUp(event: PointerEvent): void {
 
 function onImageLoad(event: Event): void {
   const image = event.currentTarget as HTMLImageElement
+  originalLease?.decoded(image.naturalWidth, image.naturalHeight)
   naturalSize.value = { width: image.naturalWidth, height: image.naturalHeight }
   loaded.value = true
   preloadNeighbours()
 }
 
 function onImageError(): void {
+  originalLease?.invalidate()
+  releaseOriginal()
   failed.value = true
   failureDetail.value = '原图读取失败，请检查网络或文件是否仍然存在。'
 }
@@ -377,10 +423,12 @@ function onVideoError(event: Event): void {
 
 function retry(): void {
   resetMedia()
+  originalLease?.invalidate()
   retryKey.value += 1
 }
 
 let neighbourController: AbortController | undefined
+watch([() => itemSources.value?.original, () => item.value?.entry.resourceVersion, () => item.value?.kind, retryKey], () => { void loadOriginal() }, { immediate: true })
 function preloadNeighbours(): void {
   neighbourController?.abort()
   neighbourController = new AbortController()
@@ -483,6 +531,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  releaseOriginal()
+  originalCache.dispose()
   cancelGesture()
   neighbourController?.abort()
   window.clearTimeout(chromeTimer)
@@ -627,10 +677,10 @@ onBeforeUnmount(() => {
               draggable="false"
             />
             <img
-              :key="`${item.entry.path}:${retryKey}`"
+              :key="`${itemSources?.original}:${item.entry.resourceVersion}:${retryKey}`"
               class="gallery-viewer__media"
               :class="{ 'is-loaded': loaded }"
-              :src="itemSources?.original"
+              :src="originalUrl"
               :alt="item.entry.name"
               :style="{ transform: mediaTransform }"
               decoding="async"
