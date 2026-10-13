@@ -689,8 +689,29 @@ func (m *Manager) WriteReceiveChunk(ctx context.Context, id, sourceKey string, o
 		return contract.FileReceiveSession{}, err
 	}
 	defer release(m.uploadGate)
+	// Bound the final chunk by the immutable declared file size. This short lookup
+	// does not wait for the same session's in-flight write or expose its offset.
+	if err := m.receives.mu.LockContext(ctx); err != nil {
+		return contract.FileReceiveSession{}, err
+	}
+	inputRecord, lookupErr := m.receiveLocked(id, sourceKey)
+	limit := contract.FileTransferChunkBytes
+	knownSize := lookupErr == nil && inputRecord.Input.SizeBytes >= 0 && offset <= inputRecord.Input.SizeBytes
+	if knownSize {
+		limit = int(min(int64(limit), inputRecord.Input.SizeBytes-offset))
+	}
+	m.receives.mu.Unlock()
+	if lookupErr != nil {
+		return contract.FileReceiveSession{}, lookupErr
+	}
 	// Buffer exactly one bounded chunk so failed checksums cannot alter a prefix.
-	data, err := readReceiveChunk(ctx, content)
+	var data []byte
+	var err error
+	if knownSize {
+		data, err = readReceiveChunk(ctx, content, limit)
+	} else {
+		data, err = readReceiveChunk(ctx, content)
+	}
 	if err != nil {
 		return contract.FileReceiveSession{}, err
 	}

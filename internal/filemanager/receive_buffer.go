@@ -10,9 +10,13 @@ import (
 // Promote only after another byte actually exists: small files stay small and
 // full chunks avoid ReadAll's repeated growth/copying and oversized final cap.
 // One lookahead byte detects oversize without reserving a second full buffer.
-func readReceiveChunk(ctx context.Context, source io.Reader) ([]byte, error) {
+func readReceiveChunk(ctx context.Context, source io.Reader, sizeHint ...int) ([]byte, error) {
 	r := &contextReader{ctx, source}
-	data := make([]byte, 0, 4<<10)
+	limit := contract.FileTransferChunkBytes
+	if len(sizeHint) > 0 {
+		limit = min(limit, max(0, sizeHint[0]))
+	}
+	data := make([]byte, 0, min(4<<10, limit))
 	var lookahead [1]byte
 	emptyReads := 0
 	for {
@@ -21,12 +25,12 @@ func readReceiveChunk(ctx context.Context, source io.Reader) ([]byte, error) {
 		if len(data) == cap(data) {
 			n, err = r.Read(lookahead[:])
 			if n > 0 {
-				if len(data) == contract.FileTransferChunkBytes {
+				if len(data) == limit {
 					return nil, ErrTooLarge
 				}
-				nextCap := 64 << 10
-				if cap(data) == nextCap {
-					nextCap = contract.FileTransferChunkBytes
+				nextCap := min(limit, cap(data)*2)
+				if len(sizeHint) > 0 {
+					nextCap = limit
 				}
 				grown := make([]byte, len(data), nextCap)
 				copy(grown, data)

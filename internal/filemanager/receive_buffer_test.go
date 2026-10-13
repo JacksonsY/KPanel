@@ -55,3 +55,21 @@ func TestReceiveChunkBufferPreservesTransportFailureAndCancellation(t *testing.T
 		t.Fatalf("cancelled read proceeded: %v", err)
 	}
 }
+
+func TestReceiveChunkBufferBoundsKnownTailWithoutInflatingMediumFiles(t *testing.T) {
+	for _, size := range []int{0, 4096, 4097, 64 << 10, 100 << 10, 1 << 20, contract.FileTransferChunkBytes} {
+		input := bytes.Repeat([]byte{0x31}, size)
+		data, err := readReceiveChunk(context.Background(), bytes.NewReader(input), size)
+		if err != nil || !bytes.Equal(input, data) || cap(data) > size {
+			t.Fatalf("known size=%d len/cap=%d/%d error=%v", size, len(data), cap(data), err)
+		}
+		if _, err := readReceiveChunk(context.Background(), bytes.NewReader(append(input, 1)), size); !errors.Is(err, ErrTooLarge) {
+			t.Fatalf("declared tail overrun accepted: size=%d error=%v", size, err)
+		}
+	}
+	input := bytes.Repeat([]byte{0x31}, 100<<10)
+	data, err := readReceiveChunk(context.Background(), bytes.NewReader(input))
+	if err != nil || cap(data) > 2*len(input) {
+		t.Fatalf("unknown medium body inflated: len/cap=%d/%d error=%v", len(data), cap(data), err)
+	}
+}
