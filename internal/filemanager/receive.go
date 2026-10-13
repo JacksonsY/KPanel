@@ -50,6 +50,8 @@ type receiveRecord struct {
 	identity        os.FileInfo
 	parentInfo      os.FileInfo
 	extractInfo     os.FileInfo
+	// Guard speculative file I/O while Session remains the durable checkpoint.
+	busy chan struct{}
 }
 
 type receiveSessions struct {
@@ -239,7 +241,7 @@ func (m *Manager) persistReceivesLocked() error {
 func (m *Manager) cleanupReceivesLocked() error {
 	changed := false
 	for id, record := range m.receives.records {
-		if m.now().Before(record.Session.ExpiresAt) {
+		if record.busy != nil || m.now().Before(record.Session.ExpiresAt) {
 			continue
 		}
 		if err := m.removeReceiveTemp(record); err != nil && record.Session.State != "complete" && record.Session.State != "aborted" {
@@ -575,6 +577,27 @@ func (m *Manager) receiveLocked(id, sourceKey string) (*receiveRecord, error) {
 	return record, nil
 }
 
+// Called with the journal lock held and returns with it held, including errors.
+// Waiting on one session must not monopolize unrelated sessions' journal access.
+func (m *Manager) receiveReadyLocked(ctx context.Context, id, sourceKey string) (*receiveRecord, error) {
+	for {
+		record, err := m.receiveLocked(id, sourceKey)
+		if err != nil || record.busy == nil {
+			return record, err
+		}
+		done := record.busy
+		m.receives.mu.Unlock()
+		select {
+		case <-done:
+		case <-ctx.Done():
+		}
+		m.receives.mu.Lock()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+}
+
 // On recovery, verify the acknowledged prefix and discard any unacknowledged
 // tail left by a crash. An inode substituted during this process is rejected.
 func (m *Manager) openReceiveFile(ctx context.Context, record *receiveRecord) (*os.File, error) {
@@ -639,7 +662,7 @@ func (m *Manager) ReceiveStatus(ctx context.Context, id, sourceKey string) (cont
 		return contract.FileReceiveSession{}, err
 	}
 	defer m.receives.mu.Unlock()
-	record, err := m.receiveLocked(id, sourceKey)
+	record, err := m.receiveReadyLocked(ctx, id, sourceKey)
 	if err != nil {
 		return contract.FileReceiveSession{}, err
 	}
@@ -667,7 +690,7 @@ func (m *Manager) WriteReceiveChunk(ctx context.Context, id, sourceKey string, o
 	}
 	defer release(m.uploadGate)
 	// Buffer exactly one bounded chunk so failed checksums cannot alter a prefix.
-	data, err := io.ReadAll(&contextReader{ctx, io.LimitReader(content, contract.FileTransferChunkBytes+1)})
+	data, err := readReceiveChunk(ctx, content)
 	if err != nil {
 		return contract.FileReceiveSession{}, err
 	}
@@ -682,56 +705,74 @@ func (m *Manager) WriteReceiveChunk(ctx context.Context, id, sourceKey string, o
 		return contract.FileReceiveSession{}, err
 	}
 	defer m.receives.mu.Unlock()
-	record, err := m.receiveLocked(id, sourceKey)
+	record, err := m.receiveReadyLocked(ctx, id, sourceKey)
 	if err != nil {
 		return contract.FileReceiveSession{}, err
 	}
+	// Other sessions can persist their old confirmed checkpoints during this I/O.
+	// The private working copy keeps speculative identities/offsets out of JSON.
+	done := make(chan struct{})
+	record.busy = done
+	working := *record
+	m.receives.mu.Unlock()
+	writeErr := m.writeReceiveChunk(ctx, &working, offset, data)
+	m.receives.mu.Lock()
+	defer func() { record.busy = nil; close(done) }()
+	if writeErr != nil {
+		record.hasher = nil
+		return contract.FileReceiveSession{}, writeErr
+	}
+	previous := record.Session
+	record.Session, record.hasher, record.identity = working.Session, working.hasher, working.identity
+	if record.Session.Offset == previous.Offset {
+		return record.Session, nil // Identical replay needs no new journal write.
+	}
+	if err := m.persistReceivesLocked(); err != nil {
+		record.Session = previous
+		record.hasher = nil
+		return contract.FileReceiveSession{}, err
+	}
+	return record.Session, nil
+}
+
+// Same-session operations and cleanup wait until the caller publishes or rolls
+// back this working checkpoint. The journal/root remain open until I/O drains.
+func (m *Manager) writeReceiveChunk(ctx context.Context, record *receiveRecord, offset int64, data []byte) error {
 	if record.Session.State != "receiving" || offset > record.Session.Offset {
-		return contract.FileReceiveSession{}, ErrConflict
+		return ErrConflict
 	}
 	end := offset + int64(len(data))
 	if end > receiveLimit(record.Input) || record.Input.SizeBytes >= 0 && end > record.Input.SizeBytes {
-		return contract.FileReceiveSession{}, ErrTooLarge
+		return ErrTooLarge
 	}
 	file, err := m.openReceiveFile(ctx, record)
 	if err != nil {
-		return contract.FileReceiveSession{}, err
+		return err
 	}
 	defer file.Close()
 	if offset < record.Session.Offset {
 		// Retried acknowledgements are idempotent only for identical durable data.
 		if end > record.Session.Offset {
-			return contract.FileReceiveSession{}, ErrConflict
+			return ErrConflict
 		}
 		prior := make([]byte, len(data))
 		if _, err := file.ReadAt(prior, offset); err != nil || !bytes.Equal(prior, data) {
-			return contract.FileReceiveSession{}, ErrReceiveChecksum
+			return ErrReceiveChecksum
 		}
-		return record.Session, nil
+		return nil
 	}
-	previous := record.Session
 	if _, err := file.Write(data); err != nil {
-		record.hasher = nil
-		return contract.FileReceiveSession{}, err
+		return err
 	}
 	if err := file.Sync(); err != nil {
-		record.hasher = nil
-		return contract.FileReceiveSession{}, err
+		return err
 	}
 	_, _ = record.hasher.Write(data)
 	record.Session.Offset = end
 	record.Session.PrefixSHA256 = hex.EncodeToString(record.hasher.Sum(nil))
 	record.Session.ExpiresAt = m.now().UTC().Add(receiveLifetime)
 	record.identity, err = file.Stat()
-	if err == nil {
-		err = m.persistReceivesLocked()
-	}
-	if err != nil {
-		record.Session = previous
-		record.hasher = nil
-		return contract.FileReceiveSession{}, err
-	}
-	return record.Session, nil
+	return err
 }
 
 func (m *Manager) reconcileReceiveCommit(ctx context.Context, record *receiveRecord) error {
@@ -862,7 +903,7 @@ func (m *Manager) CommitReceive(ctx context.Context, id, sourceKey string, size 
 		return contract.FileReceiveSession{}, err
 	}
 	defer m.receives.mu.Unlock()
-	record, err := m.receiveLocked(id, sourceKey)
+	record, err := m.receiveReadyLocked(ctx, id, sourceKey)
 	if err != nil {
 		return contract.FileReceiveSession{}, err
 	}
@@ -1051,7 +1092,7 @@ func (m *Manager) AbortReceive(ctx context.Context, id, sourceKey string) error 
 		return err
 	}
 	defer m.receives.mu.Unlock()
-	record, err := m.receiveLocked(id, sourceKey)
+	record, err := m.receiveReadyLocked(ctx, id, sourceKey)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -1077,6 +1118,21 @@ func (m *Manager) closeReceiveSessions() {
 	m.receives.mu.Lock()
 	defer m.receives.mu.Unlock()
 	m.receives.closed = true
+	for {
+		var pending chan struct{}
+		for _, record := range m.receives.records {
+			if record.busy != nil {
+				pending = record.busy
+				break
+			}
+		}
+		if pending == nil {
+			break
+		}
+		m.receives.mu.Unlock()
+		<-pending
+		m.receives.mu.Lock()
+	}
 	if m.receives.store != nil {
 		_ = m.receives.store.Close()
 	}
