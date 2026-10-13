@@ -1381,7 +1381,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 720px) {
   .gallery-viewer {
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
 
   .gallery-viewer__bar {
@@ -1392,6 +1392,12 @@ onBeforeUnmount(() => {
 
   /* Touch users must always be able to leave, including during native video playback. */
   .gallery-viewer--idle .gallery-viewer__bar {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .gallery-viewer .gallery-viewer__strip {
+    position: relative;
     opacity: 1;
     pointer-events: auto;
   }
