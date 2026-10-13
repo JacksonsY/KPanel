@@ -77,6 +77,7 @@ describe('viewer recent original cache', () => {
     await view.get('.gallery-viewer__notice-actions button').trigger('click'); await flushPromises()
     expect(fetch).toHaveBeenCalledTimes(3)
     expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
+    expect(document.activeElement).toBe(view.element)
   })
 
   it('bypasses unknown and oversized originals and falls back to native loading after fetch failure', async () => {

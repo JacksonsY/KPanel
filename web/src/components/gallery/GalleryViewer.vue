@@ -425,6 +425,8 @@ function retry(): void {
   resetMedia()
   originalLease?.invalidate()
   retryKey.value += 1
+  // The retry button disappears; keep keyboard paging and Escape inside the modal.
+  void nextTick(() => root.value?.focus({ preventScroll: true }))
 }
 
 let neighbourController: AbortController | undefined

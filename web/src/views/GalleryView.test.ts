@@ -470,6 +470,7 @@ describe('GalleryView', () => {
   it('opens the viewer, pages with the keyboard and closes with Escape', async () => {
     const view = await mountGallery()
     await view.findAll('.gallery-tile__open')[0]!.trigger('click')
+    await flushPromises()
     const viewer = view.get('.gallery-viewer')
     expect(viewer.get('.gallery-viewer__title strong').text()).toBe('sunset.jpg')
     expect(viewer.get('img.gallery-viewer__media:not(.gallery-viewer__media--preview)').attributes('src')).toBe('/content/home/gallery/sunset.jpg')
