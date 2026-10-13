@@ -122,6 +122,6 @@ it('snapshots the selected host and never retargets a pending session when props
   resolveOpen(opened); await flushPromises()
   expect(mocks.open).toHaveBeenCalledOnce()
   expect(mocks.open).toHaveBeenCalledWith(remote, 30, 120)
-  expect(w.get('[data-testid="command-target-host"]').text()).toContain('Remote A')
-  expect(w.get('[data-testid="command-target-host"]').text()).not.toContain('Changed local target')
+  expect(w.findComponent({ name: 'HostTerminal' }).props('hostName')).toBe('Remote A')
+  expect(w.find('[data-testid="command-target-host"]').exists()).toBe(false)
 })

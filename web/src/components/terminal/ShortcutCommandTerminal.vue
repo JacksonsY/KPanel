@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { inject, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { LoaderCircle, Monitor } from '@lucide/vue'
+import { LoaderCircle } from '@lucide/vue'
 import { desktopWindowCloseGuardKey } from '@/lib/desktopRouteKeys'
 import HostTerminal from '@/components/terminal/HostTerminal.vue'
-import { useI18n } from '@/i18n'
 import { api, ApiError } from '@/lib/api'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import type { TerminalSession } from '@/types/api'
@@ -19,7 +18,6 @@ const opening = ref(true)
 const closing = ref(false)
 const error = ref('')
 // Snapshot the command for this terminal session.
-const { t } = useI18n()
 const command = props.command
 const hostName = props.hostName
 const hostId = props.hostId || 'local'
@@ -101,7 +99,6 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="shortcut-command-terminal" :aria-label="name">
-      <div class="shortcut-command-terminal__target" data-testid="command-target-host"><Monitor :size="16" aria-hidden="true" />{{ t('desktop.shortcutExecutingOn', { host: hostName }) }}</div>
       <div v-if="opening" class="shortcut-command-terminal__state" role="status"><LoaderCircle class="spin" :size="20" />{{ phrase('正在连接终端…') }}</div>
       <div v-if="error" class="inline-alert inline-alert--danger" role="alert">{{ error }}</div>
       <HostTerminal v-if="session" ref="terminal" :session-id="session.sessionId" :host-name="hostName" :initial-offset="session.offset" @state-change="onStateChange" />
@@ -110,7 +107,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .shortcut-command-terminal { height: 100%; overflow: hidden; background: var(--terminal-wallpaper-background, var(--terminal-shell-background)); display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
-.shortcut-command-terminal__target { display: flex; align-items: center; gap: 8px; padding: 9px 12px; flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 14px; overflow-wrap: anywhere; }
 .shortcut-command-terminal__state { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 14px; }
 .shortcut-command-terminal > .inline-alert { margin: 16px; }
 .shortcut-command-terminal > :deep(.host-terminal) { flex: 1 1 auto; height: auto; }

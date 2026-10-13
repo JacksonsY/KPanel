@@ -2,10 +2,10 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { desktopWindowLaunchKey, desktopWindowCloseGuardKey } from '@/lib/desktopRouteKeys'
+import { desktopWindowLaunchKey, desktopWindowCloseGuardKey, desktopWindowTitleKey } from '@/lib/desktopRouteKeys'
 import ShortcutCommandWorkspace from './ShortcutCommandWorkspace.vue'
 
-const mocks = vi.hoisted(() => ({ workspace: vi.fn(), hosts: vi.fn() }))
+const mocks = vi.hoisted(() => ({ workspace: vi.fn(), hosts: vi.fn(), title: vi.fn() }))
 vi.mock('@/lib/api', () => ({ api: { desktop: { workspace: mocks.workspace }, cluster: { hosts: mocks.hosts } } }))
 const id = 'a'.repeat(32)
 const shortcut = { id, name: 'Load', targetType: 'command', command: 'uptime' }
@@ -15,6 +15,7 @@ async function create(launch = true) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/command-shortcut/:shortcutId', component: {} }] })
   await router.push('/command-shortcut/' + id)
   const wrapper = mount(ShortcutCommandWorkspace, { global: { plugins: [router], provide: {
+    [desktopWindowTitleKey as symbol]: mocks.title,
     [desktopWindowLaunchKey as symbol]: () => launch,
     [desktopWindowCloseGuardKey as symbol]: { register: (guard: () => boolean | Promise<boolean>) => { closeGuard = guard; return () => undefined } },
   }, stubs: { ShortcutCommandTerminal: { name: 'ShortcutCommandTerminal', props: ['name', 'command', 'hostName', 'hostId'], template: '<div data-testid="terminal">{{ command }}</div>' } } } })
@@ -28,6 +29,7 @@ describe('command shortcut desktop workspace', () => {
   it('loads the saved command by id and launches only for a new explicit window', async () => {
     const w = await create()
     expect(w.get('[data-testid="terminal"]').text()).toBe('uptime')
+    expect(mocks.title).toHaveBeenLastCalledWith('Load · 本机 · 终端命令')
     expect(mocks.workspace).toHaveBeenCalledWith(expect.any(AbortSignal))
   })
   it('restores idle and requires an explicit run with freshly read command data', async () => {
@@ -70,6 +72,12 @@ it('opens the exact selected remote host using a fresh cluster lookup', async ()
   const w = await create()
   expect(w.findComponent({ name: 'ShortcutCommandTerminal' }).props()).toMatchObject({ hostId, hostName: 'Remote Linux' })
   expect(mocks.hosts).toHaveBeenCalledWith(expect.any(AbortSignal))
+  expect(mocks.title).toHaveBeenLastCalledWith('Load · Remote Linux · 终端命令')
+  mocks.workspace.mockResolvedValue({ available: true, shortcuts: [{ ...shortcut, hostId: 'local' }] })
+  await flushPromises()
+  expect(mocks.title).toHaveBeenLastCalledWith('Load · Remote Linux · 终端命令')
+  w.unmount()
+  expect(mocks.title).toHaveBeenLastCalledWith()
 })
 it('never falls back to local when the saved remote host is missing or revoked', async () => {
   mocks.workspace.mockResolvedValue({ available: true, shortcuts: [{ ...shortcut, targetType: 'remote-command', hostId: 'b'.repeat(32) }] })

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
+import { inject, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import DesktopWindow from './DesktopWindow.vue'
 import { resetDesktopModeForTest, useDesktopMode } from '@/stores/desktopMode'
-import { desktopBrowserHistoryKey } from '@/lib/desktopRouteKeys'
+import { desktopBrowserHistoryKey, desktopWindowTitleKey } from '@/lib/desktopRouteKeys'
 import type {
   DesktopBrowserHistory,
   DesktopBrowserHistoryPoint,
@@ -60,6 +61,26 @@ describe('DesktopWindow lazy view loading', () => {
     window.scrollTo = vi.fn()
     setupViewport()
     routeMocks.resolveWindowComponent.mockReset()
+  })
+
+  it('uses the mounted session title ahead of the saved shortcut title', async () => {
+    routeMocks.resolveWindowComponent.mockResolvedValue({
+      setup() {
+        const setTitle = inject(desktopWindowTitleKey)!
+        onMounted(() => setTitle('Load · Remote A · 终端命令'))
+      },
+      template: '<main />',
+    })
+    const desktop = useDesktopMode()
+    desktop.openWindow('/command-shortcut/' + 'a'.repeat(32), 'desktop.shortcutTypeCommand', false)
+    const wrapper = mount(DesktopWindow, { props: {
+      windowState: desktop.windows.value[0]!, icon: () => null, title: 'Load · 终端命令',
+    } })
+    await flushPromises()
+    expect(wrapper.get('.desktop-window__title').text()).toBe('Load · Remote A · 终端命令')
+    await wrapper.setProps({ title: 'Load · Local · 终端命令' })
+    expect(wrapper.get('.desktop-window__title').text()).toBe('Load · Remote A · 终端命令')
+    wrapper.unmount()
   })
 
   it('shows a retryable error instead of hanging when a page chunk rejects', async () => {

@@ -1,24 +1,33 @@
 <script setup lang="ts">
 import { isDesktopCommandShortcut } from '@/lib/desktopCommandShortcuts'
-import { inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { LoaderCircle, Play, RefreshCw } from '@lucide/vue'
 import ShortcutCommandTerminal from '@/components/terminal/ShortcutCommandTerminal.vue'
 import { useI18n } from '@/i18n'
 import { api } from '@/lib/api'
 import { isUnsupportedLightNode } from '@/lib/nodeFeatureHosts'
-import { desktopWindowCloseGuardKey, desktopWindowLaunchKey } from '@/lib/desktopRouteKeys'
+import { desktopWindowCloseGuardKey, desktopWindowLaunchKey, desktopWindowTitleKey } from '@/lib/desktopRouteKeys'
 import type { DesktopShortcut } from '@/types/api'
 
 const route = useRoute()
 const { t } = useI18n()
 const consumeLaunch = inject(desktopWindowLaunchKey, () => false)
+const setWindowTitle = inject(desktopWindowTitleKey, undefined)
 const closeGuards = inject(desktopWindowCloseGuardKey, undefined)
 const shortcut = ref<DesktopShortcut>()
 const loading = ref(false)
 const error = ref('')
 const running = ref(false)
 const targetHost = ref<{ id: string; name: string }>()
+// Keep the resolved launch snapshot when the saved shortcut is edited.
+const windowTitle = computed(() => shortcut.value && targetHost.value
+  ? t('desktop.namedHostCommandWindowTitle', {
+    name: shortcut.value.name,
+    host: targetHost.value.id === 'local' ? t('terminal.hostKind.local') : targetHost.value.name,
+  })
+  : undefined)
+watch(windowTitle, title => setWindowTitle?.(title), { immediate: true })
 let controller: AbortController | undefined
 let unregisterCloseGuard: (() => void) | undefined
 let disposed = false
@@ -68,6 +77,7 @@ onBeforeUnmount(() => {
   disposed = true
   controller?.abort()
   unregisterCloseGuard?.()
+  setWindowTitle?.()
 })
 </script>
 
