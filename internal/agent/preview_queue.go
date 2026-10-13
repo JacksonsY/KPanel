@@ -34,7 +34,6 @@ type previewQueue struct {
 	workerDone chan struct{}
 	quietUntil time.Time
 	wake       chan struct{}
-	startTimer *time.Timer
 	closed     bool
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -63,7 +62,6 @@ func (q *previewQueue) submit(entry contract.FileEntry, foreground bool) (*previ
 	key := screenPreviewKey(entry)
 	if job := q.jobs[key]; job != nil {
 		job.foreground = job.foreground || foreground
-		q.kickLocked(foreground)
 		return job, nil
 	}
 	if len(q.jobs) >= previewQueueLimit {
@@ -89,33 +87,12 @@ func (q *previewQueue) submit(entry contract.FileEntry, foreground bool) (*previ
 	job := &previewJob{entry: entry, key: key, foreground: foreground, done: make(chan struct{})}
 	q.jobs[key] = job
 	q.queued = append(q.queued, job)
-	q.kickLocked(foreground)
+	if !q.running {
+		q.running = true
+		q.workerDone = make(chan struct{})
+		go q.run(q.workerDone)
+	}
 	return job, nil
-}
-
-// Keep initial thumbnail rendering free of worker startup/stack overhead.
-// An optional queue owns only one timer until the quiet window expires.
-func (q *previewQueue) kickLocked(foreground bool) {
-	if q.running || q.closed {
-		return
-	}
-	if q.startTimer != nil {
-		q.startTimer.Stop()
-		q.startTimer = nil
-	}
-	if !foreground && time.Now().Before(q.quietUntil) {
-		q.startTimer = time.AfterFunc(time.Until(q.quietUntil), func() {
-			q.mu.Lock()
-			defer q.mu.Unlock()
-			if len(q.queued) > 0 {
-				q.kickLocked(false)
-			}
-		})
-		return
-	}
-	q.running = true
-	q.workerDone = make(chan struct{})
-	go q.run(q.workerDone)
 }
 
 func (q *previewQueue) get(ctx context.Context, entry contract.FileEntry) ([]byte, string, error) {
@@ -256,10 +233,6 @@ func (q *previewQueue) close() {
 	}
 	q.closed = true
 	q.cancel()
-	if q.startTimer != nil {
-		q.startTimer.Stop()
-		q.startTimer = nil
-	}
 	for _, job := range q.queued {
 		delete(q.jobs, job.key)
 		job.err = context.Canceled
