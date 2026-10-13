@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,9 +29,19 @@ func (h *receiveBlockedHash) Write(data []byte) (int, error) {
 	return h.Hash.Write(data)
 }
 
-func blockedReceiveWriter(t *testing.T) (*Manager, contract.FileReceiveSession, contract.FileReceiveInput, func(), <-chan error) {
+func blockedReceiveWriter(t *testing.T, clock ...func() time.Time) (*Manager, contract.FileReceiveSession, contract.FileReceiveInput, func(), <-chan error) {
 	t.Helper()
-	m := newReceiveManager(t, t.TempDir())
+	var m *Manager
+	if len(clock) == 0 {
+		m = newReceiveManager(t, t.TempDir())
+	} else {
+		var err error
+		m, err = New(Config{Root: t.TempDir(), Now: clock[0]})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = m.Close() })
+	}
 	input := testReceiveInput(4)
 	session, err := m.BeginReceive(context.Background(), input)
 	if err != nil {
@@ -128,5 +139,86 @@ func TestReceiveCloseWaitsForInFlightChunk(t *testing.T) {
 	}
 	if err := <-closed; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestReceiveExpiryCleanupRetainsInFlightStaging(t *testing.T) {
+	var stamp atomic.Int64
+	stamp.Store(time.Now().UnixNano())
+	clock := func() time.Time { return time.Unix(0, stamp.Load()) }
+	m, session, input, unblock, result := blockedReceiveWriter(t, clock)
+	stamp.Add(int64(48 * time.Hour))
+	other := testReceiveInput(0)
+	other.Name, other.SourceKey = "after-expiry.bin", strings.Repeat("b", 64)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if _, err := m.BeginReceive(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	m.receives.mu.Lock()
+	retained := m.receives.records[session.ID] != nil
+	m.receives.mu.Unlock()
+	if !retained {
+		t.Fatal("cleanup dropped an in-flight record")
+	}
+	if _, err := os.Stat(filepath.Join(m.root, ".kpanel-upload-"+session.ID)); err != nil {
+		t.Fatal("cleanup removed in-flight staging", err)
+	}
+	unblock()
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+	status, err := m.ReceiveStatus(context.Background(), session.ID, input.SourceKey)
+	if err != nil || !status.ExpiresAt.After(clock()) {
+		t.Fatalf("active checkpoint not renewed: %#v %v", status, err)
+	}
+	if _, err := m.CommitReceive(context.Background(), session.ID, input.SourceKey, 4, receiveDigest([]byte("data"))); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReceiveJournalFailureRollsBackAndRetriesWrittenChunk(t *testing.T) {
+	m, session, input, unblock, result := blockedReceiveWriter(t)
+	m.receives.mu.Lock()
+	err := m.receives.store.Rename("receive-sessions.json", "test-saved-receives.json")
+	if err == nil {
+		err = m.receives.store.Mkdir("receive-sessions.json", 0700)
+	}
+	m.receives.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	unblock()
+	if err := <-result; err == nil {
+		t.Fatal("expected checkpoint rename failure")
+	}
+	m.receives.mu.Lock()
+	record := m.receives.records[session.ID]
+	rolledBack := record.Session.Offset == 0 && record.Session.PrefixSHA256 == session.PrefixSHA256 && record.hasher == nil
+	err = m.receives.store.Remove("receive-sessions.json")
+	if err == nil {
+		err = m.receives.store.Rename("test-saved-receives.json", "receive-sessions.json")
+	}
+	m.receives.mu.Unlock()
+	if !rolledBack || err != nil {
+		t.Fatalf("checkpoint rollback=%t error=%v", rolledBack, err)
+	}
+	status, err := m.ReceiveStatus(context.Background(), session.ID, input.SourceKey)
+	if err != nil || status.Offset != 0 {
+		t.Fatalf("unconfirmed prefix survived: %#v %v", status, err)
+	}
+	info, err := os.Stat(filepath.Join(m.root, ".kpanel-upload-"+session.ID))
+	if err != nil || info.Size() != 0 {
+		t.Fatalf("unconfirmed tail not truncated: %v %v", info, err)
+	}
+	if _, err := m.WriteReceiveChunk(context.Background(), session.ID, input.SourceKey, 0, bytes.NewBufferString("data"), receiveDigest([]byte("data"))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.CommitReceive(context.Background(), session.ID, input.SourceKey, 4, receiveDigest([]byte("data"))); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(m.root, input.Name))
+	if err != nil || string(data) != "data" {
+		t.Fatalf("retry content=%q error=%v", data, err)
 	}
 }
