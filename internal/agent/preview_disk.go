@@ -66,6 +66,12 @@ func newPreviewDisk(stateDir string) *previewDisk {
 		root.Close()
 		return nil
 	}
+	lockInfo, err := root.Lstat("lock")
+	if err != nil || !lockInfo.Mode().IsRegular() || lockInfo.Mode().Perm()&0077 != 0 {
+		lock.Close()
+		root.Close()
+		return nil
+	}
 	if err = lockPreviewDisk(lock); err != nil {
 		lock.Close()
 		root.Close()
@@ -98,7 +104,7 @@ func newPreviewDisk(stateDir string) *previewDisk {
 		if err != nil {
 			continue
 		}
-		if !info.Mode().IsRegular() || info.Size() <= previewDiskHeader || info.Size() > previewDiskItemBytes+previewDiskHeader || d.now().Sub(info.ModTime()) > previewDiskTTL {
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() <= previewDiskHeader || info.Size() > previewDiskItemBytes+previewDiskHeader || d.now().Sub(info.ModTime()) > previewDiskTTL {
 			_ = root.Remove(name)
 			continue
 		}
@@ -142,7 +148,7 @@ func (d *previewDisk) get(key string) ([]byte, string, bool) {
 		return nil, "", false
 	}
 	info, err := d.root.Lstat(name)
-	if err != nil || !info.Mode().IsRegular() || info.Size() != entry.size || d.now().Sub(info.ModTime()) > previewDiskTTL {
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() != entry.size || d.now().Sub(info.ModTime()) > previewDiskTTL {
 		d.remove(name)
 		return nil, "", false
 	}

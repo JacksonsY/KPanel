@@ -104,6 +104,12 @@ func TestPreviewDiskPrivatePermissionsAndBounds(t *testing.T) {
 		if err != nil || info.Mode().Perm() != 0600 {
 			t.Fatal("cache file permissions")
 		}
+		if err = os.Chmod(filepath.Join(dir, "gallery-previews-v1", name), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, ok := d.get("/private/source.jpg\x00version"); ok {
+		t.Fatal("loosened permissions accepted")
 	}
 	// A directory with unexpectedly many objects must fail closed with bounded
 	// enumeration, leaving foreign names untouched.
