@@ -31,7 +31,10 @@ function mountViewer(props: Record<string, unknown> = {}): VueWrapper {
   return wrapper
 }
 
-beforeEach(() => vi.useFakeTimers())
+beforeEach(() => {
+  vi.useFakeTimers()
+  Object.defineProperty(navigator, 'connection', { configurable: true, value: undefined })
+})
 
 afterEach(() => {
   wrapper?.unmount()
@@ -73,6 +76,7 @@ describe('viewer recent original cache', () => {
     const changed = item('b.jpg'); changed.entry.resourceVersion = 'v2'
     await view.setProps({ items: [item('a.jpg'), changed, item('c.jpg')] }); await flushPromises()
     expect(fetch).toHaveBeenCalledTimes(2)
+    await view.get('img.gallery-viewer__media').trigger('error')
     await view.get('img.gallery-viewer__media').trigger('error')
     await view.get('.gallery-viewer__notice-actions button').trigger('click'); await flushPromises()
     expect(fetch).toHaveBeenCalledTimes(3)
@@ -133,7 +137,8 @@ async function dispatchPointer(element: Element, type: string, init: MouseEventI
 }
 describe('GalleryViewer controls', () => {
   it('tracks a swipe under the finger, rejects diagonal drags and resets after cancellation', async () => {
-    const view = mountViewer()
+    mockOriginals()
+    const view = mountViewer(); await flushPromises()
     const stage = view.get('.gallery-viewer__stage')
     const event = (id: number, x: number, y: number) => ({ pointerId: id, pointerType: 'touch', button: 0, clientX: x, clientY: y })
     await dispatchPointer(stage.element, 'pointerdown', event(1, 200, 200))
@@ -154,7 +159,8 @@ describe('GalleryViewer controls', () => {
   })
 
   it('pinches to zoom, pans with the remaining finger and never turns a pinch into navigation', async () => {
-    const view = mountViewer()
+    mockOriginals()
+    const view = mountViewer(); await flushPromises()
     const stage = view.get('.gallery-viewer__stage')
     vi.spyOn(stage.element, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 400, height: 600 } as DOMRect)
     await view.get('img.gallery-viewer__media').trigger('load')
@@ -277,6 +283,63 @@ describe('GalleryViewer controls', () => {
 })
 
 
+describe('mobile image loading recovery', () => {
+  it('waits for a usable URL instead of exposing an empty image during a slow screen request', async () => {
+    const fetch = mockOriginals()
+    let complete!: (response: Response) => void
+    fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
+    const view = mountViewer({ sources: () => ({ original: '/original/current', screen: '/screen/current' }), filmstrip: false })
+    await flushPromises()
+    try {
+      expect(view.find('img.gallery-viewer__media').exists()).toBe(false)
+      expect(view.find('.gallery-viewer__spinner').exists()).toBe(true)
+    } finally { complete(new Response('screen')); await flushPromises() }
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toMatch(/^blob:/)
+    expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
+  })
+
+  it('tries the native screen URL before the original when a screen Blob cannot be decoded', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ sources: () => ({ original: '/original/current', screen: '/screen/current' }), filmstrip: false })
+    await flushPromises()
+    await view.get('img.gallery-viewer__media').trigger('error'); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe('/screen/current')
+    expect(fetch).toHaveBeenCalledTimes(1)
+    await view.get('img.gallery-viewer__media').trigger('error'); await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/current', '/original/current'])
+  })
+
+  it('tries a native original once, then exposes retry if it also fails', async () => {
+    mockOriginals()
+    const view = mountViewer({ filmstrip: false })
+    await flushPromises()
+    await view.get('img.gallery-viewer__media').trigger('error'); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe('/content/home/gallery/b.jpg')
+    expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
+    await view.get('img.gallery-viewer__media').trigger('error'); await flushPromises()
+    expect(view.find('.gallery-viewer__notice').exists()).toBe(true)
+    await view.get('.gallery-viewer__notice-actions button').trigger('click'); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toMatch(/^blob:/)
+  })
+
+  it('ignores late image events from a removed image after navigation', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ filmstrip: false }); await flushPromises()
+    const previous = view.get('img.gallery-viewer__media').element
+    let complete!: (response: Response) => void
+    fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
+    await view.setProps({ index: 2 }); await flushPromises()
+    previous.dispatchEvent(new Event('error'))
+    previous.dispatchEvent(new Event('load'))
+    await nextTick()
+    try {
+      expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
+      expect(view.find('.gallery-viewer__spinner').exists()).toBe(true)
+    } finally { complete(new Response('next')); await flushPromises() }
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toMatch(/^blob:/)
+  })
+})
+
 describe('adaptive screen preview', () => {
   const sources = (value: GalleryItem) => ({ original: '/original/'+value.entry.name, screen: '/screen/'+value.entry.name })
   it('shows the screen preview, requests original only on zoom, keeps preview during upgrade and frees both caches', async () => {
@@ -295,6 +358,8 @@ describe('adaptive screen preview', () => {
     expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(preview)
     complete(new Response('original')); await flushPromises()
     expect(view.get('img.gallery-viewer__media').attributes('src')).not.toBe(preview)
+    await view.get('img.gallery-viewer__media').trigger('error')
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe('/original/b.jpg')
     await view.get('img.gallery-viewer__media').trigger('error')
     expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(preview)
     expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
@@ -329,6 +394,7 @@ describe('adaptive screen preview', () => {
     await flushPromises()
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/b.jpg', '/original/b.jpg'])
     await view.setProps({ index: 2 }); await flushPromises()
+    await view.get('img.gallery-viewer__media').trigger('error'); await flushPromises()
     await view.get('img.gallery-viewer__media').trigger('error'); await flushPromises()
     expect(fetch.mock.calls.map(call => call[0])).toContain('/original/c.jpg')
     let complete!: (response: Response) => void
