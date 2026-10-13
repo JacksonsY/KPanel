@@ -761,7 +761,7 @@ func (s *Server) systemSummary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) systemTelemetry(w http.ResponseWriter, r *http.Request) {
-	summary, err := s.system.Collect(r.Context())
+	summary, err := s.system.CollectTelemetry(r.Context())
 	if err != nil && summary.Hostname == "" {
 		writeProblem(w, requestIDFrom(w), http.StatusServiceUnavailable, "system_unavailable", "系统状态不可用", "")
 		return
@@ -782,7 +782,13 @@ func (s *Server) systemTelemetry(w http.ResponseWriter, r *http.Request) {
 	}
 	var sshLogin *contract.SSHLoginEvent
 	if hasTelemetryCapability(r, sshLoginTelemetryCapability) && s.sshLoginSource != nil {
-		sshLogin, _ = s.sshLoginSource.LatestSSHLogin(r.Context())
+		if cached, ok := s.sshLoginSource.(interface {
+			CachedLatestSSHLogin(context.Context) (*contract.SSHLoginEvent, error)
+		}); ok {
+			sshLogin, _ = cached.CachedLatestSSHLogin(r.Context())
+		} else {
+			sshLogin, _ = s.sshLoginSource.LatestSSHLogin(r.Context())
+		}
 	}
 	writeJSON(w, http.StatusOK, contract.HostTelemetry{
 		AgentVersion: s.version, AgentProtocolVersion: s.protocolVersion,

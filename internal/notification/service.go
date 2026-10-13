@@ -803,6 +803,10 @@ func (s *Service) handleAvailability(host cluster.Host, now time.Time, locale st
 	}
 	unavailable := host.State == cluster.HostStale || host.State == cluster.HostOffline ||
 		host.State == cluster.HostAuthFailed || host.State == cluster.HostTLSFailed || host.State == cluster.HostIncompatible
+	if host.State != cluster.HostOnline {
+		state.RecoverySamples = 0
+		state.RecoverySampleAt = time.Time{}
+	}
 	if !unavailable && host.State != cluster.HostOnline && host.State != cluster.HostDegraded {
 		state.Consecutive = 0
 		s.setAlertState(key, state)
@@ -810,7 +814,13 @@ func (s *Service) handleAvailability(host cluster.Host, now time.Time, locale st
 	}
 	if !unavailable {
 		state.Consecutive = 0
-		if !state.Active || !canRecoveryAttempt(state, now) {
+		if state.Active && host.State == cluster.HostOnline && host.LastSuccessAt != nil &&
+			!host.LastSuccessAt.After(now) && now.Sub(*host.LastSuccessAt) <= 90*time.Second &&
+			host.LastSuccessAt.After(state.RecoverySampleAt) {
+			state.RecoverySamples = minInt(state.RecoverySamples+1, s.sustain)
+			state.RecoverySampleAt = *host.LastSuccessAt
+		}
+		if !state.Active || host.State != cluster.HostOnline || state.RecoverySamples < s.sustain || !canRecoveryAttempt(state, now) {
 			s.setAlertState(key, state)
 			return false
 		}
@@ -824,6 +834,8 @@ func (s *Service) handleAvailability(host cluster.Host, now time.Time, locale st
 		}
 		if success {
 			state.Active = false
+			state.RecoverySamples = 0
+			state.RecoverySampleAt = time.Time{}
 			state.LastNotifiedAt = now
 			s.setAlertState(key, state)
 			return true

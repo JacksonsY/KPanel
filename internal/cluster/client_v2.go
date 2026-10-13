@@ -395,7 +395,11 @@ func (c *RemoteClient) exchangeV2Headers(
 		)
 	}
 	var response v2Envelope
-	headers, err := c.doJSONWithHeaders(c.client, request, maxV2EnvelopeBytes, &response)
+	client := c.client
+	if path == v2SummaryPath {
+		client = c.summaryHTTPClient()
+	}
+	headers, err := c.doJSONWithHeaders(client, request, maxV2EnvelopeBytes, &response)
 	if err != nil {
 		return nil, err
 	}

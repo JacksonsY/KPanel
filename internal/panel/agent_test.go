@@ -23,7 +23,7 @@ func TestAgentReadGroupCoalescesIdenticalInflightReads(t *testing.T) {
 			defer done.Done()
 			ready.Done()
 			<-start
-			response, err, _ := group.do(context.Background(), "/v1/docker/containers?", func() (AgentResponse, error) {
+			response, err, _ := group.do(context.Background(), "/v1/docker/containers?", func(context.Context) (AgentResponse, error) {
 				calls.Add(1)
 				time.Sleep(40 * time.Millisecond)
 				return AgentResponse{StatusCode: 200, Body: []byte("ok")}, nil
@@ -44,7 +44,7 @@ func TestAgentReadGroupCoalescesIdenticalInflightReads(t *testing.T) {
 func TestAgentReadGroupDoesNotCacheCompletedReads(t *testing.T) {
 	var group agentReadGroup
 	var calls atomic.Int32
-	read := func() (AgentResponse, error) {
+	read := func(context.Context) (AgentResponse, error) {
 		calls.Add(1)
 		return AgentResponse{StatusCode: 200}, nil
 	}

@@ -39,6 +39,9 @@ type telegramState struct {
 }
 
 type alertState struct {
+	// Availability recovery is deliberately re-confirmed after a process restart.
+	RecoverySamples     int       `json:"-"`
+	RecoverySampleAt    time.Time `json:"-"`
 	TrafficThresholdGiB int       `json:"trafficThresholdGiB,omitempty"`
 	TrafficCycle        string    `json:"trafficCycle,omitempty"`
 	ExpiryDate          string    `json:"expiryDate,omitempty"`

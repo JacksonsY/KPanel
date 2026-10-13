@@ -26,6 +26,10 @@ const (
 	pairPath    = "/api/v1/federation/pair"
 	summaryPath = "/api/v1/federation/summary"
 	revokePath  = "/api/v1/federation/revoke"
+	// The remote Panel has a 4s local summary budget. Allow network overhead
+	// before headers, then additional time to receive the bounded response body.
+	defaultSummaryTimeout = 10 * time.Second
+	summaryHeaderTimeout  = 6 * time.Second
 )
 
 type resolver interface {
@@ -53,6 +57,7 @@ type RemoteClient struct {
 	resolver       resolver
 	dialer         func(context.Context, string, string) (net.Conn, error)
 	client         *http.Client
+	summaryClient  *http.Client
 	streamClient   *http.Client
 	historyClient  *http.Client
 	wsClient       *http.Client
@@ -71,6 +76,10 @@ func (e *RemoteError) Error() string {
 }
 
 func NewRemoteClient(config RemoteClientConfig) (*RemoteClient, error) {
+	summaryTimeout := config.Timeout
+	if summaryTimeout == 0 {
+		summaryTimeout = defaultSummaryTimeout
+	}
 	allowed := make([]netip.Prefix, 0, len(config.PrivateCIDRs))
 	for _, raw := range config.PrivateCIDRs {
 		prefix, err := netip.ParsePrefix(strings.TrimSpace(raw))
@@ -123,8 +132,16 @@ func NewRemoteClient(config RemoteClientConfig) (*RemoteClient, error) {
 			return errors.New("cluster redirect rejected")
 		},
 	}
-	// Long file relays must not occupy the two connections that interactive
-	// terminal requests and summaries share with the same host.
+	// Monitoring has its own bounded connection pool. A slow summary must not
+	// occupy the two connections used by terminal/control requests (or vice versa).
+	summaryTransport := transport.Clone()
+	summaryTransport.ResponseHeaderTimeout = min(summaryHeaderTimeout, summaryTimeout)
+	remote.summaryClient = &http.Client{
+		Transport: tlsfallback.New(summaryTransport, curveCache),
+		Timeout:   summaryTimeout, CheckRedirect: remote.client.CheckRedirect,
+	}
+	// Long file relays use their own pool, separate from both terminal/control
+	// requests and monitoring summaries for the same host.
 	streamTransport := transport.Clone()
 	streamTransport.MaxConnsPerHost = 4
 	streamTransport.MaxIdleConnsPerHost = 4
@@ -286,7 +303,7 @@ func (c *RemoteClient) SummaryWithCapabilities(
 		SecurityEntrancePathCapability+", "+SSHLoginCapability+", "+ServiceChecksCapability+", "+FileRelayV1Capability,
 	)
 	var response FederationSummary
-	headers, err := c.doJSONWithHeaders(c.client, request, MaxSummaryBytes, &response)
+	headers, err := c.doJSONWithHeaders(c.summaryHTTPClient(), request, MaxSummaryBytes, &response)
 	if err != nil {
 		return FederationSummary{}, "", err
 	}
@@ -379,6 +396,10 @@ func (c *RemoteClient) doJSONWithHeaders(client *http.Client, request *http.Requ
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			return nil, &RemoteError{Code: "timeout"}
+		}
 		return nil, &RemoteError{Code: "invalid_response"}
 	}
 	if int64(len(body)) > limit {
@@ -414,7 +435,18 @@ func classifyRemoteTransportError(err error) error {
 	if errors.Is(err, ErrPrivateOrigin) {
 		return ErrPrivateOrigin
 	}
+	var timeout net.Error
+	if errors.As(err, &timeout) && timeout.Timeout() {
+		return &RemoteError{Code: "timeout"}
+	}
 	return &RemoteError{Code: "unreachable"}
+}
+
+func (c *RemoteClient) summaryHTTPClient() *http.Client {
+	if c.summaryClient != nil {
+		return c.summaryClient
+	}
+	return c.client
 }
 
 func (c *RemoteClient) dialContext(ctx context.Context, network, address string) (net.Conn, error) {

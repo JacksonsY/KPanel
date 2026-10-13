@@ -29,5 +29,5 @@ func nodeSignalContext() (context.Context, context.CancelFunc) {
 }
 
 func latestPlatformLogin(ctx context.Context, reader *sshlogin.Reader) (*contract.SSHLoginEvent, error) {
-	return reader.LatestSSHLogin(ctx)
+	return reader.CachedLatestSSHLogin(ctx)
 }

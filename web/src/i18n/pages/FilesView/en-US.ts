@@ -67,6 +67,7 @@ export default [
   ["没有匹配的主机", "No matching hosts"],
   ["已配对 · 文件互传", "Paired · file transfer"],
   ["已配对 · 仅支持接收", "Paired · receive only"],
+  ["监控离线 · 可尝试连接", "Monitoring offline · Try connecting"],
   ["文件管理已就绪", "File management ready"],
   ["文件代理未就绪", "File broker is not ready"],
   ["当前主机有文件操作进行中", "A file operation is in progress on the current host"],

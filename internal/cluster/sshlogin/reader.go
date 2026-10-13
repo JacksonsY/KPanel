@@ -124,6 +124,39 @@ type Reader struct {
 	mu        sync.Mutex
 	cache     *contract.SSHLoginEvent
 	checkedAt time.Time
+
+	refreshMu      sync.Mutex
+	refreshPending bool
+	refreshAfter   time.Time
+	refreshValue   *contract.SSHLoginEvent
+	refreshError   error
+}
+
+// CachedLatestSSHLogin keeps optional log scans out of the heartbeat deadline.
+// Failed refreshes also cool down, and a blocked reader retains its sole slot.
+func (r *Reader) CachedLatestSSHLogin(ctx context.Context) (*contract.SSHLoginEvent, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	r.refreshMu.Lock()
+	defer r.refreshMu.Unlock()
+	if !r.refreshPending && !r.now().Before(r.refreshAfter) {
+		r.refreshPending = true
+		go func() {
+			readCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			value, err := r.LatestSSHLogin(readCtx)
+			r.refreshMu.Lock()
+			defer r.refreshMu.Unlock()
+			if err == nil {
+				r.refreshValue = cloneEvent(value)
+			}
+			r.refreshError = err
+			r.refreshAfter = r.now().Add(cacheTTL)
+			r.refreshPending = false
+		}()
+	}
+	return cloneEvent(r.refreshValue), r.refreshError
 }
 
 func NewReader(config Config) *Reader {

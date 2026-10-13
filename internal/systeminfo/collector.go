@@ -39,6 +39,8 @@ type Collector struct {
 	TrafficStatePath string
 
 	defaultsOnce         sync.Once
+	telemetryMu          sync.Mutex
+	telemetryPending     *telemetryCollection
 	publicNetworkMu      sync.Mutex
 	publicNetworkCache   contract.PublicNetworkSummary
 	publicNetworkExpires time.Time
