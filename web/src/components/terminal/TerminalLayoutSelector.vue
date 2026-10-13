@@ -55,7 +55,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', outside))
       :aria-label="`${phrase('终端布局')}: ${phrase(selected.label)}`"
       :title="phrase(compact ? '窗口较小，已显示当前窗格' : '终端布局')" @click="open ? close() : show()">
       <component :is="selected.icon" :size="16" aria-hidden="true" />
-      <span>{{ phrase(selected.label) }}</span><ChevronDown :size="14" aria-hidden="true" />
+      <span>{{ phrase(selected.label) }}</span><ChevronDown class="terminal-layout-chevron" :size="14" aria-hidden="true" />
     </button>
     <div v-if="open" class="terminal-layout-menu" role="menu" :aria-label="phrase('终端布局')">
       <button v-for="option in options" :key="option.value" type="button" role="menuitemradio"
@@ -77,4 +77,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', outside))
 .terminal-layout-menu button span { flex:1; }
 .terminal-layout-menu button:hover, .terminal-layout-menu button:focus-visible { background:color-mix(in srgb,var(--brand) 15%,transparent); }
 .terminal-layout-trigger:focus-visible, .terminal-layout-menu button:focus-visible { outline:2px solid var(--brand); outline-offset:1px; }
+@media (max-width: 900px) {
+  .terminal-layout-controls { display:none; }
+}
 </style>
