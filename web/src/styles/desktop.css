@@ -5733,6 +5733,36 @@ body.desktop-mode-open::-webkit-scrollbar {
   min-height: inherit;
 }
 
+/* Phone metrics grow with their content; network counters need the full card. */
+.desktop__widget-page .desktop-monitor__list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+  grid-template-rows: none;
+}
+
+.desktop__widget-page .desktop-monitor__metric--network {
+  grid-column: 1 / -1;
+}
+
+.desktop__widget-page .desktop-monitor__row dd,
+.desktop__widget-page .desktop-monitor__network-line > span,
+.desktop__widget-page .desktop-monitor__network-total > *,
+.desktop__widget-page .desktop-monitor__host-block strong,
+.desktop__widget-page .desktop-monitor__host-block small {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.desktop__widget-page .desktop-monitor__network-line {
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.desktop__widget-page .desktop-monitor__network-total {
+  display: flex;
+  flex-wrap: wrap;
+}
+
 .desktop__widget-page-edit {
   min-height: 40px;
   flex: 0 0 auto;
