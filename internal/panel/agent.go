@@ -30,6 +30,8 @@ type AgentResponse struct {
 
 type agentReadCall struct {
 	done     chan struct{}
+	cancel   context.CancelFunc
+	waiters  int
 	response AgentResponse
 	err      error
 }
@@ -45,31 +47,52 @@ type agentReadGroup struct {
 func (g *agentReadGroup) do(
 	ctx context.Context,
 	key string,
-	read func() (AgentResponse, error),
+	read func(context.Context) (AgentResponse, error),
 ) (AgentResponse, error, bool) {
+	if err := ctx.Err(); err != nil {
+		return AgentResponse{}, err, false
+	}
 	g.mu.Lock()
 	if g.calls == nil {
 		g.calls = make(map[string]*agentReadCall)
 	}
-	if call, ok := g.calls[key]; ok {
-		g.mu.Unlock()
-		select {
-		case <-call.done:
-			return call.response, call.err, true
-		case <-ctx.Done():
-			return AgentResponse{}, ctx.Err(), true
-		}
+	call, shared := g.calls[key]
+	if !shared {
+		// A page's cancellation belongs to its reader, not to other pages
+		// sharing this request. The HTTP client retains its operation timeout.
+		readCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+		call = &agentReadCall{done: make(chan struct{}), cancel: cancel}
+		g.calls[key] = call
+		go func() {
+			defer cancel()
+			call.response, call.err = read(readCtx)
+			g.mu.Lock()
+			if g.calls[key] == call {
+				delete(g.calls, key)
+			}
+			close(call.done)
+			g.mu.Unlock()
+		}()
 	}
-	call := &agentReadCall{done: make(chan struct{})}
-	g.calls[key] = call
+	call.waiters++
 	g.mu.Unlock()
-
-	call.response, call.err = read()
-	g.mu.Lock()
-	delete(g.calls, key)
-	close(call.done)
-	g.mu.Unlock()
-	return call.response, call.err, false
+	defer func() {
+		g.mu.Lock()
+		call.waiters--
+		if call.waiters == 0 {
+			if g.calls[key] == call {
+				delete(g.calls, key)
+			}
+			call.cancel()
+		}
+		g.mu.Unlock()
+	}()
+	select {
+	case <-call.done:
+		return call.response, call.err, shared
+	case <-ctx.Done():
+		return AgentResponse{}, ctx.Err(), shared
+	}
 }
 
 func NewAgentClient(socketPath, tokenFile string, maxBytes int64) *AgentClient {
@@ -99,12 +122,12 @@ func NewAgentClient(socketPath, tokenFile string, maxBytes int64) *AgentClient {
 
 func (c *AgentClient) Get(ctx context.Context, path, rawQuery, requestID string) (AgentResponse, error) {
 	key := path + "?" + rawQuery
-	response, err, shared := c.reads.do(ctx, key, func() (AgentResponse, error) {
-		return c.Do(ctx, http.MethodGet, path, rawQuery, requestID, nil)
+	response, err, shared := c.reads.do(ctx, key, func(readCtx context.Context) (AgentResponse, error) {
+		return c.Do(readCtx, http.MethodGet, path, rawQuery, requestID, nil)
 	})
 	// Agent problem documents carry the originating request ID. Retry a shared
 	// failure so each caller receives an independently traceable error.
-	if shared && (err != nil || response.StatusCode >= http.StatusBadRequest) {
+	if shared && ctx.Err() == nil && (err != nil || response.StatusCode >= http.StatusBadRequest) {
 		return c.Do(ctx, http.MethodGet, path, rawQuery, requestID, nil)
 	}
 	return response, err

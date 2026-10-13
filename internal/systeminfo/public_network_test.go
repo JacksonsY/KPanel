@@ -64,6 +64,22 @@ func TestCachedPublicNetworkDoesNotStartLookup(t *testing.T) {
 	}
 }
 
+func TestReadPublicNetworkCanceledCallerDoesNotStartLookup(t *testing.T) {
+	c := NewCollector()
+	c.PublicNetworkLookup = func(context.Context) (contract.PublicNetworkSummary, error) {
+		t.Error("canceled caller started public-network lookup")
+		return contract.PublicNetworkSummary{}, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c.readPublicNetwork(ctx)
+	c.publicNetworkMu.Lock()
+	defer c.publicNetworkMu.Unlock()
+	if c.publicNetworkLoading {
+		t.Fatal("canceled caller reserved a worker")
+	}
+}
+
 func TestReadPublicNetworkCachesFailureBriefly(t *testing.T) {
 	now := time.Date(2026, 7, 26, 8, 0, 0, 0, time.UTC)
 	calls := 0

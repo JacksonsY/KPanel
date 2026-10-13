@@ -52,7 +52,7 @@ func (c *Collector) readPublicNetwork(ctx context.Context) contract.PublicNetwor
 		c.publicNetworkMu.Unlock()
 		return cached
 	}
-	if c.PublicNetworkLookup == nil || c.publicNetworkLoading {
+	if c.PublicNetworkLookup == nil || c.publicNetworkLoading || ctx.Err() != nil {
 		c.publicNetworkMu.Unlock()
 		return cached
 	}
@@ -64,7 +64,7 @@ func (c *Collector) readPublicNetwork(ctx context.Context) contract.PublicNetwor
 	// hosts with an unavailable address family. Never make the host summary
 	// wait for that external service: return the last snapshot immediately and
 	// refresh it once in the background.
-	go c.refreshPublicNetwork(ctx)
+	go c.refreshPublicNetwork()
 	return cached
 }
 
@@ -102,7 +102,7 @@ func (c *Collector) CachedPublicNetwork() contract.PublicNetworkSummary {
 	return c.publicNetworkCache
 }
 
-func (c *Collector) refreshPublicNetwork(parent context.Context) {
+func (c *Collector) refreshPublicNetwork() {
 	defer func() {
 		c.publicNetworkMu.Lock()
 		c.publicNetworkLoading = false
@@ -112,12 +112,8 @@ func (c *Collector) refreshPublicNetwork(parent context.Context) {
 		}
 		c.publicNetworkMu.Unlock()
 	}()
-	// A request context is normally cancelled as soon as the summary response
-	// is written, so detach the lookup while still honoring an already
-	// cancelled caller before doing any network work.
-	if err := parent.Err(); err != nil {
-		return
-	}
+	// The caller was checked before reserving the worker. Its completion must
+	// not cancel this independently bounded, shared background refresh.
 	lookupContext, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	result, err := c.PublicNetworkLookup(lookupContext)
