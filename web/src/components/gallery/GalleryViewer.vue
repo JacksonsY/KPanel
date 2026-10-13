@@ -432,7 +432,8 @@ function onPointerUp(event: PointerEvent): void {
 
 function onImageLoad(event: Event): void {
   const image = event.currentTarget as HTMLImageElement
-  ;(originalUrl.value ? originalLease : screenLease)?.decoded(image.naturalWidth, image.naturalHeight)
+  const lease = originalUrl.value ? originalLease : screenLease
+  lease?.decoded(image.naturalWidth, image.naturalHeight)
   naturalSize.value = { width: image.naturalWidth, height: image.naturalHeight }
   loaded.value = true
   preloadNeighbours()
@@ -475,6 +476,11 @@ function onVideoError(event: Event): void {
   failureDetail.value = video.error?.code === 4
     ? '浏览器不支持该视频编码或格式。请下载原文件，或转换为 H.264 + AAC 的 MP4。'
     : '视频读取失败，请检查网络或文件是否仍然存在。'
+}
+
+function retryOriginal(): void {
+  void loadOriginal()
+  void nextTick(() => root.value?.focus({ preventScroll: true }))
 }
 
 function retry(): void {
@@ -774,7 +780,7 @@ onBeforeUnmount(() => {
             />
             <div v-if="originalError" class="gallery-viewer__retry gallery-viewer__notice-actions" role="alert">
               <span>{{ phrase('原图读取失败，请检查网络或文件是否仍然存在。') }}</span>
-              <button class="btn btn-secondary" @click="loadOriginal">{{ phrase('重试') }}</button>
+              <button class="btn btn-secondary" @click="retryOriginal">{{ phrase('重试') }}</button>
             </div>
             <span v-if="!loaded" class="gallery-viewer__spinner" role="status" :aria-label="phrase('正在加载原图')" />
           </template>

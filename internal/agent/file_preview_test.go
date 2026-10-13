@@ -3,6 +3,8 @@ package agent
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/gif"
@@ -64,6 +66,8 @@ func TestScreenPreviewPreservesAllJPEGOrientationsWithoutOtherEXIF(t *testing.T)
 	for orientation := 1; orientation <= 8; orientation++ {
 		segment := []byte{0xff, 0xe1, 0, 34, 'E', 'x', 'i', 'f', 0, 0, 'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 1, 3, 0, 1, 0, 0, 0, byte(orientation), 0, 0, 0, 0, 0, 0, 0}
 		data := append(append(append([]byte{}, source.Bytes()[:2]...), segment...), source.Bytes()[2:]...)
+		// A legal JPEG fill byte must not erase EXIF orientation.
+		data = append(append(append([]byte{}, data[:2]...), 0xff), data[2:]...)
 		preview, _, err := makeFilePreview(bytes.NewReader(data), int64(len(data)))
 		if err != nil || fileJPEGOrientation(bytes.NewReader(preview)) != orientation {
 			t.Fatalf("orientation %d: %v", orientation, err)
@@ -125,5 +129,27 @@ func TestScreenPreviewVersionCacheAndCancellation(t *testing.T) {
 	handler.ServeHTTP(standalone, httptest.NewRequest(http.MethodGet, path, nil))
 	if standalone.Code != 200 {
 		t.Fatalf("node broker: %d", standalone.Code)
+	}
+}
+
+func TestScreenPreviewDoesNotFlattenAPNG(t *testing.T) {
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewNRGBA(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatal(err)
+	}
+	chunk := make([]byte, 20)
+	binary.BigEndian.PutUint32(chunk[:4], 8)
+	copy(chunk[4:8], "acTL")
+	binary.BigEndian.PutUint32(chunk[8:12], 2)
+	binary.BigEndian.PutUint32(chunk[16:20], crc32.ChecksumIEEE(chunk[4:16]))
+	data := append(append(append([]byte{}, encoded.Bytes()[:33]...), chunk...), encoded.Bytes()[33:]...)
+	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+		t.Fatalf("valid PNG: %v", err)
+	}
+	if _, _, err := makeFilePreview(bytes.NewReader(data), int64(len(data))); err != errThumbnailUnavailable {
+		t.Fatalf("animation flattened: %v", err)
+	}
+	if filePNGStatic(bytes.NewReader(data)) || filePNGStatic(bytes.NewReader(nil)) {
+		t.Fatal("animation/invalid header accepted")
 	}
 }

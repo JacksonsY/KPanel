@@ -639,6 +639,14 @@ func makeFileImage(file io.ReadSeeker, size int64, maxWidth, maxHeight, maxPixel
 		return nil, "", err
 	}
 	orientation := 1
+	if preview && format == "png" {
+		if !filePNGStatic(file) {
+			return nil, "", errThumbnailUnavailable
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return nil, "", err
+		}
+	}
 	if preview && format == "jpeg" {
 		orientation = fileJPEGOrientation(file)
 		if _, err := file.Seek(0, io.SeekStart); err != nil {
@@ -1114,8 +1122,20 @@ func fileJPEGOrientation(file io.Reader) int {
 		return 1
 	}
 	for {
-		if _, err := io.ReadFull(r, marker[:]); err != nil || marker[0] != 0xff || marker[1] == 0xda || marker[1] == 0xd9 {
+		if _, err := io.ReadFull(r, marker[:]); err != nil || marker[0] != 0xff {
 			return 1
+		}
+		// JPEG B.1.1.2 allows arbitrary FF fill bytes before a marker.
+		for marker[1] == 0xff {
+			if _, err := io.ReadFull(r, marker[1:]); err != nil {
+				return 1
+			}
+		}
+		if marker[1] == 0xda || marker[1] == 0xd9 || marker[1] == 0 {
+			return 1
+		}
+		if marker[1] == 0x01 || (marker[1] >= 0xd0 && marker[1] <= 0xd7) {
+			continue
 		}
 		var length [2]byte
 		if _, err := io.ReadFull(r, length[:]); err != nil {
@@ -1165,5 +1185,31 @@ func fileJPEGOrientation(file io.Reader) int {
 			}
 		}
 		return 1
+	}
+}
+
+// PNG animation control precedes IDAT. Uncertain/oversized headers use the
+// native original rather than silently flattening APNG into its first frame.
+func filePNGStatic(file io.Reader) bool {
+	r := io.LimitReader(file, 256<<10)
+	var signature [8]byte
+	if _, err := io.ReadFull(r, signature[:]); err != nil || string(signature[:]) != "\x89PNG\r\n\x1a\n" {
+		return false
+	}
+	for {
+		var header [8]byte
+		if _, err := io.ReadFull(r, header[:]); err != nil {
+			return false
+		}
+		switch string(header[4:]) {
+		case "acTL":
+			return false
+		case "IDAT":
+			return true
+		}
+		length := int64(binary.BigEndian.Uint32(header[:4]))
+		if _, err := io.CopyN(io.Discard, r, length+4); err != nil {
+			return false
+		}
 	}
 }

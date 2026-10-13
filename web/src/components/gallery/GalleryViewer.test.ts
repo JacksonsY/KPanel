@@ -300,6 +300,7 @@ describe('adaptive screen preview', () => {
     expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
     await view.get('.gallery-viewer__retry button').trigger('click'); await flushPromises()
     expect(fetch.mock.calls.filter(call => call[0] === '/original/b.jpg')).toHaveLength(2)
+    expect(document.activeElement).toBe(view.element)
     view.unmount(); wrapper = undefined
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3)
     Object.defineProperty(navigator, 'connection', { configurable: true, value: undefined })
@@ -340,4 +341,22 @@ describe('adaptive screen preview', () => {
     complete(new Response('late')); await flushPromises()
     expect(URL.createObjectURL).toHaveBeenCalledTimes(urls)
   })
+})
+
+
+it('keeps the preview and allows retry when zoom original network fails', async () => {
+  const fetch = mockOriginals()
+  Object.defineProperty(navigator, 'connection', { configurable: true, value: { saveData: true } })
+  const view = mountViewer({ sources: () => ({ screen: '/screen/current', original: '/original/current' }), filmstrip: false })
+  await flushPromises()
+  const preview = view.get('img.gallery-viewer__media').attributes('src')
+  await view.get('img.gallery-viewer__media').trigger('load')
+  fetch.mockRejectedValueOnce(new Error('offline'))
+  await view.get('button[aria-label="放大"]').trigger('click'); await flushPromises()
+  expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(preview)
+  expect(view.find('[role="alert"]').exists()).toBe(true)
+  await view.get('.gallery-viewer__retry button').trigger('click'); await flushPromises()
+  expect(view.get('img.gallery-viewer__media').attributes('src')).not.toBe(preview)
+  expect(document.activeElement).toBe(view.element)
+  Object.defineProperty(navigator, 'connection', { configurable: true, value: undefined })
 })
