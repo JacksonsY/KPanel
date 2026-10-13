@@ -78,7 +78,6 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', outside))
 .terminal-layout-menu button:hover, .terminal-layout-menu button:focus-visible { background:color-mix(in srgb,var(--brand) 15%,transparent); }
 .terminal-layout-trigger:focus-visible, .terminal-layout-menu button:focus-visible { outline:2px solid var(--brand); outline-offset:1px; }
 @media (max-width: 900px) {
-  .terminal-layout-trigger { width:34px; height:34px; justify-content:center; gap:0; padding:0; }
-  .terminal-layout-trigger span, .terminal-layout-chevron { display:none; }
+  .terminal-layout-controls { display:none; }
 }
 </style>

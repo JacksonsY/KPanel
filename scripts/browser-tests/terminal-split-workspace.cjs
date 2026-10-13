@@ -61,11 +61,12 @@ const settle = (page) => page.waitForFunction(() => [...document.querySelectorAl
         // Keep the exact xterm nodes to detect remounts during layout changes.
         await page.evaluate(() => { window.__splitNodes = [...document.querySelectorAll('.xterm')]; });
         const layout = page.locator('.terminal-layout-trigger');
-        assert.equal(await layout.locator('span').isVisible(), viewport.width > 900);
-        assert.equal(await layout.locator('svg:visible').count(), viewport.width <= 900 ? 1 : 2);
+        assert.equal(await layout.isVisible(), viewport.width > 900);
         assert.match(await layout.getAttribute('aria-label'), /Terminal layout|终端布局/);
-        if (viewport.width <= 900) assert.equal((await layout.boundingBox()).width, 34);
+        // Configure split layouts at desktop width, then verify responsive preservation on mobile.
+        if (viewport.width <= 900) await page.setViewportSize({ ...viewport, width: 1000 });
         const chooseLayout = async (value) => {
+          if (viewport.width <= 900) await page.setViewportSize({ ...viewport, width: 1000 });
           await layout.click();
           assert.equal(await page.locator('.terminal-layout-menu button svg:first-child').count(), 4);
           assert.equal(await page.locator('.terminal-layout-menu button span:visible').count(), 4);
@@ -73,6 +74,10 @@ const settle = (page) => page.waitForFunction(() => [...document.querySelectorAl
             await page.screenshot({ path: path.join(out, `layout-menu-${mode}.png`), fullPage: true });
           }
           await page.locator(`[data-layout="${value}"]`).click();
+          if (viewport.width <= 900) {
+            await page.setViewportSize(viewport);
+            assert.equal(await layout.isVisible(), false);
+          }
         };
         assert.equal(await layout.evaluate((element) => Boolean(element.closest('.terminal-tabs-bar'))), true);
         assert.equal(await page.locator('.terminal-pane-workspace .terminal-layout-controls').count(), 0);
