@@ -8,6 +8,8 @@ export type HostSwitcherTone = 'online' | 'warning' | 'offline' | 'neutral'
 
 export interface HostSwitcherStatus {
   label: string
+  /** Keep unavailable targets visible without allowing selection. */
+  disabled?: boolean
   /** select: switch here; manage: needs attention elsewhere; open: opens another Panel. Defaults to select. */
   action?: HostSwitcherAction
   /** Drawn as a small dot before the label; the label always carries the meaning. */

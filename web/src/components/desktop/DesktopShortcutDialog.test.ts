@@ -218,10 +218,9 @@ it('saves an explicitly selected remote host and sends local when switched back'
   document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
   await nextTick()
   expect(w.emitted('save')?.[0]?.[0]).toMatchObject({ targetType: 'remote-command', hostId: remote })
-  document.body.querySelector<HTMLButtonElement>('.shortcut-host-picker__selected')!.click()
+  document.body.querySelector<HTMLButtonElement>('.host-switcher__trigger')!.click()
   await nextTick()
-  const local = document.body.querySelector<HTMLInputElement>('input[type="radio"][value="local"]')!
-  local.checked = true; local.dispatchEvent(new Event('change', { bubbles: true }))
+  document.body.querySelector<HTMLButtonElement>('[data-host-id="local"]')!.click()
   await nextTick()
   document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
   await nextTick()
