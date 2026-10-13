@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import { api } from '@/lib/api'
 import DesktopShortcutDialog from './DesktopShortcutDialog.vue'
 
 afterEach(() => {
@@ -142,4 +143,68 @@ describe('DesktopShortcutDialog', () => {
     expect(document.body.querySelector('.desktop-shortcut-form__preview img')).toBeNull()
     wrapper.unmount()
   })
+})
+
+async function chooseCommandType(): Promise<void> {
+  const select = document.body.querySelector<HTMLSelectElement>('[data-testid="shortcut-type"]')!
+  select.value = 'command'
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+  await flushPromises()
+}
+describe('terminal command shortcuts', () => {
+  it('imports a command copy and saves its exact multiline content', async () => {
+    const command = "printf '你好'\ndf -h"
+    const spy = vi.spyOn(api.terminals, 'commands').mockResolvedValue({ schemaVersion: 1, resourceVersion: 'v1', available: true, items: [{ id: 'saved', name: '系统', command }] })
+    const wrapper = mount(DesktopShortcutDialog, { attachTo: document.body, props: { open: true } })
+    await chooseCommandType()
+    const select = document.body.querySelector<HTMLSelectElement>('#shortcut-import')!
+    select.value = 'saved'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+    document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
+    await nextTick()
+    expect(wrapper.emitted('save')?.[0]?.[0]).toEqual({ id: '', name: '系统', description: '', targetType: 'command', command })
+    expect(document.body.querySelector('input[type="url"]')).toBeNull()
+    wrapper.unmount(); spy.mockRestore()
+  })
+  it('keeps manual entry available after import fails and rejects empty commands', async () => {
+    const spy = vi.spyOn(api.terminals, 'commands').mockRejectedValue(new Error('offline'))
+    const wrapper = mount(DesktopShortcutDialog, { attachTo: document.body, props: { open: true } })
+    await chooseCommandType()
+    expect(document.body.textContent).toContain('加载')
+    const name = document.body.querySelector<HTMLInputElement>('input:not([type="file"])')!
+    name.value = 'test'; name.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
+    await nextTick()
+    expect(wrapper.emitted('save')).toBeUndefined()
+    const command = document.body.querySelector<HTMLTextAreaElement>('[data-testid="shortcut-command"]')!
+    command.value = 'uptime'; command.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
+    await nextTick()
+    expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ targetType: 'command', command: 'uptime' })
+    wrapper.unmount(); spy.mockRestore()
+  })
+})
+
+it('edits commands and removes the inactive target fields when switching types', async () => {
+  const spy = vi.spyOn(api.terminals, 'commands').mockResolvedValue({ schemaVersion: 1, resourceVersion: 'v1', available: true, items: [] })
+  const wrapper = mount(DesktopShortcutDialog, { attachTo: document.body, props: { open: true, shortcut: { id: 'a'.repeat(32), name: 'Load', description: '', targetType: 'command', command: 'uptime', createdAt: '', updatedAt: '' } } })
+  await flushPromises()
+  document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
+  await nextTick()
+  expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ targetType: 'command', command: 'uptime' })
+  expect(wrapper.emitted('save')?.[0]?.[0]).not.toHaveProperty('url')
+  const type = document.body.querySelector<HTMLSelectElement>('[data-testid="shortcut-type"]')!
+  type.value = 'url'; type.dispatchEvent(new Event('change', { bubbles: true }))
+  await nextTick()
+  const url = document.body.querySelector<HTMLInputElement>('input[type="url"]')!
+  url.value = 'https://example.com'; url.dispatchEvent(new Event('input', { bubbles: true }))
+  await nextTick()
+  document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
+  await nextTick()
+  expect(wrapper.emitted('save')?.[1]?.[0]).toMatchObject({ targetType: 'url', url: 'https://example.com/' })
+  expect(wrapper.emitted('save')?.[1]?.[0]).not.toHaveProperty('command')
+  wrapper.unmount(); spy.mockRestore()
 })

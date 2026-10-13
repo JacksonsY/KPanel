@@ -229,7 +229,7 @@ func TestReplaceValidatesWorkspaceContract(t *testing.T) {
 			name: "unknown target type",
 			input: func() ReplaceInput {
 				input := validReplaceInput(base.ResourceVersion)
-				input.Shortcuts[0].TargetType = "command"
+				input.Shortcuts[0].TargetType = "unknown"
 				return input
 			},
 			field: "shortcuts.targetType",
@@ -750,5 +750,53 @@ func assertMode(t *testing.T, path string, expected os.FileMode) {
 	}
 	if actual := info.Mode().Perm(); actual != expected {
 		t.Fatalf("%s mode = %o, want %o", path, actual, expected)
+	}
+}
+
+func TestCommandShortcutPersistenceAndValidation(t *testing.T) {
+	root := t.TempDir()
+	store, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := validReplaceInput(store.Workspace().ResourceVersion)
+	input.Shortcuts[0].TargetType = ShortcutTargetCommand
+	input.Shortcuts[0].URL = ""
+	input.Shortcuts[0].Command = "printf '你好'\nprintf '\tworld'"
+	saved, err := store.Replace(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Workspace().Shortcuts[0].Command; got != input.Shortcuts[0].Command {
+		t.Fatalf("command lost on restart: %q", got)
+	}
+	input.ExpectedResourceVersion = saved.ResourceVersion
+	for _, command := range []string{"", " \n", "echo\x00bad", "echo\x1b[2J", strings.Repeat("界", 2731)} {
+		input.Shortcuts[0].Command = command
+		if _, err := store.Replace(input); err == nil {
+			t.Fatalf("accepted invalid command %q", command)
+		}
+		if store.Workspace().ResourceVersion != saved.ResourceVersion {
+			t.Fatal("failed validation changed workspace")
+		}
+	}
+	input.Shortcuts[0].Command = "uptime"
+	input.Shortcuts[0].URL = "https://example.com"
+	if _, err := store.Replace(input); err == nil {
+		t.Fatal("accepted mixed command/URL target")
+	}
+	input.Shortcuts[0].TargetType = ShortcutTargetURL
+	if _, err := store.Replace(input); err == nil {
+		t.Fatal("accepted command on URL target")
+	}
+	input.Shortcuts[0].TargetType = ShortcutTargetCommand
+	input.Shortcuts[0].URL = ""
+	input.ExpectedResourceVersion = "sha256:" + strings.Repeat("0", 64)
+	if _, err := store.Replace(input); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale write: %v", err)
 	}
 }

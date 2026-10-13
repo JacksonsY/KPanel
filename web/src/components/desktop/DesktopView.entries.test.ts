@@ -176,6 +176,18 @@ describe('DesktopView dynamic entries', () => {
     })
   })
 
+
+  it('opens a saved command shortcut in the interactive terminal on double click', async () => {
+    const id = 'a'.repeat(32)
+    mockedWorkspace.mockResolvedValue(makeWorkspace({ shortcuts: [{ id, name: 'Command', description: '', targetType: 'command', command: 'uptime', createdAt: '', updatedAt: '' }] }))
+    const wrapper = mount(DesktopView, { attachTo: document.body, global: { stubs: { ShortcutCommandTerminal: { props: ['name', 'command', 'hostName'], template: '<div data-testid="command-terminal">{{ command }}</div>' } } } })
+    await flushPromises()
+    await wrapper.get('[data-icon-key="shortcut:' + id + '"] button').trigger('dblclick')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="command-terminal"]').text()).toBe('uptime')
+    expect(window.open).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('renders dynamic app and site icons alongside static nav icons', async () => {
     const wrapper = mount(DesktopView)
     await nextTick()

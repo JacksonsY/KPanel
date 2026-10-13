@@ -184,6 +184,8 @@ const emit = defineEmits<{
 
 const desktop = useDesktopMode()
 const desktopIcons = useDesktopIcons()
+const ShortcutCommandTerminal = defineAsyncComponent(() => import('@/components/terminal/ShortcutCommandTerminal.vue'))
+const commandShortcut = ref<DesktopShortcut>()
 const FileExecutionTerminal = defineAsyncComponent(() => import('@/components/files/FileExecutionTerminal.vue'))
 const executionTarget = ref<FileEntry>()
 let executionOpener: HTMLElement | undefined
@@ -388,14 +390,14 @@ const shortcutEntries = computed<DesktopEntry[]>(() => shortcuts.value.map((shor
   kind: 'shortcut',
   id: shortcut.id,
   name: shortcut.name,
-  description: shortcut.description || shortcut.path,
+  description: shortcut.description || shortcut.path || shortcut.command,
   launch: shortcut.targetType === 'url' ? 'external' : shortcut.targetType,
   url: shortcut.url,
   path: shortcut.path,
   iconURL: shortcut.iconURL,
   icon: shortcut.targetType === 'file' || shortcut.targetType === 'directory'
     ? shortcutFileIcon(shortcut.name, shortcut.targetType)
-    : undefined,
+    : shortcut.targetType === 'command' ? SquareTerminal : undefined,
   shortcut,
 })))
 
@@ -1249,7 +1251,7 @@ function entryFallbackBackground(entry: DesktopEntry): string | undefined {
   let colors: [string, string] | undefined
   if (entry.kind === 'site') {
     colors = SITE_GRADIENTS[stableSiteColorIndex(entry)] ?? SITE_GRADIENTS[0]
-  } else if (entry.kind === 'shortcut' && entry.launch === 'external') {
+  } else if (entry.kind === 'shortcut' && (entry.launch === 'external' || entry.launch === 'command')) {
     colors = ['#38bdf8', '#0369a1']
   }
   if (!colors) return undefined
@@ -1302,6 +1304,10 @@ function openKPanelUpdate(): void {
 }
 
 function openEntry(entry: DesktopEntry): void {
+  if (entry.launch === 'command' && entry.shortcut?.command) {
+    commandShortcut.value = { ...entry.shortcut }
+    return
+  }
   if (entry.kind === 'app' && entry.launch === 'script') {
     openAppScriptEntry(entry)
     return
@@ -4038,7 +4044,7 @@ async function toggleWidgetVisibility(key: string, visible: boolean): Promise<vo
 }
 
 function openShortcutDialog(shortcut?: DesktopShortcut): void {
-  if (shortcut && shortcut.targetType !== 'url') return
+  if (shortcut && shortcut.targetType !== 'url' && shortcut.targetType !== 'command') return
   pendingShortcutID = ''
   editingShortcut.value = shortcut
   shortcutError.value = ''
@@ -4070,6 +4076,7 @@ async function saveShortcut(
         description: draft.description,
         targetType: draft.targetType,
         url: draft.url,
+        command: draft.command,
       }
       const index = workspaceDraft.shortcuts.findIndex((shortcut) => shortcut.id === id)
       if (index >= 0) workspaceDraft.shortcuts.splice(index, 1, next)
@@ -4118,7 +4125,7 @@ async function confirmDeleteShortcut(): Promise<void> {
 function editMenuShortcut(): void {
   const shortcut = menuEntry.value?.shortcut
   closeContextMenu()
-  if (shortcut?.targetType === 'url') openShortcutDialog(shortcut)
+  if (shortcut?.targetType === 'url' || shortcut?.targetType === 'command') openShortcutDialog(shortcut)
 }
 
 function onTaskbarClick(windowId: number): void {
@@ -4895,6 +4902,7 @@ function onViewportResize(): void {
             <FolderOpen v-else-if="menuEntry.launch === 'directory'" :size="15" aria-hidden="true" />
             <File v-else-if="menuEntry.launch === 'file'" :size="15" aria-hidden="true" />
             <AppWindow v-else-if="menuEntry.url" :size="15" aria-hidden="true" />
+            <SquareTerminal v-else-if="menuEntry.launch === 'command'" :size="15" aria-hidden="true" />
             <ExternalLink v-else :size="15" aria-hidden="true" />
             {{ menuEntry.launch === 'script'
               ? i18n.t('desktop.entryScriptManage')
@@ -4940,7 +4948,7 @@ function onViewportResize(): void {
             {{ i18n.t('desktop.entryRename') }}
           </button>
           <button
-            v-if="menuEntry.kind === 'shortcut' && menuEntry.shortcut?.targetType === 'url'"
+            v-if="menuEntry.kind === 'shortcut' && (menuEntry.shortcut?.targetType === 'url' || menuEntry.shortcut?.targetType === 'command')"
             type="button"
             role="menuitem"
             @click="editMenuShortcut"
@@ -5413,14 +5421,15 @@ function onViewportResize(): void {
               : i18n.t('desktop.detailShortcut') }}</dd>
           <dt>{{ i18n.t('desktop.detailDescription') }}</dt>
           <dd>{{ detailEntry.description || i18n.t('desktop.detailNoDescription') }}</dd>
-          <dt>{{ detailEntry.path ? i18n.t('desktop.detailPath') : i18n.t('desktop.detailURL') }}</dt>
-          <dd class="desktop__detail-url">{{ detailEntry.path || detailEntry.url }}</dd>
+          <dt>{{ detailEntry.launch === 'command' ? i18n.t('desktop.shortcutTypeCommand') : detailEntry.path ? i18n.t('desktop.detailPath') : i18n.t('desktop.detailURL') }}</dt>
+          <dd class="desktop__detail-url">{{ detailEntry.path || detailEntry.url || detailEntry.shortcut?.command }}</dd>
         </template>
       </dl>
       <template #footer>
         <button class="button button--primary" type="button" @click="onDetailEntryOpen">
           <FolderOpen v-if="detailEntry?.launch === 'directory'" :size="15" aria-hidden="true" />
           <File v-else-if="detailEntry?.launch === 'file'" :size="15" aria-hidden="true" />
+          <SquareTerminal v-else-if="detailEntry?.launch === 'command'" :size="15" aria-hidden="true" />
           <ExternalLink v-else :size="15" aria-hidden="true" />
           {{ i18n.t('desktop.entryOpen') }}
         </button>
@@ -5636,6 +5645,14 @@ function onViewportResize(): void {
         </button>
       </template>
     </ModalDialog>
+    <ShortcutCommandTerminal
+      v-if="commandShortcut"
+      :key="commandShortcut.id"
+      :name="commandShortcut.name"
+      :command="commandShortcut.command || ''"
+      :host-name="i18n.t('terminal.hostKind.local')"
+      @close="commandShortcut = undefined"
+    />
     <FileExecutionTerminal
       v-if="executionTarget"
       :entry="executionTarget"

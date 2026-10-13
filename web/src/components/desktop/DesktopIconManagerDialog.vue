@@ -6,6 +6,7 @@ import {
   Grid2X2,
   LayoutGrid,
   Link2,
+  SquareTerminal,
   Pencil,
   Plus,
   RotateCcw,
@@ -138,15 +139,16 @@ function isWidgetVisible(key: string): boolean {
                   :kind="shortcut.targetType"
                   :name="shortcut.name"
                 />
+                <SquareTerminal v-else-if="shortcut.targetType === 'command'" :size="20" />
                 <Link2 v-else :size="20" />
               </span>
               <div>
                 <strong>{{ shortcut.name }}</strong>
-                <small>{{ shortcut.description || shortcut.path || shortcut.url }}</small>
+                <small>{{ shortcut.description || shortcut.path || shortcut.url || shortcut.command }}</small>
               </div>
               <span class="desktop-icon-manager__actions">
                 <button
-                  v-if="shortcut.targetType === 'url'"
+                  v-if="shortcut.targetType === 'url' || shortcut.targetType === 'command'"
                   class="button button--ghost button--icon"
                   type="button"
                   :title="i18n.t('desktop.shortcutEdit')"

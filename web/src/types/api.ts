@@ -2250,7 +2250,8 @@ export interface DesktopShortcut {
   id: string
   name: string
   description: string
-  targetType: 'url' | 'file' | 'directory'
+  targetType: 'url' | 'command' | 'file' | 'directory'
+  command?: string
   url?: string
   path?: string
   iconVersion?: string
@@ -2295,7 +2296,7 @@ export interface DesktopWorkspaceUpdate {
   positions: Record<string, DesktopIconPosition>
   widgetPositions: Record<string, DesktopIconPosition>
   labels: Record<string, string>
-  shortcuts: Array<Pick<DesktopShortcut, 'id' | 'name' | 'description' | 'targetType' | 'url' | 'path'>>
+  shortcuts: Array<Pick<DesktopShortcut, 'id' | 'name' | 'description' | 'targetType' | 'url' | 'path' | 'command'>>
 }
 
 export interface SiteBranding {
