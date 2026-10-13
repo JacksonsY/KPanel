@@ -96,7 +96,8 @@ func runFileBroker(arguments []string) error {
 		defer close(historyDone)
 		runLightFileControl(ctx, config, identity, historyRelay, historyHandler)
 	}()
-	fileHandler := agent.NewFileHandler(manager)
+	fileHandler, stopPreviews := agent.NewCachedFileHandler(manager, stateDir)
+	defer stopPreviews()
 	backoff := time.Second
 	for ctx.Err() == nil {
 		streamErr := relay.RunFileStream(ctx, config.Origin, config.NodeID, config.TargetNodeID, identity.Key, identity.Peer, fileHandler)

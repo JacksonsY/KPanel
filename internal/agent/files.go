@@ -527,6 +527,35 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 			cache = s.previews
 		}
 		content, contentType, cached := cache.get(cacheKey)
+		if readMode == "preview" && !cached && s.previewJobs != nil {
+			// Do not hold a source download slot while waiting for background work.
+			_ = file.Close()
+			content, contentType, err = s.previewJobs.get(transferContext, entry)
+			if err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					writeProblem(w, requestID, http.StatusRequestTimeout, "preview_timeout", "预览生成超时", "")
+				} else if errors.Is(err, errPreviewQueueFull) {
+					writeProblem(w, requestID, http.StatusServiceUnavailable, "preview_busy", "预览队列繁忙", "")
+				} else if errors.Is(err, errThumbnailUnavailable) {
+					writeProblem(w, requestID, http.StatusUnprocessableEntity, "file_thumbnail_unavailable", "无法生成文件缩略图", "")
+				} else {
+					writeFileProblem(w, requestID, err)
+				}
+				return
+			}
+			// Cancellation or queued work must not bypass current file access checks.
+			check, current, checkErr := s.files.Open(transferContext, entry.Path)
+			if checkErr != nil {
+				writeFileProblem(w, requestID, checkErr)
+				return
+			}
+			_ = check.Close()
+			if current.ResourceVersion != entry.ResourceVersion {
+				writeProblem(w, requestID, http.StatusConflict, "file_conflict", "文件状态已变化", "")
+				return
+			}
+			cached = true
+		}
 		if !cached {
 			// Preview decoding is serialized and also shares the thumbnail gate.
 			// This bounds combined work without blocking cached responses.
@@ -561,6 +590,9 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 				return
 			}
 			cache.put(cacheKey, content, contentType)
+		}
+		if readMode == "thumbnail" && s.previewJobs != nil {
+			s.previewJobs.warm(entry)
 		}
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Content-Disposition", "inline")

@@ -115,6 +115,7 @@ type Server struct {
 	jobInputBackends  map[string]jobInput
 	previewGate       chan struct{}
 	previews          *thumbnailCache
+	previewJobs       *previewQueue
 	thumbnailGate     chan struct{}
 	thumbnails        *thumbnailCache
 	storageUsageGate  chan struct{}
@@ -132,6 +133,7 @@ type Server struct {
 }
 
 func (s *Server) Close() {
+	s.previewJobs.close()
 	if s.backups != nil {
 		s.backups.Close()
 	}
@@ -239,7 +241,7 @@ func NewServer(config Config) (*Server, error) {
 		_ = config.Docker.RecoverContainerTerminals(recoveryCtx)
 		cancelRecovery()
 	}
-	return &Server{
+	server := &Server{
 		backups:           config.Backups,
 		selfUpdate:        config.SelfUpdate,
 		selfUpdateStarter: config.SelfUpdateStarter,
@@ -273,7 +275,9 @@ func NewServer(config Config) (*Server, error) {
 		systemLogsGate:   make(chan struct{}, 1),
 		serviceReadGate:  make(chan struct{}, 2),
 		now:              config.Now,
-	}, nil
+	}
+	server.previewJobs = newPreviewQueue(server, config.StateDir)
+	return server, nil
 }
 
 // DefaultFileManagerConfig is shared by the full Agent and the lightweight
