@@ -775,7 +775,7 @@ async function runUpload(task: UploadTask): Promise<void> {
     await ensureFolder(task.target, task.hostId)
     for (let attempt = 0; ; attempt += 1) {
       try {
-        await api.upload(task.target, new File([task.file], name, { type: task.file.type }), false, (progress) => {
+        await api.upload(task.target, new File([task.file], name, { type: task.file.type, lastModified: task.file.lastModified }), false, (progress) => {
           updateTask(task.id, { progress })
         }, controller.signal)
         break
@@ -1246,7 +1246,7 @@ onBeforeUnmount(() => {
   window.clearTimeout(reloadTimer)
   window.clearTimeout(uploadClearTimer)
   document.removeEventListener('pointerdown', closeMenus)
-  for (const task of uploads.value) task.controller?.abort()
+  for (const task of uploads.value) task.controller?.abort('file-transfer-detach')
 })
 </script>
 
