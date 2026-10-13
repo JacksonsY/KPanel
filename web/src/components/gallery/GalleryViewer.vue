@@ -1380,9 +1380,20 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 720px) {
+  .gallery-viewer {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
   .gallery-viewer__bar {
+    position: relative;
     align-items: flex-start;
     padding: 10px 8px 8px 14px;
+  }
+
+  /* Touch users must always be able to leave, including during native video playback. */
+  .gallery-viewer--idle .gallery-viewer__bar {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .gallery-viewer__actions {
@@ -1396,6 +1407,12 @@ onBeforeUnmount(() => {
   .gallery-viewer__media,
   .gallery-viewer__media--video {
     max-width: 100%;
+  }
+
+  .gallery-viewer__media--video {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
   }
 
   .gallery-viewer__info {
