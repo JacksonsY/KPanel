@@ -31,6 +31,27 @@ describe('shared host switcher in shortcut dialogs', () => {
     expect(w.get('button').attributes('disabled')).toBeDefined()
   })
 
+  it('closes only the mouse-opened host menu on Escape and preserves the draft', async () => {
+    const closed = vi.fn()
+    const w = mount({ components: { HostSwitcher, ModalDialog }, setup: () => ({ hosts, statusOf, closed }),
+      template: '<ModalDialog :open="true" title="Shortcut" @close="closed"><input aria-label="Draft" value="Unsaved command" /><HostSwitcher :hosts="hosts" active-id="local" label="Local" :status-of="statusOf" /></ModalDialog>',
+    }, { attachTo: document.body })
+    wrappers.push(w)
+    await flushPromises()
+    const trigger = body().get('.host-switcher__trigger')
+    ;(trigger.element as HTMLButtonElement).focus()
+    await trigger.trigger('click')
+    expect(body().find('.host-switcher__menu').exists()).toBe(true)
+    await trigger.trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    expect(closed).not.toHaveBeenCalled()
+    expect(body().find('.host-switcher__menu').exists()).toBe(false)
+    expect((body().get('[aria-label="Draft"]').element as HTMLInputElement).value).toBe('Unsaved command')
+    expect(document.activeElement).toBe(trigger.element)
+    await trigger.trigger('keydown', { key: 'Escape' })
+    expect(closed).toHaveBeenCalledOnce()
+  })
+
   it('keeps its floating menu above the modal and handles Tab and Escape without closing the form', async () => {
     const closed = vi.fn()
     const w = mount({ components: { HostSwitcher, ModalDialog }, setup: () => ({ hosts, statusOf, closed }),

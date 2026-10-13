@@ -213,6 +213,7 @@ defineExpose({ close, isOpen })
       :aria-expanded="isOpen"
       :title="phrase('切换主机')"
       @click.stop="toggle"
+      @keydown.esc="isOpen && onMenuKeydown($event)"
       @keydown.down.prevent="openFromKeyboard"
       @keydown.up.prevent="openFromKeyboard"
     >
