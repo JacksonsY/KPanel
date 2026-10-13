@@ -778,7 +778,7 @@ onBeforeUnmount(() => {
               @load="onImageLoad"
               @error="onImageError"
             />
-            <div v-if="originalError" class="gallery-viewer__retry gallery-viewer__notice-actions" role="alert">
+            <div v-if="originalError" class="gallery-viewer__retry gallery-viewer__notice-actions" :class="{ 'gallery-viewer__retry--filmstrip': filmstrip }" role="alert">
               <span>{{ phrase('原图读取失败，请检查网络或文件是否仍然存在。') }}</span>
               <button class="btn btn-secondary" @click="retryOriginal">{{ phrase('重试') }}</button>
             </div>
@@ -1216,7 +1216,24 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.gallery-viewer__retry { position: absolute; bottom: 1rem; z-index: 2; padding: 0.75rem; background: var(--gv-surface, #17232c); border-radius: var(--radius-md); font-size: 14px; }
+.gallery-viewer__retry {
+  position: absolute;
+  bottom: 1rem;
+  z-index: 2;
+  inset-inline: 1rem;
+  width: fit-content;
+  max-width: calc(100% - 2rem);
+  margin-inline: auto;
+  padding: 0.75rem;
+  color: var(--viewer-text);
+  background: var(--viewer-bg);
+  border: 1px solid var(--viewer-line);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 1.5;
+}
+/* The strip overlays the stage; keep the recovery action above its 90px box. */
+.gallery-viewer__retry--filmstrip { bottom: 104px; }
 .gallery-viewer__notice-actions {
   display: flex;
   flex-wrap: wrap;
