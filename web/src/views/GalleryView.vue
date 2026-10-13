@@ -453,6 +453,10 @@ function viewerSources(item: GalleryItem): GalleryViewerSources {
   else if (item.kind === 'video') preview = readGalleryPoster(galleryPosterKey(item.entry, api.contentUrl(item.entry.path, 'inline')))?.poster
   return {
     preview,
+    // Preserve animated GIF and browser-only formats; small files need no derivative.
+    screen: item.kind === 'image' && /\.(jpe?g|png)$/i.test(item.entry.name)
+      && item.entry.resourceVersion && item.entry.sizeBytes > 256 * 1024 && item.entry.sizeBytes <= 12 * 1024 * 1024
+      ? api.previewUrl(item.entry.path, item.entry.resourceVersion) : undefined,
     original: api.contentUrl(item.entry.path, 'inline'),
   }
 }

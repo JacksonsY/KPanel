@@ -275,3 +275,69 @@ describe('GalleryViewer controls', () => {
     expect(view.find('.gallery-viewer__strip').exists()).toBe(false)
   })
 })
+
+
+describe('adaptive screen preview', () => {
+  const sources = (value: GalleryItem) => ({ original: '/original/'+value.entry.name, screen: '/screen/'+value.entry.name })
+  it('shows the screen preview, requests original only on zoom, keeps preview during upgrade and frees both caches', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ sources, filmstrip: false })
+    await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/b.jpg'])
+    const preview = view.get('img.gallery-viewer__media').attributes('src')
+    // Save-data prevents optional neighbours, not the visible preview.
+    Object.defineProperty(navigator, 'connection', { configurable: true, value: { saveData: true } })
+    await view.get('img.gallery-viewer__media').trigger('load')
+    let complete!: (response: Response) => void
+    fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
+    await view.get('button[aria-label="放大"]').trigger('click'); await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/b.jpg', '/original/b.jpg'])
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(preview)
+    complete(new Response('original')); await flushPromises()
+    expect(view.get('img.gallery-viewer__media').attributes('src')).not.toBe(preview)
+    await view.get('img.gallery-viewer__media').trigger('error')
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(preview)
+    expect(view.find('.gallery-viewer__notice').exists()).toBe(false)
+    await view.get('.gallery-viewer__retry button').trigger('click'); await flushPromises()
+    expect(fetch.mock.calls.filter(call => call[0] === '/original/b.jpg')).toHaveLength(2)
+    view.unmount(); wrapper = undefined
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3)
+    Object.defineProperty(navigator, 'connection', { configurable: true, value: undefined })
+  })
+  it('joins neighbour preload on navigation and reuses previews on back navigation', async () => {
+    const fetch = mockOriginals()
+    const view = mountViewer({ sources, filmstrip: false })
+    await flushPromises()
+    let complete!: (response: Response) => void
+    fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
+    await view.get('img.gallery-viewer__media').trigger('load'); await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/b.jpg', '/screen/c.jpg'])
+    await view.setProps({ index: 2 }); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    complete(new Response('neighbour')); await flushPromises()
+    await view.setProps({ index: 1 }); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    const changed = item('b.jpg'); changed.entry.resourceVersion = 'new-version'
+    await view.setProps({ items: [item('a.jpg'), changed, item('c.jpg')] }); await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+  it('falls back for an old Agent or corrupt preview and aborts obsolete work on close', async () => {
+    const fetch = mockOriginals()
+    fetch.mockResolvedValueOnce(new Response('unsupported', { status: 400 }))
+    const view = mountViewer({ sources, filmstrip: false })
+    await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/b.jpg', '/original/b.jpg'])
+    await view.setProps({ index: 2 }); await flushPromises()
+    await view.get('img.gallery-viewer__media').trigger('error'); await flushPromises()
+    expect(fetch.mock.calls.map(call => call[0])).toContain('/original/c.jpg')
+    let complete!: (response: Response) => void
+    fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
+    await view.setProps({ index: 0 }); await flushPromises()
+    const signal = fetch.mock.calls.at(-1)![1].signal as AbortSignal
+    view.unmount(); wrapper = undefined
+    expect(signal.aborted).toBe(true)
+    const urls = vi.mocked(URL.createObjectURL).mock.calls.length
+    complete(new Response('late')); await flushPromises()
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(urls)
+  })
+})

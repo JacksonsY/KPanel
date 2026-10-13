@@ -14,6 +14,7 @@ export function fileAPIForHost(hostId = '') {
     archiveJobs: (signal?: AbortSignal) => files.archiveJobs(signal, hostId),
     createArchiveJob: (input: Parameters<typeof files.createArchiveJob>[0]) => files.createArchiveJob(input, hostId),
     changeArchiveJob: (id: string, operation: 'cancel' | 'clear') => files.changeArchiveJob(id, operation, hostId),
+    previewUrl: (path: string, version: string) => files.previewUrl(path, version, hostId),
     thumbnailUrl: (path: string, version: string) => files.thumbnailUrl(path, version, hostId),
     text: (path: string, signal?: AbortSignal) => files.text(path, hostId, signal),
     office: (path: string, signal?: AbortSignal) => files.office(path, hostId, signal),

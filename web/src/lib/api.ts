@@ -2377,6 +2377,10 @@ export const api = {
       }),
     deleteRemoteDownloadJob: (id: string): Promise<void> =>
       request<void>(`/files/remote-downloads/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    previewUrl: (path: string, version: string, fileHostId?: string | null): string =>
+      buildUrl('/files/content', fileRequestQuery('/files/content', {
+        path, disposition: 'inline', mode: 'preview', version,
+      }, fileHostId)),
     thumbnailUrl: (path: string, version: string, fileHostId?: string | null): string =>
       buildUrl('/files/content', fileRequestQuery('/files/content', {
         path, disposition: 'inline', mode: 'thumbnail', version,

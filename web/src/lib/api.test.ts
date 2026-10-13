@@ -2255,3 +2255,13 @@ describe('API client', () => {
     expect(normalizeOffers({ state: 'weird' }).state).toBe('unavailable')
   })
 })
+
+
+it('binds screen preview URLs to the file host and exact version', () => {
+  const url = new URL(fileAPIForHost('edge-1').previewUrl('/home/gallery/照片.jpg', 'sha256:version'), 'http://localhost')
+  expect(url.pathname).toBe('/api/v1/files/content')
+  expect(url.searchParams.get('path')).toBe('/home/gallery/照片.jpg')
+  expect(url.searchParams.get('hostId')).toBe('edge-1')
+  expect(url.searchParams.get('mode')).toBe('preview')
+  expect(url.searchParams.get('version')).toBe('sha256:version')
+})

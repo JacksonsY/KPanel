@@ -49,6 +49,8 @@ export interface GalleryCoverOption {
 export interface GalleryViewerSources {
   /** Small image shown at once while the original loads, and in the filmstrip. */
   preview?: string
+  /** Versioned medium image for fit-to-screen viewing; original is fetched on zoom. */
+  screen?: string
   original: string
 }
 
@@ -113,6 +115,49 @@ const swipeOffset = ref(0)
 // Separate from the page thumbnail cache, and disposed as soon as the viewer closes.
 const originalCache = new GalleryImageCache({ count: 3, bytes: 8 * 1024 * 1024, decoded: 32 * 1024 * 1024, itemBytes: 4 * 1024 * 1024, ttl: 60_000 })
 const originalUrl = ref<string>()
+const screenUrl = ref<string>()
+const originalError = ref(false)
+const screenCache = new GalleryImageCache({ count: 3, bytes: 6 * 1024 * 1024, decoded: 24 * 1024 * 1024, itemBytes: 2 * 1024 * 1024, ttl: 60_000 })
+let screenLease: GalleryImageLease | undefined
+let screenEpoch = 0
+const pendingScreens = new Map<string, { controller: AbortController; promise: Promise<Blob> }>()
+function screenKey(source: string, value: GalleryItem): string { return `${source}\0${value.entry.resourceVersion}` }
+function requestScreen(source: string, key: string, priority = false): Promise<Blob> {
+  const pending = pendingScreens.get(key)
+  if (pending) return pending.promise
+  const controller = new AbortController()
+  const promise = fetchGalleryImage(source, controller.signal, priority).finally(() => {
+    if (pendingScreens.get(key)?.controller === controller) pendingScreens.delete(key)
+  })
+  pendingScreens.set(key, { controller, promise })
+  return promise
+}
+async function loadCurrent(): Promise<void> {
+  const epoch = ++screenEpoch
+  releaseOriginal()
+  screenLease?.release(); screenLease = undefined; screenUrl.value = undefined
+  originalError.value = false
+  const value = item.value, source = itemSources.value?.screen
+  const relevant = new Set(props.items.slice(Math.max(0, props.index - 1), props.index + 2).flatMap(value => {
+    const source = props.sources(value).screen
+    return source ? [screenKey(source, value)] : []
+  }))
+  for (const [key, pending] of pendingScreens) if (!relevant.has(key)) { pending.controller.abort(); pendingScreens.delete(key) }
+  if (!value || value.kind !== 'image' || !canShow.value) return
+  if (!source) { await loadOriginal(); return }
+  const key = screenKey(source, value)
+  screenLease = screenCache.acquire(key)
+  if (screenLease) { screenUrl.value = screenLease.url; return }
+  try {
+    const blob = await requestScreen(source, key, true)
+    if (epoch !== screenEpoch) return
+    screenLease = screenCache.store(key, blob)
+    screenUrl.value = screenLease.url
+  } catch {
+    // Old Agents, unsupported/oversized images and generation failures remain viewable.
+    if (epoch === screenEpoch) await loadOriginal()
+  }
+}
 let originalLease: GalleryImageLease | undefined
 let originalController: AbortController | undefined
 
@@ -128,10 +173,11 @@ async function loadOriginal(): Promise<void> {
   releaseOriginal()
   const currentItem = item.value
   const source = itemSources.value?.original
+  originalError.value = false
   if (!currentItem || currentItem.kind !== 'image' || !canShow.value || !source) return
   const { resourceVersion, sizeBytes } = currentItem.entry
   // Preserve native loading for unknown sizes and large originals, including progressive decoding.
-  if (!resourceVersion || sizeBytes <= 0 || sizeBytes > 4 * 1024 * 1024) {
+  if (!resourceVersion || sizeBytes <= 0 || sizeBytes > 12 * 1024 * 1024 || (!screenUrl.value && sizeBytes > 4 * 1024 * 1024)) {
     originalUrl.value = source
     return
   }
@@ -148,8 +194,11 @@ async function loadOriginal(): Promise<void> {
     originalUrl.value = originalLease.url
   } catch {
     if (controller.signal.aborted || originalController !== controller) return
-    // Keep the native image/error/retry path available if the bounded fetch cannot be used.
+    if (screenUrl.value) { originalError.value = true; resetView(); return }
+    // Keep native loading available when no screen preview exists.
     originalUrl.value = source
+  } finally {
+    if (originalController === controller) originalController = undefined
   }
 }
 
@@ -383,13 +432,20 @@ function onPointerUp(event: PointerEvent): void {
 
 function onImageLoad(event: Event): void {
   const image = event.currentTarget as HTMLImageElement
-  originalLease?.decoded(image.naturalWidth, image.naturalHeight)
+  ;(originalUrl.value ? originalLease : screenLease)?.decoded(image.naturalWidth, image.naturalHeight)
   naturalSize.value = { width: image.naturalWidth, height: image.naturalHeight }
   loaded.value = true
   preloadNeighbours()
 }
 
 function onImageError(): void {
+  if (!originalUrl.value && screenUrl.value) {
+    screenLease?.invalidate(); screenLease?.release(); screenLease = undefined; screenUrl.value = undefined
+    void loadOriginal(); return
+  }
+  if (originalUrl.value && screenUrl.value) {
+    originalLease?.invalidate(); releaseOriginal(); resetView(); originalError.value = true; return
+  }
   originalLease?.invalidate()
   releaseOriginal()
   failed.value = true
@@ -430,8 +486,30 @@ function retry(): void {
 }
 
 let neighbourController: AbortController | undefined
-watch([() => itemSources.value?.original, () => item.value?.entry.resourceVersion, () => item.value?.kind, retryKey], () => { void loadOriginal() }, { immediate: true })
+watch([() => itemSources.value?.original, () => item.value?.entry.resourceVersion, () => item.value?.kind, retryKey], () => { void loadCurrent() }, { immediate: true })
+watch(zoomed, value => { if (value && screenUrl.value && !originalUrl.value && !originalController) void loadOriginal() })
+async function preloadScreens(): Promise<void> {
+  const epoch = screenEpoch
+  if (!galleryAllowsPrefetch(256 * 1024)) return
+  // Serialize neighbours. A visible request can join pending work by versioned URL.
+  for (const step of [1, -1]) {
+    if (epoch !== screenEpoch) return
+    const value = props.items[props.index + step]
+    if (!value || value.kind !== 'image') continue
+    const source = props.sources(value).screen
+    if (!source) continue
+    const key = screenKey(source, value)
+    const cached = screenCache.acquire(key)
+    if (cached) { cached.release(); continue }
+    try {
+      const blob = await requestScreen(source, key)
+      if (epoch !== screenEpoch) return
+      const lease = screenCache.store(key, blob); lease.release()
+    } catch { /* Optional preloading must not interfere with the visible image. */ }
+  }
+}
 function preloadNeighbours(): void {
+  if (itemSources.value?.screen) { void preloadScreens(); return }
   neighbourController?.abort()
   neighbourController = new AbortController()
   for (const step of [1, -1]) {
@@ -535,6 +613,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   releaseOriginal()
   originalCache.dispose()
+  screenEpoch += 1
+  screenLease?.release(); screenCache.dispose()
+  for (const pending of pendingScreens.values()) pending.controller.abort()
+  pendingScreens.clear()
   cancelGesture()
   neighbourController?.abort()
   window.clearTimeout(chromeTimer)
@@ -682,7 +764,7 @@ onBeforeUnmount(() => {
               :key="`${itemSources?.original}:${item.entry.resourceVersion}:${retryKey}`"
               class="gallery-viewer__media"
               :class="{ 'is-loaded': loaded }"
-              :src="originalUrl"
+              :src="originalUrl || screenUrl"
               :alt="item.entry.name"
               :style="{ transform: mediaTransform }"
               decoding="async"
@@ -690,6 +772,10 @@ onBeforeUnmount(() => {
               @load="onImageLoad"
               @error="onImageError"
             />
+            <div v-if="originalError" class="gallery-viewer__retry gallery-viewer__notice-actions" role="alert">
+              <span>{{ phrase('原图读取失败，请检查网络或文件是否仍然存在。') }}</span>
+              <button class="btn btn-secondary" @click="loadOriginal">{{ phrase('重试') }}</button>
+            </div>
             <span v-if="!loaded" class="gallery-viewer__spinner" role="status" :aria-label="phrase('正在加载原图')" />
           </template>
           <video
@@ -1124,6 +1210,7 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
+.gallery-viewer__retry { position: absolute; bottom: 1rem; z-index: 2; padding: 0.75rem; background: var(--gv-surface, #17232c); border-radius: var(--radius-md); font-size: 14px; }
 .gallery-viewer__notice-actions {
   display: flex;
   flex-wrap: wrap;

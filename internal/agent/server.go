@@ -113,6 +113,8 @@ type Server struct {
 	terminals         *terminal.Manager
 	jobInputs         jobInputRegistry
 	jobInputBackends  map[string]jobInput
+	previewGate       chan struct{}
+	previews          *thumbnailCache
 	thumbnailGate     chan struct{}
 	thumbnails        *thumbnailCache
 	storageUsageGate  chan struct{}
@@ -264,6 +266,8 @@ func NewServer(config Config) (*Server, error) {
 		monitoring:       config.Monitoring,
 		terminals:        config.Terminals,
 		thumbnailGate:    make(chan struct{}, 2),
+		previewGate:      make(chan struct{}, 1),
+		previews:         newPreviewCache(),
 		thumbnails:       newThumbnailCache(thumbnailCacheBytes),
 		storageUsageGate: make(chan struct{}, 1),
 		systemLogsGate:   make(chan struct{}, 1),
