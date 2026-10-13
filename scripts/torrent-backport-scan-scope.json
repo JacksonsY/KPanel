@@ -11,18 +11,18 @@
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "7d8cb6312aab83626856dbfc60ba4d2728d71ab6a0d46fd025680f913a2965d3",
-  "firstPartySourceSha256": "ca8746171fbebcdd519f43d4192def3fd3a0cf603cb42384fc97860f695c50e4",
+  "closureSha256": "485cc7f1758b7186cf3305c9d5365667bc2116769593f6f6faaccfabc54785b8",
+  "firstPartySourceSha256": "c591cd06eaeda9c9ca1b070313d2fa7e3040fc12ad74ab38a26c81a23f336bd2",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.2; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
     "state": "reviewed",
     "reviewerRole": "Independent source and dependency evidence reviewer",
-    "evidenceSha256": "9266327406d15f74ea816506b3b01e342a5f21eb8ee86d30889d4a137390d01f",
+    "evidenceSha256": "b3ae18a2d788513fd2b322bfccba5aadab24532e7adb9e25b96ba99b27c27677",
     "advisoryEvidenceSha256": "32c054b8eebcda02c82748fd29981fa8c3988fa19605e1deed1628d7a6ab4607",
     "additionalSelectedEvidenceSha256": "93a256970a82a7c224c5e38aadbb21431fdbd8e5f6621da469473d7955d80bf2",
-    "summary": "RC15 changes terminal web presentation and internal/version/version.go release metadata. The reviewed first-party Go source delta is only the RC14-to-RC15 version constant; Go imports/control flow and module manifests are unchanged. Full L3 recomputes dependency closure identity and all scanners."
+    "summary": "RC16 independently reviewed 41 changed Go files for gallery previews, bounded file receiving, telemetry isolation and release metadata. No new third-party import paths, generated protobuf or source symlinks were found. Exact Go 1.27.2 observation covers six production targets, 917 first-party files and 106 production modules; Linux closures add five production GoFiles. Excluded not-in-production modules remain absent. Module manifests, upstream torrent source and build targets are unchanged; existing findings and expiry remain unchanged. Full L3 must recompute actual/original closure identity and all scanners."
   },
   "findings": [
     {
