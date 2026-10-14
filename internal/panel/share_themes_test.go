@@ -1,8 +1,11 @@
 package panel
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +15,65 @@ import (
 
 	"github.com/kejilion/kejilion-panel/internal/scenepacks"
 )
+
+func TestShareThemeUploadHTTP(t *testing.T) {
+	s, tokenPath := newTestServer(t)
+	s.shareThemes.Close()
+	s.shareThemes = scenepacks.OpenShareThemes(t.TempDir(), func(context.Context, string, int64) ([]byte, error) { return nil, scenepacks.ErrSource })
+	session, csrf := bootstrapCookies(t, s, tokenPath)
+	list, err := s.shareThemes.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	z := zip.NewWriter(&archive)
+	for _, name := range []string{"manifest.json", "index.html", "theme.css", "theme.js"} {
+		body, err := os.ReadFile(filepath.Join("../../share-themes/minimal/dist", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, _ := z.Create(name)
+		_, _ = f.Write(body)
+	}
+	_ = z.Close()
+	var body bytes.Buffer
+	m := multipart.NewWriter(&body)
+	_ = m.WriteField("expectedResourceVersion", list.ResourceVersion)
+	f, _ := m.CreateFormFile("file", "theme.zip")
+	_, _ = f.Write(archive.Bytes())
+	_ = m.Close()
+	headers := map[string]string{"Origin": "http://panel.test", "Content-Type": m.FormDataContentType(), "X-CSRF-Token": csrf.Value}
+	url := shareThemesPath + "/upload"
+	if r := performRequest(s, "POST", url, body.Bytes(), headers); r.Code != 401 {
+		t.Fatal("anonymous upload", r.Code)
+	}
+	for _, denied := range []map[string]string{
+		{"Origin": "https://evil.example", "Content-Type": m.FormDataContentType(), "X-CSRF-Token": csrf.Value},
+		{"Origin": "http://panel.test", "Content-Type": m.FormDataContentType()},
+	} {
+		if r := authenticatedRequest(s, "POST", url, body.Bytes(), session, csrf, denied); r.Code != 403 {
+			t.Fatal("upload boundary", r.Code)
+		}
+	}
+	r := authenticatedRequest(s, "POST", url, body.Bytes(), session, csrf, headers)
+	var installed scenepacks.View
+	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &installed) != nil || !installed.Uploaded || installed.FileBase == nil {
+		t.Fatal("upload", r.Code, r.Body.String())
+	}
+	if s.shareThemes.ActiveTheme() != nil {
+		t.Fatal("upload unexpectedly selected theme")
+	}
+	r = performRequest(s, "GET", *installed.FileBase+"index.html", nil, nil)
+	if r.Code != 200 || !strings.Contains(r.Header().Get("Content-Security-Policy"), "sandbox allow-scripts") || strings.Contains(r.Header().Get("Content-Security-Policy"), "allow-same-origin") {
+		t.Fatal("upload sandbox", r.Code)
+	}
+	if r := authenticatedRequest(s, "POST", url, body.Bytes(), session, csrf, headers); r.Code != 409 {
+		t.Fatal("stale upload", r.Code)
+	}
+	if r := authenticatedRequest(s, "POST", scenePacksPath+"/upload", body.Bytes(), session, csrf, headers); r.Code != 405 {
+		t.Fatal("scene upload enabled", r.Code)
+	}
+}
 
 func TestShareThemeHTTPBoundaryAndPublicLifecycle(t *testing.T) {
 	s, tokenPath := newTestServer(t)

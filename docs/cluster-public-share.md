@@ -94,3 +94,9 @@ KPanel 首版不把现有集群 API整体改成游客可读，也不默认公开
 「使用默认样式」由主题自己绘制，并通过白名单内的 `action` 消息（`refresh`、`set-mode`、`use-default`）请求宿主执行；
 未声明的主题保持原有外框。
 协议、字段与作者约束以 [`share-themes/README.md`](../share-themes/README.md) 为准。
+
+登录管理员也可通过 `POST /api/v1/cluster/share-themes/upload` 上传自有 ZIP 主题包。请求使用 multipart 字段
+`file` 和当前列表的 `expectedResourceVersion`，复用同源、Session、CSRF、审计和有界并发保护。
+包内容在任何写入前完成路径、文件类型、清单、数量和解压大小校验；服务端派生文件 SHA-256，原子提交安装索引。
+上传不自动选中主题，也不覆盖同 ID 的已安装或已知目录主题。失败不留下半安装状态。上传后的选择、删除、匿名
+资源能力地址及 CSP 使用既有主题生命周期；本地上传标记随状态持久化，社区目录离线仍可操作。

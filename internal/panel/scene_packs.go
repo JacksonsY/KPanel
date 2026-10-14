@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -111,6 +112,69 @@ func (s *Server) handlePackLibrary(w http.ResponseWriter, r *http.Request, libra
 		return
 	}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, prefix+"/"), "/")
+	if isTheme && len(parts) == 1 && parts[0] == "upload" && r.Method == http.MethodPost {
+		if !s.scenePackStream(w, r) {
+			return
+		}
+		defer func() { <-s.scenePackStreams }()
+		r.Body = http.MaxBytesReader(w, r.Body, scenepacks.MaxThemeUploadBytes+(64<<10))
+		reader, err := r.MultipartReader()
+		if err != nil {
+			s.scenePackError(w, r, scenepacks.ErrInvalid)
+			return
+		}
+		var data []byte
+		var expected string
+		seen := map[string]bool{}
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				s.scenePackError(w, r, scenepacks.ErrInvalid)
+				return
+			}
+			name := part.FormName()
+			if seen[name] || (name != "file" && name != "expectedResourceVersion") {
+				s.scenePackError(w, r, scenepacks.ErrInvalid)
+				return
+			}
+			seen[name] = true
+			limit := scenepacks.MaxThemeUploadBytes
+			if name == "expectedResourceVersion" {
+				limit = 100
+			}
+			body, err := io.ReadAll(io.LimitReader(part, limit+1))
+			if err != nil || int64(len(body)) > limit {
+				s.scenePackError(w, r, scenepacks.ErrInvalid)
+				return
+			}
+			if name == "file" {
+				data = body
+			} else {
+				expected = string(body)
+			}
+		}
+		if data == nil || !resourceVersionPattern.MatchString(expected) {
+			s.scenePackError(w, r, scenepacks.ErrInvalid)
+			return
+		}
+		const action = "cluster.share-theme.upload"
+		if s.audit(r, session.User.ID, action, "cluster-share-theme", "upload", "intent", nil) != nil {
+			s.writeProblem(w, r, http.StatusServiceUnavailable, "audit_unavailable", "Audit storage unavailable", "")
+			return
+		}
+		result, err := library.UploadTheme(r.Context(), data, expected)
+		if err != nil {
+			_ = s.audit(r, session.User.ID, action, "cluster-share-theme", "upload", "failure", nil)
+			s.scenePackError(w, r, err)
+			return
+		}
+		_ = s.audit(r, session.User.ID, action, "cluster-share-theme", result.ID, "success", nil)
+		s.writeJSON(w, http.StatusOK, result)
+		return
+	}
 	if !isTheme && len(parts) == 2 && scenepacks.ValidID(parts[0]) && (parts[1] == "thumb" || parts[1] == "poster") && r.Method == http.MethodGet {
 		if !s.scenePackStream(w, r) {
 			return

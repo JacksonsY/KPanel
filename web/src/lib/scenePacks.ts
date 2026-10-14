@@ -28,6 +28,7 @@ export interface ScenePackCamera {
 export type ScenePackSource = 'auto' | 'github' | 'mirror'
 
 export interface ScenePack {
+  uploaded?: boolean
   resourceVersion: string
   id: string
   version: string
