@@ -1796,6 +1796,10 @@ export const api = {
       request<ClusterShareSettings>('/cluster/share', { signal }),
     notificationHistory: (filters: Record<string, string>, signal?: AbortSignal): Promise<NotificationHistoryPage> =>
       request<NotificationHistoryPage>(`/cluster/notifications/history?${new URLSearchParams(filters)}`, { signal }),
+    updateNotificationChannel: (body: { provider: NonNullable<ClusterNotificationSnapshot['provider']>; enabled: boolean; credential?: string; remove?: boolean; expectedResourceVersion: string }): Promise<ClusterNotificationSnapshot> =>
+      request<ClusterNotificationSnapshot>('/cluster/notifications/channels', { method: 'PUT', body }),
+    notificationChannelAction: (action: 'test' | 'discover', body: { provider: NonNullable<ClusterNotificationSnapshot['provider']>; expectedResourceVersion: string }): Promise<ClusterNotificationSnapshot> =>
+      request<ClusterNotificationSnapshot>(`/cluster/notifications/channels/${action}`, { method: 'POST', body }),
     notifications: (signal?: AbortSignal): Promise<ClusterNotificationSnapshot> =>
       request<ClusterNotificationSnapshot>('/cluster/notifications', { signal }),
     updateNotifications: (body: {

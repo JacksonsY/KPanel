@@ -20,6 +20,9 @@ func DetectProvider(value string) (Provider, bool) {
 	if ValidBotToken(value) {
 		return ProviderTelegram, true
 	}
+	if parsed, err := url.Parse(value); err == nil && validShoutrrrURL(parsed) {
+		return Provider(parsed.Scheme), true
+	}
 	parsed, err := url.ParseRequestURI(value)
 	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Fragment != "" ||
 		parsed.Opaque != "" || parsed.RawPath != "" || parsed.ForceQuery || parsed.Port() != "" {
@@ -64,6 +67,24 @@ func validChannelSecret(value string) bool {
 
 func providerName(provider Provider, locale string) string {
 	switch provider {
+	case ProviderBark:
+		return "Bark"
+	case ProviderNtfy:
+		return "ntfy"
+	case ProviderGotify:
+		return "Gotify"
+	case ProviderDiscord:
+		return "Discord"
+	case ProviderSlack:
+		return "Slack"
+	case ProviderSMTP:
+		if locale == "en-US" {
+			return "Email"
+		}
+		if locale == "zh-TW" {
+			return "郵件"
+		}
+		return "邮件"
 	case ProviderFeishu:
 		if locale == "zh-TW" {
 			return "飛書"

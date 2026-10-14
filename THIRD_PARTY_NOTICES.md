@@ -8,6 +8,7 @@ KPanel.
 
 | Component | Version or revision | License | License text |
 | --- | --- | --- | --- |
+| `github.com/containrrr/shoutrrr` | `v0.8.0` | MIT | [`LICENSES/shoutrrr-MIT.txt`](LICENSES/shoutrrr-MIT.txt) |
 | `kejilion.sh` | `f031d1206224de3743845d2fc81c4801ecda32f4` | Apache-2.0 | [`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt) |
 | `github.com/flynn/noise` | `v1.1.0` | BSD-3-Clause | [`LICENSES/flynn-noise-BSD-3-Clause.txt`](LICENSES/flynn-noise-BSD-3-Clause.txt) |
 | `github.com/minio/minio-go/v7` | `v7.3.0` | Apache-2.0 | [`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt) |

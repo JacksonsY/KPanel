@@ -1,6 +1,9 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['服务异常通知', 'Service alerts'],
+  ['部分已发送', 'Partially delivered'],
+  ['邮件', 'Email'],
   ['服务器到期', 'Server expiry'],
   ['面板登录', 'Panel login'],
   ['到期日期', 'Expiry date'],

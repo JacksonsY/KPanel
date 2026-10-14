@@ -25,26 +25,31 @@ const (
 
 // Event is an occurrence, independent of whether an external channel delivered it.
 type Event struct {
-	ID             string     `json:"id"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	HostID         string     `json:"hostId"`
-	HostName       string     `json:"hostName"`
-	IsLocal        bool       `json:"isLocal"`
-	Rule           string     `json:"rule"`
-	Kind           string     `json:"kind"`
-	Message        string     `json:"message"`
-	RelatedEventID string     `json:"relatedEventId,omitempty"`
-	Delivery       string     `json:"delivery"`
-	Provider       Provider   `json:"provider,omitempty"`
-	Attempts       int        `json:"attempts"`
-	LastAttemptAt  *time.Time `json:"lastAttemptAt,omitempty"`
-	LastErrorCode  string     `json:"lastErrorCode,omitempty"`
+	Deliveries     []ChannelDelivery `json:"deliveries,omitempty"`
+	ID             string            `json:"id"`
+	CreatedAt      time.Time         `json:"createdAt"`
+	HostID         string            `json:"hostId"`
+	HostName       string            `json:"hostName"`
+	IsLocal        bool              `json:"isLocal"`
+	Rule           string            `json:"rule"`
+	Kind           string            `json:"kind"`
+	Message        string            `json:"message"`
+	RelatedEventID string            `json:"relatedEventId,omitempty"`
+	Delivery       string            `json:"delivery"`
+	Provider       Provider          `json:"provider,omitempty"`
+	Attempts       int               `json:"attempts"`
+	LastAttemptAt  *time.Time        `json:"lastAttemptAt,omitempty"`
+	LastErrorCode  string            `json:"lastErrorCode,omitempty"`
 }
 
 type storedEvent struct {
 	Event
-	TrafficThresholdGiB int    `json:"trafficThresholdGiB,omitempty"`
-	TrafficCycle        string `json:"trafficCycle,omitempty"`
+	ChannelFingerprints map[Provider]string `json:"channelFingerprints,omitempty"`
+	CheckDeliveryID     uint64              `json:"checkDeliveryId,omitempty"`
+	CheckKey            string              `json:"checkKey,omitempty"`
+	CheckRevision       string              `json:"checkRevision,omitempty"`
+	TrafficThresholdGiB int                 `json:"trafficThresholdGiB,omitempty"`
+	TrafficCycle        string              `json:"trafficCycle,omitempty"`
 	// Binds delayed delivery to the expiry date that generated this reminder.
 	ExpiryDate string `json:"expiryDate,omitempty"`
 	// Never included in an API response. Bind retries to the original channel.
@@ -113,6 +118,9 @@ func validateHistory(state historyState) error {
 	}
 	var previous uint64
 	for _, event := range state.Events {
+		if err := validateChannelDeliveries(event); err != nil {
+			return err
+		}
 		if event.TrafficThresholdGiB < 0 || event.TrafficThresholdGiB > MaxTrafficTotalThresholdGiB {
 			return errors.New("invalid traffic threshold")
 		}
@@ -127,7 +135,7 @@ func validateHistory(state historyState) error {
 		if err != nil || id <= previous || id > state.Sequence || event.CreatedAt.IsZero() ||
 			!validDisplayText(event.HostID, 256) || !validDisplayText(event.HostName, 1024) ||
 			!validEventRule(event.Rule) || !validEventKind(event.Kind) || !validDelivery(event.Delivery) ||
-			len(event.Message) > 4096 || event.Attempts < 0 || event.Attempts > 300 ||
+			len(event.Message) > 4096 || event.Attempts < 0 || event.Attempts > 300*MaxChannels ||
 			(event.Provider != "" && !validProvider(event.Provider)) || len(event.LastErrorCode) > 80 ||
 			(event.ChannelFingerprint != "" && !validHexString(event.ChannelFingerprint, 64)) {
 			return errors.New("invalid notification history event")
@@ -139,7 +147,7 @@ func validateHistory(state historyState) error {
 
 func validEventRule(value string) bool {
 	switch value {
-	case "cpu", "memory", "disk", "traffic", cumulativeTrafficReceivedRuleKey, cumulativeTrafficSentRuleKey, "availability", "ssh", serverExpiryRuleKey, panelLoginRuleKey, backupRuleKey:
+	case "cpu", "memory", "disk", "traffic", cumulativeTrafficReceivedRuleKey, cumulativeTrafficSentRuleKey, "availability", "ssh", serverExpiryRuleKey, panelLoginRuleKey, backupRuleKey, "service-checks":
 		return true
 	}
 	return false
@@ -149,7 +157,7 @@ func validEventKind(value string) bool {
 }
 func validDelivery(value string) bool {
 	switch value {
-	case "local_only", "pending", "sent", "failed", "cancelled":
+	case "local_only", "pending", "sent", "failed", "cancelled", "partial":
 		return true
 	}
 	return false
@@ -158,6 +166,20 @@ func validDelivery(value string) bool {
 func cloneHistory(state historyState) historyState {
 	state.Alerts = clonePersistedState(persistedState{AlertStates: state.Alerts}).AlertStates
 	state.Events = append([]storedEvent{}, state.Events...)
+	for i := range state.Events {
+		event := &state.Events[i]
+		event.Deliveries = append([]ChannelDelivery(nil), event.Deliveries...)
+		for j := range event.Deliveries {
+			event.Deliveries[j].LastAttemptAt = cloneTime(event.Deliveries[j].LastAttemptAt)
+		}
+		if event.ChannelFingerprints != nil {
+			copy := map[Provider]string{}
+			for k, v := range event.ChannelFingerprints {
+				copy[k] = v
+			}
+			event.ChannelFingerprints = copy
+		}
+	}
 	return state
 }
 

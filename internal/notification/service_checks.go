@@ -30,11 +30,13 @@ type checkTarget struct {
 }
 
 type checkDelivery struct {
-	ID          uint64    `json:"id"`
-	Kind        string    `json:"kind"`
-	CreatedAt   time.Time `json:"createdAt"`
-	NextAttempt time.Time `json:"nextAttempt"`
-	Attempts    int       `json:"attempts"`
+	MultiChannel bool                 `json:"multiChannel,omitempty"`
+	Targets      []checkChannelTarget `json:"targets,omitempty"`
+	ID           uint64               `json:"id"`
+	Kind         string               `json:"kind"`
+	CreatedAt    time.Time            `json:"createdAt"`
+	NextAttempt  time.Time            `json:"nextAttempt"`
+	Attempts     int                  `json:"attempts"`
 }
 type checkIncident struct {
 	HostID    string         `json:"hostId"`
@@ -95,6 +97,18 @@ func NewCheckAlerts(parent *Service) (*CheckAlerts, error) {
 		return nil, errors.New("invalid service check notification state")
 	}
 	for key, value := range s.state.Incidents {
+		if value.Pending != nil {
+			seen := map[Provider]bool{}
+			if len(value.Pending.Targets) > MaxChannels || (!value.Pending.MultiChannel && len(value.Pending.Targets) > 0) {
+				return nil, ErrInvalidSettings
+			}
+			for _, target := range value.Pending.Targets {
+				if seen[target.Provider] || !validProvider(target.Provider) || !validHexString(target.Fingerprint, 64) {
+					return nil, ErrInvalidSettings
+				}
+				seen[target.Provider] = true
+			}
+		}
 		if len(key) > 160 || !validDisplayText(value.HostID, 80) || !validDisplayText(value.Name, 192) || len(value.Target) > 253 || len(value.HostName) > 256 || value.Pending != nil && (value.Pending.ID == 0 || value.Pending.Attempts < 0 || value.Pending.Attempts > 20 || !validCheckDelivery(value.Pending.Kind)) {
 			return nil, errors.New("invalid service check incident")
 		}
@@ -114,6 +128,7 @@ func cloneCheckDisk(value checkAlertDisk) checkAlertDisk {
 	for key, item := range value.Incidents {
 		if item.Pending != nil {
 			copy := *item.Pending
+			copy.Targets = append([]checkChannelTarget(nil), copy.Targets...)
 			item.Pending = &copy
 		}
 		items[key] = item
@@ -251,6 +266,15 @@ func (s *CheckAlerts) evaluate(ctx context.Context) error {
 	queue := func(item *checkIncident, kind string) {
 		next.Generation++
 		item.Pending = &checkDelivery{ID: next.Generation, Kind: kind, CreatedAt: now, NextAttempt: now}
+		state := s.parent.store.stateSnapshot()
+		if state.MultiChannel {
+			item.Pending.MultiChannel = true
+			for _, ch := range state.Channels {
+				if ch.Enabled {
+					item.Pending.Targets = append(item.Pending.Targets, checkChannelTarget{ch.Provider, channelFingerprint(ch)})
+				}
+			}
+		}
 	}
 	for _, sub := range currentCheckTargets(hosts.Items, next.Incidents) {
 		key := sub.HostID + ":" + sub.CheckID
@@ -391,6 +415,9 @@ func (s *CheckAlerts) evaluate(ctx context.Context) error {
 func (s *CheckAlerts) deliver(ctx context.Context) error {
 	defer s.reportErrorChange()
 	settings := s.parent.store.stateSnapshot()
+	if settings.MultiChannel {
+		return s.enqueueChannelHistory(ctx)
+	}
 	credential, configured, err := s.parent.store.credential()
 	if err != nil || !configured || !settings.Settings.Enabled || !settings.Settings.Rules.ServiceChecksEnabled || !settings.Telegram.HasChat || settings.Telegram.TokenFingerprint != tokenFingerprint(credential) {
 		return nil

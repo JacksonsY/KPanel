@@ -24,6 +24,18 @@ beforeEach(() => { vi.clearAllMocks(); mocks.list.mockResolvedValue(page); mocks
 afterEach(() => wrappers.splice(0).forEach(wrapper => wrapper.unmount()))
 
 describe('notification history', () => {
+  it('explains failed-channel retries and cancellation reasons within a partial delivery', async () => {
+    mocks.list.mockResolvedValue({ ...page, items: [{ ...event, delivery: 'partial', deliveries: [
+      { provider: 'telegram', status: 'sent', attempts: 1 },
+      { provider: 'smtp', status: 'failed', attempts: 2, lastErrorCode: 'smtp_unavailable' },
+      { provider: 'ntfy', status: 'cancelled', attempts: 0, lastErrorCode: 'channel_changed' },
+    ] }] })
+    const wrapper = await open()
+    await wrapper.get('button[aria-label^="查看原文"]').trigger('click')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('未成功的渠道会自动重试')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('已停止投递此消息')
+    expect(wrapper.get('[role="dialog"]').text()).not.toContain('smtp_unavailable')
+  })
   it('labels automatic backup events and applies the backup category filter', async () => {
     mocks.list.mockResolvedValue({ ...page, items: [{ ...event, rule: 'backup', message: 'Automatic backup failed' }] })
     const wrapper = await open()

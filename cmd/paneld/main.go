@@ -19,6 +19,7 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/agentclient"
 	"github.com/kejilion/kejilion-panel/internal/auth"
 	"github.com/kejilion/kejilion-panel/internal/contract"
+	"github.com/kejilion/kejilion-panel/internal/notification"
 	"github.com/kejilion/kejilion-panel/internal/panel"
 	"github.com/kejilion/kejilion-panel/internal/store"
 	"github.com/kejilion/kejilion-panel/internal/version"
@@ -33,6 +34,9 @@ func main() {
 }
 
 func run(arguments []string) error {
+	if len(arguments) == 1 && arguments[0] == notification.ShoutrrrWorkerArgument {
+		return notification.RunShoutrrrWorker(os.Stdin)
+	}
 	if len(arguments) > 0 && arguments[0] == "healthcheck" {
 		return runHealthcheck(arguments[1:])
 	}

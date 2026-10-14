@@ -886,6 +886,8 @@ function mockTrafficPeriod(host) {
   return period
 }
 let mockNotificationSnapshot = {
+  channels: [],
+  multiChannel: false,
   localRecording: true,
   enabled: false,
   locale: 'zh-CN',
@@ -1963,6 +1965,28 @@ createServer(async (request, response) => {
     send(response, 200, { items, hosts, nextCursor: filtered.length > limit ? items.at(-1).id : undefined, retentionDays: 30, maxEvents: 2000, maxBytes: 4194304 })
     return
   }
+  if ((request.method === 'PUT' && url.pathname === '/api/v1/cluster/notifications/channels') || (request.method === 'POST' && ['/api/v1/cluster/notifications/channels/test', '/api/v1/cluster/notifications/channels/discover'].includes(url.pathname))) {
+    const input = await readJSON(request)
+    if (input.expectedResourceVersion !== mockNotificationSnapshot.resourceVersion) {
+      send(response, 409, { code: 'cluster_notifications_changed', title: 'Mock revision conflict' }); return
+    }
+    const providers = new Set(['telegram', 'feishu', 'dingtalk', 'wecom', 'smtp', 'bark', 'ntfy', 'gotify', 'discord', 'slack'])
+    if (!providers.has(input.provider)) { send(response, 422, { code: 'cluster_notifications_unsupported_provider' }); return }
+    const channels = [...mockNotificationSnapshot.channels]
+    const index = channels.findIndex(item => item.provider === input.provider)
+    if (request.method === 'PUT') {
+      if (input.remove) { if (index >= 0) channels.splice(index, 1) }
+      else {
+        if (index < 0 && !input.credential) { send(response, 422, { code: 'cluster_notifications_credential_required' }); return }
+        if (input.credential?.includes('fail.example')) { send(response, 502, { code: 'cluster_notifications_channel_unavailable' }); return }
+        const channel = { provider: input.provider, enabled: Boolean(input.enabled), configured: true, ready: true, status: 'ready', lastCheckedAt: new Date().toISOString() }
+        if (index < 0) channels.push(channel); else channels[index] = channel
+      }
+    } else if (index < 0) { send(response, 422, { code: 'cluster_notifications_channel_not_configured' }); return }
+    mockNotificationRevision += 1
+    mockNotificationSnapshot = { ...mockNotificationSnapshot, multiChannel: true, channels, resourceVersion: mockRevision(mockNotificationRevision) }
+    send(response, 200, mockNotificationSnapshot); return
+  }
   if (request.method === 'GET' && url.pathname === '/api/v1/cluster/notifications') {
     mockNotificationSnapshot.resources.observedAt = new Date().toISOString()
     send(response, 200, mockNotificationSnapshot)
@@ -1977,7 +2001,7 @@ createServer(async (request, response) => {
     const supportedProviders = new Set(['telegram', 'feishu', 'dingtalk', 'wecom'])
     const provider = supportedProviders.has(input.provider) ? input.provider : mockNotificationSnapshot.provider
     const credentialProvided = typeof input.channelCredential === 'string' && input.channelCredential.trim() !== ''
-    if (provider !== mockNotificationSnapshot.provider && !credentialProvided) {
+    if (!mockNotificationSnapshot.multiChannel && provider !== mockNotificationSnapshot.provider && !credentialProvided) {
       send(response, 422, { title: '请先输入所选通知渠道的凭据', status: 422, code: 'cluster_notifications_credential_required' })
       return
     }

@@ -48,6 +48,7 @@ type Config struct {
 	HostTrafficLimits  func() map[string]HostTrafficLimits
 	Telegram           TelegramAPI
 	Robots             RobotAPI
+	Shoutrrr           ShoutrrrAPI
 	Timezone           TimezoneSource
 	Now                func() time.Time
 	EvaluationInterval time.Duration
@@ -69,6 +70,7 @@ type Service struct {
 	hostTrafficLimits func() map[string]HostTrafficLimits
 	telegram          TelegramAPI
 	robots            RobotAPI
+	shoutrrr          ShoutrrrAPI
 	timezone          TimezoneSource
 	now               func() time.Time
 	evaluation        time.Duration
@@ -100,6 +102,9 @@ func NewService(config Config) (*Service, error) {
 	}
 	if config.Robots == nil {
 		config.Robots = NewRobotClient()
+	}
+	if config.Shoutrrr == nil {
+		config.Shoutrrr = ShoutrrrClient{}
 	}
 	if config.Now == nil {
 		config.Now = time.Now
@@ -139,6 +144,9 @@ func NewService(config Config) (*Service, error) {
 		}
 		state.Settings.Rules.HostExpiryEnabled = &enabled
 		state.ResourceVersion = configResourceVersion(state.Settings, state.Telegram)
+		if state.MultiChannel {
+			state.ResourceVersion = channelsVersion(state)
+		}
 		if err := store.commitState(state); err != nil {
 			return nil, err
 		}
@@ -146,7 +154,8 @@ func NewService(config Config) (*Service, error) {
 	history := openHistory(store.directory, state)
 	historyState, _ := history.snapshot()
 	service := &Service{
-		store: store, history: history, hosts: config.Hosts, hostExpiries: config.HostExpiries, hostTrafficLimits: config.HostTrafficLimits, telegram: config.Telegram, robots: config.Robots, timezone: config.Timezone, now: config.Now,
+		shoutrrr: config.Shoutrrr,
+		store:    store, history: history, hosts: config.Hosts, hostExpiries: config.HostExpiries, hostTrafficLimits: config.HostTrafficLimits, telegram: config.Telegram, robots: config.Robots, timezone: config.Timezone, now: config.Now,
 		evaluation: config.EvaluationInterval, sustain: config.SustainSamples,
 		repeat: config.RepeatInterval, alerts: make(map[string]alertState),
 		traffic:     make(map[string]trafficSample),
@@ -157,6 +166,9 @@ func NewService(config Config) (*Service, error) {
 	}
 	if state.ResourceVersion == "" {
 		state.ResourceVersion = configResourceVersion(state.Settings, state.Telegram)
+		if state.MultiChannel {
+			state.ResourceVersion = channelsVersion(state)
+		}
 		if err := store.commitState(state); err != nil {
 			return nil, err
 		}
@@ -247,6 +259,22 @@ func (s *Service) snapshot(ctx context.Context) Snapshot {
 	result.Resources = unknownResources()
 	_, historyErr := s.history.snapshot()
 	result.LocalRecording = historyErr == nil
+	result.MultiChannel = state.MultiChannel
+	result.Channels = s.channelSnapshots(state)
+	if state.MultiChannel {
+		result.Provider = ProviderTelegram
+		result.Channel = ChannelSnapshot{Provider: ProviderTelegram, Status: TelegramNotConfigured}
+		result.Telegram = TelegramSnapshot{Status: TelegramNotConfigured}
+		for i, ch := range result.Channels {
+			if i == 0 {
+				result.Provider = ch.Provider
+				result.Channel = ch
+			}
+			if ch.Provider == ProviderTelegram {
+				result.Telegram = TelegramSnapshot{Configured: ch.Configured, Ready: ch.Ready, Status: ch.Status, BotUsername: ch.BotUsername, LastCheckedAt: ch.LastCheckedAt, LastSuccessAt: ch.LastSuccessAt, LastErrorCode: ch.LastErrorCode}
+			}
+		}
+	}
 	return result
 }
 
@@ -275,6 +303,9 @@ func (s *Service) Configure(ctx context.Context, input UpdateInput) (Snapshot, e
 	}
 	if err := rules.Validate(); err != nil {
 		return Snapshot{}, err
+	}
+	if state.MultiChannel {
+		return s.configureMultiSettings(ctx, state, input, rules, locale)
 	}
 	oldCredential, oldPresent, err := s.store.credential()
 	storedCredentialInvalid := errors.Is(err, ErrInvalidCredential)
@@ -388,7 +419,7 @@ func (s *Service) connectChannel(ctx context.Context, provider Provider, credent
 		return readyTelegramState(credential, bot, chatID, now), false, nil
 	}
 	displayNow := s.displayTime(ctx, s.now())
-	if err := s.robots.SendMessage(ctx, provider, credential, testMessage(displayNow, locale, provider)); err != nil {
+	if err := s.sendChannel(ctx, provider, credential, telegramState{}, testMessage(displayNow, locale, provider)); err != nil {
 		return telegramState{}, false, err
 	}
 	return readyRobotState(credential, now), true, nil
@@ -408,6 +439,9 @@ func (s *Service) Discover(ctx context.Context, expectedResourceVersion string) 
 		ctx = context.Background()
 	}
 	state := s.store.stateSnapshot()
+	if state.MultiChannel {
+		return Snapshot{}, ErrProviderMismatch
+	}
 	if expectedResourceVersion == "" || expectedResourceVersion != state.ResourceVersion {
 		return Snapshot{}, ErrConflict
 	}
@@ -456,6 +490,9 @@ func (s *Service) Test(ctx context.Context) (Snapshot, error) {
 		ctx = context.Background()
 	}
 	state := s.store.stateSnapshot()
+	if state.MultiChannel {
+		return Snapshot{}, ErrProviderMismatch
+	}
 	credential, configured, err := s.store.credential()
 	if err != nil {
 		if errors.Is(err, ErrInvalidCredential) {
@@ -534,6 +571,9 @@ func (s *Service) sendChannel(ctx context.Context, provider Provider, credential
 	if provider == ProviderTelegram {
 		return s.telegram.SendMessage(ctx, credential, meta.ChatID, message)
 	}
+	if newShoutrrrService(provider) != nil {
+		return s.shoutrrr.SendMessage(ctx, provider, credential, message)
+	}
 	return s.robots.SendMessage(ctx, provider, credential, message)
 }
 
@@ -557,6 +597,9 @@ func (s *Service) evaluate(parent context.Context) error {
 	history.Rules = state.Settings.Rules
 	credential, configured, credentialErr := s.store.credential()
 	canDeliver := state.Settings.Enabled && credentialErr == nil && configured && state.Telegram.HasChat && state.Telegram.TokenFingerprint == tokenFingerprint(credential)
+	if state.MultiChannel {
+		canDeliver = multiCanDeliver(state)
+	}
 	provider, _ := DetectProvider(credential)
 	fetchCtx, cancel := context.WithTimeout(parent, 8*time.Second)
 	defer cancel()
@@ -594,6 +637,7 @@ func (s *Service) evaluate(parent context.Context) error {
 			event.Provider = provider
 			event.ChannelFingerprint = tokenFingerprint(credential)
 		}
+		prepareChannelDeliveries(&event, state)
 		history.Events = append(history.Events, event)
 		return true, true
 	}

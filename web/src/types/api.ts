@@ -340,7 +340,7 @@ export interface ClusterNotificationRules {
 }
 
 export type ClusterNotificationStatus = 'not_configured' | 'waiting_for_chat' | 'ready' | 'error'
-export type ClusterNotificationProvider = 'telegram' | 'feishu' | 'dingtalk' | 'wecom'
+export type ClusterNotificationProvider = 'telegram' | 'feishu' | 'dingtalk' | 'wecom' | 'smtp' | 'bark' | 'ntfy' | 'gotify' | 'discord' | 'slack'
 
 export interface ClusterNotificationTelegram {
   configured: boolean
@@ -353,10 +353,13 @@ export interface ClusterNotificationTelegram {
 }
 
 export interface ClusterNotificationChannel extends ClusterNotificationTelegram {
+	 enabled?: boolean
   provider: ClusterNotificationProvider
 }
 
 export interface ClusterNotificationSnapshot {
+	 multiChannel?: boolean
+	 channels?: ClusterNotificationChannel[]
   localRecording?: boolean
   resources?: ClusterNotificationResources
   enabled: boolean
@@ -2712,7 +2715,8 @@ export interface NotificationEvent {
   kind: 'alert' | 'recovery' | 'info'
   message: string
   relatedEventId?: string
-  delivery: 'local_only' | 'pending' | 'sent' | 'failed' | 'cancelled'
+  delivery: 'local_only' | 'pending' | 'sent' | 'failed' | 'cancelled' | 'partial'
+  deliveries?: { provider: ClusterNotificationProvider; status: 'pending' | 'sent' | 'failed' | 'cancelled'; attempts: number; lastAttemptAt?: string; lastErrorCode?: string; message?: string }[]
   provider?: ClusterNotificationProvider
   attempts: number
   lastAttemptAt?: string

@@ -398,6 +398,78 @@ chmod 755 "$FAKE_BIN"/*
 }
 ln -s "$FAKE_BIN/systemctl" /bin/systemctl
 
+run_license_inheritance() {
+	local destination="$TEST_DIR/license-destination.sh"
+	local original="$TEST_DIR/license-original.sh"
+	local output="$TEST_DIR/license-output.txt"
+	cat >"$original" <<'EOF'
+canshu="default"
+permission_granted="false"
+ENABLE_STATS="true"
+EOF
+	docker_app_plus() { :; }
+	# shellcheck source=/dev/null
+	. "$PROJECT_DIR/packaging/kejilion-app/kpanel.conf"
+	# A script's existence alone is not evidence of consent; piped yes is not consent either.
+	cp "$original" "$destination"
+	cp "$original" /root/kejilion.sh
+	chmod 700 /root/kejilion.sh
+	if kpanel_inherit_script_preferences "$destination" < <(printf 'y\n') >"$output"; then
+		echo "noninteractive installation accepted an unconfirmed license" >&2
+		return 1
+	fi
+	cmp "$original" "$destination"
+	grep -F '请在交互终端重新安装' "$output" >/dev/null
+	sed -i 's/permission_granted="false"/permission_granted="true"/; s/ENABLE_STATS="true"/ENABLE_STATS="false"/; s/canshu="default"/canshu="CN"/' /root/kejilion.sh
+	# Explicit consent must not inherit preferences from an untrusted script.
+	chmod 777 /root/kejilion.sh
+	# Simulate only the TTY predicate; use the real read builtin and file writes.
+	interactive_license() (
+		[() {
+			if [[ "$*" == '-t 0 ]' ]]; then return 0; fi
+			if [[ "$*" == '! -t 0 ]' ]]; then return 1; fi
+			builtin [ "$@"
+		}
+		kpanel_inherit_script_preferences "$destination"
+	)
+	local answer=""
+	for answer in n '' yes y Y; do
+		cp "$original" "$destination"
+		if printf '%s\n' "$answer" | interactive_license >"$output"; then
+			printf 'accepted\n' >"$TEST_DIR/license-result"
+		else
+			printf 'rejected\n' >"$TEST_DIR/license-result"
+		fi
+		case "$answer" in
+			y|Y)
+				grep -Fx accepted "$TEST_DIR/license-result" >/dev/null
+				grep -Fx 'permission_granted="true"' "$destination" >/dev/null
+				grep -Fx 'ENABLE_STATS="true"' "$destination" >/dev/null
+				grep -Fx 'canshu="default"' "$destination" >/dev/null
+				;;
+			*)
+				grep -Fx rejected "$TEST_DIR/license-result" >/dev/null
+				cmp "$original" "$destination"
+				;;
+		esac
+	done
+	cp "$original" "$destination"
+	if interactive_license </dev/null >"$output"; then
+		echo "end of input accepted an unconfirmed license" >&2
+		return 1
+	fi
+	cmp "$original" "$destination"
+	# Existing accepted preferences remain usable for unattended updates.
+	chmod 700 /root/kejilion.sh
+	cp "$original" "$destination"
+	kpanel_inherit_script_preferences "$destination" </dev/null
+	grep -Fx 'permission_granted="true"' "$destination" >/dev/null
+	grep -Fx 'ENABLE_STATS="false"' "$destination" >/dev/null
+	grep -Fx 'canshu="CN"' "$destination" >/dev/null
+	rm /root/kejilion.sh
+	printf '%s\n' "app_conf_license_inheritance=pass"
+}
+
 run_lifecycle() {
 	local ipv4_address="198.51.100.25"
 	local interrupted_digest="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
@@ -943,6 +1015,7 @@ export KPANEL_MOCK_SYSTEMCTL_LOG="$TEST_DIR/systemctl.log"
 # A leftover empty directory must not block the complete install/uninstall cycle.
 mkdir -p /home/docker/kpanel
 bash "$PROJECT_DIR/packaging/tests/app-conf-lock-compat.sh" "$PROJECT_DIR"
+run_license_inheritance
 run_lifecycle
 run_symlinked_docker_root_lifecycle
 grep -Fx '1|daemon-reload' "$KPANEL_MOCK_SYSTEMCTL_LOG" >/dev/null

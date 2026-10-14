@@ -174,6 +174,12 @@ const (
 	ProviderFeishu   Provider = "feishu"
 	ProviderDingTalk Provider = "dingtalk"
 	ProviderWeCom    Provider = "wecom"
+	ProviderSMTP     Provider = "smtp"
+	ProviderBark     Provider = "bark"
+	ProviderNtfy     Provider = "ntfy"
+	ProviderGotify   Provider = "gotify"
+	ProviderDiscord  Provider = "discord"
+	ProviderSlack    Provider = "slack"
 )
 
 type ChannelStatus string
@@ -185,11 +191,14 @@ type TelegramStatus = ChannelStatus
 const (
 	TelegramNotConfigured ChannelStatus = "not_configured"
 	TelegramWaitingChat   ChannelStatus = "waiting_for_chat"
-	TelegramReady         ChannelStatus = "ready"
-	TelegramError         ChannelStatus = "error"
+	ChannelReady          ChannelStatus = "ready"
+	TelegramReady         ChannelStatus = ChannelReady
+	ChannelError          ChannelStatus = "error"
+	TelegramError         ChannelStatus = ChannelError
 )
 
 type ChannelSnapshot struct {
+	Enabled       bool          `json:"enabled"`
 	Provider      Provider      `json:"provider"`
 	Configured    bool          `json:"configured"`
 	Ready         bool          `json:"ready"`
@@ -211,14 +220,16 @@ type TelegramSnapshot struct {
 }
 
 type Snapshot struct {
-	LocalRecording bool             `json:"localRecording"`
-	Resources      ResourceSnapshot `json:"resources"`
-	Enabled        bool             `json:"enabled"`
-	Locale         string           `json:"locale"`
-	Timezone       string           `json:"timezone"`
-	Rules          Rules            `json:"rules"`
-	Provider       Provider         `json:"provider"`
-	Channel        ChannelSnapshot  `json:"channel"`
+	MultiChannel   bool              `json:"multiChannel"`
+	Channels       []ChannelSnapshot `json:"channels"`
+	LocalRecording bool              `json:"localRecording"`
+	Resources      ResourceSnapshot  `json:"resources"`
+	Enabled        bool              `json:"enabled"`
+	Locale         string            `json:"locale"`
+	Timezone       string            `json:"timezone"`
+	Rules          Rules             `json:"rules"`
+	Provider       Provider          `json:"provider"`
+	Channel        ChannelSnapshot   `json:"channel"`
 	// Telegram mirrors Channel only when Telegram is active. It is retained
 	// for compatibility with clients released before multi-channel support.
 	Telegram        TelegramSnapshot `json:"telegram"`
@@ -274,7 +285,7 @@ func validNotificationLocale(value string) bool {
 
 func validProvider(value Provider) bool {
 	switch value {
-	case ProviderTelegram, ProviderFeishu, ProviderDingTalk, ProviderWeCom:
+	case ProviderTelegram, ProviderFeishu, ProviderDingTalk, ProviderWeCom, ProviderSMTP, ProviderBark, ProviderNtfy, ProviderGotify, ProviderDiscord, ProviderSlack:
 		return true
 	default:
 		return false

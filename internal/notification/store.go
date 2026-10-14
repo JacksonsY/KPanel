@@ -26,7 +26,9 @@ const (
 	maxCredentialBytes int64 = MaxChannelCredentialBytes + 1
 )
 
-type telegramState struct {
+// channelState is shared by all delivery adapters. Historical JSON field names
+// stay unchanged so existing notification state and backups remain readable.
+type channelState struct {
 	TokenFingerprint string         `json:"tokenFingerprint,omitempty"`
 	BotID            int64          `json:"botId,omitempty"`
 	BotUsername      string         `json:"botUsername,omitempty"`
@@ -37,6 +39,11 @@ type telegramState struct {
 	LastSuccessAt    *time.Time     `json:"lastSuccessAt,omitempty"`
 	LastErrorCode    string         `json:"lastErrorCode,omitempty"`
 }
+
+// Legacy code uses this alias while configuration migrates to channels.
+type telegramState = channelState
+
+func (state channelState) hasDestination() bool { return state.HasChat }
 
 type alertState struct {
 	// Availability recovery is deliberately re-confirmed after a process restart.
@@ -63,6 +70,8 @@ type alertState struct {
 }
 
 type persistedState struct {
+	MultiChannel    bool                  `json:"multiChannel,omitempty"`
+	Channels        []storedChannel       `json:"channels,omitempty"`
 	SchemaVersion   int                   `json:"schemaVersion"`
 	Settings        Settings              `json:"settings"`
 	Telegram        telegramState         `json:"telegram"`
@@ -158,6 +167,9 @@ func decodeState(content []byte, state *persistedState) error {
 	if state.Telegram.Status == "" {
 		state.Telegram.Status = TelegramNotConfigured
 	}
+	if err := validateChannels(*state); err != nil {
+		return err
+	}
 	if state.AlertStates == nil {
 		state.AlertStates = make(map[string]alertState)
 	}
@@ -188,6 +200,9 @@ func (s *Store) commitState(next persistedState) error {
 }
 
 func decodeStateForCommit(state persistedState) error {
+	if err := validateChannels(state); err != nil {
+		return err
+	}
 	if state.SchemaVersion != StateSchemaVersion {
 		return errors.New("notification state is invalid")
 	}
@@ -381,6 +396,11 @@ func syncDirectory(path string) error {
 }
 
 func clonePersistedState(source persistedState) persistedState {
+	source.Channels = append([]storedChannel(nil), source.Channels...)
+	for i := range source.Channels {
+		source.Channels[i].Meta.LastCheckedAt = cloneTime(source.Channels[i].Meta.LastCheckedAt)
+		source.Channels[i].Meta.LastSuccessAt = cloneTime(source.Channels[i].Meta.LastSuccessAt)
+	}
 	if source.Settings.Rules.HostExpiryEnabled != nil {
 		enabled := *source.Settings.Rules.HostExpiryEnabled
 		source.Settings.Rules.HostExpiryEnabled = &enabled

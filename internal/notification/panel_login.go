@@ -73,6 +73,9 @@ func (s *Service) recordPanelLogins(parent context.Context, logins []PanelLogin)
 	}
 	credential, configured, credentialErr := s.store.credential()
 	canDeliver := state.Settings.Enabled && credentialErr == nil && configured && state.Telegram.HasChat && state.Telegram.TokenFingerprint == tokenFingerprint(credential)
+	if state.MultiChannel {
+		canDeliver = multiCanDeliver(state)
+	}
 	provider, _ := DetectProvider(credential)
 	fetchCtx, cancel := context.WithTimeout(parent, 8*time.Second)
 	defer cancel()
@@ -101,6 +104,7 @@ func (s *Service) recordPanelLogins(parent context.Context, logins []PanelLogin)
 			event.Provider = provider
 			event.ChannelFingerprint = tokenFingerprint(credential)
 		}
+		prepareChannelDeliveries(&event, state)
 		history.Events = append(history.Events, event)
 	}
 	pruneHistory(&history, now)

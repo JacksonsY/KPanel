@@ -14,6 +14,10 @@ import (
 const clusterNotificationsPath = "/api/v1/cluster/notifications"
 
 func (s *Server) handleClusterNotifications(w http.ResponseWriter, r *http.Request) {
+	if r.URL.RawPath == "" && r.URL.RawQuery == "" && ((r.Method == http.MethodPut && r.URL.Path == clusterNotificationsPath+"/channels") || (r.Method == http.MethodPost && (r.URL.Path == clusterNotificationsPath+"/channels/test" || r.URL.Path == clusterNotificationsPath+"/channels/discover"))) {
+		s.handleNotificationChannel(w, r)
+		return
+	}
 	if r.URL.Path == clusterNotificationsPath+"/history" && r.Method == http.MethodGet && r.URL.RawPath == "" {
 		s.handleNotificationHistory(w, r)
 		return
@@ -266,7 +270,7 @@ func (s *Server) writeNotificationError(w http.ResponseWriter, r *http.Request, 
 
 func auditNotificationProvider(provider notification.Provider) string {
 	switch provider {
-	case notification.ProviderTelegram, notification.ProviderFeishu, notification.ProviderDingTalk, notification.ProviderWeCom:
+	case notification.ProviderTelegram, notification.ProviderFeishu, notification.ProviderDingTalk, notification.ProviderWeCom, notification.ProviderSMTP, notification.ProviderBark, notification.ProviderNtfy, notification.ProviderGotify, notification.ProviderDiscord, notification.ProviderSlack:
 		return string(provider)
 	case "":
 		return "unchanged"

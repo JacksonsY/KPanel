@@ -8,13 +8,15 @@ import english from '@/i18n/pages/ClusterNotifications/en-US'
 import traditional from '@/i18n/pages/ClusterNotifications/zh-TW'
 import { notificationPhrases } from '@/i18n/pages/ClusterNotifications/labels'
 
-const mocks = vi.hoisted(() => ({ push: vi.fn(), read: vi.fn(), save: vi.fn(), discover: vi.fn(), test: vi.fn() }))
+const mocks = vi.hoisted(() => ({ push: vi.fn(), read: vi.fn(), save: vi.fn(), discover: vi.fn(), test: vi.fn(), updateChannel: vi.fn(), channelAction: vi.fn() }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: mocks.push }) }))
 vi.mock('@/lib/api', () => ({ ApiError: class extends Error {}, api: { cluster: {
   notifications: mocks.read,
   updateNotifications: mocks.save,
   discoverNotifications: mocks.discover,
   testNotifications: mocks.test,
+  updateNotificationChannel: mocks.updateChannel,
+  notificationChannelAction: mocks.channelAction,
 } } }))
 vi.mock('@/i18n', () => ({ getLocale: () => 'zh-CN', useI18n: () => ({ locale: ref('zh-CN') }) }))
 vi.mock('@/i18n/phrase', () => ({ usePhraseCatalog: vi.fn(), phraseCatalogVersion: { value: 1 }, translatePhrase: (s: string) => s }))
@@ -51,6 +53,58 @@ beforeEach(() => {
   mocks.test.mockResolvedValue(snapshot())
 })
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()))
+
+describe('multi-channel draft and mutation coordination', () => {
+  it('still refreshes legacy channel status after a failed test and retains the error explanation', async () => {
+    const connected = { ...snapshot(), channel: { provider: 'telegram', configured: true, ready: true, status: 'ready' } }
+    mocks.read.mockResolvedValueOnce(connected).mockResolvedValue({ ...connected, channel: { ...connected.channel, ready: false, status: 'error' } })
+    mocks.test.mockRejectedValue(new Error('network'))
+    const wrapper = await open()
+    await wrapper.findAll('button').find(button => button.text() === '发送测试消息')!.trigger('click')
+    await flushPromises()
+    expect(mocks.read).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[role="alert"]').text()).toContain('检查网络')
+    expect(wrapper.findAll('button').find(button => button.text() === '发送测试消息')!.attributes('disabled')).toBeDefined()
+  })
+  const multi = () => ({ ...snapshot(), channels: [{ provider: 'telegram', enabled: true, configured: true, ready: true, status: 'ready' }] })
+  it('disables rule saving during channel mutations and retains rule edits', async () => {
+    mocks.read.mockResolvedValue(multi())
+    let complete!: (value: ReturnType<typeof multi>) => void
+    mocks.updateChannel.mockReturnValue(new Promise(resolve => { complete = resolve }))
+    const wrapper = await open()
+    await wrapper.get('input[aria-label="CPU 阈值百分比"]').setValue(92)
+    const channels = wrapper.get('.notification-channels')
+    await channels.findAll('button').find(button => button.text() === '保存渠道')!.trigger('click')
+    expect(wrapper.findAll('button').find(button => button.text() === '保存通知规则')!.attributes('disabled')).toBeDefined()
+    complete({ ...multi(), resourceVersion: 'v2' })
+    await flushPromises()
+    expect(wrapper.findAll('button').find(button => button.text() === '保存通知规则')!.attributes('disabled')).toBeUndefined()
+    expect((wrapper.get('input[aria-label="CPU 阈值百分比"]').element as HTMLInputElement).value).toBe('92')
+  })
+  it('refreshes a conflict without unmounting channel drafts or replacing unsaved rules', async () => {
+    mocks.read.mockResolvedValue(multi())
+    mocks.updateChannel.mockRejectedValue(new Error('network'))
+    const wrapper = await open()
+    await wrapper.get('input[aria-label="CPU 阈值百分比"]').setValue(92)
+    const channels = wrapper.get('.notification-channels')
+    await channels.get('input[type="password"]').setValue('draft-token')
+    await channels.get('input[type="checkbox"]').setValue(false)
+    await channels.findAll('button').find(button => button.text() === '保存渠道')!.trigger('click')
+    await flushPromises()
+    let complete!: (value: ReturnType<typeof multi>) => void
+    mocks.read.mockReturnValue(new Promise(resolve => { complete = resolve }))
+    await channels.findAll('button').find(button => button.text() === '重新读取设置')!.trigger('click')
+    expect(wrapper.find('.notification-channels').exists()).toBe(true)
+    complete({ ...multi(), resourceVersion: 'v3' })
+    await flushPromises()
+    expect((channels.get('input[type="password"]').element as HTMLInputElement).value).toBe('draft-token')
+    expect((channels.get('input[type="checkbox"]').element as HTMLInputElement).checked).toBe(false)
+    expect((wrapper.get('input[aria-label="CPU 阈值百分比"]').element as HTMLInputElement).value).toBe('92')
+    await channels.findAll('button').find(button => button.text() === '保存渠道')!.trigger('click')
+    await flushPromises()
+    expect(mocks.updateChannel).toHaveBeenLastCalledWith(expect.objectContaining({ expectedResourceVersion: 'v3', credential: 'draft-token', enabled: false }))
+  })
+})
 
 describe('withdrawn local resource notifications', () => {
   it('keeps automatic backup notices off until the administrator enables them', async () => {
@@ -118,7 +172,7 @@ describe('notification channels', () => {
     mocks.save.mockRejectedValueOnce(new Error('offline'))
     await save(); await flushPromises()
     expect((checkbox().element as HTMLInputElement).checked).toBe(false)
-    expect(wrapper.get('[role="alert"]').text()).toContain('通知操作失败')
+    expect(wrapper.get('[role="alert"]').text()).toContain('检查网络')
     await save(); await flushPromises()
     expect(mocks.save.mock.lastCall?.[0].rules.hostExpiryEnabled).toBe(false)
   })
@@ -159,7 +213,7 @@ describe('notification channels', () => {
     mocks.save.mockRejectedValue(new Error('offline'))
     await wrapper.findAll('button').find(button => button.text() === '保存设置')!.trigger('click'); await flushPromises()
     expect((wrapper.get('input[aria-label="启用服务异常通知"]').element as HTMLInputElement).checked).toBe(true)
-    expect(wrapper.get('[role="alert"]').text()).toContain('通知操作失败')
+    expect(wrapper.get('[role="alert"]').text()).toContain('检查网络')
   })
   it('enables robot providers and saves a validated Webhook without rendering the secret', async () => {
     const wrapper = await open()

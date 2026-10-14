@@ -32,11 +32,16 @@ func ruleEnabled(r Rules, rule string) bool {
 		return r.PanelLoginEnabled
 	case backupRuleKey:
 		return r.BackupEnabled
+	case "service-checks":
+		return r.ServiceChecksEnabled
 	}
 	return false
 }
 
 func (s *Service) deliverHistory(ctx context.Context, state persistedState, hosts []cluster.Host, credential string, ready bool, now time.Time) error {
+	if state.MultiChannel {
+		return s.deliverChannels(ctx, state, hosts, now)
+	}
 	history, err := s.history.snapshot()
 	if err != nil {
 		return historyError(err)

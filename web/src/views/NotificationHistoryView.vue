@@ -10,6 +10,7 @@ import LoadingState from '@/components/feedback/LoadingState.vue'
 import { ApiError, api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 import { summarizeNotification } from '@/lib/notificationSummary'
+import { notificationProviderName, notificationDeliveryReason } from '@/lib/notificationChannels'
 import { detectOperatingSystemIdentity, type OperatingSystemIdentity } from '@/lib/operatingSystem'
 import type { NotificationEvent, NotificationHistoryPage } from '@/types/api'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
@@ -43,9 +44,10 @@ const rules: Record<string, string> = {
   cpu: 'CPU 使用率', memory: '内存使用率', disk: '磁盘使用率', traffic: '网络吞吐',
   'traffic-total-received': '累计接收', 'traffic-total-sent': '累计传送', availability: '主机连接', ssh: 'SSH 登录',
   'server-expiry': '服务器到期', 'panel-login': '面板登录', backup: '自动备份',
+  'service-checks': '服务异常通知',
 }
 const kinds: Record<NotificationEvent['kind'], string> = { alert: '告警', recovery: '恢复', info: '信息' }
-const deliveries: Record<NotificationEvent['delivery'], string> = { local_only: '仅本地', pending: '待发送', sent: '已发送', failed: '发送失败', cancelled: '已停止发送' }
+const deliveries: Record<NotificationEvent['delivery'], string> = { local_only: '仅本地', pending: '待发送', sent: '已发送', failed: '发送失败', cancelled: '已停止发送', partial: '部分已发送' }
 
 async function load(append = false): Promise<void> {
   controller?.abort()
@@ -146,6 +148,15 @@ onBeforeUnmount(() => { requestID++; controller?.abort(); hostController.abort()
     <ModalDialog :open="Boolean(selectedEvent)" :title="phrase('通知原文')" @close="selectedEvent = undefined">
       <div v-if="selectedEvent" class="notification-history__original">
         <p>{{ selectedEvent.message }}</p>
+        <ul v-if="selectedEvent.deliveries?.length">
+          <li v-for="delivery in selectedEvent.deliveries" :key="delivery.provider">
+            {{ phrase(notificationProviderName(delivery.provider)) }} · {{ phrase(deliveries[delivery.status]) }} · {{ phrase('发送次数') }}: {{ delivery.attempts }}
+            <span v-if="delivery.lastAttemptAt"> · {{ phrase('最近尝试') }}: {{ formatDateTime(delivery.lastAttemptAt) }}</span>
+            <p v-if="delivery.lastErrorCode">{{ phrase(notificationDeliveryReason(delivery.lastErrorCode)) }}</p>
+            <p v-if="delivery.status === 'pending' || delivery.status === 'failed'">{{ phrase('未成功的渠道会自动重试，最长 24 小时；已成功的渠道不会重复重试。') }}</p>
+            <p v-if="delivery.message">{{ delivery.message }}</p>
+          </li>
+        </ul>
         <p v-if="selectedEvent.relatedEventId">{{ phrase('关联告警编号') }}: {{ selectedEvent.relatedEventId }}</p>
         <p v-if="selectedEvent.provider">{{ phrase('渠道') }}: {{ selectedEvent.provider }} · {{ phrase('发送次数') }}: {{ selectedEvent.attempts }}</p>
         <p v-if="selectedEvent.lastAttemptAt">{{ phrase('最近尝试') }}: {{ formatDateTime(selectedEvent.lastAttemptAt) }}</p>

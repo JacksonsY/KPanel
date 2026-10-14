@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import NotificationChannels from './NotificationChannels.vue'
 import { useRouter } from 'vue-router'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { CheckCircle2, LoaderCircle, RefreshCw, Send, ShieldCheck } from '@lucide/vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import { useI18n } from '@/i18n'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
-import { ApiError, api } from '@/lib/api'
+import { api } from '@/lib/api'
+import { notificationErrorMessage } from '@/lib/notificationChannels'
 import { formatDateTime } from '@/lib/format'
 import type { ClusterNotificationChannel, ClusterNotificationProvider, ClusterNotificationRules, ClusterNotificationSnapshot } from '@/types/api'
 
@@ -19,7 +21,7 @@ const props = defineProps<{
 
 const { locale } = useI18n()
 const router = useRouter()
-function viewHistory(): void { emit('close'); void router.push({ path: '/activity', query: { tab: 'notifications' } }) }
+function viewHistory(): void { if (operationBusy.value) return; emit('close'); void router.push({ path: '/activity', query: { tab: 'notifications' } }) }
 
 const emit = defineEmits<{
   close: []
@@ -27,9 +29,15 @@ const emit = defineEmits<{
 
 const loading = ref(false)
 const saving = ref(false)
+const channelBusy = ref(false)
+const operationBusy = computed(() => saving.value || channelBusy.value || discovering.value || testing.value)
 const discovering = ref(false)
 const testing = ref(false)
 const snapshot = ref<ClusterNotificationSnapshot>()
+const saveLabel = computed(() => {
+  if (saving.value) return '正在保存…'
+  return snapshot.value?.channels ? '保存通知规则' : '保存设置'
+})
 const errorMessage = ref('')
 const statusMessage = ref('')
 let loadController: AbortController | undefined
@@ -88,7 +96,7 @@ const selectedChannel = computed<ClusterNotificationChannel>(() => selectedIsAct
   : { provider: selectedProvider.value, configured: false, ready: false, status: 'not_configured' })
 const selectedProviderName = computed(() => notificationProviders.find((provider) => provider.id === selectedProvider.value)?.name || 'Telegram')
 const credentialRequiredForSave = computed(() => !form.channelCredential.trim() && !selectedChannel.value.configured)
-const saveBlocked = computed(() => form.enabled && !form.channelCredential.trim() && !selectedChannel.value.configured)
+const saveBlocked = computed(() => snapshot.value?.channels ? false : form.enabled && !form.channelCredential.trim() && !selectedChannel.value.configured)
 const credentialLabel = computed(() => selectedProvider.value === 'telegram' ? 'Bot API key' : 'Webhook 地址')
 const credentialPlaceholder = computed(() => {
   if (selectedChannel.value.configured) return '已保存，留空则保持不变'
@@ -164,6 +172,11 @@ function applySnapshot(value: ClusterNotificationSnapshot): void {
   }
 }
 
+function applyChannelSnapshot(value: ClusterNotificationSnapshot): void {
+  // Channel saves must not discard unsaved threshold/rule edits in this dialog.
+  snapshot.value = value
+}
+
 function rulesFromForm(): ClusterNotificationRules {
   return {
     cpuEnabled: form.cpuEnabled,
@@ -187,34 +200,8 @@ function rulesFromForm(): ClusterNotificationRules {
   }
 }
 
-function friendlyError(reason: unknown): string {
-  if (reason instanceof ApiError) {
-    const messages: Record<string, string> = {
-      cluster_notifications_changed: '配置已被其他页面更新，请重新读取后再保存。',
-      cluster_notifications_token_required: '请先输入 Telegram Bot API key。',
-      cluster_notifications_credential_required: '请先输入所选通知渠道的 Webhook 地址。',
-      cluster_notifications_not_configured: '还没有配置 Telegram Bot API key。',
-      cluster_notifications_channel_not_configured: '还没有配置所选通知渠道。',
-      cluster_notifications_not_ready: '请先私聊机器人发送 /start，再重新发现聊天。',
-      cluster_notifications_channel_not_ready: '所选通知渠道尚未就绪，请重新保存 Webhook 并验证。',
-      cluster_notifications_provider_mismatch: '凭据与所选通知渠道不匹配，请检查后重试。',
-      cluster_notifications_unsupported_provider: '当前版本不支持这个通知渠道。',
-      cluster_notifications_discover_unsupported: '所选通知渠道不需要发现聊天。',
-      cluster_notifications_invalid_credential: 'Webhook 地址无效，请粘贴官方机器人提供的完整地址。',
-      cluster_notifications_chat_not_found: '没有找到私聊会话，请先私聊机器人发送 /start。',
-      cluster_notifications_invalid_token: 'Bot API key 无效，请检查后重试。',
-      cluster_notifications_webhook_active: '这个机器人启用了 webhook，暂时无法自动发现私聊；请先关闭 webhook。',
-      cluster_notifications_telegram_unavailable: 'Telegram 暂时不可用，请稍后重试。',
-      cluster_notifications_channel_unavailable: '通知渠道暂时不可用，请稍后重试。',
-      cluster_notifications_save_failed_after_delivery: '验证消息已发送，但通知设置未保存；请检查 KPanel 数据目录权限后重试。',
-      cluster_notifications_unavailable: '通知配置暂时不可用，请检查 KPanel 数据目录权限。',
-    }
-    return messages[reason.code] || reason.message || '通知操作失败，请稍后重试。'
-  }
-  return '通知操作失败，请稍后重试。'
-}
-
-async function load(): Promise<void> {
+async function load(preserveDrafts = false): Promise<void> {
+  if (saving.value || channelBusy.value) return
   loadController?.abort()
   const controller = new AbortController()
   loadController = controller
@@ -225,18 +212,21 @@ async function load(): Promise<void> {
   try {
     const value = await api.cluster.notifications(controller.signal)
     if (sequence !== loadSequence) return
-    applySnapshot(value)
+    if (preserveDrafts && snapshot.value) {
+      snapshot.value = value
+      statusMessage.value = '已重新读取最新设置；未保存内容已保留。'
+    } else applySnapshot(value)
   } catch (reason) {
     if (reason instanceof DOMException && reason.name === 'AbortError') return
     if (sequence !== loadSequence) return
-    errorMessage.value = friendlyError(reason)
+    errorMessage.value = notificationErrorMessage(reason)
   } finally {
     if (sequence === loadSequence) loading.value = false
   }
 }
 
 async function save(): Promise<void> {
-  if (!snapshot.value || saving.value) return
+  if (!snapshot.value || operationBusy.value || loading.value) return
   const credentialProvided = Boolean(form.channelCredential.trim())
   saving.value = true
   errorMessage.value = ''
@@ -255,7 +245,7 @@ async function save(): Promise<void> {
       ? (selectedProvider.value === 'telegram' ? 'Bot API key 已保存并完成连接。' : '渠道凭据已保存并通过发送验证。')
       : '通知设置已保存。'
   } catch (reason) {
-    errorMessage.value = friendlyError(reason)
+    errorMessage.value = notificationErrorMessage(reason)
   } finally {
     saving.value = false
   }
@@ -270,8 +260,8 @@ async function discover(): Promise<void> {
     applySnapshot(await api.cluster.discoverNotifications(snapshot.value.resourceVersion))
     statusMessage.value = '已找到私聊会话，通知通道已就绪。'
   } catch (reason) {
-    errorMessage.value = friendlyError(reason)
-    await load()
+    await load(true)
+    errorMessage.value = notificationErrorMessage(reason)
   } finally {
     discovering.value = false
   }
@@ -286,8 +276,8 @@ async function testChannel(): Promise<void> {
     applySnapshot(await api.cluster.testNotifications())
     statusMessage.value = '测试消息已发送。'
   } catch (reason) {
-    errorMessage.value = friendlyError(reason)
-    await load()
+    await load(true)
+    errorMessage.value = notificationErrorMessage(reason)
   } finally {
     testing.value = false
   }
@@ -335,10 +325,10 @@ onBeforeUnmount(() => {
     :title="phrase('集群通知')"
     :description="phrase('事件默认保存在本机，可选开启外部渠道推送。')"
     size="medium"
-    @close="emit('close')"
+    @close="!operationBusy && emit('close')"
   >
     <div class="cluster-notifications">
-      <div v-if="loading" class="cluster-notifications__state" role="status" aria-live="polite">
+      <div v-if="loading && !snapshot" class="cluster-notifications__state" role="status" aria-live="polite">
         <LoaderCircle class="spin" :size="20" />
         <span>{{ phrase('正在读取通知设置…') }}</span>
       </div>
@@ -346,7 +336,7 @@ onBeforeUnmount(() => {
       <div v-else-if="errorMessage && !snapshot" class="cluster-notifications__state cluster-notifications__state--error" role="alert">
         <strong>{{ phrase('暂时无法读取通知设置') }}</strong>
         <p>{{ phrase(errorMessage) }}</p>
-        <button class="button button--secondary" type="button" @click="load">
+        <button class="button button--secondary" type="button" @click="load()">
           <RefreshCw :size="15" /> {{ phrase('重试') }}
         </button>
       </div>
@@ -357,6 +347,8 @@ onBeforeUnmount(() => {
           <button class="button button--secondary" type="button" @click="viewHistory">{{ phrase('查看通知记录') }}</button>
           <p v-if="snapshot.localRecording === false">{{ phrase('请检查 KPanel 数据目录，恢复前无法保存新的通知。') }}</p>
         </section>
+        <NotificationChannels v-if="snapshot.channels" :snapshot="snapshot" :disabled="saving || loading" @busy="channelBusy = $event" @updated="applyChannelSnapshot" @reload="load(true)" />
+        <template v-else>
         <section class="cluster-notifications__providers" aria-labelledby="cluster-notifications-provider-title">
           <div class="cluster-notifications__section-heading">
             <div>
@@ -431,6 +423,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
+        </template>
         <section class="cluster-notifications__section cluster-notifications__locale">
           <div class="cluster-notifications__section-heading">
             <div>
@@ -545,14 +538,15 @@ onBeforeUnmount(() => {
           <CheckCircle2 :size="16" />{{ phrase(statusMessage) }}
         </p>
         <p v-if="errorMessage" class="cluster-notifications__error" role="alert">{{ phrase(errorMessage) }}</p>
+        <button v-if="errorMessage" type="button" class="button button--secondary" :disabled="operationBusy || loading" @click="load(true)">{{ phrase('重新读取设置') }}</button>
       </template>
     </div>
 
     <template #footer>
-      <button class="button button--secondary" type="button" :disabled="saving" @click="emit('close')">{{ phrase('关闭') }}</button>
-      <button class="button button--primary" type="button" :disabled="saving || loading || !snapshot || saveBlocked" @click="save">
+      <button class="button button--secondary" type="button" :disabled="operationBusy" @click="emit('close')">{{ phrase('关闭') }}</button>
+      <button class="button button--primary" type="button" :disabled="operationBusy || loading || !snapshot || saveBlocked" @click="save">
         <LoaderCircle v-if="saving" class="spin" :size="15" />
-        {{ phrase(saving ? '正在保存…' : '保存设置') }}
+        {{ phrase(saveLabel) }}
       </button>
     </template>
   </ModalDialog>
