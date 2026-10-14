@@ -352,7 +352,7 @@ export const zhCNMessages = {
   'tutorials.more.externalNote': '外部视频将在新标签页打开。',
   'tutorials.video.summary': "按发布时间倒序展示 B站 kpanel 搜索的前 9 个视频，标题和封面自动加载。",
   'tutorials.video.defaultTitle': 'KPanel 视频教程',
-  'tutorials.video.defaultDescription': '官方 KPanel 使用教程',
+  'tutorials.video.defaultDescription': 'KPanel 相关视频与使用教程',
   'tutorials.video.coverAlt': '视频封面：{title}',
   'tutorials.video.englishAudio': '英语音轨',
   'tutorials.video.open': '打开 {platform} 上的视频：{title}',

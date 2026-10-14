@@ -317,6 +317,7 @@ func parseTutorialPlaylist(body []byte) ([]tutorialFeedVideo, error) {
 	videos := make([]tutorialFeedVideo, 0, tutorialFeedLimit)
 	seen := make(map[string]bool)
 	recognized := false
+	candidates := 0
 	for _, tab := range data.Contents.TwoColumnBrowseResultsRenderer.Tabs {
 		if !tab.TabRenderer.Selected {
 			continue
@@ -338,6 +339,7 @@ func parseTutorialPlaylist(body []byte) ([]tutorialFeedVideo, error) {
 					if !renderer.IsPlayable {
 						continue
 					}
+					candidates++
 					id, title, endpoint = renderer.VideoID, renderer.Title.SimpleText, renderer.NavigationEndpoint.WatchEndpoint
 					for _, run := range renderer.Title.Runs {
 						title += run.Text
@@ -352,6 +354,7 @@ func parseTutorialPlaylist(body []byte) ([]tutorialFeedVideo, error) {
 					if renderer.ContentType != "LOCKUP_CONTENT_TYPE_VIDEO" {
 						continue
 					}
+					candidates++
 					id, title = renderer.ContentID, renderer.Metadata.LockupMetadataViewModel.Title.Content
 					endpoint = renderer.RendererContext.CommandContext.OnTap.InnertubeCommand.WatchEndpoint
 					for _, image := range renderer.ContentImage.ThumbnailViewModel.Image.Sources {
@@ -375,6 +378,9 @@ func parseTutorialPlaylist(body []byte) ([]tutorialFeedVideo, error) {
 	}
 	if !recognized {
 		return nil, errors.New("YouTube playlist layout is unsupported")
+	}
+	if candidates > 0 && len(videos) == 0 {
+		return nil, errors.New("YouTube playlist contains no usable videos")
 	}
 	return videos, nil
 }

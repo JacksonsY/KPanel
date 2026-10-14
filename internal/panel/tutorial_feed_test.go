@@ -84,7 +84,7 @@ func TestTutorialPlaylistLayoutsAndLimit(t *testing.T) {
 			}
 			wrongPlaylist := strings.ReplaceAll(body, tutorialPlaylistID, "another-list")
 			videos, err = parseTutorialPlaylist([]byte(wrongPlaylist))
-			if err != nil || len(videos) != 0 {
+			if err == nil || len(videos) != 0 {
 				t.Fatalf("accepted foreign playlist: %+v %v", videos, err)
 			}
 		})

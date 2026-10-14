@@ -1237,7 +1237,7 @@ export const zhTWMessages = {
   "tutorials.more.externalNote": "外部影片將在新分頁開啟。",
   'tutorials.video.summary': "依發布時間倒序顯示 B站 kpanel 搜尋的前 9 部影片，標題與封面自動載入。",
   "tutorials.video.defaultTitle": "KPanel 影片教學",
-  "tutorials.video.defaultDescription": "KPanel 官方使用教學",
+  "tutorials.video.defaultDescription": "KPanel 相關影片與使用教學",
   "tutorials.video.coverAlt": "影片封面：{title}",
   "tutorials.video.englishAudio": "英語音軌",
   "tutorials.video.open": "在 {platform} 開啟影片：{title}",

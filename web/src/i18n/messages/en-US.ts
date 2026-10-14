@@ -353,7 +353,7 @@ export const enUSMessages = {
   'tutorials.more.externalNote': 'External videos open in a new tab.',
   'tutorials.video.summary': "The first 9 available videos from the KPanel YouTube playlist load automatically, in playlist order.",
   'tutorials.video.defaultTitle': 'KPanel video tutorial',
-  'tutorials.video.defaultDescription': 'Official KPanel walkthrough',
+  'tutorials.video.defaultDescription': 'KPanel videos and walkthroughs',
   'tutorials.video.coverAlt': 'Video cover: {title}',
   'tutorials.video.englishAudio': 'English audio',
   'tutorials.video.open': 'Open the video on {platform}: {title}',
