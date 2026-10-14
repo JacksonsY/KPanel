@@ -1,7 +1,7 @@
 # KPanel 当前业务事实与规范适配基线
 
 - 复核日期：`2026-10-14`
-- 基线提交：`6e764caac1a6c385efa76a8b4e23e8c43741280e`
+- 基线提交：`a06ab4ce25464f7632e7a26160ff10e88a36af0c`
 - 基线版本：`v1.25.1`
 - 当前公开预览：`v1.26.0-rc.18`，产品提交 `53ff5667f0ee9f12924d8930ef02fc305d0b0e23`；2026-10-13T17:49:18Z 已公开，prerelease=true、draft=false，未部署生产。
 - 稳定版本及 Latest/latest：`v1.25.1`；稳定镜像 `sha256:1894b5e3aa76edbd75efef2de1164f44d38734cb3a27dc11aa2f75c420c1b325`，本轮未提升稳定通道。
