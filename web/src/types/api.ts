@@ -21,6 +21,11 @@ export interface TutorialVideoMetadata {
   thumbnailUrl: string
 }
 
+export interface TutorialVideoFeed {
+  videos: (TutorialVideoMetadata & { url: string })[]
+  stale: boolean
+}
+
 export interface AgentStatus {
   connected: boolean
   readOnly: boolean

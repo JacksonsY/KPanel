@@ -21,106 +21,96 @@ async function mountGuides() {
   return mount(SettingsGuidesView, { global: { plugins: [router] } })
 }
 
+function feed(prefix = 'New tutorial', count = 9) {
+  return { stale: false, videos: Array.from({ length: count }, (_, i) => ({
+    url: 'https://www.bilibili.com/video/BV13xpb6tEq7/?item=' + i,
+    title: prefix + ' ' + i,
+    thumbnailUrl: '/api/v1/tutorials/thumbnail?url=' + i,
+  })) }
+}
+
 describe('SettingsGuidesView', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     resetLocaleForTest()
-    vi.spyOn(api.tutorials, 'metadata').mockRejectedValue(new Error('metadata unavailable'))
+    vi.spyOn(api.tutorials, 'videos').mockResolvedValue(feed())
   })
 
-  it('shows the official Chinese video matrix with Bilibili links and lazy covers', async () => {
+  it('loads dynamic videos without individual metadata requests or embedded players', async () => {
+    const metadata = vi.spyOn(api.tutorials, 'metadata')
     const wrapper = await mountGuides()
+    await flushPromises()
     const links = wrapper.findAll('[data-testid="tutorial-video-link"]')
-
+    expect(api.tutorials.videos).toHaveBeenCalledWith('bilibili', expect.any(AbortSignal))
     expect(links).toHaveLength(9)
-    expect(links.map((link) => link.attributes('href'))).toEqual([
-      'https://www.bilibili.com/video/BV13xpb6tEq7/',
-      'https://www.bilibili.com/video/BV1J2HX6ME7p/',
-      'https://www.bilibili.com/video/BV1jNe46WEjf/',
-      'https://www.bilibili.com/video/BV1rvpe6dE9k/',
-      'https://www.bilibili.com/video/BV1YKaY6FEzk/',
-      'https://www.bilibili.com/video/BV145by6kEgG/',
-      'https://www.bilibili.com/video/BV14UH66EEZ9/',
-      'https://www.bilibili.com/video/BV1e7ar69EfD/',
-      'https://www.bilibili.com/video/BV1c5GG6vExw/',
-    ])
-    expect(links.every((link) => link.attributes('target') === '_blank')).toBe(true)
-    expect(links.every((link) => link.attributes('rel')?.includes('noreferrer'))).toBe(true)
-    expect(links.every((link) => link.get('img').attributes('loading') === 'lazy')).toBe(true)
-    expect(links.every((link) => link.get('img').attributes('src')?.startsWith('/tutorials/'))).toBe(true)
-    expect(links[7]?.get('img').attributes('src')).toBe('/tutorials/kpanel-overview-zh.webp')
-    expect(api.tutorials.metadata).toHaveBeenCalledTimes(9)
-    expect(api.tutorials.metadata).toHaveBeenCalledWith('https://www.bilibili.com/video/BV13xpb6tEq7/', expect.any(AbortSignal))
-    expect(wrapper.get('[data-testid="tutorial-video-grid"]').classes()).toContain('guide-video-grid')
+    expect(links[0]?.get('strong').text()).toBe('New tutorial 0')
+    expect(links[0]?.get('img').attributes('src')).toBe('/api/v1/tutorials/thumbnail?url=0')
+    expect(links.every(link => link.attributes('target') === '_blank' && link.attributes('rel') === 'noopener noreferrer')).toBe(true)
+    expect(links.every(link => link.get('img').attributes('loading') === 'lazy')).toBe(true)
+    expect(metadata).not.toHaveBeenCalled()
     expect(wrapper.find('iframe').exists()).toBe(false)
     expect(wrapper.find('video').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="tutorial-feed-status"]').exists()).toBe(false)
   })
 
-  it('uses YouTube videos with English audio for the English matrix', async () => {
-    await setLocale('en-US')
-    const wrapper = await mountGuides()
-    const links = wrapper.findAll('[data-testid="tutorial-video-link"]')
-
-    expect(links).toHaveLength(5)
-    expect(links.map((link) => link.attributes('href'))).toEqual([
-      'https://www.youtube.com/watch?v=3HwmSTCtozg&hl=en',
-      'https://www.youtube.com/watch?v=kNBMTGF4G1k&hl=en',
-      'https://www.youtube.com/watch?v=6OFR8TxFguo&hl=en',
-      'https://www.youtube.com/watch?v=vl7ulAKvah4&hl=en',
-      'https://www.youtube.com/watch?v=HLTtsALHlpw&hl=en',
-    ])
-    expect(links[0]?.get('img').attributes('src')).toBe('/tutorials/kpanel-release-125-en.webp')
-    expect(links[4]?.get('img').attributes('src')).toBe('/tutorials/kpanel-overview-en.webp')
-    expect(links.every((link) => link.attributes('target') === '_blank')).toBe(true)
-    expect(links.every((link) => link.get('img').attributes('loading') === 'lazy')).toBe(true)
-    expect(links.every((link) => link.get('img').attributes('src')?.startsWith('/tutorials/'))).toBe(true)
-    expect(wrapper.findAll('.guide-video__audio')).toHaveLength(5)
-    expect(wrapper.text()).toContain('Audio track')
-    expect(wrapper.find('iframe').exists()).toBe(false)
-    expect(wrapper.find('video').exists()).toBe(false)
-  })
-
-  it('uses the title and cover resolved from each video link', async () => {
-    vi.mocked(api.tutorials.metadata).mockResolvedValue({
-      title: 'KPanel video title from YouTube',
-      thumbnailUrl: '/api/v1/tutorials/thumbnail?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3HwmSTCtozg%26hl%3Den',
-    })
-    await setLocale('en-US')
+  it('switches to the YouTube feed and back without claiming English audio', async () => {
     const wrapper = await mountGuides()
     await flushPromises()
-
-    expect(wrapper.find('strong').text()).toBe('KPanel video title from YouTube')
-    expect(wrapper.find('img').attributes('src')).toBe('/api/v1/tutorials/thumbnail?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D3HwmSTCtozg%26hl%3Den')
-    expect(wrapper.find('img').attributes('referrerpolicy')).toBe('no-referrer')
-  })
-
-  it('keeps more-video destinations usable when metadata fails and reorders them on language changes', async () => {
-    const wrapper = await mountGuides()
-    await flushPromises()
-    const bilibili = 'https://search.bilibili.com/all?keyword=kpanel&order=pubdate'
-    const youtube = 'https://www.youtube.com/playlist?list=PLH8p8Llp_SZM'
-    const links = () => wrapper.findAll('[data-testid="tutorial-more-link"]')
-
-    expect(links().map(link => link.attributes('href'))).toEqual([bilibili, youtube])
-    expect(links().map(link => link.text())).toEqual(['B站最新视频', 'YouTube 教程合集'])
-    expect(links().every(link => link.attributes('aria-label')?.includes('在新标签页打开'))).toBe(true)
-    expect(api.tutorials.metadata).toHaveBeenCalledTimes(9)
-
+    const youtube = feed('Playlist', 2)
+    youtube.videos[0]!.url = 'https://www.youtube.com/watch?v=4bdTRvOmIXc&hl=en'
+    vi.mocked(api.tutorials.videos).mockResolvedValue(youtube)
     await setLocale('en-US')
     await flushPromises()
-    expect(links().map(link => link.attributes('href'))).toEqual([youtube, bilibili])
-    expect(links()[0]?.text()).toBe('YouTube tutorial playlist')
-    expect(links().every(link => link.attributes('aria-label')?.includes('opens in a new tab'))).toBe(true)
-    expect(api.tutorials.metadata).toHaveBeenCalledTimes(14)
-
+    expect(api.tutorials.videos).toHaveBeenLastCalledWith('youtube', expect.any(AbortSignal))
+    expect(wrapper.findAll('[data-testid="tutorial-video-link"]')).toHaveLength(2)
+    expect(wrapper.get('[data-testid="tutorial-video-link"]').attributes('href')).toBe(youtube.videos[0]!.url)
+    expect(wrapper.find('.guide-video__audio').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="tutorial-more-link"]')[0]?.attributes('href')).toContain('playlist?list=PLH8p8Llp_SZM')
     await setLocale('zh-TW')
     await flushPromises()
-    expect(links().map(link => link.attributes('href'))).toEqual([bilibili, youtube])
-    expect(links()[0]?.text()).toBe('B站最新影片')
-    expect(links().every(link => link.attributes('target') === '_blank'
-      && link.attributes('rel') === 'noopener noreferrer'
-      && link.attributes('referrerpolicy') === 'no-referrer')).toBe(true)
-    expect(vi.mocked(api.tutorials.metadata).mock.calls.every(([url]) => url !== bilibili && url !== youtube)).toBe(true)
+    expect(api.tutorials.videos).toHaveBeenLastCalledWith('bilibili', expect.any(AbortSignal))
+  })
+
+  it('keeps loading visible and ignores a late response after changing language', async () => {
+    let resolveOld!: (value: ReturnType<typeof feed>) => void
+    vi.mocked(api.tutorials.videos).mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve }))
+    const wrapper = await mountGuides()
+    expect(wrapper.get('[data-testid="tutorial-feed-status"]').text()).toContain('正在加载')
+    const oldSignal = vi.mocked(api.tutorials.videos).mock.calls[0]![1]!
+    await setLocale('en-US')
+    await flushPromises()
+    expect(oldSignal.aborted).toBe(true)
+    resolveOld(feed('Outdated'))
+    await flushPromises()
+    expect(wrapper.get('strong').text()).toBe('New tutorial 0')
     wrapper.unmount()
+    expect(vi.mocked(api.tutorials.videos).mock.calls.at(-1)![1]!.aborted).toBe(true)
+  })
+
+  it('shows a recoverable failure and retains both platform destinations', async () => {
+    vi.mocked(api.tutorials.videos).mockRejectedValueOnce(new Error('offline'))
+    const wrapper = await mountGuides()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="tutorial-feed-status"]').text()).toContain('加载失败')
+    expect(wrapper.findAll('[data-testid="tutorial-video-link"]')).toHaveLength(0)
+    expect(wrapper.findAll('[data-testid="tutorial-more-link"]')).toHaveLength(2)
+    await wrapper.get('[data-testid="tutorial-feed-status"] button').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('[data-testid="tutorial-video-link"]')).toHaveLength(9)
+  })
+
+  it('distinguishes an empty source from a stale source and limits displayed cards', async () => {
+    vi.mocked(api.tutorials.videos).mockResolvedValueOnce(feed('Empty', 0))
+    const wrapper = await mountGuides()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="tutorial-feed-status"]').text()).toContain('没有可展示')
+    vi.mocked(api.tutorials.videos).mockResolvedValueOnce({ ...feed('Cached', 11), stale: true })
+    await wrapper.get('[data-testid="tutorial-feed-status"] button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="tutorial-feed-status"]').text()).toContain('上次成功')
+    expect(wrapper.findAll('[data-testid="tutorial-video-link"]')).toHaveLength(9)
+    const image = wrapper.get('img')
+    await image.trigger('error')
+    expect(image.attributes('src')).toBe('/tutorials/kpanel-video-placeholder.svg')
   })
 })
