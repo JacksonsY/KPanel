@@ -84,6 +84,7 @@ type Catalog struct {
 	Packs  []Pack `json:"packs"`
 }
 type View struct {
+	Uploaded         bool     `json:"uploaded,omitempty"`
 	ID               string   `json:"id"`
 	Version          string   `json:"version"`
 	Name             Text     `json:"name"`

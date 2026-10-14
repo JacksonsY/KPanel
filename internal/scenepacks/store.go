@@ -24,8 +24,9 @@ const mirrorRoot = "https://gh.kejilion.pro/" + officialRoot
 
 type Fetch func(context.Context, string, int64) ([]byte, error)
 type installedPack struct {
-	Pack  Pack   `json:"pack"`
-	Token string `json:"token"`
+	Pack     Pack   `json:"pack"`
+	Token    string `json:"token"`
+	Uploaded bool   `json:"uploaded,omitempty"`
 }
 type state struct {
 	Selected  string                   `json:"selected,omitempty"`
@@ -281,7 +282,11 @@ func (s *Store) refresh(ctx context.Context) error {
 
 func (s *Store) view(p Pack) View {
 	item, installed := s.state.Installed[p.ID]
+	if item.Uploaded {
+		p = item.Pack
+	}
 	v := View{ID: p.ID, Version: p.Version, Name: p.Name, Description: p.Description, Author: p.Author, License: p.License, Tags: p.Tags, Theme: p.Theme, Cameras: p.Cameras, SizeBytes: p.SizeBytes, Installed: installed}
+	v.Uploaded = item.Uploaded
 	if installed {
 		version := item.Pack.Version
 		base := s.profile.filePrefix + p.ID + "/files/" + item.Token + "/"
@@ -318,7 +323,7 @@ func (s *Store) List(ctx context.Context) (List, error) {
 	if s.unavailable {
 		return List{}, ErrUnavailable
 	}
-	if err != nil && s.catalog.Packs == nil && len(s.state.Installed) == 0 {
+	if err != nil && s.catalog.Packs == nil && len(s.state.Installed) == 0 && !s.profile.themes {
 		return List{}, err
 	}
 	result := List{Source: s.state.Source, Sources: []string{"auto", "github", "mirror"}, Packs: []View{}}
@@ -371,6 +376,10 @@ func (s *Store) Install(ctx context.Context, id, expected string) (View, error) 
 	}
 	defer s.opMu.Unlock()
 	s.mu.Lock()
+	if s.state.Installed[id].Uploaded {
+		s.mu.Unlock()
+		return View{}, ErrConflict
+	}
 	var pack Pack
 	for _, p := range s.catalog.Packs {
 		if p.ID == id {

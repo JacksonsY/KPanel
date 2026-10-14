@@ -1789,6 +1789,12 @@ export const api = {
     }): Promise<ClusterHostOrderPreference> =>
       request<ClusterHostOrderPreference>('/cluster/host-order', { method: 'PUT', body }),
     shareThemes: (signal?: AbortSignal): Promise<ShareThemeList> => request<ShareThemeList>('/cluster/share-themes', { signal }),
+    uploadShareTheme: (file: File, expectedResourceVersion: string, signal?: AbortSignal): Promise<ScenePack> => {
+      const form = new FormData()
+      form.append('expectedResourceVersion', expectedResourceVersion)
+      form.append('file', file)
+      return request<ScenePack>('/cluster/share-themes/upload', { method: 'POST', body: form, signal })
+    },
     installShareTheme: (id: string, expectedResourceVersion: string): Promise<ScenePack> => request<ScenePack>(`/cluster/share-themes/${encodeURIComponent(id)}/install`, { method: 'POST', body: { expectedResourceVersion } }),
     deleteShareTheme: (id: string, expectedResourceVersion: string): Promise<void> => request<void>(`/cluster/share-themes/${encodeURIComponent(id)}`, { method: 'DELETE', body: { expectedResourceVersion } }),
     selectShareTheme: (selected: string, expectedResourceVersion: string): Promise<void> => request<void>('/cluster/share-themes/selection', { method: 'PUT', body: { selected, expectedResourceVersion } }),

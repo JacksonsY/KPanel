@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { useI18n } from '@/i18n'
 import { formatBytes } from '@/lib/format'
 import type { ShareThemeList } from '@/lib/shareThemes'
@@ -13,6 +13,28 @@ const loading = ref(true)
 const error = ref('')
 const notice = ref('')
 const controller = new AbortController()
+const uploadInput = ref<HTMLInputElement>()
+async function upload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !catalog.value || busy.value) return
+  error.value = ''; notice.value = ''
+  if (!file.name.toLowerCase().endsWith('.zip') || file.size > 6 * 1024 * 1024 || !file.size) {
+    error.value = t('cluster.themes.uploadInvalid'); return
+  }
+  busy.value = 'upload'
+  try {
+    await api.cluster.uploadShareTheme(file, catalog.value.resourceVersion, controller.signal)
+    notice.value = t('cluster.themes.uploaded')
+    await load()
+  } catch (cause) {
+    if (!controller.signal.aborted) {
+      error.value = t(cause instanceof ApiError && cause.code === 'scene_pack_changed' ? 'cluster.themes.uploadConflict' : cause instanceof ApiError && cause.code === 'scene_pack_quota' ? 'cluster.themes.uploadQuota' : 'cluster.themes.uploadFailed')
+      await loadAfterError()
+    }
+  } finally { busy.value = '' }
+}
 async function load() {
   loading.value = true
   try { catalog.value = await api.cluster.shareThemes(controller.signal); error.value = '' }
@@ -50,6 +72,11 @@ const swatch = (pack: ScenePack) => pack.theme ? { '--swatch-bg': pack.theme.neu
       <a href="https://github.com/kejilion/KPanel/tree/main/share-themes" target="_blank" rel="noopener noreferrer">{{ t('cluster.themes.create') }}</a>
     </header>
     <p class="themes__safe">{{ t('cluster.themes.safe') }}</p>
+    <div class="themes__upload">
+      <input ref="uploadInput" type="file" accept=".zip,application/zip" hidden :disabled="!catalog || Boolean(busy) || loading" @change="upload" />
+      <button class="button button--secondary" type="button" :disabled="!catalog || Boolean(busy) || loading" @click="uploadInput?.click()">{{ t(busy === 'upload' ? 'cluster.themes.uploading' : 'cluster.themes.upload') }}</button>
+      <p class="themes__note">{{ t('cluster.themes.uploadHint') }}</p>
+    </div>
 
     <ul class="themes__grid">
       <li class="theme-card" :class="{ 'is-current': catalog && !catalog.selected }">
@@ -73,7 +100,7 @@ const swatch = (pack: ScenePack) => pack.theme ? { '--swatch-bg': pack.theme.neu
           </h4>
           <p>{{ text(pack.description) }}</p>
           <p class="theme-card__meta">
-            {{ isOfficialScenePack(pack) ? t('cluster.themes.official') : t('cluster.themes.community') }}
+            {{ pack.uploaded ? t('cluster.themes.local') : isOfficialScenePack(pack) ? t('cluster.themes.official') : t('cluster.themes.community') }}
             · {{ t('cluster.themes.by', { name: pack.author?.name || '—' }) }} · v{{ pack.version }} · {{ formatBytes(pack.sizeBytes) }}
           </p>
         </div>
