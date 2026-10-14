@@ -139,6 +139,7 @@ import type {
   TOTPRecoveryCodes,
   TOTPStatus,
   TutorialVideoMetadata,
+  TutorialVideoFeed,
   TerminalOutput,
   TerminalQuickCommands,
   TerminalQuickCommandsUpdate,
@@ -1284,6 +1285,8 @@ async function resizeAppTerminal(id: string, rows: number, columns: number): Pro
 
 export const api = {
   tutorials: {
+    videos: (platform: 'bilibili' | 'youtube', signal?: AbortSignal): Promise<TutorialVideoFeed> =>
+      request<TutorialVideoFeed>('/tutorials/videos', { query: { platform }, signal }),
     metadata: (url: string, signal?: AbortSignal): Promise<TutorialVideoMetadata> =>
       request<TutorialVideoMetadata>('/tutorials/metadata', { query: { url }, signal }),
   },

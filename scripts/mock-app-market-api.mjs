@@ -9,6 +9,7 @@ import { mockDesktopWallpapers } from './mock-desktop-wallpapers.mjs'
 import { mockGallery, mockGalleryRootEntries } from './mock-gallery.mjs'
 import { mockOffers } from './mock-offers.mjs'
 import { handleMockSystemServices } from './mock-system-services.mjs'
+import { mockTutorials } from './mock-tutorials.mjs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1756,6 +1757,7 @@ function mockTrafficInterfacesSnapshot() {
 
 createServer(async (request, response) => {
   const url = new URL(request.url, 'http://127.0.0.1:8080')
+  if (mockTutorials(request, response, url, send)) return
   if (await mockBackups(request, response, url, send, readJSON)) return
   if (await mockShareThemes(request, response, url, send, readJSON)) return
   if (await mockScenePacks(request, response, url, send, readJSON)) return

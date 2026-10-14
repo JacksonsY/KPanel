@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router'
 import { ExternalLink, LayoutDashboard, Search, ShieldCheck } from '@lucide/vue'
 import { api } from '@/lib/api'
 import { usePhraseCatalog } from '@/i18n/phrase'
-import type { TutorialVideoMetadata } from '@/types/api'
+import type { TutorialVideoFeed } from '@/types/api'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { useI18n } from '@/i18n'
 
@@ -22,131 +22,31 @@ const moreVideoLinks = computed(() => {
   return isEnglish.value ? [youtube, bilibili] : [bilibili, youtube]
 })
 
-type TutorialVideoId = 'release125' | 'webssh' | 'cluster' | 'security' | 'theme' | 'desktop' | 'release124' | 'overview' | 'launch'
+const videos = ref<TutorialVideoFeed['videos']>([])
+const loading = ref(false)
+const failed = ref(false)
+const stale = ref(false)
+const reload = ref(0)
+const source = computed(() => isEnglish.value ? 'youtube' : 'bilibili')
+const fallbackPoster = '/tutorials/kpanel-video-placeholder.svg'
 
-// New entries need only a platform URL; copy keys and local covers are optional fallbacks.
-interface TutorialVideoEntry {
-  id?: TutorialVideoId
-  bilibiliUrl?: string
-  youtubeUrl?: string
-  bilibiliFallback?: string
-  youtubeFallback?: string
-  englishAudio?: boolean
-}
-
-const videoCatalog: TutorialVideoEntry[] = [
-  {
-    id: 'release125',
-    bilibiliUrl: 'https://www.bilibili.com/video/BV13xpb6tEq7/',
-    bilibiliFallback: '/tutorials/kpanel-release-125-zh.webp',
-    youtubeUrl: 'https://www.youtube.com/watch?v=3HwmSTCtozg',
-    youtubeFallback: '/tutorials/kpanel-release-125-en.webp',
-    englishAudio: true,
-  },
-  {
-    id: 'webssh',
-    bilibiliUrl: 'https://www.bilibili.com/video/BV1J2HX6ME7p/',
-    bilibiliFallback: '/tutorials/kpanel-webssh-zh.webp',
-    youtubeUrl: 'https://www.youtube.com/watch?v=kNBMTGF4G1k',
-    youtubeFallback: '/tutorials/kpanel-webssh-en.webp',
-    englishAudio: true,
-  },
-  {
-    id: 'cluster',
-    bilibiliUrl: 'https://www.bilibili.com/video/BV1jNe46WEjf/',
-    bilibiliFallback: '/tutorials/kpanel-cluster-zh.webp',
-  },
-  {
-    id: 'security',
-    bilibiliUrl: 'https://www.bilibili.com/video/BV1rvpe6dE9k/',
-    bilibiliFallback: '/tutorials/kpanel-security-zh.webp',
-    youtubeUrl: 'https://www.youtube.com/watch?v=6OFR8TxFguo',
-    youtubeFallback: '/tutorials/kpanel-security-en.webp',
-    englishAudio: true,
-  },
-  {
-    id: 'theme',
-    bilibiliUrl: 'https://www.bilibili.com/video/BV1YKaY6FEzk/',
-    bilibiliFallback: '/tutorials/kpanel-theme-zh.webp',
-  },
-  {
-    id: 'desktop',
-    bilibiliUrl: 'https://www.bilibili.com/video/BV145by6kEgG/',
-    bilibiliFallback: '/tutorials/kpanel-desktop-zh.webp',
-  },
-  {
-    id: 'release124',
-    bilibiliUrl: 'https://www.bilibili.com/video/BV14UH66EEZ9/',
-    bilibiliFallback: '/tutorials/kpanel-release-124-zh.webp',
-    youtubeUrl: 'https://www.youtube.com/watch?v=vl7ulAKvah4',
-    youtubeFallback: '/tutorials/kpanel-release-124-en.webp',
-    englishAudio: true,
-  },
-  {
-    id: 'overview',
-    bilibiliUrl: 'https://www.bilibili.com/video/BV1e7ar69EfD/',
-    bilibiliFallback: '/tutorials/kpanel-overview-zh.webp',
-    youtubeUrl: 'https://www.youtube.com/watch?v=HLTtsALHlpw',
-    youtubeFallback: '/tutorials/kpanel-overview-en.webp',
-    englishAudio: true,
-  },
-  {
-    id: 'launch',
-    bilibiliUrl: 'https://www.bilibili.com/video/BV1c5GG6vExw/',
-    bilibiliFallback: '/tutorials/kpanel-launch-zh.webp',
-  },
-]
-
-const videos = computed(() => videoCatalog
-  .filter((entry) => isEnglish.value ? Boolean(entry.youtubeUrl) : Boolean(entry.bilibiliUrl))
-  .map((entry) => {
-    const href = isEnglish.value ? englishYouTubeURL(entry.youtubeUrl!) : entry.bilibiliUrl!
-    const fallbackTitle = entry.id
-      ? i18n.t(`tutorials.videos.${entry.id}.title`)
-      : i18n.t('tutorials.video.defaultTitle')
-    const description = entry.id
-      ? i18n.t(`tutorials.videos.${entry.id}.description`)
-      : i18n.t('tutorials.video.defaultDescription')
-
-    return {
-      href,
-      fallbackPoster: (isEnglish.value ? entry.youtubeFallback : entry.bilibiliFallback) || '/tutorials/kpanel-video-placeholder.svg',
-      fallbackTitle,
-      description,
-      audioLabel: isEnglish.value && entry.englishAudio ? i18n.t('tutorials.video.englishAudio') : '',
-      platform: isEnglish.value ? 'YouTube' : 'Bilibili',
-    }
-  }))
-
-function englishYouTubeURL(videoURL: string): string {
-  const parsed = new URL(videoURL)
-  parsed.searchParams.set('hl', 'en')
-  return parsed.toString()
-}
-
-const videoMetadata = ref<Record<string, TutorialVideoMetadata>>({})
-
-watch(videos, (currentVideos, _previousVideos, onCleanup) => {
+watch([source, reload], ([currentSource], _previous, onCleanup) => {
   const controller = new AbortController()
-  videoMetadata.value = {}
   onCleanup(() => controller.abort())
-
-  void Promise.all(currentVideos.map(async (video) => {
-    try {
-      return [video.href, await api.tutorials.metadata(video.href, controller.signal)] as const
-    } catch {
-      return null
-    }
-  })).then((results) => {
+  videos.value = []
+  failed.value = false
+  stale.value = false
+  loading.value = true
+  void api.tutorials.videos(currentSource, controller.signal).then((result) => {
     if (controller.signal.aborted) return
-    const resolved = results.filter((result): result is readonly [string, TutorialVideoMetadata] => result !== null)
-    videoMetadata.value = Object.fromEntries(resolved)
+    videos.value = result.videos.slice(0, 9)
+    stale.value = result.stale
+  }).catch(() => {
+    if (!controller.signal.aborted) failed.value = true
+  }).finally(() => {
+    if (!controller.signal.aborted) loading.value = false
   })
 }, { immediate: true })
-
-function videoTitle(video: (typeof videos.value)[number]): string {
-  return videoMetadata.value[video.href]?.title || video.fallbackTitle
-}
 
 function fallbackToLocalPoster(event: Event, fallbackPoster: string): void {
   const image = event.currentTarget
@@ -199,27 +99,32 @@ const quickSteps = computed(() => [
         <span class="guide-platform">{{ platform }}</span>
       </div>
 
-      <ul class="guide-video-grid" data-testid="tutorial-video-grid">
-        <li v-for="video in videos" :key="video.href">
+      <div v-if="loading || failed || stale || !videos.length" class="guide-feed-status panel-card" role="status" aria-live="polite" data-testid="tutorial-feed-status">
+        <p>{{ i18n.t(loading ? 'tutorials.feed.loading' : failed ? 'tutorials.feed.failed' : stale ? 'tutorials.feed.stale' : 'tutorials.feed.empty') }}</p>
+        <button v-if="!loading" class="button button--secondary" type="button" @click="reload++">{{ i18n.t('tutorials.feed.retry') }}</button>
+      </div>
+
+      <ul v-if="videos.length" class="guide-video-grid" data-testid="tutorial-video-grid">
+        <li v-for="video in videos" :key="video.url">
           <a
             class="guide-video panel-card"
             data-testid="tutorial-video-link"
-            :href="video.href"
+            :href="video.url"
             target="_blank"
             rel="noopener noreferrer"
             referrerpolicy="no-referrer"
-            :aria-label="i18n.t('tutorials.video.open', { platform: video.platform, title: videoTitle(video) })"
+            :aria-label="i18n.t('tutorials.video.open', { platform: platform, title: video.title })"
           >
             <span class="guide-video__poster">
               <img
-                :src="videoMetadata[video.href]?.thumbnailUrl || video.fallbackPoster"
-                :alt="i18n.t('tutorials.video.coverAlt', { title: videoTitle(video) })"
+                :src="video.thumbnailUrl || fallbackPoster"
+                :alt="i18n.t('tutorials.video.coverAlt', { title: video.title })"
                 width="1280"
                 height="720"
                 loading="lazy"
                 decoding="async"
                 referrerpolicy="no-referrer"
-                @error="fallbackToLocalPoster($event, video.fallbackPoster)"
+                @error="fallbackToLocalPoster($event, fallbackPoster)"
               />
               <span class="guide-video__play" aria-hidden="true">
                 <span>▶</span>
@@ -227,13 +132,12 @@ const quickSteps = computed(() => [
             </span>
             <span class="guide-video__content">
               <span class="guide-video__meta">
-                {{ video.platform }} · KPanel
-                <span v-if="video.audioLabel" class="guide-video__audio">{{ video.audioLabel }}</span>
+                {{ platform }} · KPanel
               </span>
-              <strong>{{ videoTitle(video) }}</strong>
-              <span class="guide-video__description">{{ video.description }}</span>
+              <strong>{{ video.title }}</strong>
+              <span class="guide-video__description">{{ i18n.t('tutorials.video.defaultDescription') }}</span>
               <span class="guide-video__action">
-                {{ i18n.t('tutorials.video.watch', { platform: video.platform }) }}
+                {{ i18n.t('tutorials.video.watch', { platform: platform }) }}
                 <ExternalLink :size="16" aria-hidden="true" />
               </span>
             </span>
@@ -265,7 +169,6 @@ const quickSteps = computed(() => [
       </div>
 
       <p class="guide-video-note">{{ i18n.t('tutorials.more.externalNote') }}</p>
-      <p v-if="isEnglish" class="guide-video-note">{{ i18n.t('tutorials.video.audioNote') }}</p>
     </section>
 
     <section class="guide-section" aria-labelledby="guide-quick-heading">
@@ -291,6 +194,16 @@ const quickSteps = computed(() => [
 </template>
 
 <style scoped>
+.guide-feed-status {
+  padding: 18px;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.guide-feed-status p {
+  margin: 0 0 12px;
+}
+
 .guide-page {
   display: grid;
   gap: 22px;
