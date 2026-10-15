@@ -1,6 +1,13 @@
 import { passkeyZhCN } from '../passkeys'
 
 export const zhCNMessages = {
+  "terminal.retainedNotice": "关闭窗口或刷新后会话继续，可从终端重新连接。最长 8 小时；服务或节点重启会结束会话，超过 1 MiB 的旧输出会截断。",
+  "terminal.endSession": "结束会话",
+  "terminal.endSessionConfirm": "结束会话将停止终端进程。是否继续？",
+  "terminal.launchUncertain": "启动结果未确认，未自动重试，请检查终端。",
+  "appScript.backgroundNotice": "关闭窗口或刷新不会结束任务，重新打开可继续连接。",
+  "appScript.endTask": "结束任务",
+
   'office.title': "轻量 Office",
   'office.kind.docx': "Word 文档",
   'office.kind.xlsx': "Excel 表格",
@@ -779,7 +786,7 @@ export const zhCNMessages = {
   'appScript.idleTitle': '当前没有运行中的脚本任务',
   'appScript.idleDescription': '需要使用时，可以手动启动脚本终端。',
   'appScript.start': '启动脚本终端',
-  'appScript.closeConfirm': '关闭窗口会结束当前 kejilion.sh 进程并释放应用管理锁；已经执行的步骤不会自动回滚。是否继续？',
+  'appScript.closeConfirm': '结束任务会停止当前 kejilion.sh 进程并释放应用管理锁；已经执行的步骤不会自动回滚。是否继续？',
   'appScript.closingTitle': '正在结束脚本终端…',
   'appScript.closingDescription': '正在等待 Agent 确认后台进程退出并释放应用管理锁。',
   'appScript.closePending': '已请求结束任务，但后台进程尚未确认退出。窗口已保留，请稍后重试关闭。',

@@ -10,7 +10,7 @@ vi.mock('vue-router', async (importOriginal) => ({
   useRoute: () => ({ query: {} }),
 }))
 
-vi.mock('@/lib/api', () => ({ api: { cluster: { hosts: mocks.hosts }, terminals: { open: mocks.open } }, ApiError: class extends Error {} }))
+vi.mock('@/lib/api', () => ({ api: { cluster: { hosts: mocks.hosts }, terminals: { list: () => Promise.resolve({ items: [] }), open: mocks.open } }, ApiError: class extends Error {} }))
 vi.mock('@/components/terminal/HostTerminal.vue', () => ({ default: defineComponent({
   props: ['sessionId', 'hostName', 'initialOffset'],
   setup(_, { expose }) {
@@ -31,7 +31,7 @@ describe('explicit terminal tab close', () => {
     mocks.close.mockReturnValueOnce(new Promise((_, fail) => { reject = fail }))
     const wrapper = mount(TerminalView)
     await flushPromises()
-    const close = wrapper.get('[aria-label="关闭终端"]')
+    const close = wrapper.get('[aria-label="结束会话"]')
     await close.trigger('click')
     await close.trigger('click')
     expect(mocks.close).toHaveBeenCalledTimes(1)
@@ -54,7 +54,7 @@ describe('explicit terminal tab close', () => {
     mocks.close.mockResolvedValue(undefined)
     const wrapper = mount(TerminalView)
     await flushPromises()
-    await wrapper.get('[aria-label="关闭终端"]').trigger('keydown', { key: 'Enter' })
+    await wrapper.get('[aria-label="结束会话"]').trigger('keydown', { key: 'Enter' })
     await flushPromises()
     expect(mocks.close).toHaveBeenCalledTimes(1)
     expect(wrapper.findAll('.terminal-tab')).toHaveLength(0)

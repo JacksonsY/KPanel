@@ -4,10 +4,12 @@ import { LoaderCircle } from '@lucide/vue'
 import { desktopWindowCloseGuardKey } from '@/lib/desktopRouteKeys'
 import HostTerminal from '@/components/terminal/HostTerminal.vue'
 import { api, ApiError } from '@/lib/api'
+import { useI18n } from '@/i18n'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import type { TerminalSession } from '@/types/api'
 
-const props = defineProps<{ name: string; command: string; hostName: string; hostId?: string }>()
+const props = defineProps<{ name: string; command: string; hostName: string; hostId?: string; shortcutId?: string; shortcutVersion?: string; existingSession?: TerminalSession }>()
+const { t } = useI18n()
 const emit = defineEmits<{ close: [] }>()
 const closeGuards = inject(desktopWindowCloseGuardKey, undefined)
 let unregisterCloseGuard: (() => void) | undefined
@@ -36,12 +38,15 @@ async function reclaim(opened: TerminalSession): Promise<void> {
 
 async function open(): Promise<void> {
   try {
-    const opened = await api.terminals.open(hostId, 30, 120)
+    const opened = props.existingSession || await (props.shortcutId
+      ? api.terminals.open(hostId, 30, 120, { retained: true, shortcutId: props.shortcutId, shortcutVersion: props.shortcutVersion })
+      : api.terminals.open(hostId, 30, 120))
     if (disposed) {
-      await reclaim(opened).catch(() => api.terminals.closeOnUnload(opened.sessionId))
+      if (!opened.retained) await reclaim(opened).catch(() => api.terminals.closeOnUnload(opened.sessionId))
       return
     }
     session.value = opened
+    if (opened.launchUncertain) error.value = t('terminal.launchUncertain')
   } catch (reason) {
     if (!disposed) error.value = reason instanceof ApiError && reason.code === 'terminal_limit'
       ? phrase('已达到终端会话上限，请先关闭不用的终端。')
@@ -52,7 +57,7 @@ async function open(): Promise<void> {
 }
 
 async function onStateChange(state: string): Promise<void> {
-  if (state !== 'connected' || submitted || disposed || closing.value || !command) return
+  if (props.shortcutId || state !== 'connected' || submitted || disposed || closing.value || !command) return
   // A reconnect must never repeat a command. Mark before awaiting Vue's ref update.
   submitted = true
   await nextTick()
@@ -63,6 +68,7 @@ async function onStateChange(state: string): Promise<void> {
 
 async function close(): Promise<boolean> {
   if (closing.value) return false
+  if (session.value?.retained && !window.confirm(t('terminal.endSessionConfirm'))) return false
   closing.value = true
   try {
     await openingRequest
@@ -83,14 +89,14 @@ async function close(): Promise<boolean> {
 }
 
 onMounted(() => {
-  unregisterCloseGuard = closeGuards?.register(close)
+  unregisterCloseGuard = closeGuards?.register(() => props.shortcutId ? true : close())
   openingRequest = open()
 })
 onBeforeUnmount(() => {
   unregisterCloseGuard?.()
   disposed = true
   // HostTerminal owns mounted sessions, including page-hide cleanup.
-  if (session.value && !terminal.value) {
+  if (session.value && !session.value.retained && !terminal.value) {
     const opened = session.value
     void reclaim(opened).catch(() => api.terminals.closeOnUnload(opened.sessionId))
   }
@@ -101,11 +107,17 @@ onBeforeUnmount(() => {
   <section class="shortcut-command-terminal" :aria-label="name">
       <div v-if="opening" class="shortcut-command-terminal__state" role="status"><LoaderCircle class="spin" :size="20" />{{ phrase('正在连接终端…') }}</div>
       <div v-if="error" class="inline-alert inline-alert--danger" role="alert">{{ error }}</div>
-      <HostTerminal v-if="session" ref="terminal" :session-id="session.sessionId" :host-name="hostName" :initial-offset="session.offset" @state-change="onStateChange" />
+      <div v-if="session?.retained" class="shortcut-command-terminal__actions">
+        <p>{{ t('terminal.retainedNotice') }}</p>
+        <button class="button" type="button" :disabled="closing" @click="close">{{ t('terminal.endSession') }}</button>
+      </div>
+      <HostTerminal v-if="session" ref="terminal" :session-id="session.sessionId" :retained="session.retained" :host-name="hostName" :initial-offset="session.retained ? 0 : session.offset" @state-change="onStateChange" />
   </section>
 </template>
 
 <style scoped>
+.shortcut-command-terminal__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); color: var(--text); }
+.shortcut-command-terminal__actions p { flex: 1; min-width: 180px; margin: 0; font-size: 13px; line-height: 1.5; }
 .shortcut-command-terminal { height: 100%; overflow: hidden; background: var(--terminal-wallpaper-background, var(--terminal-shell-background)); display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
 .shortcut-command-terminal__state { display: flex; flex: 1; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 14px; }
 .shortcut-command-terminal > .inline-alert { margin: 16px; }

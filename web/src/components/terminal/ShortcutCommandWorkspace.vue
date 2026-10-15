@@ -8,7 +8,7 @@ import { useI18n } from '@/i18n'
 import { api } from '@/lib/api'
 import { isUnsupportedLightNode } from '@/lib/nodeFeatureHosts'
 import { desktopWindowCloseGuardKey, desktopWindowLaunchKey, desktopWindowTitleKey } from '@/lib/desktopRouteKeys'
-import type { DesktopShortcut } from '@/types/api'
+import type { DesktopShortcut, TerminalSession } from '@/types/api'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -19,6 +19,8 @@ const shortcut = ref<DesktopShortcut>()
 const loading = ref(false)
 const error = ref('')
 const running = ref(false)
+const shortcutVersion = ref('')
+const existingSession = ref<TerminalSession>()
 const targetHost = ref<{ id: string; name: string }>()
 // Keep the resolved launch snapshot when the saved shortcut is edited.
 const windowTitle = computed(() => shortcut.value && targetHost.value
@@ -57,7 +59,11 @@ async function load(run = false): Promise<void> {
     }
     targetHost.value = { id: hostId, name: hostName }
     shortcut.value = { ...item }
-    running.value = run
+    shortcutVersion.value = workspace.resourceVersion
+    const retained = await api.terminals.list(request.signal)
+    if (disposed || request.signal.aborted || controller !== request) return
+    existingSession.value = retained.items.find(session => session.retained && session.shortcutId === id && session.hostId === hostId)
+    running.value = Boolean(existingSession.value) || run
   } catch {
     if (!disposed && !request.signal.aborted) error.value = t('desktop.shortcutCommandLoadFailed')
   } finally {
@@ -90,7 +96,7 @@ onBeforeUnmount(() => {
       <strong>{{ error }}</strong>
       <button class="button" @click="load()"><RefreshCw :size="16" />{{ t('common.retry') }}</button>
     </div>
-    <ShortcutCommandTerminal v-else-if="running && shortcut" :name="shortcut.name" :command="shortcut.command || ''" :host-id="targetHost?.id" :host-name="targetHost?.name || t('terminal.hostKind.local')" />
+    <ShortcutCommandTerminal v-else-if="running && shortcut" :name="shortcut.name" :shortcut-id="shortcut.id" :shortcut-version="shortcutVersion" :existing-session="existingSession" @close="running = false; existingSession = undefined" :command="shortcut.command || ''" :host-id="targetHost?.id" :host-name="targetHost?.name || t('terminal.hostKind.local')" />
     <div v-else class="shortcut-command-page__state">
       <strong>{{ shortcut?.name }}</strong>
       <p>{{ t('desktop.shortcutCommandIdle') }}</p>

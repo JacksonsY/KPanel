@@ -2,6 +2,13 @@ import type { LocaleMessages } from './zh-CN'
 import { passkeyZhTW } from '../passkeys'
 
 export const zhTWMessages = {
+  "terminal.retainedNotice": "關閉視窗或重新整理後會話繼續，可從終端重新連接。最長 8 小時；服務或節點重啟會結束會話，超過 1 MiB 的舊輸出會截斷。",
+  "terminal.endSession": "結束會話",
+  "terminal.endSessionConfirm": "結束會話將停止終端處理程序。是否繼續？",
+  "terminal.launchUncertain": "啟動結果未確認，未自動重試，請檢查終端。",
+  "appScript.backgroundNotice": "關閉視窗或重新整理不會結束任務，重新開啟可繼續連接。",
+  "appScript.endTask": "結束任務",
+
   'office.title': "輕量 Office",
   'office.kind.docx': "Word 文件",
   'office.kind.xlsx': "Excel 試算表",
@@ -715,7 +722,7 @@ export const zhTWMessages = {
   "appScript.idleTitle": "目前沒有執行中的指令碼任務",
   "appScript.idleDescription": "需要使用時，可以手動啟動指令碼終端機。",
   "appScript.start": "啟動指令碼終端機",
-  "appScript.closeConfirm": "關閉視窗會結束目前 kejilion.sh 處理程序並釋放應用程式管理鎖；已經執行的步驟不會自動回滾。是否繼續？",
+  "appScript.closeConfirm": "結束任務會停止目前 kejilion.sh 處理程序並釋放應用程式管理鎖；已經執行的步驟不會自動回滾。是否繼續？",
   "appScript.closingTitle": "正在結束指令碼終端機…",
   "appScript.closingDescription": "正在等待 Agent 確認背景處理程序結束並釋放應用程式管理鎖。",
   "appScript.closePending": "已要求結束任務，但背景處理程序尚未確認結束。視窗已保留，請稍後重試關閉。",

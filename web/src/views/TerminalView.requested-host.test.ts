@@ -12,7 +12,7 @@ vi.mock('vue-router', async (importOriginal) => {
   return { ...(await importOriginal<typeof import('vue-router')>()), useRoute: () => mocks.route.current }
 })
 vi.mock('@/lib/api', () => ({
-  api: { cluster: { hosts: mocks.hosts }, terminals: { open: mocks.open } },
+  api: { cluster: { hosts: mocks.hosts }, terminals: { list: () => Promise.resolve({ items: [] }), open: mocks.open } },
   ApiError: class extends Error {},
 }))
 vi.mock('@/components/terminal/HostTerminal.vue', () => ({ default: defineComponent({
@@ -45,7 +45,7 @@ describe('terminal host requested by the cluster page', () => {
     await flushPromises()
 
     expect(mocks.open).toHaveBeenCalledTimes(1)
-    expect(mocks.open).toHaveBeenCalledWith('panel', 30, 120)
+    expect(mocks.open).toHaveBeenCalledWith('panel', 30, 120, { retained: true })
     wrapper.unmount()
   })
 
@@ -55,7 +55,7 @@ describe('terminal host requested by the cluster page', () => {
     await flushPromises()
 
     expect(mocks.open).toHaveBeenCalledTimes(1)
-    expect(mocks.open).toHaveBeenCalledWith('local', 30, 120)
+    expect(mocks.open).toHaveBeenCalledWith('local', 30, 120, { retained: true })
     wrapper.unmount()
   })
 
@@ -79,7 +79,7 @@ describe('terminal host requested by the cluster page', () => {
 
     mocks.route.current!.query = { hostId: 'panel' }
     await flushPromises()
-    expect(mocks.open).toHaveBeenLastCalledWith('panel', 30, 120)
+    expect(mocks.open).toHaveBeenLastCalledWith('panel', 30, 120, { retained: true })
     expect(mocks.open).toHaveBeenCalledTimes(2)
 
     mocks.route.current!.query = { hostId: 'local' }

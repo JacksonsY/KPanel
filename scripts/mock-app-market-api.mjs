@@ -2680,6 +2680,10 @@ createServer(async (request, response) => {
     })
     return
   }
+  if (request.method === 'GET' && url.pathname === '/api/v1/terminal-sessions') {
+    send(response, 200, { items: [...mockTerminalSessions.values()].filter(session => session.metadata?.retained && !session.exitedAt).map(session => session.metadata) })
+    return
+  }
   if (request.method === 'POST' && url.pathname === '/api/v1/terminal-sessions') {
     const input = await readJSON(request)
     const host = input.hostId === 'local'
@@ -2689,6 +2693,15 @@ createServer(async (request, response) => {
       send(response, 409, { title: 'Terminal unavailable', code: 'terminal_unavailable' })
       return
     }
+    const shortcut = input.shortcutId && desktopWorkspace.shortcuts.find(item => item.id === input.shortcutId && item.command && (item.hostId || 'local') === input.hostId)
+    if (input.shortcutId) {
+      const existing = [...mockTerminalSessions.values()].find(session => session.metadata?.shortcutId === input.shortcutId && session.metadata?.hostId === input.hostId && !session.exitedAt)
+      if (existing) { send(response, 200, existing.metadata); return }
+      if (!shortcut || input.shortcutVersion !== desktopWorkspace.resourceVersion) {
+        send(response, 409, { title: 'Shortcut changed', code: 'resource_conflict' })
+        return
+      }
+    }
     if (mockTerminalSessions.size >= 4) {
       send(response, 429, { title: 'Terminal session limit reached', code: 'terminal_limit' })
       return
@@ -2696,13 +2709,15 @@ createServer(async (request, response) => {
     mockTerminalSessionCounter += 1
     const sessionId = `visual-terminal-${mockTerminalSessionCounter}`
     const createdAt = new Date().toISOString()
+    const metadata = { sessionId, hostId: input.hostId, offset: 0, createdAt, retained: input.retained === true, ...(shortcut ? { shortcutId: shortcut.id, title: shortcut.name } : {}) }
     mockTerminalSessions.set(sessionId, {
+      metadata,
       host,
-      data: Buffer.from(`root@${host.lastSnapshot?.telemetry?.hostname || host.name}:~# `),
+      data: Buffer.from(`root@${host.lastSnapshot?.telemetry?.hostname || host.name}:~# ${shortcut ? `${shortcut.command}\r\n[Mock: command started once]\r\n` : ''}`),
       exitedAt: '',
       exitError: '',
     })
-    send(response, 201, { sessionId, hostId: host.id, offset: 0, createdAt })
+    send(response, 201, metadata)
     return
   }
   const terminalSessionMatch = url.pathname.match(/^\/api\/v1\/terminal-sessions\/([^/]+)\/(output|input-transport|input|resize|close)$/)

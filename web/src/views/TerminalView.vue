@@ -39,11 +39,14 @@ interface OpenTerminal {
   hostName: string
   // Several terminals may be open on one host. Each keeps the number it got
   // when it opened, so closing one never renames the others.
+  title?: string
+  retained?: boolean
   ordinal: number
   offset: number
   state: 'pending' | 'connecting' | 'connected' | 'reconnecting' | 'finished'
   closing?: boolean
   closeFailed?: boolean
+  launchUncertain?: boolean
 }
 
 interface HostTerminalHandle {
@@ -120,11 +123,13 @@ const hostOperatingSystemIdentity = (host: ClusterHost) =>
 
 async function loadHosts(): Promise<void> {
   controller?.abort()
-  controller = new AbortController()
+  const request = new AbortController()
+  controller = request
   loading.value = true
   errorMessage.value = ''
   try {
-    const loadedInventory = await api.cluster.hosts(controller.signal)
+    const loadedInventory = await api.cluster.hosts(request.signal)
+    if (request.signal.aborted || controller !== request) return
     inventory.value = { ...loadedInventory, items: withoutUnsupportedLightNodes(loadedInventory.items) }
     // A renamed host renames its open tabs too, so every terminal on one host
     // carries one name; only the number each got when it opened stays fixed.
@@ -134,14 +139,26 @@ async function loadHosts(): Promise<void> {
     selectedBatchHostIDs.value = new Set([...selectedBatchHostIDs.value].filter((id) => terminalHostIDs.has(id)))
     applyClusterHostOrderPreference(inventory.value.hostOrder)
     if (initialHostLoad) {
+      // Restore from the authenticated server inventory before creating anything.
+      // A failed lookup must never become a new terminal or replay a shortcut.
+      const retained = await api.terminals.list(request.signal)
+      if (request.signal.aborted || controller !== request) return
+      for (const session of retained.items) {
+        if (!session.retained || sessions.value.some(item => item.id === session.sessionId)) continue
+        sessions.value.push({ id: session.sessionId, hostId: session.hostId,
+          hostName: names.get(session.hostId) || session.hostId, title: session.title,
+          retained: true, ordinal: nextOrdinal(session.hostId), offset: 0,
+          state: 'connecting', closeFailed: session.closeRequested, launchUncertain: session.launchUncertain })
+      }
+      activeSessionId.value = sessions.value[0]?.id || ''
       initialHostLoad = false
       const startHost = requestedTerminalHost() || inventory.value.items.find((host) => host.isLocal && host.terminalAvailable)
-      if (startHost) await openHost(startHost)
+      if (startHost && (requestedTerminalHost() || !sessions.value.length)) await openHost(startHost)
     }
   } catch {
-    errorMessage.value = t('terminal.connectionsLoadFailed')
+    if (!request.signal.aborted && controller === request) errorMessage.value = t('terminal.connectionsLoadFailed')
   } finally {
-    loading.value = false
+    if (controller === request) loading.value = false
   }
 }
 
@@ -153,7 +170,7 @@ function requestedTerminalHost(): ClusterHost | undefined {
 }
 
 function sessionLabel(item: OpenTerminal): string {
-	return item.ordinal > 1 ? `${item.hostName} ${item.ordinal}` : item.hostName
+	return item.title || (item.ordinal > 1 ? `${item.hostName} ${item.ordinal}` : item.hostName)
 }
 
 function nextOrdinal(hostId: string): number {
@@ -166,7 +183,7 @@ function nextOrdinal(hostId: string): number {
 // Choosing a host goes to its terminal: the active one if it is on that host,
 // otherwise the one opened last. Only a host without a terminal gets a new one.
 async function openHost(host: ClusterHost): Promise<void> {
-	if (!hostConnectable(host)) return
+	if (initialHostLoad || !hostConnectable(host)) return
 	const onHost = sessions.value.filter((item) => item.hostId === host.id)
 	const existing = onHost.find((item) => item.id === activeSessionId.value) ?? onHost.at(-1)
   if (existing) {
@@ -178,14 +195,14 @@ async function openHost(host: ClusterHost): Promise<void> {
 }
 
 async function openSession(host: ClusterHost): Promise<void> {
-	if (!host.terminalAvailable || openingHostId.value) return
+	if (initialHostLoad || !host.terminalAvailable || openingHostId.value) return
   mobileConnectionsOpen.value = false
   openingHostId.value = host.id
   errorMessage.value = ''
   limitReached.value = false
   try {
-	const opened = await api.terminals.open(host.id, 30, 120)
-	const item: OpenTerminal = { id: opened.sessionId, hostId: host.id, hostName: host.name, ordinal: nextOrdinal(host.id), offset: opened.offset, state: 'connecting' }
+	const opened = await api.terminals.open(host.id, 30, 120, { retained: true })
+	const item: OpenTerminal = { id: opened.sessionId, hostId: host.id, hostName: host.name, retained: opened.retained, ordinal: nextOrdinal(host.id), offset: opened.offset, state: 'connecting' }
     sessions.value.push(item)
     activeSessionId.value = item.id
     void nextTick(() => {
@@ -440,8 +457,7 @@ onMounted(() => {
   }
   const guard = () => {
     if (batchRunning.value) return window.confirm(t('terminal.closeBatchExecutionConfirm'))
-    const activeCount = activeInteractiveSessionCount.value
-    return !activeCount || window.confirm(t('terminal.closeSessionsConfirm', { count: activeCount }))
+    return true // Retained interactive sessions detach; only tab close ends them.
   }
   unregisterWindowCloseGuard = desktopWindowCloseGuards
     ? desktopWindowCloseGuards.register(guard)
@@ -459,7 +475,11 @@ onBeforeUnmount(() => {
   <div class="page terminal-page" :data-locale="locale">
     <PageHeader title="多主机终端" description="通过集群加密通道连接本机、已授权 KPanel 节点和轻量节点，无需开放额外 SSH 或公网端口。" />
 
+    <p v-if="terminalMode === 'interactive'" class="terminal-retained-notice">{{ t('terminal.retainedNotice') }}</p>
     <div v-if="errorMessage" class="terminal-alert" role="alert">{{ errorMessage }}</div>
+    <div v-for="item in sessions.filter(session => session.launchUncertain)" :key="`launch-${item.id}`" class="terminal-alert" role="alert">
+      <strong>{{ sessionLabel(item) }}</strong>：{{ t('terminal.launchUncertain') }}
+    </div>
     <div v-if="limitReached" class="terminal-alert" role="alert">{{ t('terminal.sessionLimitReached') }}</div>
     <div v-for="item in sessions.filter((session) => session.closeFailed)" :key="item.id" class="terminal-alert" role="alert">
       <strong>{{ sessionLabel(item) }}</strong>：<span>关闭未确认，会话已保留。请检查目标主机连接后重试。</span>
@@ -669,7 +689,7 @@ onBeforeUnmount(() => {
               <SquareTerminal :size="14" /><span class="terminal-tab__name">{{ sessionLabel(item) }}</span>
               <span class="sr-only">{{ sessionStateLabel(item.state) }}</span>
               </button>
-              <button type="button" class="terminal-tab__close" :disabled="item.closing" aria-label="关闭终端" @click="closeSession(item.id)" @keydown.enter.prevent="closeSession(item.id)" @keydown.space.prevent="closeSession(item.id)">
+              <button type="button" class="terminal-tab__close" :disabled="item.closing" :aria-label="t('terminal.endSession')" :title="t('terminal.endSession')" @click="closeSession(item.id)" @keydown.enter.prevent="closeSession(item.id)" @keydown.space.prevent="closeSession(item.id)">
               <LoaderCircle v-if="item.closing" class="spin" :size="14" aria-label="正在关闭终端" />
               <X v-else :size="14" />
               </button>
@@ -691,7 +711,7 @@ onBeforeUnmount(() => {
           @choose-host="connectionsCollapsed = false; mobileConnectionsOpen = true">
           <template #default="{ item, visible }">
             <HostTerminal :ref="(instance) => setTerminalRef(item.id, instance)" :session-id="item.id"
-              :host-name="item.label" :initial-offset="item.offset" :visible="visible && terminalMode === 'interactive'" :auto-focus="false"
+              :retained="item.retained" :host-name="item.label" :initial-offset="item.offset" :visible="visible && terminalMode === 'interactive'" :auto-focus="false"
               @state-change="updateWorkspaceSessionState(item.id, $event)" />
           </template>
         </TerminalWorkspace>
@@ -742,6 +762,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.terminal-retained-notice { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-soft); }
 .terminal-connection-options { display: grid; gap: 12px; }
 .terminal-connection-options .button { justify-content: flex-start; min-height: 52px; }
 .terminal-connection-options small { color: var(--muted); line-height: 1.6; }

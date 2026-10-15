@@ -200,7 +200,7 @@ describe('dedicated desktop app script terminal', () => {
     wrapper.unmount()
   })
 
-  it('stops the active process and waits for the terminal job before allowing the window to close', async () => {
+  it('detaches on window close and stops only through the explicit end action', async () => {
     let guard: (() => boolean | Promise<boolean>) | undefined
     const unregister = vi.fn()
     const closeGuards: DesktopWindowCloseGuardRegistry = {
@@ -214,6 +214,10 @@ describe('dedicated desktop app script terminal', () => {
 
     expect(guard).toBeTypeOf('function')
     await expect(Promise.resolve(guard?.())).resolves.toBe(true)
+    expect(mocks.cancelJob).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+    await wrapper.get('[data-app-script-stop]').trigger('click')
+    await flushPromises()
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('释放应用管理锁'))
     expect(mocks.cancelJob).toHaveBeenCalledWith('job-1')
     expect(mocks.job).toHaveBeenCalledWith('job-1')
@@ -223,7 +227,7 @@ describe('dedicated desktop app script terminal', () => {
     expect(unregister).toHaveBeenCalledOnce()
   })
 
-  it('keeps the window open when the Agent cannot confirm process shutdown', async () => {
+  it('keeps the task visible when the Agent cannot confirm process shutdown', async () => {
     let guard: (() => boolean | Promise<boolean>) | undefined
     const closeGuards: DesktopWindowCloseGuardRegistry = {
       register: (candidate) => {
@@ -235,13 +239,15 @@ describe('dedicated desktop app script terminal', () => {
     mocks.cancelJob.mockRejectedValue(new Error('Agent offline'))
     const wrapper = await mountView(closeGuards)
 
-    await expect(Promise.resolve(guard?.())).resolves.toBe(false)
+    await wrapper.get('[data-app-script-stop]').trigger('click')
+    await flushPromises()
+    expect(await guard?.()).toBe(true)
     expect(wrapper.find('[role="alert"]').text()).toContain('Agent offline')
     expect(window.localStorage.getItem('kpanel:active-app-job')).toBe('job-1')
     wrapper.unmount()
   })
 
-  it('keeps the process running when window closure is cancelled', async () => {
+  it('keeps the process running when ending the task is cancelled', async () => {
     let guard: (() => boolean | Promise<boolean>) | undefined
     const closeGuards: DesktopWindowCloseGuardRegistry = {
       register: (candidate) => {
@@ -252,7 +258,9 @@ describe('dedicated desktop app script terminal', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     const wrapper = await mountView(closeGuards)
 
-    await expect(Promise.resolve(guard?.())).resolves.toBe(false)
+    await wrapper.get('[data-app-script-stop]').trigger('click')
+    await flushPromises()
+    expect(await guard?.()).toBe(true)
     expect(mocks.cancelJob).not.toHaveBeenCalled()
     wrapper.unmount()
   })

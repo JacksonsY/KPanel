@@ -11,7 +11,7 @@ vi.mock('vue-router', async (importOriginal) => ({
   useRoute: () => ({ query: {} }),
 }))
 vi.mock('@/lib/api', () => ({
-  api: { cluster: { hosts: mocks.hosts }, terminals: { open: mocks.open } },
+  api: { cluster: { hosts: mocks.hosts }, terminals: { list: () => Promise.resolve({ items: [] }), open: mocks.open } },
   ApiError: class extends Error {},
 }))
 vi.mock('@/components/terminal/HostTerminal.vue', () => ({ default: defineComponent({
@@ -77,7 +77,7 @@ describe('terminal host list semantics', () => {
     await panel.trigger('click')
     await flushPromises()
 
-    expect(mocks.open).toHaveBeenLastCalledWith('panel', 30, 120)
+    expect(mocks.open).toHaveBeenLastCalledWith('panel', 30, 120, { retained: true })
     expect(hostButton(wrapper, '东京节点').text()).toContain('KPanel· 已打开')
     wrapper.unmount()
   })

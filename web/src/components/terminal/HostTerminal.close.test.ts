@@ -94,6 +94,17 @@ describe('HostTerminal reload', () => {
     wrapper.unmount()
   })
 
+  it('detaches a retained session on pagehide and unmount without ending it', async () => {
+    const api = await import('@/lib/api')
+    ;(api.api.terminals as unknown as { closeOnUnload: typeof closeOnUnload }).closeOnUnload = closeOnUnload
+    const wrapper = mount(HostTerminal, { props: { ...props, retained: true } })
+    pageHide()
+    wrapper.unmount()
+    await flushPromises()
+    expect(closeOnUnload).not.toHaveBeenCalled()
+    expect(mocks.close).not.toHaveBeenCalled()
+  })
+
   it('stops listening once unmounted', async () => {
     const api = await import('@/lib/api')
     ;(api.api.terminals as unknown as { closeOnUnload: typeof closeOnUnload }).closeOnUnload = closeOnUnload

@@ -12,10 +12,11 @@ interface WorkspaceSession {
   state: string
   stateLabel: string
   closing?: boolean
+  retained?: boolean
 }
 const props = defineProps<{ sessions: WorkspaceSession[]; activeId: string }>()
 const emit = defineEmits<{ activate: [id: string]; close: [id: string]; chooseHost: []; resize: [] }>()
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 const phrase = (value: string) => { locale.value; return translatePhrase(value) }
 const ids = computed(() => props.sessions.map((item) => item.id))
 const { layout, panes, activePane, maximized, paneCount, selectSession, setLayout } = useTerminalWorkspace(ids, toRef(props, 'activeId'))
@@ -137,8 +138,8 @@ defineExpose({ selectSession, layout, setLayout: applyLayout, compact })
             @click="activate(panes.indexOf(item.id)); maximized = !maximized">
             <Minimize2 v-if="maximized" :size="15" /><Maximize2 v-else :size="15" />
           </button>
-          <button type="button" :disabled="item.closing" :aria-label="`${phrase('关闭终端')} · ${item.label}`"
-            :title="phrase('关闭终端')" @click="emit('close', item.id)"><X :size="15" /></button>
+          <button type="button" :disabled="item.closing" :aria-label="`${t('terminal.endSession')} · ${item.label}`"
+            :title="t('terminal.endSession')" @click="emit('close', item.id)"><X :size="15" /></button>
         </header>
         <slot :item="item" :visible="isVisible(panes.indexOf(item.id))" />
       </section>

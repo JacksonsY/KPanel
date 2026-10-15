@@ -18,7 +18,7 @@ describe('multi-host terminal workspace layout', () => {
     expect(terminalSource).toContain('let initialHostLoad = true')
     expect(terminalSource).toContain('if (initialHostLoad) {')
     expect(terminalSource).toContain('const startHost = requestedTerminalHost() || inventory.value.items.find((host) => host.isLocal && host.terminalAvailable)')
-    expect(terminalSource).toContain('if (startHost) await openHost(startHost)')
+    expect(terminalSource).toContain('if (startHost && (requestedTerminalHost() || !sessions.value.length)) await openHost(startHost)')
   })
 
   it('keeps a large connection inventory in its own scroll region', () => {
@@ -59,7 +59,7 @@ describe('multi-host terminal workspace layout', () => {
     expect(terminalSource).toContain("t('terminal.hostState.available')")
     expect(terminalSource).toContain("t('terminal.hostState.monitoringOnly')")
     expect(terminalSource).toContain("t('terminal.hostCount'")
-    expect(terminalSource).toContain("t('terminal.closeSessionsConfirm'")
+    expect(terminalSource).toContain("t('terminal.retainedNotice'")
     expect(terminalSource).toContain(':placeholder="t(\'terminal.searchPlaceholder\')"')
     expect(terminalSource).toContain(':disabled="openingHostId === host.id || !hostConnectable(host)"')
     expect(terminalSource).not.toContain('isWindows(host)')

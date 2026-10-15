@@ -445,6 +445,11 @@ export interface ClusterPairingCode {
 }
 
 export interface TerminalSession {
+  retained?: boolean
+  shortcutId?: string
+  title?: string
+  closeRequested?: boolean
+  launchUncertain?: boolean
   sessionId: string
   hostId: string
   offset: number

@@ -12,7 +12,7 @@ vi.mock('vue-router', async (importOriginal) => ({
 }))
 
 vi.mock('@/lib/api', () => ({
-  api: { cluster: { hosts: mocks.hosts }, terminals: { open: mocks.open } },
+  api: { cluster: { hosts: mocks.hosts }, terminals: { list: () => Promise.resolve({ items: [] }), open: mocks.open } },
   ApiError: class extends Error {},
 }))
 

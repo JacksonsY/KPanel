@@ -1932,6 +1932,8 @@ export const api = {
     },
   },
   terminals: {
+    list: (signal?: AbortSignal): Promise<{ items: TerminalSession[] }> =>
+      request<{ items: TerminalSession[] }>('/terminal-sessions', { signal }),
 	inputBatch: (sessionId: string, frames: Array<{ stream: string; seq: number; data: string }>, signal?: AbortSignal): Promise<{ acked: number }> =>
 	  request<{ acked: number }>(`/terminal-sessions/${encodeURIComponent(sessionId)}/input-batch`, { method: 'POST', body: { frames }, signal }),
 	inputTransport: (sessionId: string, signal?: AbortSignal): Promise<{ protocol: string }> =>
@@ -1945,10 +1947,10 @@ export const api = {
       request<TerminalQuickCommands>('/terminal-commands', { signal }),
     updateCommands: (body: TerminalQuickCommandsUpdate): Promise<TerminalQuickCommands> =>
       request<TerminalQuickCommands>('/terminal-commands', { method: 'PUT', body }),
-    open: (hostId: string, rows: number, columns: number, container?: { containerId: string; resourceVersion: string }): Promise<TerminalSession> =>
+    open: (hostId: string, rows: number, columns: number, options?: { containerId?: string; resourceVersion?: string; retained?: boolean; shortcutId?: string; shortcutVersion?: string }): Promise<TerminalSession> =>
       request<TerminalSession>('/terminal-sessions', {
         method: 'POST',
-        body: { hostId, rows, columns, ...container },
+        body: { hostId, rows, columns, ...options },
       }),
     output: (
       sessionId: string,

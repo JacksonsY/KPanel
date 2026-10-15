@@ -2,6 +2,13 @@ import type { LocaleMessages } from './zh-CN'
 import { passkeyEnUS } from '../passkeys'
 
 export const enUSMessages = {
+  "terminal.retainedNotice": "Sessions continue after closing the window or reloading. Reconnect from Terminal. Maximum 8 hours; service or node restart ends the session. Output older than 1 MiB is truncated.",
+  "terminal.endSession": "End session",
+  "terminal.endSessionConfirm": "Ending this session stops its terminal process. Continue?",
+  "terminal.launchUncertain": "Launch is unconfirmed. No automatic retry was made; check the terminal.",
+  "appScript.backgroundNotice": "Closing the window or reloading keeps the task running. Reopen to reconnect.",
+  "appScript.endTask": "End task",
+
   'office.title': "Lightweight Office",
   'office.kind.docx': "Word document",
   'office.kind.xlsx': "Excel workbook",
@@ -778,7 +785,7 @@ export const enUSMessages = {
   'appScript.idleTitle': 'No script task is currently running',
   'appScript.idleDescription': 'Start the script terminal when you need it.',
   'appScript.start': 'Start script terminal',
-  'appScript.closeConfirm': 'Closing this window will stop the current kejilion.sh process and release the app-management lock. Steps already completed will not be rolled back automatically. Continue?',
+  'appScript.closeConfirm': 'Ending this task will stop the current kejilion.sh process and release the app-management lock. Steps already completed will not be rolled back automatically. Continue?',
   'appScript.closingTitle': 'Ending the script terminal...',
   'appScript.closingDescription': 'Waiting for the Agent to confirm that the background process exited and released the app-management lock.',
   'appScript.closePending': 'The stop was requested, but the background process has not confirmed its exit. The window was kept open; try closing it again shortly.',

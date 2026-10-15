@@ -12,7 +12,7 @@ vi.mock('vue-router', async (importOriginal) => ({
   useRoute: () => ({ path: '/terminal', query: {} }),
 }))
 vi.mock('@/lib/api', () => ({
-  api: { cluster: { hosts: mocks.hosts }, terminals: { open: mocks.open } },
+  api: { cluster: { hosts: mocks.hosts }, terminals: { list: () => Promise.resolve({ items: [] }), open: mocks.open } },
   ApiError: class extends Error { code = '' },
 }))
 vi.mock('@/components/terminal/HostTerminal.vue', () => ({ default: defineComponent({

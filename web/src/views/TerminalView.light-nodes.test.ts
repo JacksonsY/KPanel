@@ -6,7 +6,7 @@ import TerminalView from './TerminalView.vue'
 
 const mocks = vi.hoisted(() => ({ hosts: vi.fn(), open: vi.fn() }))
 vi.mock('vue-router', async (importOriginal) => ({ ...await importOriginal<typeof import('vue-router')>(), useRoute: () => ({ path: '/terminal', query: {} }) }))
-vi.mock('@/lib/api', () => ({ api: { cluster: { hosts: mocks.hosts }, terminals: { open: mocks.open } }, ApiError: class extends Error {} }))
+vi.mock('@/lib/api', () => ({ api: { cluster: { hosts: mocks.hosts }, terminals: { list: () => Promise.resolve({ items: [] }), open: mocks.open } }, ApiError: class extends Error {} }))
 vi.mock('@/components/terminal/HostTerminal.vue', () => ({ default: defineComponent({
   props: ['sessionId', 'hostName'],
   setup(_props, { expose }) {
@@ -42,6 +42,6 @@ describe('supported light-node access', () => {
 
     button('Linux 测试机').click()
     await flushPromises()
-    expect(mocks.open).toHaveBeenCalledExactlyOnceWith('linux', 30, 120)
+    expect(mocks.open).toHaveBeenCalledExactlyOnceWith('linux', 30, 120, { retained: true })
   })
 })

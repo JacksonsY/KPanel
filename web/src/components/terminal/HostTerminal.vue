@@ -42,7 +42,8 @@ const props = withDefaults(defineProps<{
   initialOffset: number
   visible?: boolean
   autoFocus?: boolean
-}>(), { visible: true, autoFocus: true })
+  retained?: boolean
+}>(), { visible: true, autoFocus: true, retained: false })
 
 const emit = defineEmits<{
   stateChange: [state: 'connecting' | 'connected' | 'reconnecting' | 'finished']
@@ -372,7 +373,7 @@ let stopPageHideClose: (() => void) | undefined
 
 onMounted(() => {
   mounted = true
-  stopPageHideClose = closeTerminalsOnPageHide(() => (closeConfirmed ? [] : [props.sessionId]))
+  stopPageHideClose = closeTerminalsOnPageHide(() => (closeConfirmed || props.retained ? [] : [props.sessionId]))
   duplexInput = new TerminalDuplexInput({
       negotiate: signal => api.terminals.inputTransport(props.sessionId, signal),
       credentials: () => api.terminals.inputSocket(props.sessionId),
@@ -430,7 +431,7 @@ onBeforeUnmount(() => {
   disposeScrollbar?.()
   cursorReport?.dispose()
   terminal?.dispose()
-  void closeSession().catch(() => undefined)
+  if (!props.retained) void closeSession().catch(() => undefined)
 })
 </script>
 
