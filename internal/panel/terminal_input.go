@@ -338,7 +338,7 @@ func (s *Server) hostTerminalInputTarget(session auth.Session, id string) termin
 			s.terminalMu.Lock()
 			defer s.terminalMu.Unlock()
 			current, exists := s.terminalSessions[id]
-			if !exists || current.UserID != session.User.ID || current.CloseRequested || current.InputConnection != conn {
+			if !exists || current.UserID != session.User.ID || current.CloseRequested || current.LaunchUncertain || current.InputConnection != conn {
 				return false
 			}
 			current.UpdatedAt = time.Now().UTC()

@@ -387,7 +387,7 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 	now := time.Now().UTC()
-	item := panelTerminalSession{ID: publicID, BackendSessionID: opened.SessionID, HostID: host.ID, UserID: userID, Owner: owner, CreatedAt: now, UpdatedAt: now, Retained: input.Retained, ShortcutID: input.ShortcutID, Title: launchTitle}
+	item := panelTerminalSession{ID: publicID, BackendSessionID: opened.SessionID, HostID: host.ID, UserID: userID, Owner: owner, CreatedAt: now, UpdatedAt: now, Retained: input.Retained, ShortcutID: input.ShortcutID, Title: launchTitle, LaunchUncertain: launchCommand != ""}
 	if host.IsLocal {
 		item.ReliableInput = (clusterTerminalSource{agent: s.agent}).SupportsSequencedInput(r.Context())
 	} else {
@@ -399,12 +399,13 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 	if launchCommand != "" {
 		// Persist the identity in bounded server memory BEFORE input. Any write error
 		// is uncertain, never a reason to repeat the command on a new connection.
+		// Input remains frozen from registration until the launch is acknowledged.
 		command := strings.ReplaceAll(strings.ReplaceAll(launchCommand, "\r\n", "\n"), "\r", "\n") + "\n"
-		if err := s.inputTerminalBackend(r.Context(), item, []byte(command)); err != nil {
-			item.LaunchUncertain = true
+		if err := s.inputTerminalBackend(r.Context(), item, []byte(command)); err == nil {
+			item.LaunchUncertain = false
 			s.terminalMu.Lock()
 			if current, ok := s.terminalSessions[publicID]; ok {
-				current.LaunchUncertain = true
+				current.LaunchUncertain = false
 				s.terminalSessions[publicID] = current
 			}
 			s.terminalMu.Unlock()

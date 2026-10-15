@@ -19,9 +19,13 @@ type retainedAgentStub struct {
 	unsupported bool
 	failInput   bool
 	failClose   bool
+	beforeInput func()
 }
 
 func (a *retainedAgentStub) Do(ctx context.Context, method, path, query, id string, body []byte) (AgentResponse, error) {
+	if strings.HasSuffix(path, "/input") && a.beforeInput != nil {
+		a.beforeInput()
+	}
 	if strings.HasSuffix(path, "/input") && a.failInput {
 		return AgentResponse{}, errors.New("write outcome unknown")
 	}
@@ -207,5 +211,39 @@ func TestRetainedRegistrySkipsIdleButKeepsUnconfirmedExpiry(t *testing.T) {
 	got := s.pruneTerminalSessions(now.Add(-panelTerminalIdleTTL))
 	if len(got) != 1 || !s.terminalSessions["expired"].CloseRequested {
 		t.Fatal("expiry lost unconfirmed cleanup identity")
+	}
+}
+
+func TestRetainedShortcutInputFrozenUntilLaunchAcknowledged(t *testing.T) {
+	s, path := newTestServer(t)
+	cookie, csrf := bootstrapCookies(t, s, path)
+	version := saveRetainedShortcut(t, s)
+	checked := false
+	s.agent = &retainedAgentStub{beforeInput: func() {
+		s.terminalMu.Lock()
+		var id string
+		for _, item := range s.terminalSessions {
+			if item.ShortcutID == panelTestShortcutID {
+				id = item.ID
+				if !item.LaunchUncertain {
+					t.Error("launch exposed before acknowledgement")
+				}
+			}
+		}
+		s.terminalMu.Unlock()
+		if id == "" {
+			t.Fatal("launch not registered")
+		}
+		got := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions/"+id+"/input-transport", []byte(`{}`), cookie, csrf, retainedHeaders(csrf))
+		if got.Code != 409 {
+			t.Errorf("concurrent claim: %d %s", got.Code, got.Body)
+		}
+		checked = true
+	}}
+	got := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions", retainedShortcutBody(version), cookie, csrf, retainedHeaders(csrf))
+	var result terminalOpenResponse
+	_ = json.Unmarshal(got.Body.Bytes(), &result)
+	if !checked || got.Code != 201 || result.LaunchUncertain {
+		t.Fatalf("ack: checked=%v response=%d %s", checked, got.Code, got.Body)
 	}
 }
