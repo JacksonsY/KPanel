@@ -123,15 +123,15 @@ func telemetryIdentifiesLinux(telemetry contract.HostTelemetry) bool {
 	return false
 }
 
-func (s *Service) lightControlAllowed(hostID, _ string) bool {
+func (s *Service) lightControlAllowed(hostID, capability string) bool {
 	record, err := s.light.Host(hostID)
 	if err == nil {
 		return lightNodePlatformSupported(record)
 	}
 	// Non-light terminals belong to the v2 store. A deleted/missing lightweight
 	// record is not permission to continue using an existing stream.
-	_, err = s.storeV2.Host(hostID)
-	return err == nil
+	full, err := s.storeV2.Host(hostID)
+	return err == nil && (capability != "terminal" || (full.State == hostStateV2Active && ScopeAllowsTerminal(normalizedV2Scope(full.Scope))))
 }
 
 func applyLightPlatform(host *Host, record lightHostRecord) {

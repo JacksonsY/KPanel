@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -25,6 +26,12 @@ type serviceV2TerminalStub struct {
 	resized bool
 	closed  bool
 	output  []byte
+}
+
+func (s *serviceV2TerminalStub) OpenRetained(ctx context.Context, owner string, rows, cols uint16) (terminal.Snapshot, error) {
+	snapshot, err := s.Open(ctx, owner, rows, cols)
+	snapshot.Retained = err == nil
+	return snapshot, err
 }
 
 func (s *serviceV2TerminalStub) Open(_ context.Context, owner string, _, _ uint16) (terminal.Snapshot, error) {
@@ -327,6 +334,12 @@ func TestServiceV2PairsPollsAndRevokesOverEncryptedHTTP(t *testing.T) {
 }
 
 func TestServiceV2TerminalLifecycleUsesAuthenticatedEncryptedChannel(t *testing.T) {
+	for _, retained := range []bool{false, true} {
+		t.Run(fmt.Sprintf("retained=%v", retained), func(t *testing.T) { testServiceV2TerminalLifecycle(t, retained) })
+	}
+}
+
+func testServiceV2TerminalLifecycle(t *testing.T, retained bool) {
 	now := time.Date(2026, 8, 2, 9, 0, 0, 0, time.UTC)
 	clock := &serviceTestClock{now: now}
 	terminalStub := &serviceV2TerminalStub{output: []byte("remote-ready\r\n")}
@@ -365,8 +378,8 @@ func TestServiceV2TerminalLifecycleUsesAuthenticatedEncryptedChannel(t *testing.
 		t.Fatalf("terminal capability missing after v2 pairing: %#v", host)
 	}
 
-	opened, err := center.TerminalOpen(context.Background(), host.ID, TerminalOpenRequest{Rows: 30, Columns: 120})
-	if err != nil || opened.SessionID != "remote-terminal" {
+	opened, err := center.TerminalOpen(context.Background(), host.ID, TerminalOpenRequest{Rows: 30, Columns: 120, Retained: retained})
+	if err != nil || opened.SessionID != "remote-terminal" || opened.Retained != retained {
 		t.Fatalf("TerminalOpen() = %#v, %v", opened, err)
 	}
 	output, err := center.TerminalOutput(context.Background(), host.ID, TerminalOutputRequest{SessionID: opened.SessionID, Offset: 0})

@@ -106,11 +106,13 @@ type v2PairResult struct {
 }
 
 type TerminalOpenRequest struct {
-	Rows    uint16 `json:"rows"`
-	Columns uint16 `json:"columns"`
+	Retained bool   `json:"retained,omitempty"`
+	Rows     uint16 `json:"rows"`
+	Columns  uint16 `json:"columns"`
 }
 
 type TerminalOpenResponse struct {
+	Retained  bool      `json:"retained,omitempty"`
 	SessionID string    `json:"sessionId"`
 	Offset    int64     `json:"offset"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -147,6 +149,7 @@ type TerminalRelayPollRequest struct {
 }
 
 type TerminalRelayEvent struct {
+	Retained   bool       `json:"retained,omitempty"`
 	CommandID  string     `json:"commandId,omitempty"`
 	Kind       string     `json:"kind"`
 	SessionID  string     `json:"sessionId"`

@@ -118,6 +118,7 @@ func TestTerminalSequencedStreamPanelAndLightParity(t *testing.T) {
 			owner := "federation:" + f.controller
 			if kind == "panel" {
 				record := testHostRecordV2(1, time.Now().UTC())
+				record.Scope = SummaryTerminalScope
 				if err := f.service.storeV2.AddHost(record); err != nil {
 					t.Fatal(err)
 				}
@@ -125,7 +126,7 @@ func TestTerminalSequencedStreamPanelAndLightParity(t *testing.T) {
 				f.service.terminal = managerTerminalBackend{manager: manager}
 				var dials atomic.Int32
 				var err error
-				stream, opened, err = openStreamTerminal(ctx, ctx, hostID, f.panelTerminalDialer(t, &dials), nil, 24, 80)
+				stream, opened, err = openStreamTerminal(ctx, ctx, hostID, f.panelTerminalDialer(t, &dials), nil, 24, 80, true)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -153,13 +154,16 @@ func TestTerminalSequencedStreamPanelAndLightParity(t *testing.T) {
 				for !f.service.fileStreamHub.terminalAvailable(hostID) && time.Now().Before(deadline) {
 					time.Sleep(5 * time.Millisecond)
 				}
-				opened, err = f.service.TerminalOpen(ctx, hostID, TerminalOpenRequest{Rows: 24, Columns: 80})
+				opened, err = f.service.TerminalOpen(ctx, hostID, TerminalOpenRequest{Rows: 24, Columns: 80, Retained: true})
 				if err != nil {
 					t.Fatal(err)
 				}
 				stream = f.service.streams.terminal(hostID, opened.SessionID)
 			}
 			defer stream.shutdown()
+			if !opened.Retained {
+				t.Fatal("retention not acknowledged across full/light stream")
+			}
 			if !f.service.TerminalSupportsSequencedInput(hostID, opened.SessionID) {
 				t.Fatal("sequenced input was not negotiated")
 			}
@@ -275,6 +279,7 @@ func TestRemovedPanelHostCannotReuseTerminalStream(t *testing.T) {
 	f := newStreamFixture(t, http.NotFoundHandler())
 	f.service.terminal = managerTerminalBackend{manager: newEchoManager(t)}
 	record := testHostRecordV2(1, time.Now().UTC())
+	record.Scope = SummaryTerminalScope
 	if err := f.service.storeV2.AddHost(record); err != nil {
 		t.Fatal(err)
 	}

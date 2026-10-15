@@ -14,6 +14,7 @@ import (
 )
 
 type terminalOpenInput struct {
+	Retained        bool   `json:"retained,omitempty"`
 	Owner           string `json:"owner"`
 	Rows            uint16 `json:"rows"`
 	Columns         uint16 `json:"columns"`
@@ -46,7 +47,7 @@ func (s *Server) terminalOpen(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(w, r, &input); err != nil {
 		return
 	}
-	if (input.ContainerID == "") != (input.ResourceVersion == "") {
+	if (input.ContainerID == "") != (input.ResourceVersion == "") || (input.Retained && input.ContainerID != "") {
 		writeProblem(w, requestID, http.StatusBadRequest, "terminal_invalid", "Container identity and resource version are required together", "")
 		return
 	}
@@ -60,6 +61,8 @@ func (s *Server) terminalOpen(w http.ResponseWriter, r *http.Request) {
 		snapshot, err = s.terminals.OpenWithStarter(input.Owner, input.Rows, input.Columns, func(rows, columns uint16) (terminal.Process, error) {
 			return s.docker.OpenContainerTerminal(r.Context(), input.ContainerID, input.ResourceVersion, rows, columns)
 		})
+	} else if input.Retained {
+		snapshot, err = s.terminals.OpenRetained(input.Owner, input.Rows, input.Columns)
 	} else {
 		snapshot, err = s.terminals.Open(input.Owner, input.Rows, input.Columns)
 	}

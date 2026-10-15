@@ -40,6 +40,7 @@ type lightTerminalCommand struct {
 }
 
 type lightTerminalSession struct {
+	retained  bool
 	mu        sync.Mutex
 	id        string
 	buffer    []byte
@@ -323,6 +324,10 @@ func (item *lightTerminalNode) finishCommand(event TerminalRelayEvent, session *
 		return
 	}
 	delete(item.pending, event.CommandID)
+	if event.Kind == "opened" && session.retained && !event.Retained {
+		completeLightTerminalCommand(command, ErrTerminalUnavailable)
+		return
+	}
 	if event.Kind == "closed" {
 		session.markClosed(now)
 	}
@@ -405,7 +410,7 @@ func waitLightTerminalCommand(ctx context.Context, item *lightTerminalNode, requ
 	}
 }
 
-func (r *lightTerminalRelay) open(ctx context.Context, nodeID string, rows, columns uint16) (TerminalOpenResponse, error) {
+func (r *lightTerminalRelay) open(ctx context.Context, nodeID string, rows, columns uint16, keep ...bool) (TerminalOpenResponse, error) {
 	item, err := r.commandNode(nodeID)
 	if err != nil {
 		return TerminalOpenResponse{}, err
@@ -415,8 +420,9 @@ func (r *lightTerminalRelay) open(ctx context.Context, nodeID string, rows, colu
 		return TerminalOpenResponse{}, err
 	}
 	now := r.now().UTC()
-	session := &lightTerminalSession{id: sessionID, notify: make(chan struct{}), createdAt: now, updatedAt: now}
-	command, err := newLightTerminalCommand(v2TerminalOpenPath, sessionID, TerminalOpenRequest{Rows: rows, Columns: columns}, now)
+	retained := len(keep) > 0 && keep[0]
+	session := &lightTerminalSession{retained: retained, id: sessionID, notify: make(chan struct{}), createdAt: now, updatedAt: now}
+	command, err := newLightTerminalCommand(v2TerminalOpenPath, sessionID, TerminalOpenRequest{Retained: retained, Rows: rows, Columns: columns}, now)
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
@@ -437,10 +443,13 @@ func (r *lightTerminalRelay) open(ctx context.Context, nodeID string, rows, colu
 	item.wake = make(chan struct{})
 	item.mu.Unlock()
 	if err := waitLightTerminalCommand(ctx, item, request); err != nil {
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = r.close(cleanup, nodeID, TerminalCloseRequest{SessionID: sessionID})
+		cancel()
 		item.removeSession(sessionID)
 		return TerminalOpenResponse{}, err
 	}
-	return TerminalOpenResponse{SessionID: sessionID, Offset: 0, CreatedAt: now}, nil
+	return TerminalOpenResponse{Retained: retained, SessionID: sessionID, Offset: 0, CreatedAt: now}, nil
 }
 
 func (r *lightTerminalRelay) output(ctx context.Context, nodeID string, input TerminalOutputRequest) (terminal.Output, error) {

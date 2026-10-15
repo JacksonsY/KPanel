@@ -109,9 +109,7 @@ func (control *lightTerminalControl) acceptRelayResponse(response cluster.Termin
 
 func (control *lightTerminalControl) resetSessions() {
 	owner := lightTerminalOwner(control.config.NodeID)
-	for _, item := range control.sessions {
-		_ = control.manager.Close(owner, item.localID)
-	}
+	control.manager.CloseOwner(owner)
 	control.sessions = make(map[string]lightNodeTerminalSession)
 	control.pendingEvents = nil
 	control.processed = make(map[string]cluster.TerminalRelayEvent)
@@ -233,14 +231,20 @@ func (control *lightTerminalControl) executeCommand(command cluster.TerminalRela
 		if err := decodeTerminalRelayPayload(command.Payload, &input); err != nil {
 			return err
 		}
-		snapshot, err := control.manager.Open(owner, input.Rows, input.Columns)
+		var snapshot terminal.Snapshot
+		var err error
+		if input.Retained {
+			snapshot, err = control.manager.OpenRetained(owner, input.Rows, input.Columns)
+		} else {
+			snapshot, err = control.manager.Open(owner, input.Rows, input.Columns)
+		}
 		if err != nil {
 			return err
 		}
 		control.sessions[command.SessionID] = lightNodeTerminalSession{
 			centralID: command.SessionID, localID: snapshot.ID, offset: snapshot.Offset,
 		}
-		event := cluster.TerminalRelayEvent{CommandID: command.ID, Kind: "opened", SessionID: command.SessionID, Offset: snapshot.Offset}
+		event := cluster.TerminalRelayEvent{CommandID: command.ID, Kind: "opened", Retained: snapshot.Retained, SessionID: command.SessionID, Offset: snapshot.Offset}
 		if !control.queueEvent(event) {
 			delete(control.sessions, command.SessionID)
 			_ = control.manager.Close(owner, snapshot.ID)

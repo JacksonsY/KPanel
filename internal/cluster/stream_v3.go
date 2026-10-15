@@ -109,7 +109,7 @@ func (p *panelStreams) expire(now time.Time) {
 	var stale []*streamTerminal
 	p.mu.Lock()
 	for key, t := range p.terminals {
-		if now.Sub(t.idleSince()) >= streamTerminalIdleTTL || t.ctx.Err() != nil {
+		if (!t.retained && now.Sub(t.idleSince()) >= streamTerminalIdleTTL) || (t.retained && now.Sub(t.createdAt) >= terminal.DefaultLifetime) || t.ctx.Err() != nil {
 			delete(p.terminals, key)
 			stale = append(stale, t)
 		}
@@ -424,7 +424,7 @@ func (f panelTerminalFallback) Close(ctx context.Context, input TerminalCloseReq
 	return remote.TerminalCloseV2(ctx, record.Origin, record.ControllerID, record.RemoteNodeID, noiseKeyV2(credential), credential.TargetPublic, f.service.now().UTC(), input)
 }
 
-func (s *Service) openPanelStreamTerminal(ctx context.Context, hostID string, rows, columns uint16) (TerminalOpenResponse, error) {
+func (s *Service) openPanelStreamTerminal(ctx context.Context, hostID string, rows, columns uint16, keep ...bool) (TerminalOpenResponse, error) {
 	dial := func(ctx context.Context, first byte, payload any) (*fileStreamConn, terminalStreamReady, error) {
 		conn, err := s.dialPanelHost(ctx, hostID, streamRolePanelTerminal)
 		if err != nil {
@@ -432,7 +432,7 @@ func (s *Service) openPanelStreamTerminal(ctx context.Context, hostID string, ro
 		}
 		return startTerminalStream(ctx, conn, first, payload)
 	}
-	t, response, err := openStreamTerminal(ctx, s.streams.ctx, hostID, dial, panelTerminalFallback{service: s, hostID: hostID}, rows, columns)
+	t, response, err := openStreamTerminal(ctx, s.streams.ctx, hostID, dial, panelTerminalFallback{service: s, hostID: hostID}, rows, columns, keep...)
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
@@ -440,7 +440,7 @@ func (s *Service) openPanelStreamTerminal(ctx context.Context, hostID string, ro
 	return response, nil
 }
 
-func (s *Service) openLightStreamTerminal(ctx context.Context, nodeID string, rows, columns uint16) (TerminalOpenResponse, error) {
+func (s *Service) openLightStreamTerminal(ctx context.Context, nodeID string, rows, columns uint16, keep ...bool) (TerminalOpenResponse, error) {
 	dial := func(ctx context.Context, first byte, payload any) (*fileStreamConn, terminalStreamReady, error) {
 		conn, err := s.fileStreamHub.openLightTerminalConn(ctx, nodeID)
 		if err != nil {
@@ -448,7 +448,7 @@ func (s *Service) openLightStreamTerminal(ctx context.Context, nodeID string, ro
 		}
 		return startTerminalStream(ctx, conn, first, payload)
 	}
-	t, response, err := openStreamTerminal(ctx, s.streams.ctx, nodeID, dial, nil, rows, columns)
+	t, response, err := openStreamTerminal(ctx, s.streams.ctx, nodeID, dial, nil, rows, columns, keep...)
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
@@ -458,6 +458,10 @@ func (s *Service) openLightStreamTerminal(ctx context.Context, nodeID string, ro
 
 // managerTerminalBackend adapts a local PTY manager for the stream server.
 type managerTerminalBackend struct{ manager *terminal.Manager }
+
+func (b managerTerminalBackend) OpenRetained(_ context.Context, owner string, rows, columns uint16) (terminal.Snapshot, error) {
+	return b.manager.OpenRetained(owner, rows, columns)
+}
 
 func (b managerTerminalBackend) Open(_ context.Context, owner string, rows, columns uint16) (terminal.Snapshot, error) {
 	return b.manager.Open(owner, rows, columns)
@@ -513,7 +517,11 @@ func (c *TerminalRelayClient) RunTerminalStream(ctx context.Context, origin, nod
 	}
 	generation := string(data)
 	backend := managerTerminalBackend{manager: manager}
-	attachments := newTerminalAttachments(lightTerminalDetach, func(id string) { _ = manager.Close(owner, id) })
+	attachments := newTerminalAttachments(lightTerminalDetach, func(id string) {
+		if !manager.IsRetained(owner, id) {
+			_ = manager.Close(owner, id)
+		}
+	})
 	// Established sessions outlive this control socket so a reconnect does not
 	// interrupt open shells; the gate only bounds concurrent dial-backs.
 	gate := make(chan struct{}, terminal.DefaultMaxOwnerSessions)

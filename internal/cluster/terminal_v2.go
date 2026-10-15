@@ -30,12 +30,12 @@ func (s *Service) handleTerminalOpenV2(ctx context.Context, envelope v2Envelope,
 	if s.terminal == nil {
 		return FederationEnvelopeV2{}, ErrTerminalUnavailable
 	}
-	snapshot, err := s.terminal.Open(ctx, "federation:"+controller.ID, input.Rows, input.Columns)
+	snapshot, err := openTerminalBackend(ctx, s.terminal, "federation:"+controller.ID, input.Rows, input.Columns, input.Retained)
 	if err != nil {
 		return FederationEnvelopeV2{}, err
 	}
 	_ = s.storeV2.TouchController(controller.ID, now)
-	return sealV2JSONResponse(envelope, handshake, TerminalOpenResponse{SessionID: snapshot.ID, Offset: snapshot.Offset, CreatedAt: snapshot.CreatedAt})
+	return sealV2JSONResponse(envelope, handshake, TerminalOpenResponse{Retained: snapshot.Retained, SessionID: snapshot.ID, Offset: snapshot.Offset, CreatedAt: snapshot.CreatedAt})
 }
 
 func (s *Service) handleTerminalOutputV2(ctx context.Context, envelope v2Envelope, now time.Time) (FederationEnvelopeV2, error) {
@@ -158,7 +158,7 @@ func (s *Service) TerminalOpen(ctx context.Context, hostID string, input Termina
 			return TerminalOpenResponse{}, errors.New("invalid terminal dimensions")
 		}
 		if s.fileStreamHub.terminalAvailable(hostID) {
-			response, streamErr := s.openLightStreamTerminal(ctx, hostID, input.Rows, input.Columns)
+			response, streamErr := s.openLightStreamTerminal(ctx, hostID, input.Rows, input.Columns, input.Retained)
 			if streamErr == nil || !isStreamDialError(streamErr) {
 				return response, streamErr
 			}
@@ -166,20 +166,27 @@ func (s *Service) TerminalOpen(ctx context.Context, hostID string, input Termina
 		if s.lightTerminal == nil {
 			return TerminalOpenResponse{}, ErrTerminalUnavailable
 		}
-		return s.lightTerminal.open(ctx, hostID, input.Rows, input.Columns)
+		return s.lightTerminal.open(ctx, hostID, input.Rows, input.Columns, input.Retained)
 	}
 	record, credential, remote, err := s.terminalHostCredential(hostID)
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
 	if s.streams.usable(hostID) {
-		response, streamErr := s.openPanelStreamTerminal(ctx, hostID, input.Rows, input.Columns)
+		response, streamErr := s.openPanelStreamTerminal(ctx, hostID, input.Rows, input.Columns, input.Retained)
 		if streamErr == nil || !isStreamDialError(streamErr) {
 			return response, streamErr
 		}
 		s.streams.markLegacy(hostID)
 	}
-	return remote.TerminalOpenV2(ctx, record.Origin, record.ControllerID, record.RemoteNodeID, noiseKeyV2(credential), credential.TargetPublic, s.now().UTC(), input)
+	response, err := remote.TerminalOpenV2(ctx, record.Origin, record.ControllerID, record.RemoteNodeID, noiseKeyV2(credential), credential.TargetPublic, s.now().UTC(), input)
+	if err == nil && input.Retained && !response.Retained {
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = remote.TerminalCloseV2(cleanup, record.Origin, record.ControllerID, record.RemoteNodeID, noiseKeyV2(credential), credential.TargetPublic, s.now().UTC(), TerminalCloseRequest{SessionID: response.SessionID})
+		return TerminalOpenResponse{}, ErrTerminalUnavailable
+	}
+	return response, err
 }
 
 func (s *Service) TerminalOutput(ctx context.Context, hostID string, input TerminalOutputRequest) (terminal.Output, error) {

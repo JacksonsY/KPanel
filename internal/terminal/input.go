@@ -11,6 +11,9 @@ const InputProtocol = "terminal-input-v1"
 const InputWindow = 32
 const InputFrameBytes = 2048
 
+// Bound fenced writer identities within the same eight-hour session.
+const maxRetainedWriters = 1024
+
 var ErrInputSequence = errors.New("terminal input sequence is invalid")
 var ErrInputUncertain = errors.New("terminal input write is uncertain; open a new terminal")
 
@@ -23,10 +26,11 @@ type InputFrame struct {
 }
 
 type reliableInputState struct {
-	stream string
-	acked  uint64
-	failed bool
-	hashes [InputWindow][32]byte
+	stream  string
+	acked   uint64
+	failed  bool
+	retired map[string]struct{}
+	hashes  [InputWindow][32]byte
 }
 
 func (f InputFrame) Valid() bool {
@@ -67,7 +71,18 @@ func (m *Manager) InputSequencedContext(ctx context.Context, owner, id string, f
 		return ErrInputUncertain
 	}
 	if state.stream != "" && state.stream != frame.Stream {
-		return ErrInputSequence
+		if !item.retained || frame.Seq != 0 || len(state.retired) >= maxRetainedWriters {
+			return ErrInputSequence
+		}
+		if _, fenced := state.retired[frame.Stream]; fenced {
+			return ErrInputSequence
+		}
+		if state.retired == nil {
+			state.retired = make(map[string]struct{})
+		}
+		state.retired[state.stream] = struct{}{}
+		state.acked = 0
+		state.hashes = [InputWindow][32]byte{}
 	}
 	// seq=0 is an authenticated writer claim, never PTY input. Reattaching
 	// the same writer is idempotent, including before its first data frame.

@@ -73,6 +73,7 @@ type session struct {
 	closeMu     sync.Mutex
 	mu          sync.Mutex
 	id          string
+	retained    bool
 	owner       string
 	process     Process
 	buffer      []byte
@@ -89,6 +90,7 @@ type session struct {
 }
 
 type Snapshot struct {
+	Retained  bool       `json:"retained,omitempty"`
 	ID        string     `json:"id"`
 	Offset    int64      `json:"offset"`
 	CreatedAt time.Time  `json:"createdAt"`
@@ -286,6 +288,15 @@ func (m *Manager) Open(owner string, rows, columns uint16) (Snapshot, error) {
 // OpenWithStarter uses the same ownership, quotas and lifecycle for a fixed
 // backend-selected terminal process. The starter is never supplied over HTTP.
 func (m *Manager) OpenWithStarter(owner string, rows, columns uint16, start Starter) (Snapshot, error) {
+	return m.open(owner, rows, columns, start, false)
+}
+
+// OpenRetained keeps an authenticated session across client disconnects, bounded by Lifetime.
+func (m *Manager) OpenRetained(owner string, rows, columns uint16) (Snapshot, error) {
+	return m.open(owner, rows, columns, m.config.Starter, true)
+}
+
+func (m *Manager) open(owner string, rows, columns uint16, start Starter, retained bool) (Snapshot, error) {
 	if start == nil {
 		return Snapshot{}, errors.New("terminal starter is required")
 	}
@@ -330,7 +341,7 @@ func (m *Manager) OpenWithStarter(owner string, rows, columns uint16, start Star
 	closed := m.closed
 	m.mu.Unlock()
 	now := m.config.Now().UTC()
-	item := &session{id: id, owner: owner, process: process, notify: make(chan struct{}), inputGate: make(chan struct{}, 1), createdAt: now, updatedAt: now}
+	item := &session{retained: retained, id: id, owner: owner, process: process, notify: make(chan struct{}), inputGate: make(chan struct{}, 1), createdAt: now, updatedAt: now}
 	m.mu.Lock()
 	closed = closed || m.closed
 	if spawnErr == nil && closed {
@@ -554,6 +565,22 @@ func (m *Manager) Close(owner, id string) error {
 	return nil
 }
 
+// CloseOwner terminates both relay and stream sessions when their controller epoch changes.
+// Failed cleanup stays registered for the normal retry and quota accounting.
+func (m *Manager) CloseOwner(owner string) {
+	m.mu.RLock()
+	ids := make([]string, 0)
+	for id, item := range m.sessions {
+		if item.owner == strings.TrimSpace(owner) {
+			ids = append(ids, id)
+		}
+	}
+	m.mu.RUnlock()
+	for _, id := range ids {
+		_ = m.Close(owner, id)
+	}
+}
+
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
 	m.closed = true
@@ -587,7 +614,7 @@ func (m *Manager) reap(now time.Time) {
 	m.mu.Lock()
 	for id, item := range m.sessions {
 		item.mu.Lock()
-		inactive := now.Sub(item.updatedAt) >= m.config.IdleTimeout || now.Sub(item.createdAt) >= m.config.Lifetime
+		inactive := (!item.retained && now.Sub(item.updatedAt) >= m.config.IdleTimeout) || now.Sub(item.createdAt) >= m.config.Lifetime
 		finished := item.closed || (item.exitedAt != nil && !item.closeFailed)
 		if finished && now.Sub(item.updatedAt) >= 5*time.Minute {
 			delete(m.sessions, id)
@@ -600,6 +627,12 @@ func (m *Manager) reap(now time.Time) {
 	for _, item := range stale {
 		_ = m.Close(item.owner, item.id)
 	}
+}
+
+// IsRetained only reports sessions owned by the authenticated caller.
+func (m *Manager) IsRetained(owner, id string) bool {
+	item, err := m.lookup(owner, id)
+	return err == nil && item.retained
 }
 
 func (m *Manager) lookup(owner, id string) (*session, error) {
@@ -623,7 +656,7 @@ func (item *session) snapshot() Snapshot {
 	defer item.mu.Unlock()
 	// A new reader must receive output already captured during Open, including
 	// the first prompt. Starting at zero also preserves truncation reporting.
-	return Snapshot{ID: item.id, Offset: 0, CreatedAt: item.createdAt, UpdatedAt: item.updatedAt, ExitedAt: item.exitedAt, ExitError: item.exitError, Closed: item.closed}
+	return Snapshot{Retained: item.retained, ID: item.id, Offset: 0, CreatedAt: item.createdAt, UpdatedAt: item.updatedAt, ExitedAt: item.exitedAt, ExitError: item.exitError, Closed: item.closed}
 }
 
 func (item *session) append(data []byte, limit int, now time.Time) {

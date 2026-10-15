@@ -59,6 +59,7 @@ func validTerminalInputProtocol(ctx context.Context, backend TerminalBackend, pr
 var terminalStreamFallbackAfter = 6 * time.Second
 
 type terminalStreamOpen struct {
+	Retained      bool   `json:"retained,omitempty"`
 	Rows          uint16 `json:"rows"`
 	Columns       uint16 `json:"columns"`
 	InputProtocol string `json:"inputProtocol,omitempty"`
@@ -71,6 +72,7 @@ type terminalStreamAttach struct {
 }
 
 type terminalStreamReady struct {
+	Retained      bool      `json:"retained,omitempty"`
 	SessionID     string    `json:"sessionId"`
 	Offset        int64     `json:"offset"`
 	CreatedAt     time.Time `json:"createdAt"`
@@ -216,6 +218,7 @@ func serveTerminalStream(c *fileStreamConn, backend TerminalBackend, owner strin
 			return ""
 		}
 	}
+	var retained bool
 	var sessionID string
 	var inputProtocol string
 	var offset int64
@@ -230,11 +233,12 @@ func serveTerminalStream(c *fileStreamConn, backend TerminalBackend, owner strin
 		if inputProtocol != "" && !validTerminalInputProtocol(c.ctx, backend, inputProtocol) {
 			return ""
 		}
-		snapshot, openErr := backend.Open(c.ctx, owner, input.Rows, input.Columns)
+		snapshot, openErr := openTerminalBackend(c.ctx, backend, owner, input.Rows, input.Columns, input.Retained)
 		if openErr != nil {
 			_ = c.writeJSON(termReject, terminalStreamResult{Code: terminalStreamCode(openErr)})
 			return ""
 		}
+		retained = snapshot.Retained
 		sessionID, offset, createdAt = snapshot.ID, snapshot.Offset, snapshot.CreatedAt
 	case termAttach:
 		var input terminalStreamAttach
@@ -253,7 +257,7 @@ func serveTerminalStream(c *fileStreamConn, backend TerminalBackend, owner strin
 	default:
 		return ""
 	}
-	if c.writeJSON(termReady, terminalStreamReady{SessionID: sessionID, Offset: offset, CreatedAt: createdAt, InputProtocol: inputProtocol}) != nil {
+	if c.writeJSON(termReady, terminalStreamReady{Retained: retained, SessionID: sessionID, Offset: offset, CreatedAt: createdAt, InputProtocol: inputProtocol}) != nil {
 		return ""
 	}
 	attachments.attach(sessionID)
@@ -442,6 +446,8 @@ type streamTerminalFallback interface {
 }
 
 type streamTerminal struct {
+	retained  bool
+	createdAt time.Time
 	sendMu    sync.Mutex
 	reliable  bool
 	hostID    string
@@ -463,24 +469,33 @@ type streamTerminal struct {
 
 // openStreamTerminal opens the session within the caller's ctx; the stream
 // then lives under parent until closed.
-func openStreamTerminal(ctx, parent context.Context, hostID string, dial streamTerminalDialer, fallback streamTerminalFallback, rows, columns uint16) (*streamTerminal, TerminalOpenResponse, error) {
+func openStreamTerminal(ctx, parent context.Context, hostID string, dial streamTerminalDialer, fallback streamTerminalFallback, rows, columns uint16, keep ...bool) (*streamTerminal, TerminalOpenResponse, error) {
+	retained := len(keep) > 0 && keep[0]
 	probe, capability, probeErr := dial(ctx, termInputProbe, struct{}{})
 	var conn *fileStreamConn
 	var ready terminalStreamReady
 	var err error
 	if probeErr == nil {
-		conn, ready, err = startTerminalStream(ctx, probe, termOpen, terminalStreamOpen{Rows: rows, Columns: columns, InputProtocol: capability.InputProtocol})
+		conn, ready, err = startTerminalStream(ctx, probe, termOpen, terminalStreamOpen{Retained: retained, Rows: rows, Columns: columns, InputProtocol: capability.InputProtocol})
 	} else {
-		conn, ready, err = dial(ctx, termOpen, terminalStreamOpen{Rows: rows, Columns: columns})
+		conn, ready, err = dial(ctx, termOpen, terminalStreamOpen{Retained: retained, Rows: rows, Columns: columns})
 	}
 	if err != nil {
 		return nil, TerminalOpenResponse{}, err
 	}
 	ctx, cancel := context.WithCancel(parent)
-	t := &streamTerminal{hostID: hostID, sessionID: ready.SessionID, buffer: terminal.NewBuffer(terminal.DefaultBufferBytes, ready.Offset),
+	t := &streamTerminal{retained: ready.Retained, createdAt: ready.CreatedAt, hostID: hostID, sessionID: ready.SessionID, buffer: terminal.NewBuffer(terminal.DefaultBufferBytes, ready.Offset),
 		dial: dial, fallback: fallback, ctx: ctx, cancel: cancel, pending: make(map[uint64]chan string), lastUsed: time.Now(), reliable: ready.InputProtocol == terminal.InputProtocol}
 	t.attach(conn)
-	return t, TerminalOpenResponse{SessionID: ready.SessionID, Offset: ready.Offset, CreatedAt: ready.CreatedAt}, nil
+	if retained && !ready.Retained {
+		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = t.close(cleanup, TerminalCloseRequest{SessionID: ready.SessionID})
+		stop()
+		t.cancel()
+		conn.close()
+		return nil, TerminalOpenResponse{}, ErrTerminalUnavailable
+	}
+	return t, TerminalOpenResponse{Retained: ready.Retained, SessionID: ready.SessionID, Offset: ready.Offset, CreatedAt: ready.CreatedAt}, nil
 }
 
 func (t *streamTerminal) attach(conn *fileStreamConn) {
@@ -578,6 +593,9 @@ func (t *streamTerminal) reconnect() {
 		window = terminalStreamFallbackAfter
 	}
 	deadline := time.Now().Add(window)
+	if t.retained {
+		deadline = t.createdAt.Add(terminal.DefaultLifetime)
+	}
 	delay := 250 * time.Millisecond
 	for t.ctx.Err() == nil && time.Now().Before(deadline) {
 		protocol := ""

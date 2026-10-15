@@ -104,3 +104,32 @@ func TestLightTerminalControlClosesSessionsWhenCenterEpochChanges(t *testing.T) 
 		t.Fatalf("manager.Output() after epoch reset = %#v, %v; want closed", output, err)
 	}
 }
+
+func TestRetainedRelayOpenAcknowledgesAndEpochClosesStreamSessions(t *testing.T) {
+	manager := terminal.New(terminal.Config{Starter: func(uint16, uint16) (terminal.Process, error) { return newLightTerminalTestProcess(), nil }})
+	defer manager.CloseAll()
+	nodeID := strings.Repeat("a", 32)
+	owner := lightTerminalOwner(nodeID)
+	control := &lightTerminalControl{config: nodeConfig{NodeID: nodeID}, manager: manager, sessions: make(map[string]lightNodeTerminalSession), processed: make(map[string]cluster.TerminalRelayEvent), centerEpoch: strings.Repeat("c", 32)}
+	payload, _ := json.Marshal(cluster.TerminalOpenRequest{Rows: 24, Columns: 80, Retained: true})
+	command := cluster.TerminalRelayCommand{ID: strings.Repeat("d", 32), SessionID: strings.Repeat("e", 32), Path: cluster.V2TerminalOpenPath, Payload: payload}
+	if err := control.executeCommand(command); err != nil {
+		t.Fatal(err)
+	}
+	item := control.sessions[command.SessionID]
+	if !manager.IsRetained(owner, item.localID) || len(control.pendingEvents) != 1 || !control.pendingEvents[0].Retained {
+		t.Fatal("retention not acknowledged")
+	}
+	// Stream sessions are deliberately absent from relay's session map.
+	stream, err := manager.OpenRetained(owner, 24, 80)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control.acceptRelayResponse(cluster.TerminalRelayPollResponse{Epoch: strings.Repeat("f", 32)})
+	for _, id := range []string{item.localID, stream.ID} {
+		out, err := manager.Output(context.Background(), owner, id, 0, 0)
+		if err != nil || !out.Closed {
+			t.Fatalf("epoch kept session: %+v %v", out, err)
+		}
+	}
+}
