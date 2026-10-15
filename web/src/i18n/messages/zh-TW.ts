@@ -725,7 +725,7 @@ export const zhTWMessages = {
   "appScript.closeConfirm": "結束任務會停止目前 kejilion.sh 處理程序並釋放應用程式管理鎖；已經執行的步驟不會自動回滾。是否繼續？",
   "appScript.closingTitle": "正在結束指令碼終端機…",
   "appScript.closingDescription": "正在等待 Agent 確認背景處理程序結束並釋放應用程式管理鎖。",
-  "appScript.closePending": "已要求結束任務，但背景處理程序尚未確認結束。視窗已保留，請稍後重試關閉。",
+  "appScript.closePending": "已要求結束任務，但背景處理程序尚未確認結束。視窗已保留，請稍後重試結束任務。",
   "appScript.closeFailed": "無法確認指令碼處理程序已結束，視窗已保留。請檢查 Agent 狀態後重試。",
   "apps.iconAlt": "{name} 圖示",
   "apps.source.builtin": "內建 #{num}",

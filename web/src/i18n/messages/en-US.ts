@@ -788,7 +788,7 @@ export const enUSMessages = {
   'appScript.closeConfirm': 'Ending this task will stop the current kejilion.sh process and release the app-management lock. Steps already completed will not be rolled back automatically. Continue?',
   'appScript.closingTitle': 'Ending the script terminal...',
   'appScript.closingDescription': 'Waiting for the Agent to confirm that the background process exited and released the app-management lock.',
-  'appScript.closePending': 'The stop was requested, but the background process has not confirmed its exit. The window was kept open; try closing it again shortly.',
+  'appScript.closePending': 'The stop was requested, but the background process has not confirmed its exit. The window was kept open; try ending the task again shortly.',
   'appScript.closeFailed': 'The script process exit could not be confirmed, so the window was kept open. Check the Agent and try again.',
 
   'apps.iconAlt': '{name} icon',
