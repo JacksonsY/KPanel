@@ -119,6 +119,7 @@ func TestTerminalSequencedStreamPanelAndLightParity(t *testing.T) {
 			if kind == "panel" {
 				record := testHostRecordV2(1, time.Now().UTC())
 				record.Scope = SummaryTerminalScope
+				record.ResourceVersion = hostResourceVersionV2(record)
 				if err := f.service.storeV2.AddHost(record); err != nil {
 					t.Fatal(err)
 				}
@@ -280,6 +281,7 @@ func TestRemovedPanelHostCannotReuseTerminalStream(t *testing.T) {
 	f.service.terminal = managerTerminalBackend{manager: newEchoManager(t)}
 	record := testHostRecordV2(1, time.Now().UTC())
 	record.Scope = SummaryTerminalScope
+	record.ResourceVersion = hostResourceVersionV2(record)
 	if err := f.service.storeV2.AddHost(record); err != nil {
 		t.Fatal(err)
 	}
