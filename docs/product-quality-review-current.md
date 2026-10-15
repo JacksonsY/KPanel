@@ -4,7 +4,7 @@
 - 基线提交：`3177e40f7489734adb2e76d9af61e95d008ecc2c`
 - 基线版本：`v1.25.1`
 - 当前公开预览：`v1.26.0-rc.20`，产品提交 `7723da7dfe991e8cd3d1d1341e5231afc947f4be`；2026-10-14T17:31:08Z 已公开，prerelease=true、draft=false，未部署生产。
-- 稳定版本及 Latest/latest：`v1.25.1`；稳定镜像 `sha256:1894b5e3aa76edbd75efef2de1164f44d38734cb3a27dc11aa2f75c420c1b325`，本轮未提升稳定通道。
+- 稳定版本及 Latest/latest：`v1.26.0`，候选提交 `247ff67d98700c9af56d55a807cb9389fc8eedc1`；2026-10-15T06:11:57Z 已公开，稳定镜像 `sha256:e0fc7776d1b55754e597d73aab25c519a70c8ef0402752e1e70896397f1e96f9`，未部署生产；L3 与 CF 审计降级，详见 [v1.26.0 验收](release-v1.26.0-acceptance.md)。上一稳定版 `v1.25.1`（镜像 `sha256:1894b5e3aa76edbd75efef2de1164f44d38734cb3a27dc11aa2f75c420c1b325`）作为回滚点。
 - 预览 version/preview 双架构镜像：`sha256:ee0c159cedf525d3da3182b1ec2960f1b70408c648bb1bc411a06c85199938bb`；双架构身份、15附件/11项SHA256SUMS及公开镜像E2E通过，详见 [RC20 验收](release-v1.26.0-rc.20-acceptance.md)。
 - RC9 后续验收提交：`03650f985c4cf28b10c7949f91438c3af7c634b5`，发布证据见 [RC9 验收](release-v1.26.0-rc.9-acceptance.md)。该文档提交不属于 RC9 已发布产品字节。
 - 上一份完整复核：[product-quality-review-2026-08-13.md](product-quality-review-2026-08-13.md)。自动刷新门槛保持：基线后达到 50 个提交，或同时达到 20 个提交和 8 个正式版本；产品性质、业务真源、权限边界或核心旅程实质变化时立即复核。
