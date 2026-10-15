@@ -12,12 +12,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/cluster"
 	"github.com/kejilion/kejilion-panel/internal/contract"
+	"github.com/kejilion/kejilion-panel/internal/desktopworkspace"
 	"github.com/kejilion/kejilion-panel/internal/dockerx"
 	"github.com/kejilion/kejilion-panel/internal/terminal"
 )
@@ -42,9 +44,16 @@ type panelTerminalSession struct {
 	ReliableInput    bool
 	InputClaimed     bool
 	InputConnection  *terminalInputConnection
+	Retained         bool
+	ShortcutID       string
+	Title            string
+	LaunchUncertain  bool
 }
 
 type terminalOpenRequest struct {
+	Retained        bool   `json:"retained,omitempty"`
+	ShortcutID      string `json:"shortcutId,omitempty"`
+	ShortcutVersion string `json:"shortcutVersion,omitempty"`
 	HostID          string `json:"hostId"`
 	Rows            uint16 `json:"rows"`
 	Columns         uint16 `json:"columns"`
@@ -53,10 +62,16 @@ type terminalOpenRequest struct {
 }
 
 type terminalOpenResponse struct {
-	SessionID string    `json:"sessionId"`
-	HostID    string    `json:"hostId"`
-	Offset    int64     `json:"offset"`
-	CreatedAt time.Time `json:"createdAt"`
+	Retained        bool       `json:"retained,omitempty"`
+	ShortcutID      string     `json:"shortcutId,omitempty"`
+	Title           string     `json:"title,omitempty"`
+	CloseRequested  bool       `json:"closeRequested,omitempty"`
+	LaunchUncertain bool       `json:"launchUncertain,omitempty"`
+	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
+	SessionID       string     `json:"sessionId"`
+	HostID          string     `json:"hostId"`
+	Offset          int64      `json:"offset"`
+	CreatedAt       time.Time  `json:"createdAt"`
 }
 
 func (s clusterTerminalSource) Open(ctx context.Context, owner string, rows, columns uint16) (terminal.Snapshot, error) {
@@ -64,6 +79,22 @@ func (s clusterTerminalSource) Open(ctx context.Context, owner string, rows, col
 	response, err := s.agent.Do(ctx, http.MethodPost, "/v1/terminals", "", newRequestID(), body)
 	var result terminal.Snapshot
 	return result, decodeTerminalAgentResponse(response, err, &result)
+}
+
+func (s clusterTerminalSource) OpenRetained(ctx context.Context, owner string, rows, columns uint16) (terminal.Snapshot, error) {
+	body, _ := json.Marshal(map[string]any{"owner": owner, "rows": rows, "columns": columns, "retained": true})
+	response, err := s.agent.Do(ctx, http.MethodPost, "/v1/terminals", "", newRequestID(), body)
+	var result terminal.Snapshot
+	if err := decodeTerminalAgentResponse(response, err, &result); err != nil {
+		return result, err
+	}
+	if !result.Retained {
+		if result.ID != "" {
+			_ = s.Close(ctx, owner, result.ID)
+		}
+		return terminal.Snapshot{}, errors.New("Agent does not support retained terminals")
+	}
+	return result, nil
 }
 
 func (s clusterTerminalSource) OpenContainer(ctx context.Context, owner string, input terminalOpenRequest) (terminal.Snapshot, error) {
@@ -185,6 +216,10 @@ func (s *Server) handleTerminalSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/v1/terminal-sessions" {
+		if r.Method == http.MethodGet {
+			s.listRetainedTerminals(w, r, session.User.ID)
+			return
+		}
 		if r.Method != http.MethodPost {
 			s.writeProblem(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "Request method not allowed", "")
 			return
@@ -228,6 +263,51 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		s.writeValidationProblem(w, r, "containerId", "a full container identity and resource version are required together")
 		return
 	}
+	if input.Retained && input.ContainerID != "" || input.ShortcutID != "" && (!input.Retained || !desktopworkspace.ValidShortcutID(input.ShortcutID)) || input.ShortcutID == "" && input.ShortcutVersion != "" {
+		s.writeValidationProblem(w, r, "retained", "retained shortcuts require a valid shortcut ID and cannot target containers")
+		return
+	}
+	var launchCommand, launchTitle string
+	if input.ShortcutID != "" {
+		// Serialize shortcut resolution, spawn, registration and initial input. A lost
+		// HTTP response must never cause a second execution on the next launch.
+		s.terminalLaunchMu.Lock()
+		defer s.terminalLaunchMu.Unlock()
+		if s.resumeShortcut(w, r, userID, input) {
+			return
+		}
+		if s.desktopWorkspace == nil {
+			s.writeProblem(w, r, 503, "desktop_workspace_unavailable", "Desktop workspace unavailable", "")
+			return
+		}
+		workspace := s.desktopWorkspace.Workspace()
+		if !workspace.Available {
+			s.writeProblem(w, r, 503, "desktop_workspace_unavailable", "Desktop workspace unavailable", "")
+			return
+		}
+		if input.ShortcutVersion == "" || input.ShortcutVersion != workspace.ResourceVersion {
+			s.writeProblem(w, r, 409, "desktop_workspace_changed", "Desktop shortcut changed", "Reload the shortcut before starting it")
+			return
+		}
+		for _, shortcut := range workspace.Shortcuts {
+			if shortcut.ID != input.ShortcutID || !desktopworkspace.IsCommandTargetType(shortcut.TargetType) {
+				continue
+			}
+			hostID := shortcut.HostID
+			if hostID == "" {
+				hostID = cluster.LocalHostID
+			}
+			if hostID != input.HostID {
+				break
+			}
+			launchCommand, launchTitle = shortcut.Command, shortcut.Name
+			break
+		}
+		if launchCommand == "" {
+			s.writeProblem(w, r, 404, "terminal_shortcut_not_found", "Command shortcut not found", "")
+			return
+		}
+	}
 	// Local terminal capability is fixed; collecting host telemetry here adds
 	// CPU sampling and unrelated monitoring latency to every cold-cache open.
 	host := cluster.Host{ID: cluster.LocalHostID, IsLocal: true, TerminalAvailable: true}
@@ -245,7 +325,9 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 	}
 	stale := s.pruneTerminalSessions(time.Now().UTC().Add(-panelTerminalIdleTTL))
 	for _, item := range stale {
-		_ = s.closeTerminalBackend(r.Context(), item)
+		if err := s.closeTerminalBackend(r.Context(), item); err == nil || errors.Is(err, terminal.ErrNotFound) || errors.Is(err, terminal.ErrClosed) {
+			s.deleteTerminalSession(item.ID)
+		}
 	}
 	if !s.reserveTerminalOpen(userID) {
 		s.writeProblem(w, r, http.StatusTooManyRequests, "terminal_limit", "Terminal session limit reached", "")
@@ -264,13 +346,15 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		var openErr error
 		if input.ContainerID != "" {
 			snapshot, openErr = (clusterTerminalSource{agent: s.agent}).OpenContainer(r.Context(), owner, input)
+		} else if input.Retained {
+			snapshot, openErr = (clusterTerminalSource{agent: s.agent}).OpenRetained(r.Context(), owner, input.Rows, input.Columns)
 		} else {
 			snapshot, openErr = (clusterTerminalSource{agent: s.agent}).Open(r.Context(), owner, input.Rows, input.Columns)
 		}
 		err = openErr
-		opened = cluster.TerminalOpenResponse{SessionID: snapshot.ID, Offset: snapshot.Offset, CreatedAt: snapshot.CreatedAt}
+		opened = cluster.TerminalOpenResponse{SessionID: snapshot.ID, Offset: snapshot.Offset, CreatedAt: snapshot.CreatedAt, Retained: snapshot.Retained}
 	} else {
-		opened, err = s.cluster.TerminalOpen(r.Context(), host.ID, cluster.TerminalOpenRequest{Rows: input.Rows, Columns: input.Columns})
+		opened, err = s.cluster.TerminalOpen(r.Context(), host.ID, cluster.TerminalOpenRequest{Rows: input.Rows, Columns: input.Columns, Retained: input.Retained})
 	}
 	if err != nil {
 		_ = s.audit(r, userID, "terminal.open", auditType, auditTarget, "failure", nil)
@@ -291,6 +375,11 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		s.writeProblem(w, r, http.StatusBadGateway, "terminal_open_failed", "Terminal open failed", "")
 		return
 	}
+	if input.Retained && !opened.Retained {
+		_ = s.closeTerminalBackend(r.Context(), panelTerminalSession{BackendSessionID: opened.SessionID, HostID: host.ID, Owner: owner})
+		s.writeProblem(w, r, http.StatusConflict, "terminal_retention_unavailable", "This host does not support retained sessions", "")
+		return
+	}
 	publicID, err := randomTerminalSessionID()
 	if err != nil {
 		_ = s.closeTerminalBackend(r.Context(), panelTerminalSession{BackendSessionID: opened.SessionID, HostID: host.ID, Owner: owner})
@@ -298,7 +387,7 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 	now := time.Now().UTC()
-	item := panelTerminalSession{ID: publicID, BackendSessionID: opened.SessionID, HostID: host.ID, UserID: userID, Owner: owner, CreatedAt: now, UpdatedAt: now}
+	item := panelTerminalSession{ID: publicID, BackendSessionID: opened.SessionID, HostID: host.ID, UserID: userID, Owner: owner, CreatedAt: now, UpdatedAt: now, Retained: input.Retained, ShortcutID: input.ShortcutID, Title: launchTitle}
 	if host.IsLocal {
 		item.ReliableInput = (clusterTerminalSource{agent: s.agent}).SupportsSequencedInput(r.Context())
 	} else {
@@ -307,8 +396,22 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 	s.terminalMu.Lock()
 	s.terminalSessions[publicID] = item
 	s.terminalMu.Unlock()
+	if launchCommand != "" {
+		// Persist the identity in bounded server memory BEFORE input. Any write error
+		// is uncertain, never a reason to repeat the command on a new connection.
+		command := strings.ReplaceAll(strings.ReplaceAll(launchCommand, "\r\n", "\n"), "\r", "\n") + "\n"
+		if err := s.inputTerminalBackend(r.Context(), item, []byte(command)); err != nil {
+			item.LaunchUncertain = true
+			s.terminalMu.Lock()
+			if current, ok := s.terminalSessions[publicID]; ok {
+				current.LaunchUncertain = true
+				s.terminalSessions[publicID] = current
+			}
+			s.terminalMu.Unlock()
+		}
+	}
 	_ = s.audit(r, userID, "terminal.open", auditType, auditTarget, "success", nil)
-	s.writeJSON(w, http.StatusCreated, terminalOpenResponse{SessionID: publicID, HostID: host.ID, Offset: opened.Offset, CreatedAt: opened.CreatedAt})
+	s.writeJSON(w, http.StatusCreated, terminalSessionResponse(item))
 }
 
 func validContainerTerminalID(id string) bool {
@@ -377,6 +480,14 @@ func (s *Server) handleTerminalOperation(w http.ResponseWriter, r *http.Request,
 		item.InputConnection.cancel()
 	}
 
+	if item.CloseRequested && action != "close" && action != "output" {
+		s.writeProblem(w, r, http.StatusConflict, "terminal_close_pending", "Terminal is closing", "")
+		return
+	}
+	if item.LaunchUncertain && (action == "input" || action == "input-transport") {
+		s.writeProblem(w, r, http.StatusConflict, "terminal_input_uncertain", "Shortcut launch is uncertain", "Inspect output and end this session before starting again")
+		return
+	}
 	switch action {
 	case "input-transport":
 		if r.Method != http.MethodPost {
@@ -552,6 +663,18 @@ func (s *Server) pruneTerminalSessions(before time.Time) []panelTerminalSession 
 	defer s.terminalMu.Unlock()
 	stale := make([]panelTerminalSession, 0)
 	for id, item := range s.terminalSessions {
+		if item.Retained {
+			if item.CreatedAt.Add(terminal.DefaultLifetime).After(before.Add(panelTerminalIdleTTL)) {
+				continue
+			}
+			item.CloseRequested = true
+			s.terminalSessions[id] = item
+			stale = append(stale, item)
+			if item.InputConnection != nil {
+				item.InputConnection.cancel()
+			}
+			continue
+		}
 		if item.UpdatedAt.After(before) {
 			continue
 		}
@@ -596,4 +719,63 @@ func randomTerminalSessionID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(value), nil
+}
+
+// Lists metadata only. A network failure is not evidence that the process ended.
+// Neither listing nor reattaching extends the target's fixed lifetime.
+func terminalSessionResponse(item panelTerminalSession) terminalOpenResponse {
+	result := terminalOpenResponse{SessionID: item.ID, HostID: item.HostID, Offset: 0, CreatedAt: item.CreatedAt, Retained: item.Retained, ShortcutID: item.ShortcutID, Title: item.Title, CloseRequested: item.CloseRequested, LaunchUncertain: item.LaunchUncertain}
+	if item.Retained {
+		expiry := item.CreatedAt.Add(terminal.DefaultLifetime)
+		result.ExpiresAt = &expiry
+	}
+	return result
+}
+func (s *Server) listRetainedTerminals(w http.ResponseWriter, r *http.Request, userID string) {
+	if r.URL.RawQuery != "" {
+		s.writeProblem(w, r, 400, "invalid_terminal_query", "Invalid terminal query", "")
+		return
+	}
+	items := make([]terminalOpenResponse, 0)
+	s.terminalMu.Lock()
+	for _, item := range s.terminalSessions {
+		if item.UserID == userID && item.Retained {
+			items = append(items, terminalSessionResponse(item))
+		}
+	}
+	s.terminalMu.Unlock()
+	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.Before(items[j].CreatedAt) })
+	s.writeJSON(w, 200, map[string]any{"items": items})
+}
+func (s *Server) resumeShortcut(w http.ResponseWriter, r *http.Request, userID string, input terminalOpenRequest) bool {
+	s.terminalMu.Lock()
+	var item panelTerminalSession
+	for _, existing := range s.terminalSessions {
+		if existing.UserID == userID && existing.Retained && existing.ShortcutID == input.ShortcutID {
+			item = existing
+			break
+		}
+	}
+	s.terminalMu.Unlock()
+	if item.ID == "" {
+		return false
+	}
+	if item.HostID != input.HostID {
+		s.writeProblem(w, r, 409, "terminal_shortcut_host_changed", "Existing shortcut session belongs to another host", "End the existing session before changing its host")
+		return true
+	}
+	if item.HostID != cluster.LocalHostID {
+		host, err := s.cluster.Host(r.Context(), item.HostID)
+		if err != nil || !host.TerminalAvailable {
+			s.writeProblem(w, r, 409, "terminal_unavailable", "Terminal host unavailable", "")
+			return true
+		}
+	}
+	// A failed close is still a real tracked process; do not start its replacement.
+	if item.CloseRequested || !time.Now().Before(item.CreatedAt.Add(terminal.DefaultLifetime)) {
+		s.writeProblem(w, r, 409, "terminal_close_pending", "End the previous session before restarting", "")
+		return true
+	}
+	s.writeJSON(w, http.StatusOK, terminalSessionResponse(item))
+	return true
 }

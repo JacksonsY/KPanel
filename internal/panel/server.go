@@ -101,6 +101,7 @@ type Server struct {
 	fileShareStreamGate     chan struct{}
 	fileShareMetadataGate   chan struct{}
 	terminalMu              sync.Mutex
+	terminalLaunchMu        sync.Mutex
 	terminalSessions        map[string]panelTerminalSession
 	terminalOpening         int
 	terminalOpeningUser     map[string]int

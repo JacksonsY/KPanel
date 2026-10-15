@@ -306,7 +306,7 @@ func (s *Server) hostTerminalInputTarget(session auth.Session, id string) termin
 		admit: func(conn *terminalInputConnection, requireClaimed bool) (func(), int, string, string) {
 			s.terminalMu.Lock()
 			current, ok := s.terminalSessions[id]
-			if !ok || current.UserID != session.User.ID || current.CloseRequested || !current.ReliableInput {
+			if !ok || current.UserID != session.User.ID || current.CloseRequested || current.LaunchUncertain || !current.ReliableInput {
 				s.terminalMu.Unlock()
 				return nil, http.StatusNotFound, "terminal_not_found", "Terminal input stream unavailable"
 			}
