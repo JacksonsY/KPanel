@@ -129,6 +129,7 @@ describe('Panel access settings', () => {
     expect(mocks.updateSelfSignedTLS).toHaveBeenCalledWith({ enabled: true, regenerate: false })
     expect(wrapper.text()).toContain('AA:BB')
     expect(wrapper.text()).toContain('203.0.113.5, 127.0.0.1')
+    expect(wrapper.text()).toContain('2028')
     expect(wrapper.get('a[download]').attributes('href')).toBe('/api/v1/settings/panel-access/self-signed-tls/certificate')
 
     await button('切换到 HTTPS 访问').trigger('click')

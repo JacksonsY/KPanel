@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { CheckCircle2, Download, Globe2, LoaderCircle, LockKeyhole, ShieldAlert } from '@lucide/vue'
 import { api, ApiError } from '@/lib/api'
 import { matchingAppProxySites } from '@/lib/appAccess'
-import { formatDateTime } from '@/lib/format'
+import { formatHostDateTime } from '@/lib/format'
 import { kpanelAppID } from '@/lib/kpanelUpdate'
 import { currentPanelLocation, navigatePanel, panelAccessSection, panelDomainQuery } from '@/lib/panelAccess'
 import { useI18n } from '@/i18n'
@@ -35,6 +35,8 @@ const confirmingRegenerate = ref(false)
 const pageLocation = currentPanelLocation()
 const pageSecure = pageLocation.protocol === 'https:'
 const currentOrigin = pageLocation.origin
+// Certificates outlive a year, so the expiry must show the year.
+const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 const accessKind = computed<'trusted' | 'self-signed' | 'plain'>(() => {
   if (!pageSecure) return 'plain'
   return status.value?.requestIpHost ? 'self-signed' : 'trusted'
@@ -254,7 +256,7 @@ onBeforeUnmount(() => controller.abort())
         <p v-if="checking" role="status">{{ i18n.t('panelAccess.checking', { domain: checking }) }}</p>
 
         <div v-if="check && check.matched" class="panel-access__switch" role="region" :aria-label="i18n.t('panelAccess.switchTitle')">
-          <p class="inline-alert inline-alert--success">{{ i18n.t('panelAccess.matched', { origin: `https://${check.domain}` }) }}</p>
+          <p class="inline-alert inline-alert--success"><CheckCircle2 :size="16" aria-hidden="true" />{{ i18n.t('panelAccess.matched', { origin: `https://${check.domain}` }) }}</p>
           <label v-if="canBlockDirect" class="panel-access__check">
             <input v-model="blockDirect" type="checkbox" :disabled="switching" />
             <span>{{ i18n.t('panelAccess.blockDirect') }}</span>
@@ -279,7 +281,7 @@ onBeforeUnmount(() => controller.abort())
         <dl v-if="selfSigned?.fingerprintSha256" class="panel-access__cert">
           <div><dt>{{ i18n.t('panelAccess.state') }}</dt><dd>{{ i18n.t(selfSigned.enabled ? 'panelAccess.enabled' : 'panelAccess.disabled') }}</dd></div>
           <div><dt>{{ i18n.t('panelAccess.fingerprint') }}</dt><dd><code>{{ selfSigned.fingerprintSha256 }}</code></dd></div>
-          <div v-if="selfSigned.notAfter"><dt>{{ i18n.t('panelAccess.validUntil') }}</dt><dd>{{ formatDateTime(selfSigned.notAfter) }}</dd></div>
+          <div v-if="selfSigned.notAfter"><dt>{{ i18n.t('panelAccess.validUntil') }}</dt><dd>{{ formatHostDateTime(selfSigned.notAfter, browserTimeZone) }}</dd></div>
           <div v-if="selfSigned.hosts?.length"><dt>{{ i18n.t('panelAccess.hosts') }}</dt><dd>{{ selfSigned.hosts.join(', ') }}</dd></div>
         </dl>
         <p v-if="selfSigned?.enabled" class="panel-access__note">{{ i18n.t('panelAccess.verifyFingerprint') }}</p>
@@ -361,6 +363,9 @@ onBeforeUnmount(() => controller.abort())
 .panel-access__current[data-kind='plain'] > svg { color: var(--warning); }
 .panel-access__current div { display: grid; gap: 2px; min-width: 0; }
 .panel-access__origin { color: var(--text-soft); font-size: 13px; overflow-wrap: anywhere; }
+.panel-access__origin code { font-size: 13px; }
+.panel-access .inline-alert--success { color: var(--success); background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 22%, transparent); }
+.panel-access .inline-alert > svg { flex-shrink: 0; margin-top: 2px; }
 .panel-access__limits { margin: 12px 0 0; padding-left: 20px; color: var(--text-soft); font-size: 13px; }
 .panel-access__block { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
 .panel-access__block h3 { margin: 0 0 4px; font-size: 15px; }
