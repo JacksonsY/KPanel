@@ -1,6 +1,7 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ["请先更新 kejilion.sh 以支持 ~/apps-local 本地应用", "Update kejilion.sh first to support local apps in ~/apps-local"],
   ["正在保存…","Saving…"],
   ["保存设置","Save settings"],
   ["请完整填写所选渠道配置。","Complete all fields for the selected channel."],

@@ -1386,7 +1386,7 @@ watch(windowActive, syncJobPollingForWindow)
         <Search :size="18" />
         <input v-model="search" type="search" placeholder="搜索应用名称、功能或容器…" />
       </label>
-      <div class="market-segment" aria-label="来源筛选">
+      <div class="market-segment market-source-filter" aria-label="来源筛选">
         <button
           v-for="item in sourceFilters"
           :key="item.key"
@@ -1422,7 +1422,7 @@ watch(windowActive, syncJobPollingForWindow)
       <button
         v-for="item in inventory.categories"
         :key="item.key"
-        :class="{ 'is-active': category === item.key }"
+        :class="{ 'is-active': category === item.key, 'market-category--local': item.key === 'local' }"
         type="button"
         @click="category = item.key"
       >
@@ -1444,6 +1444,7 @@ watch(windowActive, syncJobPollingForWindow)
         :key="item.id"
         class="app-card"
         :class="{
+          'app-card--local': item.source === 'local',
           'is-installed': item.runtime.installed,
           'is-recently-installed': recentInstalledID === item.id,
         }"
@@ -1544,7 +1545,7 @@ watch(windowActive, syncJobPollingForWindow)
       @close="selectedID = ''"
     >
       <template v-if="selected">
-        <div class="app-detail-head">
+        <div class="app-detail-head" :class="{ 'app-detail-head--local': selected.source === 'local' }">
           <span class="app-icon-wrap">
             <span class="app-detail-head__icon"><img :src="selected.icon" alt="" width="128" height="128" /></span>
             <ImageUpdateBadge v-if="hasImageUpdate(selected)" class="app-image-update" :label="i18n.t('apps.update.available')" />
@@ -1573,7 +1574,7 @@ watch(windowActive, syncJobPollingForWindow)
           </a>
         </div>
 
-        <div v-if="selected.runtime.warning" class="inline-alert inline-alert--warning">
+        <div v-if="selected.runtime.warning" class="inline-alert inline-alert--warning" :class="{ 'app-local-warning': selected.source === 'local' }">
           <Wrench :size="17" />
           <span>
             {{ phrase(selected.runtime.warning) }}
@@ -2008,6 +2009,17 @@ watch(windowActive, syncJobPollingForWindow)
 
 <style scoped>
 .app-onboarding-trigger { min-height: 36px; font-size: 14px; }
+.market-segment.market-source-filter button,
+.market-categories button.market-category--local,
+.app-card--local .button,
+.app-card--local .app-card__description,
+.app-card--local :deep(.status-badge),
+.app-local-warning { font-size: 14px; }
+.market-categories .market-category--local span { font-size: 12px; }
+.app-card--local .app-card__recent { font-size: 12px; }
+.app-card--local .app-card__meta em,
+.app-card--local .app-card__runtime,
+.app-detail-head--local .source-pill { font-size: 13px; }
 .app-job-switcher {
   display: flex;
   flex-wrap: wrap;

@@ -465,6 +465,10 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
+.local-editor .local-apps__error {
+  font-size: 14px;
+}
+
 .local-apps__header,
 .local-editor__header,
 .local-editor__footer {
