@@ -15,6 +15,7 @@ import (
 func TestPanelFileRelayExecutesConstrainedRequestAndStreamsBody(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	relay := newPanelFileRelay()
+	t.Cleanup(relay.closeAll)
 	responseReady := make(chan struct{})
 	relay.setHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/files/actions" {
