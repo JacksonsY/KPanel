@@ -559,6 +559,12 @@ async function installAutomaticUpdate(): Promise<void> {
     kpanelUpdateDialogOpen.value = false
     toast.success('更新任务已启动', '关闭网页不会中断宿主机更新。')
   } catch (reason) {
+    // Dispatch failure can still persist a new state when the queued install is cancelled.
+    try {
+      automaticUpdate.value = await api.settings.automaticUpdate.get()
+    } catch {
+      automaticUpdate.value = undefined
+    }
     toast.danger('立即安装失败', reason instanceof ApiError ? reason.message : '请刷新状态后重试。')
   } finally {
     installingAutomaticUpdate.value = false

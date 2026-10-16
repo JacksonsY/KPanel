@@ -703,6 +703,39 @@ describe('SettingsView two-factor authentication', () => {
 })
 
 describe('SettingsView automatic updates', () => {
+  it.each([false, true])('refreshes state after install 503 before switching channel (refresh fails: %s)', async (refreshFails) => {
+    const view = setupView()
+    const before = { enabled: false, state: 'waiting', channel: 'preview' as const,
+      canInstall: true, observationHours: 24, resourceVersion: 'sha256:before-install' }
+    view.automaticUpdate.value = before
+    view.kpanelUpdateDialogOpen.value = true
+    const failure = Object.assign(new mocks.MockApiError('宿主机更新服务启动失败'),
+      { status: 503, code: 'self_update_start_failed' })
+    mocks.installAutomaticUpdate.mockRejectedValueOnce(failure)
+    if (refreshFails) mocks.getAutomaticUpdate.mockRejectedValueOnce(new Error('status unavailable'))
+    else mocks.getAutomaticUpdate.mockResolvedValueOnce({ ...before, resourceVersion: 'sha256:cancelled' })
+
+    await view.installAutomaticUpdate()
+
+    expect(mocks.getAutomaticUpdate).toHaveBeenCalledOnce()
+    expect(mocks.checkAutomaticUpdate).not.toHaveBeenCalled()
+    expect(mocks.toastDanger).toHaveBeenLastCalledWith('立即安装失败', failure.message)
+    expect(mocks.toastSuccess).not.toHaveBeenCalled()
+    expect(view.kpanelUpdateDialogOpen.value).toBe(true)
+    const input = { checked: false }
+    await view.togglePreviewProgram({ currentTarget: input } as unknown as Event)
+    if (refreshFails) {
+      expect(view.automaticUpdate.value).toBeUndefined()
+      expect(mocks.updateAutomaticUpdate).not.toHaveBeenCalled()
+    } else {
+      expect(mocks.updateAutomaticUpdate).toHaveBeenCalledWith({
+        enabled: false, channel: 'stable', expectedResourceVersion: 'sha256:cancelled',
+      })
+      expect(input.checked).toBe(false)
+    }
+    expect(mocks.installAutomaticUpdate).toHaveBeenCalledOnce()
+  })
+
   it('persists an explicit opt-in and keeps check-now read-only with respect to installation', async () => {
     const view = setupView()
     view.automaticUpdate.value = {
