@@ -240,6 +240,39 @@ k fd panel.example.com 127.0.0.1 8080
 Passkey 设置页会把当前可信 HTTPS 域名作为候选入口显示；管理员确认密码后即可保存固定的
 `passkeyOrigin`，无需为直连 IP 安装额外编辑配置文件。若入口不是有效 HTTPS 域名，Passkey 仍保持禁用。
 
+### 设置页「访问地址与 HTTPS」
+
+应用市场直连端口安装可在「设置 → 访问地址与 HTTPS」完成域名切换，不必再去应用市场：
+
+1. 绑定：与应用市场、网站页使用同一个网站接口，创建 `http://127.0.0.1:<面板端口>` 的反向代理，真源仍是
+   宿主机 Nginx 站点配置。
+2. 检测：由 Panel 服务端请求 `https://<域名>/api/v1/health`，使用系统信任链校验证书、不跟随重定向、拒绝
+   回环与链路本地目标，并要求返回版本与当前 Panel 一致。浏览器端无法完成该检测，因为 CSP 把
+   `connect-src` 限制为 `'self'`。
+3. 跳转：检测通过后才提供「跳转到新地址」。可选的「屏蔽 IP + 端口直连」在跳转前提交、在后台执行，
+   因此当前 IP 会话不会在新地址可用前被切断。登录状态按地址隔离，跳转后需重新登录。
+
+在应用市场给 KPanel 自身绑定域名时，同样只创建反向代理并转到上述设置页，不再立即屏蔽 IP 直连。
+
+### 自签 HTTPS 兜底
+
+没有域名时，可在同一设置页启用自签 HTTPS（仅 `KEJILION_PANEL_ALLOW_IP_HOSTS=true` 的直连安装可用）。
+Panel 在同一监听端口按首字节区分 TLS 与明文 HTTP：
+
+- 证书为 ECDSA P-256 自签名，覆盖当前 IP、`127.0.0.1`、`::1` 和 `localhost`，有效期 825 天；私钥保存在
+  数据目录 `self-signed-tls/`，不进入面板备份。关闭后证书保留，重新启用时指纹不变；只有手动重新签发、
+  临近过期或新 IP 未被覆盖时才换发。
+- 明文 HTTP 继续可用：健康检查、可信反向代理、API 请求、公开分享页和 Noise 加密的集群节点不受影响；
+  只有直连 IP 的浏览器页面导航会被 307 跳转到 `https://`。
+- 自签证书不提供信任：首次访问需核对设置页显示的 SHA-256 指纹，或下载证书导入系统信任。Passkey 与
+  轻量节点仍需要受信任的 HTTPS 域名。
+
+浏览器因自签 HTTPS 无法打开面板时，在应用市场安装目录离线关闭并重启：
+
+```sh
+cd /home/docker/kpanel && docker compose --env-file .env run --rm --no-deps panel self-signed-tls disable && docker compose --env-file .env restart panel
+```
+
 ## 验收
 
 ```sh

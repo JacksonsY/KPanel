@@ -106,6 +106,8 @@ import type {
   ProcessSnapshot,
   PublicClusterShareSnapshot,
   PublicFileShareView,
+  PanelAccessStatus,
+  PanelDomainCheck,
   SecurityEntranceSettings,
   SetupRequest,
   Site,
@@ -2669,6 +2671,14 @@ export const api = {
 	kpanelRelease: {
 		get: (channel: 'stable' | 'preview', signal?: AbortSignal) =>
 			request<KPanelReleaseInfo>('/settings/kpanel-release', { query: { channel }, signal }),
+	},
+	panelAccess: {
+		get: (signal?: AbortSignal) => request<PanelAccessStatus>('/settings/panel-access', { signal }),
+		updateSelfSignedTLS: (input: { enabled: boolean; regenerate?: boolean }) =>
+			request<PanelAccessStatus>('/settings/panel-access/self-signed-tls', { method: 'PUT', body: input }),
+		certificateURL: (): string => buildUrl('/settings/panel-access/self-signed-tls/certificate'),
+		checkDomain: (domain: string, signal?: AbortSignal) =>
+			request<PanelDomainCheck>('/settings/panel-access/domain-check', { method: 'POST', body: { domain }, signal }),
 	},
 	securityEntrance: {
 		get: () => request<SecurityEntranceSettings>('/settings/security-entry'),

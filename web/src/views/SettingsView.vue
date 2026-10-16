@@ -36,6 +36,7 @@ import {
 import PageHeader from '@/components/common/PageHeader.vue'
 import BackupCenter from '@/components/settings/BackupCenter.vue'
 import PasskeySettings from '@/components/settings/PasskeySettings.vue'
+import PanelAccessSettings from '@/components/settings/PanelAccessSettings.vue'
 import SiteBrandingSettings from '@/components/settings/SiteBrandingSettings.vue'
 import MCPAccess from '@/components/settings/MCPAccess.vue'
 import DesktopWallpaperPicker from '@/components/desktop/DesktopWallpaperPicker.vue'
@@ -91,6 +92,7 @@ type SettingsSectionId =
   | 'username'
   | 'password'
   | 'security-entrance'
+  | 'panel-access'
   | 'totp'
   | 'passkeys'
   | 'language'
@@ -128,6 +130,7 @@ const settingsSections: SettingsSectionDefinition[] = [
   { id: 'username', category: 'account', title: '修改用户名', description: '更新当前管理员账户的登录名称', keywords: ['账号', '名称'] },
   { id: 'password', category: 'account', title: '修改密码', description: '更新当前管理员账户的登录凭据', keywords: ['凭据', '登录'] },
   { id: 'security-entrance', category: 'account', title: '登录安全入口', description: '隐藏常规登录路径', keywords: ['安全路径', '公网扫描', '撞库'] },
+  { id: 'panel-access', category: 'account', title: '访问地址与 HTTPS', description: '绑定域名或启用自签 HTTPS', keywords: ['HTTPS', '域名', '反代', '证书', '自签', 'SSL', 'IP'] },
   { id: 'totp', category: 'account', title: '两步验证', description: '身份验证器与恢复码', keywords: ['TOTP', '2FA', '验证码', '恢复码'] },
   { id: 'passkeys', category: 'account', title: 'Passkey 通行密钥', description: '设备验证与凭证管理', keywords: ['Passkey', 'WebAuthn', '指纹', '安全密钥'] },
   { id: 'language', category: 'appearance', title: '语言', description: '选择界面显示语言', keywords: ['简体中文', '繁体中文', 'English'] },
@@ -1250,6 +1253,7 @@ onBeforeUnmount(stopKPanelReleaseRequest)
     </section>
 
     <PasskeySettings v-show="isSettingsSectionVisible('passkeys')" />
+    <PanelAccessSettings v-show="isSettingsSectionVisible('panel-access')" />
 
     <section v-show="isSettingsSectionVisible('language')" class="settings-section panel-card">
       <header class="settings-section__header">

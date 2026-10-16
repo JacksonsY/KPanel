@@ -71,6 +71,16 @@ const installed = new Map([
   ['frpc', { state: 'exited', direct: true }],
   ['my-blog', { state: 'running', direct: true }],
 ])
+// Opt-in so existing previews keep their installed-app baseline.
+if (process.env.KPANEL_MOCK_SELF_APP === '1') installed.set('kpanel', { state: 'running', direct: true })
+const mockCreatedSites = []
+let mockPanelAccess = {
+  allowIpHosts: true,
+  requestTls: false,
+  requestProxyHttps: false,
+  requestIpHost: true,
+  selfSignedTls: { enabled: false },
+}
 const appJobs = new Map()
 const diagnosticJobs = new Map()
 let mockAutomaticUpdateRevision = 1
@@ -491,7 +501,7 @@ const items = catalog.apps.map((app, index) => {
   const runtime = installed.get(app.token)
   const isStandard = app.source === 'thirdparty' || app.source === 'local' || mapping.usesDockerApp
   const isRunning = runtime?.state === 'running'
-  const port = mapping.defaultPort || 0
+  const port = mapping.defaultPort || (app.token === 'kpanel' && runtime ? 8080 : 0)
   return {
     ...app,
     defaultPort: port,
@@ -1975,6 +1985,76 @@ createServer(async (request, response) => {
     })
     return
   }
+  if (request.method === 'GET' && url.pathname === '/api/v1/settings/panel-access') {
+    send(response, 200, mockPanelAccess)
+    return
+  }
+  if (request.method === 'PUT' && url.pathname === '/api/v1/settings/panel-access/self-signed-tls') {
+    const body = await readJSON(request)
+    const previous = mockPanelAccess.selfSignedTls
+    const reissue = !previous.fingerprintSha256 || body.regenerate === true
+    const seed = Date.now()
+    const fingerprint = reissue
+      ? Array.from({ length: 32 }, (_, index) => ((index * 37 + seed) % 256).toString(16).padStart(2, '0').toUpperCase()).join(':')
+      : previous.fingerprintSha256
+    mockPanelAccess = {
+      ...mockPanelAccess,
+      selfSignedTls: body.enabled === true
+        ? {
+            enabled: true,
+            fingerprintSha256: fingerprint,
+            notBefore: new Date().toISOString(),
+            notAfter: new Date(Date.now() + 825 * 86_400_000).toISOString(),
+            hosts: ['127.0.0.1', '::1', 'localhost'],
+          }
+        : { ...previous, enabled: false },
+    }
+    send(response, 200, mockPanelAccess)
+    return
+  }
+  if (request.method === 'GET' && url.pathname === '/api/v1/settings/panel-access/self-signed-tls/certificate') {
+    response.writeHead(200, { 'Content-Type': 'application/x-pem-file', 'Content-Disposition': 'attachment; filename="kpanel-self-signed.crt"' })
+    response.end('-----BEGIN CERTIFICATE-----\nTU9DSw==\n-----END CERTIFICATE-----\n')
+    return
+  }
+  if (request.method === 'POST' && url.pathname === '/api/v1/settings/panel-access/domain-check') {
+    const body = await readJSON(request)
+    const domain = String(body.domain || '').toLowerCase()
+    send(response, 200, domain.startsWith('fail')
+      ? { domain, reachable: false, matched: false, problem: 'certificate_invalid' }
+      : { domain, reachable: true, matched: true, version: '1.26.0' })
+    return
+  }
+  if (request.method === 'POST' && url.pathname === '/api/v1/sites') {
+    const body = await readJSON(request)
+    const domain = String(body.primaryDomain || '')
+    const site = {
+      id: (mockCreatedSites.length + 1).toString(16).padStart(32, 'f'),
+      primaryDomain: domain,
+      domains: [domain],
+      kind: 'reverse_proxy',
+      enabled: true,
+      health: 'healthy',
+      consistency: 'in_sync',
+      origin: 'web',
+      target: String(body.upstream || ''),
+      resourceVersion: 'sha256:' + 'a'.repeat(64),
+      tls: { enabled: true, status: 'valid', expiresAt: '2027-01-14T00:00:00Z' },
+      allowedActions: ['update', 'delete'],
+    }
+    mockCreatedSites.push(site)
+    send(response, 201, site)
+    return
+  }
+  const appAccessMatch = url.pathname.match(/^\/api\/v1\/apps\/([^/]+)\/direct_access$/)
+  if (request.method === 'POST' && appAccessMatch) {
+    const body = await readJSON(request)
+    const app = items.find((item) => item.id === appAccessMatch[1] && item.runtime.installed)
+    if (!app) { send(response, 404, { code: 'app_not_found' }); return }
+    app.runtime.accessMode = body.accessMode === 'domain_only' ? 'domain_only' : 'direct'
+    send(response, 200, { ok: true, resourceVersion: app.runtime.resourceVersion })
+    return
+  }
   if (request.method === 'GET' && url.pathname === '/api/v1/settings/security-entry') {
     send(response, 200, { enabled: false, resourceVersion: mockRevision(520) })
     return
@@ -2767,7 +2847,7 @@ createServer(async (request, response) => {
   }
   if (request.method === 'GET' && url.pathname === '/api/v1/sites') {
     send(response, 200, {
-      items: domainSiteDeleted ? [] : [
+      items: [...mockCreatedSites, ...(domainSiteDeleted ? [] : [
         {
           id: 'c'.repeat(32),
           primaryDomain: 'tools.example.com',
@@ -2782,7 +2862,7 @@ createServer(async (request, response) => {
           tls: { enabled: true, status: 'valid', expiresAt: siteCertificateReplaced ? '2027-09-06T00:00:00Z' : '2026-10-06T00:00:00Z' },
           allowedActions: ['update', 'delete'],
         },
-      ],
+      ])],
     })
     return
   }

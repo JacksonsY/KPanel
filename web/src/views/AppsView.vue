@@ -60,6 +60,7 @@ import {
   kpanelAppToken,
   releaseMatchesTarget,
 } from '@/lib/kpanelUpdate'
+import { panelDomainSwitchPath } from '@/lib/panelAccess'
 import { reloadPanelInterface } from '@/lib/pageLifecycle'
 import { usePanelState } from '@/stores/panel'
 import { useToast } from '@/stores/toast'
@@ -1129,6 +1130,16 @@ async function addDomain(): Promise<void> {
   } catch (reason) {
     domainError.value = reason instanceof ApiError ? localizeError(reason) : '域名绑定失败，请检查网站与 Nginx 状态。'
     operation.value = ''
+    return
+  }
+
+  // Blocking IP+port for KPanel itself would cut off this very session before
+  // the new address is proven. Settings verifies the domain, then jumps to it
+  // and only submits the block on the way out.
+  if (item.id === kpanelAppID) {
+    operation.value = ''
+    toast.success('域名已绑定', `${hostname} 已反向代理到 KPanel，正在前往设置页检测并切换。`)
+    await router.push(panelDomainSwitchPath(hostname))
     return
   }
 

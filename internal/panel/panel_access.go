@@ -1,0 +1,266 @@
+package panel
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/kejilion/kejilion-panel/internal/version"
+)
+
+const (
+	panelAccessPath               = "/api/v1/settings/panel-access"
+	panelAccessSelfSignedTLSPath  = panelAccessPath + "/self-signed-tls"
+	panelAccessCertificatePath    = panelAccessSelfSignedTLSPath + "/certificate"
+	panelAccessDomainCheckPath    = panelAccessPath + "/domain-check"
+	panelAccessDomainCheckTimeout = 10 * time.Second
+)
+
+type panelAccessResponse struct {
+	AllowIPHosts      bool              `json:"allowIpHosts"`
+	PublicURL         string            `json:"publicUrl,omitempty"`
+	RequestTLS        bool              `json:"requestTls"`
+	RequestProxyHTTPS bool              `json:"requestProxyHttps"`
+	RequestIPHost     bool              `json:"requestIpHost"`
+	SelfSignedTLS     selfSignedTLSInfo `json:"selfSignedTls"`
+	SelfSignedError   string            `json:"selfSignedError,omitempty"`
+}
+
+type panelDomainCheckResponse struct {
+	Domain    string `json:"domain"`
+	Reachable bool   `json:"reachable"`
+	Matched   bool   `json:"matched"`
+	Version   string `json:"version,omitempty"`
+	Problem   string `json:"problem,omitempty"`
+}
+
+func (s *Server) handlePanelAccess(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == panelAccessPath && r.Method == http.MethodGet:
+		if _, _, ok := s.requireSession(w, r); !ok {
+			return
+		}
+		s.writeJSON(w, http.StatusOK, s.panelAccessStatus(r))
+	case r.URL.Path == panelAccessSelfSignedTLSPath && r.Method == http.MethodPut:
+		s.handleSelfSignedTLSUpdate(w, r)
+	case r.URL.Path == panelAccessCertificatePath && r.Method == http.MethodGet:
+		s.handleSelfSignedTLSCertificate(w, r)
+	case r.URL.Path == panelAccessDomainCheckPath && r.Method == http.MethodPost:
+		s.handlePanelDomainCheck(w, r)
+	default:
+		s.writeProblem(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed", "")
+	}
+}
+
+func (s *Server) panelAccessStatus(r *http.Request) panelAccessResponse {
+	_, proxyHTTPS := s.trustedProxyHTTPSOrigin(r)
+	_, ipHost := directIPOrigin(r)
+	response := panelAccessResponse{
+		AllowIPHosts:      s.config.AllowIPHosts,
+		PublicURL:         s.config.PublicURL,
+		RequestTLS:        r.TLS != nil,
+		RequestProxyHTTPS: proxyHTTPS,
+		RequestIPHost:     ipHost,
+		SelfSignedTLS:     s.selfTLS.Info(),
+	}
+	response.SelfSignedError = s.selfTLS.LoadError()
+	return response
+}
+
+func (s *Server) handleSelfSignedTLSUpdate(w http.ResponseWriter, r *http.Request) {
+	if !s.checkOrigin(w, r) {
+		return
+	}
+	_, session, ok := s.requireSession(w, r)
+	if !ok || !s.checkCSRF(w, r, session) {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var input struct {
+		Enabled    bool `json:"enabled"`
+		Regenerate bool `json:"regenerate,omitempty"`
+	}
+	if s.decodeJSON(w, r, &input) != nil {
+		return
+	}
+	if s.selfTLS == nil {
+		s.writeProblem(w, r, http.StatusServiceUnavailable, "self_signed_tls_unavailable", "Self-signed HTTPS is unavailable", "")
+		return
+	}
+	if input.Enabled && !s.config.AllowIPHosts {
+		s.writeProblem(w, r, http.StatusConflict, "ip_hosts_disabled", "Self-signed HTTPS requires direct IP access", "")
+		return
+	}
+	hosts := []string{}
+	if origin, ok := directIPOrigin(r); ok {
+		if parsed, err := url.Parse(origin); err == nil && parsed.Hostname() != "" {
+			hosts = append(hosts, parsed.Hostname())
+		}
+	}
+	change := map[string]any{"enabled": input.Enabled, "regenerate": input.Regenerate, "hosts": hosts}
+	if err := s.audit(r, session.User.ID, "settings.self_signed_tls.update", "panel", "self-signed-tls", "intent", change); err != nil {
+		s.writeProblem(w, r, http.StatusServiceUnavailable, "audit_unavailable", "Audit storage unavailable", "")
+		return
+	}
+	var err error
+	if input.Enabled {
+		_, err = s.selfTLS.Enable(hosts, input.Regenerate)
+	} else {
+		_, err = s.selfTLS.Disable()
+	}
+	if err != nil {
+		_ = s.audit(r, session.User.ID, "settings.self_signed_tls.update", "panel", "self-signed-tls", "failure", change)
+		slog.Error("self-signed TLS update failed", "error", err)
+		s.writeProblem(w, r, http.StatusInternalServerError, "self_signed_tls_update_failed", "Self-signed HTTPS update failed", "")
+		return
+	}
+	change["fingerprintSha256"] = s.selfTLS.Info().Fingerprint
+	_ = s.audit(r, session.User.ID, "settings.self_signed_tls.update", "panel", "self-signed-tls", "success", change)
+	s.writeJSON(w, http.StatusOK, s.panelAccessStatus(r))
+}
+
+func (s *Server) handleSelfSignedTLSCertificate(w http.ResponseWriter, r *http.Request) {
+	if _, _, ok := s.requireSession(w, r); !ok {
+		return
+	}
+	if s.selfTLS == nil {
+		http.NotFound(w, r)
+		return
+	}
+	certificate, err := s.selfTLS.CertificatePEM()
+	if err != nil {
+		s.writeProblem(w, r, http.StatusNotFound, "self_signed_tls_missing", "No self-signed certificate has been issued", "")
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-pem-file")
+	w.Header().Set("Content-Disposition", `attachment; filename="kpanel-self-signed.crt"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(certificate)
+}
+
+// handlePanelDomainCheck verifies from the server side that a domain already
+// serves this panel over publicly trusted HTTPS. The browser cannot do this
+// itself because the panel CSP limits connect-src to 'self'. The request is
+// fixed to GET https://<domain>/api/v1/health, follows no redirects, refuses
+// loopback/link-local targets and reads at most a small JSON body.
+func (s *Server) handlePanelDomainCheck(w http.ResponseWriter, r *http.Request) {
+	if !s.checkOrigin(w, r) {
+		return
+	}
+	_, session, ok := s.requireSession(w, r)
+	if !ok || !s.checkCSRF(w, r, session) {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var input struct {
+		Domain string `json:"domain"`
+	}
+	if s.decodeJSON(w, r, &input) != nil {
+		return
+	}
+	domain, valid := normalizePanelSiteDomain(strings.TrimSpace(input.Domain))
+	if !valid {
+		s.writeProblem(w, r, http.StatusBadRequest, "invalid_domain", "Invalid domain", "")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), panelAccessDomainCheckTimeout)
+	defer cancel()
+	s.writeJSON(w, http.StatusOK, checkPanelDomain(ctx, domain, s.panelDomainCheckClient()))
+}
+
+func (s *Server) panelDomainCheckClient() *http.Client {
+	if s.domainCheckClient != nil {
+		return s.domainCheckClient
+	}
+	dialer := &net.Dialer{Timeout: 5 * time.Second, Control: refuseInternalDial}
+	transport := &http.Transport{
+		Proxy:                  nil,
+		DialContext:            dialer.DialContext,
+		TLSHandshakeTimeout:    5 * time.Second,
+		ResponseHeaderTimeout:  5 * time.Second,
+		DisableKeepAlives:      true,
+		MaxResponseHeaderBytes: 16 << 10,
+	}
+	return &http.Client{
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
+func refuseInternalDial(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast() || ip.IsUnspecified() || ip.IsInterfaceLocalMulticast() {
+		return errors.New("refusing internal domain check target")
+	}
+	return nil
+}
+
+func checkPanelDomain(ctx context.Context, domain string, client *http.Client) panelDomainCheckResponse {
+	result := panelDomainCheckResponse{Domain: domain}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+domain+"/api/v1/health", nil)
+	if err != nil {
+		result.Problem = "request_invalid"
+		return result
+	}
+	request.Header.Set("Accept", "application/json")
+	response, err := client.Do(request)
+	if err != nil {
+		result.Problem = classifyDomainCheckError(err)
+		return result
+	}
+	defer response.Body.Close()
+	result.Reachable = true
+	if response.StatusCode != http.StatusOK {
+		result.Problem = "unexpected_status"
+		return result
+	}
+	var health struct {
+		Status  string `json:"status"`
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 16<<10)).Decode(&health); err != nil || health.Status != "ok" {
+		result.Problem = "not_kpanel"
+		return result
+	}
+	result.Version = health.Version
+	if health.Version != version.Version {
+		result.Problem = "version_mismatch"
+		return result
+	}
+	result.Matched = true
+	return result
+}
+
+func classifyDomainCheckError(err error) string {
+	var dnsError *net.DNSError
+	message := err.Error()
+	switch {
+	case errors.As(err, &dnsError):
+		return "dns_unresolved"
+	case strings.Contains(message, "refusing internal"):
+		return "internal_target"
+	case strings.Contains(message, "x509:") || strings.Contains(message, "tls:"):
+		return "certificate_invalid"
+	case errors.Is(err, context.DeadlineExceeded) || strings.Contains(message, "timeout"):
+		return "timeout"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "connection_refused"
+	default:
+		return "unreachable"
+	}
+}

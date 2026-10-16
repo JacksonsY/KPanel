@@ -2417,6 +2417,44 @@ export interface DesktopShortcutIconResult {
   iconURL: string
 }
 
+export interface SelfSignedTLSInfo {
+  enabled: boolean
+  fingerprintSha256?: string
+  notBefore?: string
+  notAfter?: string
+  hosts?: string[]
+}
+
+export interface PanelAccessStatus {
+  allowIpHosts: boolean
+  publicUrl?: string
+  requestTls: boolean
+  requestProxyHttps: boolean
+  requestIpHost: boolean
+  selfSignedTls: SelfSignedTLSInfo
+  selfSignedError?: string
+}
+
+export type PanelDomainCheckProblem =
+  | 'dns_unresolved'
+  | 'internal_target'
+  | 'certificate_invalid'
+  | 'timeout'
+  | 'connection_refused'
+  | 'unreachable'
+  | 'unexpected_status'
+  | 'not_kpanel'
+  | 'version_mismatch'
+  | 'request_invalid'
+
+export interface PanelDomainCheck {
+  domain: string
+  reachable: boolean
+  matched: boolean
+  version?: string
+  problem?: PanelDomainCheckProblem
+}
+
 export interface SecurityEntranceSettings {
   enabled: boolean
   path?: string

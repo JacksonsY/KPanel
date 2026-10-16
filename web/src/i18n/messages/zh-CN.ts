@@ -1,4 +1,5 @@
 import { passkeyZhCN } from '../passkeys'
+import { panelAccessZhCN } from '../panelAccess'
 
 export const zhCNMessages = {
   "terminal.launchUncertain": "启动结果未确认，未自动重试，请检查终端。",
@@ -247,6 +248,7 @@ export const zhCNMessages = {
   'cluster.trafficInterfaces.reason.excluded': "已排除",
   'cluster.trafficInterfaces.reason.missing': "当前不存在",
   ...passkeyZhCN,
+  ...panelAccessZhCN,
   'notifications.alert': '新告警',
   'notifications.recovery': '恢复通知',
   'notifications.event': '新通知',

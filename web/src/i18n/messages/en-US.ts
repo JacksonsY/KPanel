@@ -1,5 +1,6 @@
 import type { LocaleMessages } from './zh-CN'
 import { passkeyEnUS } from '../passkeys'
+import { panelAccessEnUS } from '../panelAccess'
 
 export const enUSMessages = {
   "terminal.launchUncertain": "Launch is unconfirmed. No automatic retry was made; check the terminal.",
@@ -248,6 +249,7 @@ export const enUSMessages = {
   'cluster.trafficInterfaces.reason.excluded': "Excluded",
   'cluster.trafficInterfaces.reason.missing': "Not present",
   ...passkeyEnUS,
+  ...panelAccessEnUS,
   'notifications.alert': 'New alert',
   'notifications.recovery': 'Recovery notification',
   'notifications.event': 'New notification',

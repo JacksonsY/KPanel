@@ -43,6 +43,9 @@ func run(arguments []string) error {
 	if len(arguments) > 0 && arguments[0] == "agent-healthcheck" {
 		return runAgentHealthcheck(arguments[1:])
 	}
+	if len(arguments) > 0 && arguments[0] == "self-signed-tls" {
+		return runSelfSignedTLS(arguments[1:], os.Stdout)
+	}
 	if len(arguments) > 0 && arguments[0] == "reset-password" {
 		return runPasswordReset(arguments[1:], os.Stdin, os.Stdout)
 	}
@@ -152,10 +155,11 @@ func runPanelInstance(config panel.Config) error {
 		"listen", config.Listen,
 		"initialized", authService.IsInitialized(),
 	)
-	listener, err := net.Listen("tcp", config.Listen)
+	rawListener, err := net.Listen("tcp", config.Listen)
 	if err != nil {
 		return err
 	}
+	listener := handler.WrapListener(rawListener)
 	if err := handler.FinalizePanelRestore(); err != nil {
 		listener.Close()
 		return err
@@ -396,4 +400,27 @@ func healthcheckAddress(listen string) (string, error) {
 		host = "127.0.0.1"
 	}
 	return net.JoinHostPort(host, port), nil
+}
+
+// runSelfSignedTLS is the recovery path when the self-signed HTTPS fallback
+// leaves the browser unable to reach the panel. Plain HTTP API access is never
+// removed, but disabling here also stops navigation redirects after restart.
+func runSelfSignedTLS(arguments []string, output io.Writer) error {
+	flags := flag.NewFlagSet("paneld self-signed-tls", flag.ContinueOnError)
+	configPath := flags.String("config", "", "path to the JSON configuration file")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 1 || flags.Arg(0) != "disable" {
+		return errors.New("usage: paneld self-signed-tls [-config path] disable")
+	}
+	config, err := panel.LoadConfig(*configPath)
+	if err != nil {
+		return err
+	}
+	if err := panel.DisableSelfSignedTLS(config); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(output, "self-signed HTTPS disabled; restart the KPanel container to apply")
+	return err
 }

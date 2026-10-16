@@ -228,8 +228,8 @@ describe('SettingsView navigation', () => {
   it('starts with every settings section visible and exposes useful category counts', () => {
     const view = setupView()
 
-    expect(view.visibleSettingsSectionCount.value).toBe(17)
-    expect(view.settingsCategoryCount('account')).toBe(6)
+    expect(view.visibleSettingsSectionCount.value).toBe(18)
+    expect(view.settingsCategoryCount('account')).toBe(7)
     expect(view.settingsCategoryCount('appearance')).toBe(4)
     expect(view.settingsCategoryCount('data')).toBe(2)
     expect(view.settingsCategoryCount('system')).toBe(2)
@@ -270,7 +270,7 @@ describe('SettingsView navigation', () => {
 
     expect(view.settingsSearch.value).toBe('')
     expect(view.activeSettingsCategory.value).toBe('all')
-    expect(view.visibleSettingsSectionCount.value).toBe(17)
+    expect(view.visibleSettingsSectionCount.value).toBe(18)
   })
 
   it('renders an accessible search, category tabs, and empty-result recovery action', () => {

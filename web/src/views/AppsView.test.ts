@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastDanger: vi.fn(),
   routerReplace: vi.fn(),
+  routerPush: vi.fn(),
   reloadPanelInterface: vi.fn(),
   route: {
     name: 'apps',
@@ -37,7 +38,7 @@ vi.mock('vue-router', async () => {
   return {
     ...actual,
     useRoute: () => mocks.route,
-    useRouter: () => ({ replace: mocks.routerReplace }),
+    useRouter: () => ({ replace: mocks.routerReplace, push: mocks.routerPush }),
   }
 })
 
@@ -627,6 +628,25 @@ describe('AppsView install port preflight', () => {
 })
 
 describe('AppsView domain binding', () => {
+  it('sends KPanel itself to the settings switch flow instead of blocking IP access first', async () => {
+    const created = { ...proxySite(), primaryDomain: 'panel.example.com' }
+    mocks.createSite.mockResolvedValueOnce(created)
+    const result = inventory('kpanel-version')
+    const item = result.items[0]
+    if (!item) throw new Error('test inventory is incomplete')
+    item.id = 'thirdparty-kpanel'
+    const view = setupView()
+    view.inventory.value = result
+    view.selectedID.value = 'thirdparty-kpanel'
+    view.domain.value = 'panel.example.com'
+
+    await view.addDomain()
+
+    expect(mocks.createSite).toHaveBeenCalledWith(expect.objectContaining({ primaryDomain: 'panel.example.com', type: 'proxy' }))
+    expect(mocks.action).not.toHaveBeenCalled()
+    expect(mocks.routerPush).toHaveBeenCalledWith('/settings?section=panel-access&domain=panel.example.com')
+  })
+
   it('keeps a successful domain visible and uses the refreshed app version for access policy', async () => {
     const created = proxySite()
     mocks.createSite.mockResolvedValueOnce(created)

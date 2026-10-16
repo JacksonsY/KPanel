@@ -1,6 +1,12 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['访问地址与 HTTPS', 'Access address and HTTPS'],
+  ['绑定域名或启用自签 HTTPS', 'Bind a domain or enable self-signed HTTPS'],
+  ['反代', 'Reverse proxy'],
+  ['自签', 'Self-signed'],
+  ['证书', 'Certificate'],
+  ['域名', 'Domain'],
   ['站点名称与图标', 'Site name and icon'],
   ['自定义面板与登录页标识', 'Custom panel and sign-in branding'],
   ['使用说明', 'User guide'],

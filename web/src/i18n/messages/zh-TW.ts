@@ -1,5 +1,6 @@
 import type { LocaleMessages } from './zh-CN'
 import { passkeyZhTW } from '../passkeys'
+import { panelAccessZhTW } from '../panelAccess'
 
 export const zhTWMessages = {
   "terminal.launchUncertain": "啟動結果未確認，未自動重試，請檢查終端。",
@@ -248,6 +249,7 @@ export const zhTWMessages = {
   'cluster.trafficInterfaces.reason.excluded': "已排除",
   'cluster.trafficInterfaces.reason.missing': "目前不存在",
   ...passkeyZhTW,
+  ...panelAccessZhTW,
   'notifications.alert': '新警報',
   'notifications.recovery': '恢復通知',
   'notifications.event': '新通知',

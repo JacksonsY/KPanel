@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net"
 	"net/http"
@@ -135,6 +136,8 @@ type Server struct {
 	scenePackStreamQueue    chan struct{}
 	terminalCommands        *terminalcommands.Store
 	mcp                     *mcpService
+	selfTLS                 *selfSignedTLS
+	domainCheckClient       *http.Client
 }
 
 type agentAPI interface {
@@ -240,7 +243,12 @@ func NewServer(config Config, authService *auth.Service, storage *store.Store, a
 	if err != nil {
 		return nil, fmt.Errorf("initialize service check notifications: %w", err)
 	}
+	selfTLS, selfTLSErr := openSelfSignedTLS(selfSignedTLSDir(config.DataDir))
+	if selfTLSErr != nil {
+		slog.Error("self-signed HTTPS disabled; certificate could not be loaded", "error", selfTLSErr)
+	}
 	server := &Server{
+		selfTLS:             selfTLS,
 		passkeys:            passkeys,
 		passkeyOriginLocked: passkeyOriginLocked,
 		config:              config, auth: authService, store: storage, agent: agent,
@@ -319,6 +327,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.requestsMu.Unlock()
 	defer s.requests.Done()
 	s.setSecurityHeaders(w, r)
+	if s.selfSignedTLSRedirect(w, r) {
+		return
+	}
 	requestID := newRequestID()
 	w.Header().Set("X-Request-ID", requestID)
 	r = r.WithContext(context.WithValue(r.Context(), requestIDKey, requestID))
@@ -445,6 +456,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleTOTPRecoveryCodes(w, r)
 	case (r.Method == http.MethodGet || r.Method == http.MethodPut) && r.URL.Path == "/api/v1/settings/security-entry":
 		s.handleSecurityEntranceSettings(w, r)
+	case r.URL.Path == panelAccessPath || strings.HasPrefix(r.URL.Path, panelAccessPath+"/"):
+		s.handlePanelAccess(w, r)
 	case r.URL.Path == appearancePath:
 		s.handleAppearance(w, r)
 	case r.URL.Path == "/api/v1/settings/automatic-update" ||
