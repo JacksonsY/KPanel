@@ -103,11 +103,53 @@ test('preview pipeline binds trusted workflows, atomic Git writes and explicit d
 test('public acceptance retries cannot rebuild or repush the published image', () => {
   const workflow = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8');
   const publicJob = workflow.slice(workflow.indexOf('\n  public-acceptance:'));
+  const verifier = readFileSync(new URL('../../.github/workflows/release-public-verify.yml', import.meta.url), 'utf8');
   assert.match(publicJob, /needs: release/);
   assert.match(publicJob, /contents: read/);
   assert.doesNotMatch(publicJob, /build-push-action|DOCKERHUB_TOKEN|contents: write|gh release edit/);
-  assert.match(publicJob, /restore-snapshot/);
+  assert.match(publicJob, /uses: \.\/\.github\/workflows\/release-public-verify\.yml/);
+  assert.doesNotMatch(verifier, /build-push-action|DOCKERHUB_TOKEN|contents: write|gh release edit/);
+  assert.match(verifier, /workflow_call:/);
+  assert.match(verifier, /workflow_dispatch:/);
+  assert.match(verifier, /restore-snapshot/);
   assert.ok(workflow.indexOf('Reject an already occupied') < workflow.indexOf('- name: Build and push multi-architecture image'));
+});
+
+test('skipped reusable L3 cannot silently skip or satisfy public preview acceptance', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8');
+  const publicJob = workflow.slice(workflow.indexOf('\n  public-acceptance:'), workflow.indexOf('\n  preview-completion:'));
+  assert.match(publicJob, /if:.*!failure\(\).* !cancelled\(\).*needs\.release\.result == 'success'.*stable == 'false'/);
+  const completion = workflow.slice(workflow.indexOf('\n  preview-completion:'));
+  assert.match(completion, /needs: \[release, public-acceptance\]/);
+  assert.match(completion, /if:.*!failure\(\).* !cancelled\(\).*contains\(inputs\.tag \|\| github\.ref_name, '-rc\.'\)/);
+  assert.match(completion, /PUBLIC_RESULT: \$\{\{ needs\.public-acceptance\.result \}\}/);
+  assert.match(completion, /run: test "\$PUBLIC_RESULT" = success/);
+});
+
+test('read-only recovery verifies the published source tag before executing candidate helpers', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/release-public-verify.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+  assert.match(workflow, /fetch-depth: 0/);
+  assert.ok(workflow.indexOf('Validate frozen public source') < workflow.indexOf('node scripts/verify-github-public-release.mjs'));
+  const version = readFileSync(new URL('../../VERSION', import.meta.url), 'utf8').trim();
+  const prefix = `git() {
+case "$*" in
+  'rev-parse HEAD') printf '%s' "$EXPECTED_SHA";;
+  "cat-file -t refs/tags/v$EXPECTED_VERSION") printf tag;;
+  "rev-parse refs/tags/v$EXPECTED_VERSION^{commit}")
+    if [[ "$WRONG_TAG" = 1 ]]; then printf '%040d' 0; else printf '%s' "$EXPECTED_SHA"; fi;;
+  'merge-base --is-ancestor HEAD origin/main') return 0;;
+  *) return 1;;
+esac
+}\n`;
+  for (const [ref, wrongTag, expected] of [['refs/heads/main', '0', 0], ['refs/heads/feature/unreviewed', '0', 1], ['refs/heads/main', '1', 1]]) {
+    const result = spawnSync(resolveBash(), ['--noprofile', '--norc', '-c', prefix + workflowStep(workflow, 'Validate frozen public source')], {
+      cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 10_000,
+      env: { ...process.env, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: ref, EXPECTED_VERSION: version,
+        EXPECTED_SHA: 'b'.repeat(40), IMAGE_DIGEST: 'sha256:' + 'a'.repeat(64), WRONG_TAG: wrongTag },
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, expected, result.stderr);
+  }
 });
 
 test('version image guard admits only an authoritative missing manifest and rejects occupied/uncertain tags', () => {

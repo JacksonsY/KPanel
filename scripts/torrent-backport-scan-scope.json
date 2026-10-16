@@ -7,7 +7,7 @@
   "selectedGraphSha256": "24c24be50e4477fc28044d24ae11c26ff0e6f75603d7f8ae91e798034fa81927",
   "buildTargetFilesSha256": {
     "Dockerfile": "562869a8c85bacf591cbbecc152d11ac20b0e1b07575bbac4aba38e7514fc0e9",
-    ".github/workflows/release.yml": "333dc8337120d42594ca5112e4fe611cd5f5d5addd9c7797dfba8fb85f8841d1",
+    ".github/workflows/release.yml": "1fdd39ba3f86793624d92ab63151a14817c79fe1d747729be33386226fa19819",
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
