@@ -26,5 +26,5 @@ export default [
   ['已打开终端', 'Open terminals'],
   ['选择主机，打开终端', 'Select a host and open a terminal'],
   ['从连接列表选择一台可用主机，开始加密终端会话。', 'Choose an available host from the connection list to start an encrypted terminal session.'],
-  ['关闭窗口将断开 {0} 个终端会话，是否继续？', 'Closing this window will disconnect {0} terminal session(s). Continue?'],
+  ['关闭窗口将终止 {0} 个终端会话，是否继续？', 'Closing this window will terminate {0} terminal session(s). Continue?'],
 ] satisfies PhraseCatalog
