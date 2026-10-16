@@ -214,7 +214,11 @@ func serveTerminalStream(c *fileStreamConn, backend TerminalBackend, owner strin
 		if reliable, ok := backend.(SequencedTerminalBackend); ok && reliable.SupportsSequencedInput(c.ctx) {
 			protocol = terminal.InputProtocol
 		}
-		if c.writeJSON(termInputProbe, terminalStreamReady{InputProtocol: protocol}) != nil {
+		retained, capabilityErr := supportsRetainedTerminals(c.ctx, backend)
+		if capabilityErr != nil {
+			return ""
+		}
+		if c.writeJSON(termInputProbe, terminalStreamReady{InputProtocol: protocol, Retained: retained}) != nil {
 			return ""
 		}
 		kind, payload, err = c.readControl()
@@ -476,6 +480,19 @@ type streamTerminal struct {
 func openStreamTerminal(ctx, parent context.Context, hostID string, dial streamTerminalDialer, fallback streamTerminalFallback, rows, columns uint16, keep ...bool) (*streamTerminal, TerminalOpenResponse, error) {
 	retained := len(keep) > 0 && keep[0]
 	probe, capability, probeErr := dial(ctx, termInputProbe, struct{}{})
+	if retained && (probeErr != nil || !capability.Retained) {
+		if probe != nil {
+			probe.close()
+		}
+		// No open record has been sent: fallback cannot duplicate a PTY.
+		if probeErr != nil {
+			if errors.Is(probeErr, ErrAuthentication) || errors.Is(probeErr, context.Canceled) || errors.Is(probeErr, context.DeadlineExceeded) {
+				return nil, TerminalOpenResponse{}, probeErr
+			}
+			return nil, TerminalOpenResponse{}, &streamDialError{probeErr}
+		}
+		return nil, TerminalOpenResponse{}, ErrTerminalRetentionUnavailable
+	}
 	var conn *fileStreamConn
 	var ready terminalStreamReady
 	var err error

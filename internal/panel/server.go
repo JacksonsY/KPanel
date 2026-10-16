@@ -642,6 +642,7 @@ func isFederationV2Request(r *http.Request) bool {
 		"/api/v2/federation/summary",
 		"/api/v2/federation/revoke",
 		"/api/v2/federation/terminal/open",
+		"/api/v2/federation/terminal/capabilities",
 		"/api/v2/federation/terminal/output",
 		"/api/v2/federation/terminal/input",
 		"/api/v2/federation/terminal/resize",

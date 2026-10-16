@@ -93,6 +93,13 @@ func (s clusterTerminalSource) Open(ctx context.Context, owner string, rows, col
 }
 
 func (s clusterTerminalSource) OpenRetained(ctx context.Context, owner string, rows, columns uint16) (terminal.Snapshot, error) {
+	supported, err := s.SupportsRetainedTerminals(ctx)
+	if err != nil {
+		return terminal.Snapshot{}, err
+	}
+	if !supported {
+		return terminal.Snapshot{}, cluster.ErrTerminalRetentionUnavailable
+	}
 	body, _ := json.Marshal(map[string]any{"owner": owner, "rows": rows, "columns": columns, "retained": true})
 	response, err := s.agent.Do(ctx, http.MethodPost, "/v1/terminals", "", newRequestID(), body)
 	var result terminal.Snapshot
@@ -135,8 +142,27 @@ func (s clusterTerminalSource) SupportsSequencedInput(ctx context.Context) bool 
 	response, err := s.agent.Do(ctx, http.MethodPost, "/v1/terminals/capabilities/input-protocol", "", newRequestID(), []byte("{}"))
 	var result struct {
 		Protocol string `json:"protocol"`
+		Retained bool   `json:"retained,omitempty"`
 	}
 	return decodeTerminalAgentResponse(response, err, &result) == nil && result.Protocol == terminal.InputProtocol
+}
+
+func (s clusterTerminalSource) SupportsRetainedTerminals(ctx context.Context) (bool, error) {
+	response, err := s.agent.Do(ctx, http.MethodPost, "/v1/terminals/capabilities/input-protocol", "", newRequestID(), []byte("{}"))
+	if err != nil {
+		return false, err
+	}
+	if response.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	var result struct {
+		Protocol string `json:"protocol"`
+		Retained bool   `json:"retained,omitempty"`
+	}
+	if err := decodeTerminalAgentResponse(response, nil, &result); err != nil {
+		return false, err
+	}
+	return result.Retained, nil
 }
 
 func (s clusterTerminalSource) InputSequenced(ctx context.Context, owner, id string, frame terminal.InputFrame) error {

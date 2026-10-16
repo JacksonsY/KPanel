@@ -107,7 +107,7 @@ func (s *Server) terminalOperation(w http.ResponseWriter, r *http.Request, reque
 		if err := decodeJSON(w, r, &input); err != nil {
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"protocol": terminal.InputProtocol})
+		writeJSON(w, http.StatusOK, map[string]any{"protocol": terminal.InputProtocol, "retained": true})
 	case "input-sequenced":
 		if r.Method != http.MethodPost {
 			writeProblem(w, requestID, http.StatusMethodNotAllowed, "method_not_allowed", "Request method not allowed", "")

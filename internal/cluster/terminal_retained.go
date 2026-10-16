@@ -15,6 +15,19 @@ type RetainedTerminalBackend interface {
 	OpenRetained(context.Context, string, uint16, uint16) (terminal.Snapshot, error)
 }
 
+// RetainedTerminalCapabilityBackend probes the actual PTY owner without creating a session.
+type RetainedTerminalCapabilityBackend interface {
+	SupportsRetainedTerminals(context.Context) (bool, error)
+}
+
+func supportsRetainedTerminals(ctx context.Context, b TerminalBackend) (bool, error) {
+	if capability, ok := b.(RetainedTerminalCapabilityBackend); ok {
+		return capability.SupportsRetainedTerminals(ctx)
+	}
+	_, ok := b.(RetainedTerminalBackend)
+	return ok, nil
+}
+
 func openTerminalBackend(ctx context.Context, b TerminalBackend, owner string, rows, cols uint16, retained bool) (terminal.Snapshot, error) {
 	if !retained {
 		return b.Open(ctx, owner, rows, cols)

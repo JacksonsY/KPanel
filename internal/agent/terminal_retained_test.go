@@ -34,3 +34,23 @@ func TestRetainedTerminalOpenAndContainerRejection(t *testing.T) {
 		}
 	}
 }
+
+func TestTerminalCapabilityProbeAdvertisesRetentionWithoutStartingPTY(t *testing.T) {
+	starts := 0
+	s := &Server{terminals: terminal.New(terminal.Config{Starter: func(uint16, uint16) (terminal.Process, error) {
+		starts++
+		return nil, nil
+	}})}
+	defer s.terminals.CloseAll()
+	r := httptest.NewRequest(http.MethodPost, "/v1/terminals/capabilities/input-protocol", strings.NewReader(`{}`))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.terminalOperation(w, r, "probe")
+	var capability struct {
+		Protocol string `json:"protocol"`
+		Retained bool   `json:"retained"`
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &capability) != nil || !capability.Retained || capability.Protocol != terminal.InputProtocol || starts != 0 {
+		t.Fatalf("capability=%s status=%d starts=%d", w.Body.String(), w.Code, starts)
+	}
+}

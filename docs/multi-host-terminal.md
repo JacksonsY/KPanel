@@ -62,6 +62,15 @@
 
 ### 保留会话协议
 
+创建前先做无 PTY 副作用的能力协商：本机复用 Agent 的 `capabilities/input-protocol`，
+流式节点复用 `termInputProbe`，v2 节点使用同一 Noise 身份和终端 scope 的 `terminal/capabilities`。
+目标须明确声明 `retained:true`；旧能力响应缺少该字段或旧 v2 能力路由返回 404 时，
+普通终端按现有逻辑自动使用临时连接，不先向旧节点发送带 `retained` 的创建请求。
+没有声明能力的中间版本也使用临时连接，节点更新后恢复后台保留。能力请求失败、鉴权失败或
+创建结果不确定仍返回错误，不把通用 502 当作可重放创建的依据。能力响应不授予权限。
+旧轻节点轮询协议没有后台能力声明，轮询路径在入队前明确拒绝保留模式，普通终端自动使用临时连接；
+后台保留通过已明确声明能力的流式连接提供。
+
 `POST /api/v1/terminal-sessions` 可带 `retained:true`，目标 Agent 或节点必须显式返回保留能力确认；
 旧节点拒绝该模式。普通多主机终端仅收到明确的能力拒绝 `terminal_retention_unavailable` 后，
 自动尝试一次 `retained:false`，成功后直接进入终端，不追加提示或标识；临时连接失败、网络响应不确定、

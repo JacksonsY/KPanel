@@ -36,6 +36,8 @@ const (
 	maxV2EnvelopeBytes   = MaxFederationV2Bytes
 )
 
+const v2TerminalCapabilitiesPath = "/api/v2/federation/terminal/capabilities"
+
 // V2 terminal paths are shared with the lightweight node broker so the
 // broker cannot silently drift from the mature federation terminal routes.
 const (
@@ -583,7 +585,7 @@ func v2PathAllowed(method, path string) bool {
 	}
 	switch path {
 	case ManagedOperationsV2Path, HistoryV2Path, HistoryRelayV2Path, v2PairPath, v2CommitPath, v2SummaryPath, v2RevokePath,
-		v2TerminalOpenPath, v2TerminalOutputPath, v2TerminalInputPath,
+		v2TerminalCapabilitiesPath, v2TerminalOpenPath, v2TerminalOutputPath, v2TerminalInputPath,
 		v2TerminalResizePath, v2TerminalClosePath, v2TerminalRelayPath,
 		v2FileRelayPath, v2FileOpenPath,
 		v2FileLinkPath, v2FileLinkedOpenPath:
@@ -595,7 +597,7 @@ func v2PathAllowed(method, path string) bool {
 
 func v2TerminalPath(path string) bool {
 	switch path {
-	case v2TerminalOpenPath, v2TerminalOutputPath, v2TerminalInputPath,
+	case v2TerminalCapabilitiesPath, v2TerminalOpenPath, v2TerminalOutputPath, v2TerminalInputPath,
 		v2TerminalResizePath, v2TerminalClosePath:
 		return true
 	default:

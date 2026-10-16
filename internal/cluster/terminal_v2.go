@@ -18,6 +18,24 @@ var ErrTerminalUnavailable = errors.New("cluster terminal is unavailable")
 // offset request without dropping data.
 const maxFederationTerminalOutputBytes = 32 << 10
 
+func (s *Service) handleTerminalCapabilitiesV2(ctx context.Context, envelope v2Envelope, now time.Time) (FederationEnvelopeV2, error) {
+	_, payload, handshake, err := s.openTerminalControllerV2(v2TerminalCapabilitiesPath, envelope, now)
+	if err != nil {
+		return FederationEnvelopeV2{}, err
+	}
+	var input struct{}
+	if decodeV2Payload(payload, &input) != nil {
+		return FederationEnvelopeV2{}, ErrAuthentication
+	}
+	supported, err := supportsRetainedTerminals(ctx, s.terminal)
+	if err != nil {
+		return FederationEnvelopeV2{}, err
+	}
+	return sealV2JSONResponse(envelope, handshake, struct {
+		Retained bool `json:"retained"`
+	}{Retained: supported})
+}
+
 func (s *Service) handleTerminalOpenV2(ctx context.Context, envelope v2Envelope, now time.Time) (FederationEnvelopeV2, error) {
 	controller, payload, handshake, err := s.openTerminalControllerV2(v2TerminalOpenPath, envelope, now)
 	if err != nil {

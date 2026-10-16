@@ -155,6 +155,22 @@ func (c *RemoteClient) RevokeV2(
 
 func (c *RemoteClient) TerminalOpenV2(ctx context.Context, origin, controllerID, targetID string, key noise.DHKey, target []byte, now time.Time, input TerminalOpenRequest) (TerminalOpenResponse, error) {
 	var response TerminalOpenResponse
+	if input.Retained {
+		var capability struct {
+			Retained bool `json:"retained"`
+		}
+		err := c.exchangeV2(ctx, origin, v2TerminalCapabilitiesPath, controllerID, targetID, "", key, target, nil, now, struct{}{}, &capability)
+		var remoteErr *RemoteError
+		if errors.As(err, &remoteErr) && remoteErr.StatusCode == http.StatusNotFound {
+			return response, ErrTerminalRetentionUnavailable
+		}
+		if err != nil {
+			return response, err
+		}
+		if !capability.Retained {
+			return response, ErrTerminalRetentionUnavailable
+		}
+	}
 	err := c.exchangeV2(ctx, origin, v2TerminalOpenPath, controllerID, targetID, "", key, target, nil, now, input, &response)
 	return response, err
 }

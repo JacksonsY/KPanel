@@ -741,6 +741,8 @@ func (s *Service) HandleFederationV2(
 		return s.handleFilePeerLinkV2(ctx, envelope, now)
 	case v2TerminalOpenPath:
 		return s.handleTerminalOpenV2(ctx, envelope, now)
+	case v2TerminalCapabilitiesPath:
+		return s.handleTerminalCapabilitiesV2(ctx, envelope, now)
 	case v2TerminalOutputPath:
 		return s.handleTerminalOutputV2(ctx, envelope, now)
 	case v2TerminalInputPath:

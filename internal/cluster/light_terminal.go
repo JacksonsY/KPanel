@@ -415,6 +415,11 @@ func (r *lightTerminalRelay) open(ctx context.Context, nodeID string, rows, colu
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
+	// The polling protocol has no retention capability advertisement. Never
+	// enqueue an unnegotiated retained open; the browser can open temporarily.
+	if len(keep) > 0 && keep[0] {
+		return TerminalOpenResponse{}, ErrTerminalRetentionUnavailable
+	}
 	sessionID, err := randomHex(16)
 	if err != nil {
 		return TerminalOpenResponse{}, err

@@ -221,6 +221,13 @@ func TestShortcutLaunchIntentCannotCrossIdentityOrExpiry(t *testing.T) {
 }
 
 func (a *retainedAgentStub) Do(ctx context.Context, method, path, query, id string, body []byte) (AgentResponse, error) {
+	if path == "/v1/terminals/capabilities/input-protocol" {
+		if a.strictLegacy {
+			return AgentResponse{StatusCode: http.StatusNotFound}, nil
+		}
+		data, _ := json.Marshal(map[string]any{"protocol": terminal.InputProtocol, "retained": !a.unsupported})
+		return AgentResponse{StatusCode: http.StatusOK, Body: data}, nil
+	}
 	if path == "/v1/terminals" && a.strictLegacy && strings.Contains(string(body), `"retained"`) {
 		return AgentResponse{StatusCode: 400, Body: []byte(`{"code":"invalid_request","title":"Unknown field"}`)}, nil
 	}
@@ -397,7 +404,7 @@ func TestRetainedAgentNegotiationRejectsOldAgent(t *testing.T) {
 	s.agent = stub
 	cookie, csrf := bootstrapCookies(t, s, path)
 	got := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions", []byte(`{"hostId":"local","rows":24,"columns":80,"retained":true}`), cookie, csrf, retainedHeaders(csrf))
-	if got.Code != 409 || !strings.Contains(got.Body.String(), "terminal_retention_unavailable") || stub.closed != 1 || len(s.terminalSessions) != 0 {
+	if got.Code != 409 || !strings.Contains(got.Body.String(), "terminal_retention_unavailable") || stub.opened != 0 || stub.closed != 0 || len(s.terminalSessions) != 0 {
 		t.Fatalf("old Agent silently downgraded: %d closed%d", got.Code, stub.closed)
 	}
 }
@@ -432,7 +439,7 @@ func TestStrictLegacyAgentExplicitTemporaryShortcutExecutesSavedCommandOnce(t *t
 	cookie, csrf := bootstrapCookies(t, s, path)
 	version := saveRetainedShortcut(t, s)
 	rejected := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions", retainedShortcutBody(version), cookie, csrf, retainedHeaders(csrf))
-	if rejected.Code != 502 || stub.opened != 0 || len(stub.inputs) != 0 {
+	if rejected.Code != 409 || !strings.Contains(rejected.Body.String(), "terminal_retention_unavailable") || stub.opened != 0 || len(stub.inputs) != 0 {
 		t.Fatalf("strict legacy rejection: %d opened=%d inputs=%d", rejected.Code, stub.opened, len(stub.inputs))
 	}
 	body := []byte(strings.Replace(string(retainedShortcutBody(version)), `"retained":true`, `"retained":false`, 1))
