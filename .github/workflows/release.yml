@@ -577,4 +577,3 @@ jobs:
             ${{ runner.temp }}/kpanel-browser-*/results/**
           if-no-files-found: error
           retention-days: 90
-
