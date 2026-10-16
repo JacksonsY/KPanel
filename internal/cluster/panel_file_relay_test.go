@@ -15,6 +15,7 @@ import (
 func TestPanelFileRelayExecutesConstrainedRequestAndStreamsBody(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	relay := newPanelFileRelay()
+	responseReady := make(chan struct{})
 	relay.setHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/files/actions" {
 			t.Errorf("relayed request = %s %s", r.Method, r.URL.Path)
@@ -23,6 +24,13 @@ func TestPanelFileRelayExecutesConstrainedRequestAndStreamsBody(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("read relayed request body: %v", err)
+			return
+		}
+		// The handler and body acknowledgement run concurrently. Hold the
+		// response until this test has observed that acknowledgement.
+		select {
+		case <-responseReady:
+		case <-r.Context().Done():
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -67,6 +75,7 @@ func TestPanelFileRelayExecutesConstrainedRequestAndStreamsBody(t *testing.T) {
 		bodyAccepted.Events[0].CommandID != bodyCommand.ID {
 		t.Fatalf("body acceptance = %#v", bodyAccepted.Events)
 	}
+	close(responseReady)
 
 	responseEvent := poll(FileRelayPollRequest{SessionID: sessionID})
 	if len(responseEvent.Events) != 1 || responseEvent.Events[0].Kind != "response" ||
