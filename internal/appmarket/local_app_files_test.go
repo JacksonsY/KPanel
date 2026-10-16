@@ -52,6 +52,19 @@ func newLocalAppWriteService(t *testing.T) (*Service, string) {
 	return service, local
 }
 
+func TestLocalAppMissingFilesUseIsolatedRoot(t *testing.T) {
+	service, _ := newLocalAppWriteService(t)
+	if _, err := service.LocalApp(context.Background(), "missing-app"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing config = %v, want ErrNotFound", err)
+	}
+	if _, err := service.LocalAppIcon("missing-app"); !errors.Is(err, ErrAppIconNotFound) {
+		t.Fatalf("missing icon = %v, want ErrAppIconNotFound", err)
+	}
+	if err := service.DeleteLocalApp(context.Background(), "missing-app", "sha256:"+strings.Repeat("a", 64)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing config delete = %v, want ErrNotFound", err)
+	}
+}
+
 func markLocalAppInstalled(t *testing.T, service *Service, token string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(service.appRoot, "appno.txt"), []byte(token+"\n"), 0o644); err != nil {
