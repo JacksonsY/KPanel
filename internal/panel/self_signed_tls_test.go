@@ -242,6 +242,7 @@ func TestPanelDomainCheckRequiresThisInstanceOverTrustedHTTPS(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
+		w.Header().Set(panelAccessProofHeader, "expected-proof")
 		w.WriteHeader(answer)
 	}))
 	defer upstream.Close()
@@ -252,18 +253,23 @@ func TestPanelDomainCheckRequiresThisInstanceOverTrustedHTTPS(t *testing.T) {
 	}
 	client.Transport = transport
 
-	if result := checkPanelDomain(context.Background(), "example.com", "expected-nonce", client); !result.Matched || result.Problem != "" {
+	if result := checkPanelDomain(context.Background(), "example.com", "expected-nonce", "expected-proof", client); !result.Matched || result.Problem != "" {
 		t.Fatalf("matching panel not recognized: %+v", result)
 	}
-	if result := checkPanelDomain(context.Background(), "example.com", "other-nonce", client); result.Matched || result.Problem != "not_this_panel" {
+	for _, proof := range []string{"", "wrong-proof", "expected-nonce"} {
+		if result := checkPanelDomain(context.Background(), "example.com", "expected-nonce", proof, client); result.Matched || result.Problem != "not_this_panel" {
+			t.Fatalf("missing or wrong independent proof must fail: %+v", result)
+		}
+	}
+	if result := checkPanelDomain(context.Background(), "example.com", "other-nonce", "expected-proof", client); result.Matched || result.Problem != "not_this_panel" {
 		t.Fatalf("another panel must not match: %+v", result)
 	}
 	answer = http.StatusMisdirectedRequest
-	if result := checkPanelDomain(context.Background(), "example.com", "expected-nonce", client); result.Matched || result.Problem != "host_rejected" {
+	if result := checkPanelDomain(context.Background(), "example.com", "expected-nonce", "expected-proof", client); result.Matched || result.Problem != "host_rejected" {
 		t.Fatalf("host-rejected domain must not match: %+v", result)
 	}
 	untrusted := &http.Client{Transport: &http.Transport{DialContext: transport.DialContext}}
-	if result := checkPanelDomain(context.Background(), "example.com", "expected-nonce", untrusted); result.Matched || result.Problem != "certificate_invalid" {
+	if result := checkPanelDomain(context.Background(), "example.com", "expected-nonce", "expected-proof", untrusted); result.Matched || result.Problem != "certificate_invalid" {
 		t.Fatalf("untrusted certificate must fail: %+v", result)
 	}
 	if err := refuseInternalDial("tcp", "127.0.0.1:443", nil); err == nil {
@@ -297,7 +303,7 @@ func TestPanelDomainCheckRejectsUnrelatedNoContentServer(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer upstream.Close()
-	result := checkPanelDomain(context.Background(), strings.TrimPrefix(upstream.URL, "https://"), "nonce", upstream.Client())
+	result := checkPanelDomain(context.Background(), strings.TrimPrefix(upstream.URL, "https://"), "nonce", "independent-proof", upstream.Client())
 	if !result.Reachable || result.Matched || result.Problem != "not_this_panel" {
 		t.Fatalf("generic 204 response must not prove panel identity: %+v", result)
 	}
@@ -305,12 +311,14 @@ func TestPanelDomainCheckRejectsUnrelatedNoContentServer(t *testing.T) {
 
 func TestPanelDomainProbeAnswersOnlyPendingNoncesThroughHostValidation(t *testing.T) {
 	server, _ := newTestServer(t)
-	nonce, err := server.addDomainProbe()
+	nonce, proof, err := server.addDomainProbe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if response := performRequest(server, http.MethodGet, panelAccessProbePrefix+nonce, nil, nil); response.Code != http.StatusNoContent {
 		t.Fatalf("pending nonce must answer 204: %d", response.Code)
+	} else if len(proof) != 64 || proof == nonce || response.Header().Get(panelAccessProofHeader) != proof || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("probe must return an independent uncached proof")
 	}
 	if response := performRequest(server, http.MethodGet, panelAccessProbePrefix+nonce, nil, map[string]string{"Host": "other.example.com"}); response.Code != http.StatusMisdirectedRequest {
 		t.Fatalf("probe must stay behind Host validation: %d", response.Code)
@@ -324,11 +332,11 @@ func TestPanelDomainProbeAnswersOnlyPendingNoncesThroughHostValidation(t *testin
 		t.Fatalf("finished check must stop answering: %d", response.Code)
 	}
 	for index := 0; index < panelAccessProbeLimit; index++ {
-		if _, err := server.addDomainProbe(); err != nil {
+		if _, _, err := server.addDomainProbe(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := server.addDomainProbe(); err == nil {
+	if _, _, err := server.addDomainProbe(); err == nil {
 		t.Fatal("pending probes must be bounded")
 	}
 }
@@ -346,7 +354,7 @@ func TestPanelDomainProbeWorksBehindSecurityEntrance(t *testing.T) {
 	if updated.Code != http.StatusOK {
 		t.Fatalf("enable security entry failed: %d %s", updated.Code, updated.Body.String())
 	}
-	nonce, err := server.addDomainProbe()
+	nonce, _, err := server.addDomainProbe()
 	if err != nil {
 		t.Fatal(err)
 	}

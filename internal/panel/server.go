@@ -139,7 +139,7 @@ type Server struct {
 	selfTLS                 *selfSignedTLS
 	domainCheckClient       *http.Client
 	domainProbeMu           sync.Mutex
-	domainProbes            map[string]time.Time
+	domainProbes            map[string]panelDomainProbe
 }
 
 type agentAPI interface {

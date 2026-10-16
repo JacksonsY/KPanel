@@ -27,7 +27,13 @@ const (
 	panelAccessProbePrefix = "/api/v1/panel-access/probe/"
 	panelAccessProbeTTL    = 30 * time.Second
 	panelAccessProbeLimit  = 16
+	panelAccessProofHeader = "X-KPanel-Domain-Proof"
 )
+
+type panelDomainProbe struct {
+	expires time.Time
+	proof   string
+}
 
 type panelAccessResponse struct {
 	AllowIPHosts      bool              `json:"allowIpHosts"`
@@ -153,8 +159,8 @@ func (s *Server) handleSelfSignedTLSCertificate(w http.ResponseWriter, r *http.R
 // handlePanelDomainCheck verifies from the server side that a domain already
 // serves this panel over publicly trusted HTTPS. The browser cannot do this
 // itself because the panel CSP limits connect-src to 'self'. The request is
-// fixed to GET https://<domain>/api/v1/health, follows no redirects, refuses
-// loopback/link-local targets and reads at most a small JSON body.
+// fixed to a pending nonce URL, follows no redirects, refuses loopback/link-local
+// targets and requires an independent response proof held by this process.
 func (s *Server) handlePanelDomainCheck(w http.ResponseWriter, r *http.Request) {
 	if !s.checkOrigin(w, r) {
 		return
@@ -175,7 +181,7 @@ func (s *Server) handlePanelDomainCheck(w http.ResponseWriter, r *http.Request) 
 		s.writeProblem(w, r, http.StatusBadRequest, "invalid_domain", "Invalid domain", "")
 		return
 	}
-	nonce, err := s.addDomainProbe()
+	nonce, proof, err := s.addDomainProbe()
 	if err != nil {
 		s.writeProblem(w, r, http.StatusTooManyRequests, "domain_check_busy", "Too many domain checks in progress", "")
 		return
@@ -183,31 +189,32 @@ func (s *Server) handlePanelDomainCheck(w http.ResponseWriter, r *http.Request) 
 	defer s.removeDomainProbe(nonce)
 	ctx, cancel := context.WithTimeout(r.Context(), panelAccessDomainCheckTimeout)
 	defer cancel()
-	s.writeJSON(w, http.StatusOK, checkPanelDomain(ctx, domain, nonce, s.panelDomainCheckClient()))
+	s.writeJSON(w, http.StatusOK, checkPanelDomain(ctx, domain, nonce, proof, s.panelDomainCheckClient()))
 }
 
-func (s *Server) addDomainProbe() (string, error) {
-	buffer := make([]byte, 32)
+func (s *Server) addDomainProbe() (string, string, error) {
+	buffer := make([]byte, 64)
 	if _, err := rand.Read(buffer); err != nil {
-		return "", err
+		return "", "", err
 	}
-	nonce := hex.EncodeToString(buffer)
+	nonce := hex.EncodeToString(buffer[:32])
+	proof := hex.EncodeToString(buffer[32:])
 	now := time.Now()
 	s.domainProbeMu.Lock()
 	defer s.domainProbeMu.Unlock()
 	if s.domainProbes == nil {
-		s.domainProbes = map[string]time.Time{}
+		s.domainProbes = map[string]panelDomainProbe{}
 	}
-	for pending, expires := range s.domainProbes {
-		if now.After(expires) {
+	for pending, probe := range s.domainProbes {
+		if now.After(probe.expires) {
 			delete(s.domainProbes, pending)
 		}
 	}
 	if len(s.domainProbes) >= panelAccessProbeLimit {
-		return "", errors.New("too many pending domain probes")
+		return "", "", errors.New("too many pending domain probes")
 	}
-	s.domainProbes[nonce] = now.Add(panelAccessProbeTTL)
-	return nonce, nil
+	s.domainProbes[nonce] = panelDomainProbe{expires: now.Add(panelAccessProbeTTL), proof: proof}
+	return nonce, proof, nil
 }
 
 func (s *Server) removeDomainProbe(nonce string) {
@@ -226,12 +233,14 @@ func (s *Server) handlePanelDomainProbe(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.domainProbeMu.Lock()
-	expires, ok := s.domainProbes[nonce]
+	probe, ok := s.domainProbes[nonce]
 	s.domainProbeMu.Unlock()
-	if !ok || time.Now().After(expires) {
+	if !ok || time.Now().After(probe.expires) {
 		http.NotFound(w, r)
 		return
 	}
+	w.Header().Set(panelAccessProofHeader, probe.proof)
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -269,7 +278,7 @@ func refuseInternalDial(_, address string, _ syscall.RawConn) error {
 	return nil
 }
 
-func checkPanelDomain(ctx context.Context, domain, nonce string, client *http.Client) panelDomainCheckResponse {
+func checkPanelDomain(ctx context.Context, domain, nonce, proof string, client *http.Client) panelDomainCheckResponse {
 	result := panelDomainCheckResponse{Domain: domain}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+domain+panelAccessProbePrefix+nonce, nil)
 	if err != nil {
@@ -286,7 +295,11 @@ func checkPanelDomain(ctx context.Context, domain, nonce string, client *http.Cl
 	result.Reachable = true
 	switch response.StatusCode {
 	case http.StatusNoContent:
-		result.Matched = true
+		if proof != "" && response.Header.Get(panelAccessProofHeader) == proof {
+			result.Matched = true
+		} else {
+			result.Problem = "not_this_panel"
+		}
 	case http.StatusMisdirectedRequest:
 		result.Problem = "host_rejected"
 	case http.StatusNotFound:

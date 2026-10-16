@@ -351,20 +351,24 @@ func validateLocalAppIcon(icon *LocalAppIcon) error {
 	switch icon.ContentType {
 	case "image/png":
 		config, err = png.DecodeConfig(bytes.NewReader(icon.Data))
-		if err == nil {
-			_, err = png.Decode(bytes.NewReader(icon.Data))
-		}
 	case "image/webp":
 		config, err = webp.DecodeConfig(bytes.NewReader(icon.Data))
-		if err == nil {
-			_, err = webp.Decode(bytes.NewReader(icon.Data))
-		}
 	}
 	if err != nil {
 		return localAppInvalid("图标文件无法解析")
 	}
 	if config.Width != config.Height || config.Width < minLocalAppIconSide || config.Width > maxLocalAppIconSide {
 		return localAppInvalid("图标需为正方形，边长 %d–%d px", minLocalAppIconSide, maxLocalAppIconSide)
+	}
+	// Bound decoded pixel allocation before validating the complete image body.
+	switch icon.ContentType {
+	case "image/png":
+		_, err = png.Decode(bytes.NewReader(icon.Data))
+	case "image/webp":
+		_, err = webp.Decode(bytes.NewReader(icon.Data))
+	}
+	if err != nil {
+		return localAppInvalid("图标文件无法解析")
 	}
 	return nil
 }
