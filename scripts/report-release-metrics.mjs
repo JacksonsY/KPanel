@@ -5,7 +5,6 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-
 const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
 const PREVIEW_RELEASE_TAG = /^(v\d+\.\d+\.\d+)-rc\.\d+$/;
 const EMPTY_VALUE = /^(?:|[-—]|待填写|未记录|未验证|未知|不知道|稍后|不适用|N\/A)$/i;
@@ -190,19 +189,6 @@ const PROCESS_INCIDENT_POSITIONS = new Set(['before-production-write', 'after-pr
 const PROCESS_INCIDENT_PLACEHOLDER = /^(?:<.*>|无|未知|未记录|未验证|不适用|待.*|n\/?a|none|null|unknown|tbd|todo)$/i;
 const PROCESS_INCIDENT_REPEAT_WINDOW = 5;
 const PROCESS_INCIDENT_REPEAT_REQUIRED_FROM = [0, 100, 1];
-// PROJECT_RULES.md 5.4: CF is optional for stable and preview releases. Preserve historical vocabulary
-// when a record supplies it, but do not load the audit registry or require completion/waivers.
-const SECURITY_COVERAGE_LINE = /^- 覆盖检查[^：\n]*：[ \t]*(.*)$/m;
-const SECURITY_COVERAGE_DECISIONS = /\b(?:ok|scoped-recommended|full-recommended|scoped-required|full-required|not-run|unavailable)\b/;
-
-export function securityCoverageErrors(markdown, label = 'acceptance record') {
-  const value = validValue(markdown.replace(/\r\n/g, '\n').match(SECURITY_COVERAGE_LINE)?.[1]);
-  if (value === null) return [];
-  return SECURITY_COVERAGE_DECISIONS.test(value)
-    ? []
-    : [label + ': optional 覆盖检查 must state a known decision, not-run or unavailable'];
-}
-
 function acceptanceFields(markdown) {
   const fields = new Map();
   const duplicates = new Set();
@@ -607,8 +593,6 @@ export function validateAcceptanceMetrics(markdown, label = 'acceptance record')
   if (versionAtLeast(acceptanceVersion, PROCESS_INCIDENTS_REQUIRED_FROM) && !processIncidents.present) {
     errors.push(label + ': release v0.90.2 and later requires release-process-incidents evidence');
   }
-  // Only a stable filename identifies a stable record; RC titles also parse as X.Y.Z.
-  errors.push(...securityCoverageErrors(markdown, label));
   for (const error of process.structureErrors) errors.push(label + ': ' + error);
   for (const error of processIncidents.structureErrors) errors.push(label + ': ' + error);
   if (process.defaultIgnorables) {

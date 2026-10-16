@@ -248,6 +248,9 @@ Dockerfile frontend、全部 GitHub Actions、`govulncheck`/Trivy 以及镜像�
 - 上游 `latest`、Release 或分支头只用于候选发现。正式构建继续使用锁文件、完整 Action SHA、不可变
   镜像 digest 和脚本提交/摘要；候选检测不得在后台改写这些真源。
 
+CF 审计工具适用 `PROJECT_RULES.md` 5.4 的可选辅助例外：默认不访问上游，不进入必需检测源完整性
+或产品依赖采用时限；仅显式选用时报告候选与数据缺口。产品依赖和漏洞扫描仍遵守本节。
+
 #### 4.7.2 稳定版定义与采用决策
 
 “最新稳定版”同时满足：上游正式发布且未撤回，不是 alpha/beta/RC/nightly/canary/preview，仍在安全

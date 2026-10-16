@@ -832,6 +832,8 @@ export function summarize(policy, sources, now = new Date()) {
     generatedAt: now.toISOString(),
     policyVersion: policy.policyVersion,
     sourceCount: sources.length,
+    requiredSourceCount: sources.filter((source) => source.id !== 'security-audit-skill').length,
+    successfulRequiredSources: sources.filter((source) => source.id !== 'security-audit-skill' && source.status === 'ok').length,
     successfulSources: sources.filter((source) => source.status === 'ok').length,
     failedSources: sources.filter((source) => source.status === 'error').length,
     blockingFailedSources: sources.filter((source) => source.status === 'error' && source.id !== 'security-audit-skill').length,
@@ -858,7 +860,7 @@ export function renderMarkdown(report) {
     '',
     '- 生成时间：' + report.generatedAt,
     '- 策略版本：' + report.policyVersion,
-    '- 检测源完整性：' + report.successfulSources + '/' + report.sourceCount,
+    '- 必需检测源完整性：' + report.successfulRequiredSources + '/' + report.requiredSourceCount,
     '- 版本通道稳定信号：' + report.candidateCount + '（直接/基座行动项 ' + report.actionableCandidateCount + '，传递依赖归属信号 ' + report.transitiveSignalCount + '）',
     '- 候选资格：仅表示版本通道稳定；EOL、许可证、架构、行为、资源与回滚仍须采用决策证据。',
     '- 需处理依赖例外：' + report.maintenance.exceptionActionRequiredCount,
@@ -909,7 +911,7 @@ export function renderMarkdown(report) {
   lines.push('', '- 最近 EOL 复核：' + report.maintenance.lastEolReview, '- 证据：`' + report.maintenance.eolReviewEvidence + '`');
   lines.push('', '## 检测源状态', '', '| 检测源 | 状态 | 错误 |', '| --- | --- | --- |');
   for (const source of report.sources) lines.push('| ' + markdownCell(source.id) + ' | ' + markdownCell(source.status) + ' | ' + markdownCell(source.error ?? '-') + ' |');
-  lines.push('', '> “未发现候选”只有在所有检测源成功时才有效；任何检测源失败都必须按数据缺口处理。');
+  lines.push('', '> 产品“未发现候选”仅在必需检测源全部成功时有效；CF 未请求不计缺失，可选源失败仍如实报告为数据缺口。');
   return lines.join('\n');
 }
 

@@ -220,7 +220,7 @@ function check(options) {
         if (changedPaths.length === 0) {
           failures.push('writer candidate must contain a non-empty task diff; empty commits do not satisfy completion');
         }
-        // PROJECT_RULES.md 5.5, 5.4 and 5.2.4: advisory only, never a failure.
+        // PROJECT_RULES.md 5.5 and 5.2.4: advisory only, never a failure.
         ocrLineReview = ocrLineReviewState(root, options.baseRef);
         independentReview = independentReviewState(root, options.baseRef);
       }

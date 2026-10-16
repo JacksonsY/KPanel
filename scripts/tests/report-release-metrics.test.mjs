@@ -21,7 +21,6 @@ import {
   summarizePreviewMetrics,
   summarizeReleaseMetrics,
   validateAcceptanceMetrics as validateAcceptanceMetricsRaw,
-  securityCoverageErrors,
   validateProcessIncidentHistory,
 } from '../report-release-metrics.mjs';
 
@@ -1064,12 +1063,11 @@ test('summarizePreviewMetrics refuses to guess whether a train already shipped',
 
 test('stable acceptance treats CF as optional and accepts pending history without a waiver', () => {
   const record = (line) => acceptanceDocument('v1.27.0', []) + (line === null ? '' : '\n' + line) + '\n';
-  for (const line of [null, '- 覆盖检查：', '- 覆盖检查：not-run', '- 覆盖检查：unavailable',
+  for (const line of [null, '- 覆盖检查：', '- 覆盖检查：未运行（可选）', '- 覆盖检查：仅历史文字，待验证', '- 覆盖检查：not-run', '- 覆盖检查：unavailable',
     '- 覆盖检查：decision=ok', '- 覆盖检查：decision=scoped-recommended',
     '- 覆盖检查：decision=full-recommended', '- 覆盖检查：decision=scoped-required，run-3 incomplete',
     '- 覆盖检查：decision=full-required；历史豁免 2026-01-01 已过期']) {
-    assert.deepEqual(securityCoverageErrors(record(line)), [], String(line));
     assert.deepEqual(validateAcceptanceMetricsRaw(record(line), 'docs/release-v1.27.0-acceptance.md'), [], String(line));
   }
-  assert.match(securityCoverageErrors(record('- 覆盖检查：已运行')).join('\n'), /known decision/);
+  assert.deepEqual(validateAcceptanceMetricsRaw(record('- 覆盖检查：已运行'), 'docs/release-v1.27.0-rc.1-acceptance.md'), []);
 });

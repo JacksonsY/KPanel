@@ -375,6 +375,10 @@ test('CF upstream discovery is opt-in and its failure cannot gate product mainte
   const ordinary = await collectSources({}, {}, collectors);
   assert.equal(calls, 0);
   assert.equal(ordinary[0].status, 'not-requested');
+  const ordinaryReport = summarize({ policyVersion: 'test' }, [{ id: 'go-modules', status: 'ok', candidates: [], error: null }, ...ordinary]);
+  assert.equal(ordinaryReport.requiredSourceCount, 1);
+  assert.equal(ordinaryReport.successfulRequiredSources, 1);
+  assert.match(renderMarkdown(ordinaryReport), /必需检测源完整性：1\/1/);
   const optional = await collectSources({ includeOptionalAuditTool: true }, {}, collectors);
   assert.equal(calls, 1);
   assert.equal(optional[0].status, 'error');

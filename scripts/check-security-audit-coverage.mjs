@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 // Optional trust-boundary audit advisory (PROJECT_RULES.md 5.4). For one target commit it answers: which
-// trust-boundary changes are not yet covered by a completed audit run, and is a scoped or full run due?
+// trust-boundary changes are not yet covered by a completed audit run, and which optional scope might be useful?
 // Coverage is the union of completed runs (see classifyRuns); an interrupted or undeclared partial run never counts.
 // Boundary scope is default-deny: every package under the policy's
 // package roots is boundary unless named non-boundary with a reason, so a new package cannot silently
-// fall outside the trigger. Ages are measured from commit dates, never the wall clock, so a result is
+// fall outside the advisory inventory. Ages are measured from commit dates, never the wall clock, so a result is
 // reproducible for the same commits.
 
 import { execFileSync } from 'node:child_process';
