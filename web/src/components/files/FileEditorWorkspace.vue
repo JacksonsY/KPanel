@@ -24,11 +24,14 @@ import {
   X,
 } from '@lucide/vue'
 import CodeEditor from './CodeEditor.vue'
+import FileEditorLayoutMenu from './FileEditorLayoutMenu.vue'
+import FileEditorPanes from './FileEditorPanes.vue'
 import FileEntryIcon from './FileEntryIcon.vue'
 import { fileAPIForHost } from '@/lib/fileHostContext'
 import { canExecuteFile } from '@/lib/fileExecution'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
-import type { CodeEditorSession } from '@/lib/code-editor-session'
+import type { TerminalLayout } from '@/composables/useTerminalWorkspace'
+import type { CodeEditorSession, CodeEditorStatus } from '@/lib/code-editor-session'
 import type { FileDirectory, FileEntry } from '@/types/api'
 
 const props = withDefaults(defineProps<{
@@ -63,6 +66,10 @@ interface EditorTab {
   loading: boolean
   error: string
   lineWrap: boolean
+  /** A live editor for this tab is mounted in a pane and finished loading. */
+  ready: boolean
+  language: string
+  status: CodeEditorStatus
 }
 function createTab(entry: FileEntry, content = '', loading = false): EditorTab {
   return {
@@ -74,18 +81,31 @@ function createTab(entry: FileEntry, content = '', loading = false): EditorTab {
     loading,
     error: '',
     lineWrap: false,
+    ready: false,
+    language: '',
+    status: { line: 1, column: 1, lines: 1, selected: 0, cursors: 1 },
   }
+}
+type EditorInstance = InstanceType<typeof CodeEditor>
+interface PanesHandle {
+  layout: TerminalLayout
+  setLayout(next: TerminalLayout): void
+  selectSession(path: string): void
+  activeEmpty: boolean
+  cramped: boolean
+  isShown(path: string): boolean
 }
 const tabs = ref<EditorTab[]>([createTab(props.entry, props.content)])
 const activePath = ref(props.entry.path)
 const active = computed(() => tabs.value.find((tab) => tab.entry.path === activePath.value)!)
-const editor = ref<InstanceType<typeof CodeEditor>>()
-const editorPath = ref('')
-const editorReady = computed(
-  () => editorPath.value === activePath.value && Boolean(editor.value) && !active.value.loading,
-)
-const status = ref({ line: 1, column: 1, lines: 1 })
-const language = ref('')
+const panes = ref<PanesHandle>()
+// Toolbar, status bar and Ctrl+S act on the active pane's file; an empty
+// split pane has none, so they wait until a file is opened there.
+const target = computed(() => (panes.value?.activeEmpty ? undefined : active.value))
+const editorReady = computed(() => Boolean(target.value?.ready && !target.value.loading))
+// Mounted editors only; a hidden tab parks its CodeMirror state in `session`.
+const editors = new Map<EditorTab, EditorInstance>()
+const editorRefs = new WeakMap<EditorTab, (instance: unknown) => void>()
 const root = ref<HTMLElement>()
 const tabList = ref<HTMLElement>()
 const sidebarToggle = ref<HTMLButtonElement>()
@@ -94,6 +114,12 @@ const moreRoot = ref<HTMLElement>()
 const moreToggle = ref<HTMLButtonElement>()
 const moreOpen = ref(false)
 const compact = ref(false)
+// Phones (portrait, or landscape with little height) keep one editor: the
+// split control is hidden there, as with the terminal.
+const PHONE_VIEWPORT = '(max-width: 900px), (max-height: 500px) and (pointer: coarse)'
+const phoneViewport = ref(false)
+let phoneQuery: MediaQueryList | undefined
+const splitAvailable = computed(() => !compact.value && !phoneViewport.value)
 const sidebarOpen = ref(props.showDirectoryNavigation)
 const directory = ref<FileDirectory>()
 const directoryPath = ref(props.navigationPath || parentPath(props.entry.path))
@@ -142,10 +168,24 @@ function publishState(): void {
     tabs.value.some((tab) => tab.saving),
   )
 }
-function capture(): void {
-  const session = editor.value?.getSession()
-  const tab = tabs.value.find((item) => item.entry.path === editorPath.value)
-  if (session && tab) tab.session = markRaw(session)
+// Stable per tab, so Vue calls it with null only when that editor unmounts:
+// the moment to park its document, history, selection and scroll.
+function editorRef(tab: EditorTab): (instance: unknown) => void {
+  let bind = editorRefs.get(tab)
+  if (!bind) {
+    bind = (instance) => {
+      if (instance) {
+        editors.set(tab, instance as EditorInstance)
+        return
+      }
+      const session = editors.get(tab)?.getSession()
+      editors.delete(tab)
+      tab.ready = false
+      if (session) tab.session = markRaw(session)
+    }
+    editorRefs.set(tab, bind)
+  }
+  return bind
 }
 function revealActiveTab(): void {
   tabList.value
@@ -160,12 +200,10 @@ function focusTab(): void {
   })
 }
 function selectTab(tab: EditorTab, keyboard = false): void {
-  if (tab.entry.path !== activePath.value) {
-    capture()
-    language.value = ''
-    status.value = { line: 1, column: 1, lines: 1 }
-    activePath.value = tab.entry.path
-  }
+  // A new active path reaches the panes through their watcher, which lets a
+  // new tab fill an empty pane first. The same path only refocuses its pane.
+  if (tab.entry.path !== activePath.value) activePath.value = tab.entry.path
+  else panes.value?.selectSession(tab.entry.path)
   notice.value = ''
   if (compact.value) sidebarOpen.value = false
   if (keyboard || compact.value) focusTab()
@@ -239,19 +277,28 @@ async function openFile(entry: FileEntry): Promise<void> {
   selectTab(tab)
   await loadTab(tab)
 }
-function changed(): void {
-  active.value.dirty = true
-  active.value.revision += 1
+function activatePane(path: string): void {
+  activePath.value = path
+  notice.value = ''
+}
+function closeAuxiliary(event: MouseEvent, tab: EditorTab): void {
+  if (event.button !== 1) return
+  event.preventDefault()
+  closeTab(tab)
+}
+function changed(tab: EditorTab): void {
+  tab.dirty = true
+  tab.revision += 1
   publishState()
 }
-function ready(info: { label: string }): void {
-  editorPath.value = activePath.value
-  language.value = info.label
+function ready(tab: EditorTab, info: { label: string }): void {
+  tab.ready = true
+  tab.language = info.label
 }
-async function save(): Promise<void> {
-  const tab = active.value
-  if (!editorReady.value || !tab.dirty || tab.saving || !editor.value) return
-  const content = editor.value.getValue()
+async function save(tab: EditorTab | undefined = target.value): Promise<void> {
+  const instance = tab && editors.get(tab)
+  if (!tab || !instance || !tab.ready || tab.loading || !tab.dirty || tab.saving) return
+  const content = instance.getValue()
   const revision = tab.revision
   tab.saving = true
   tab.error = ''
@@ -266,7 +313,7 @@ async function save(): Promise<void> {
     }
     if (tab.revision === revision) {
       tab.dirty = false
-      if (active.value === tab) editor.value?.markClean()
+      editors.get(tab)?.markClean()
     }
     emit('saved', result.entry)
   } catch (error) {
@@ -279,13 +326,13 @@ async function save(): Promise<void> {
   }
 }
 async function execute(): Promise<void> {
-  const tab = active.value
-  if (executing.value || !editorReady.value || tab.saving || !canExecuteFile(tab.entry)) return
+  const tab = target.value
+  if (!tab || executing.value || !editorReady.value || tab.saving || !canExecuteFile(tab.entry)) return
   const revision = tab.revision
   executing.value = true
   try {
-    if (tab.dirty) await save()
-    if (disposed || active.value !== tab || tab.dirty || tab.error || tab.saving
+    if (tab.dirty) await save(tab)
+    if (disposed || target.value !== tab || tab.dirty || tab.error || tab.saving
       || tab.revision !== revision || !canExecuteFile(tab.entry)) return
     emit('execute', { ...tab.entry }, hostId)
   } finally {
@@ -391,12 +438,32 @@ function toggleMore(): void {
 }
 function search(): void {
   moreOpen.value = false
-  void nextTick(() => editor.value?.openSearch())
+  const tab = target.value
+  void nextTick(() => (tab ? editors.get(tab)?.openSearch() : undefined))
+}
+function gotoLine(): void {
+  const tab = target.value
+  if (tab) editors.get(tab)?.openGotoLine()
 }
 function toggleWrap(): void {
-  active.value.lineWrap = !active.value.lineWrap
+  if (target.value) target.value.lineWrap = !target.value.lineWrap
   if (compact.value) dismissMore()
 }
+// An empty split pane asks for a file: the directory list is the picker.
+function chooseFile(): void {
+  if (!props.showDirectoryNavigation) return
+  moreOpen.value = false
+  sidebarOpen.value = true
+  void nextTick(() => focusTextInput(sidebarSearch.value))
+}
+const selectionLabel = computed(() => {
+  const status = target.value?.status
+  if (!status) return ''
+  const parts = []
+  if (status.cursors > 1) parts.push(phrase(`${status.cursors} 个光标`))
+  if (status.selected) parts.push(phrase(`已选 ${status.selected} 个字符`))
+  return parts.join(' · ')
+})
 function outsideMore(event: PointerEvent): void {
   if (event.target instanceof Node && !moreRoot.value?.contains(event.target))
     moreOpen.value = false
@@ -411,8 +478,16 @@ function beforeUnload(event: BeforeUnloadEvent): void {
     event.returnValue = ''
   }
 }
+function syncPhoneViewport(): void {
+  phoneViewport.value = Boolean(phoneQuery?.matches)
+}
 onMounted(() => {
   if (props.showDirectoryNavigation) void loadDirectory()
+  if (typeof window.matchMedia === 'function') {
+    phoneQuery = window.matchMedia(PHONE_VIEWPORT)
+    syncPhoneViewport()
+    phoneQuery.addEventListener?.('change', syncPhoneViewport)
+  }
   if (typeof ResizeObserver !== 'undefined') {
     observer = new ResizeObserver(([entry]) => {
       if (!entry) return
@@ -434,6 +509,7 @@ onBeforeUnmount(() => {
   directoryController?.abort()
   clearTimeout(searchTimer)
   observer?.disconnect()
+  phoneQuery?.removeEventListener?.('change', syncPhoneViewport)
   window.removeEventListener('beforeunload', beforeUnload)
   document.removeEventListener('pointerdown', outsideMore)
 })
@@ -446,8 +522,8 @@ defineExpose({ openFile })
     class="editor-workspace"
     :class="{ 'is-compact': compact }"
     :aria-label="phrase('文件编辑器')"
-    @keydown.ctrl.s.prevent.stop="save"
-    @keydown.meta.s.prevent.stop="save"
+    @keydown.ctrl.s.prevent.stop="save()"
+    @keydown.meta.s.prevent.stop="save()"
   >
     <header class="editor-toolbar">
       <button
@@ -476,7 +552,9 @@ defineExpose({ openFile })
           v-for="(tab, index) in tabs"
           :key="tab.entry.path"
           class="editor-tab"
-          :class="{ 'is-active': tab === active }"
+          :class="{ 'is-active': tab === active, 'is-shown': tab !== active && panes?.isShown(tab.entry.path) }"
+          @mousedown.middle.prevent
+          @auxclick="closeAuxiliary($event, tab)"
         >
           <button
             :id="`${id}-tab-${index}`"
@@ -484,7 +562,7 @@ defineExpose({ openFile })
             type="button"
             role="tab"
             :aria-selected="tab === active"
-            :aria-controls="`${id}-content`"
+            :aria-controls="panes?.isShown(tab.entry.path) ? `${id}-panel-${index}` : undefined"
             :tabindex="tab === active ? 0 : -1"
             :title="tab.entry.path"
             @click="selectTab(tab)"
@@ -546,43 +624,50 @@ defineExpose({ openFile })
           </button>
           <button
             class="editor-tool"
-            :class="{ 'is-active': active.lineWrap }"
+            :class="{ 'is-active': target?.lineWrap }"
             type="button"
             :title="phrase('切换自动换行')"
             :aria-label="phrase('切换自动换行')"
-            :aria-pressed="active.lineWrap"
+            :aria-pressed="Boolean(target?.lineWrap)"
+            :disabled="!target"
             @click="toggleWrap"
           >
             <WrapText :size="18" /><span v-if="compact">{{ phrase('切换自动换行') }}</span
-            ><Check v-if="compact && active.lineWrap" :size="15" />
+            ><Check v-if="compact && target?.lineWrap" :size="15" />
           </button>
         </div>
       </div>
+      <FileEditorLayoutMenu
+        v-if="splitAvailable"
+        :model-value="panes?.layout ?? 'single'"
+        :cramped="panes?.cramped"
+        @update:model-value="panes?.setLayout($event)"
+      />
       <button
-        v-if="canExecuteFile(active.entry)"
+        v-if="target && canExecuteFile(target.entry)"
         class="editor-tool editor-execute"
         type="button"
-        :disabled="!editorReady || active.saving || executing"
+        :disabled="!editorReady || target.saving || executing"
         :inert="compact && sidebarOpen"
-        :aria-label="phrase(active.dirty ? '保存并执行' : '在终端中执行')"
-        :title="phrase(active.dirty ? '保存并执行' : '在终端中执行')"
+        :aria-label="phrase(target.dirty ? '保存并执行' : '在终端中执行')"
+        :title="phrase(target.dirty ? '保存并执行' : '在终端中执行')"
         @click="execute"
       >
-        <SquareTerminal :size="16" /><span>{{ phrase(active.dirty ? '保存并执行' : '执行') }}</span>
+        <SquareTerminal :size="16" /><span>{{ phrase(target.dirty ? '保存并执行' : '执行') }}</span>
       </button>
       <button
         class="button button--primary editor-save"
         type="button"
-        :disabled="!editorReady || !active.dirty || active.saving"
+        :disabled="!editorReady || !target?.dirty || target.saving"
         :inert="compact && sidebarOpen"
-        :aria-label="phrase(active.saving ? '保存中…' : '保存')"
+        :aria-label="phrase(target?.saving ? '保存中…' : '保存')"
         :title="`${phrase('保存')} (Ctrl / ⌘ + S)`"
-        @click="save"
+        @click="save()"
       >
-        <RefreshCw v-if="active.saving" :size="16" class="spinning" /><Save
+        <RefreshCw v-if="target?.saving" :size="16" class="spinning" /><Save
           v-else
           :size="16"
-        /><span>{{ phrase(active.saving ? '保存中…' : '保存') }}</span>
+        /><span>{{ phrase(target?.saving ? '保存中…' : '保存') }}</span>
       </button>
       <div v-if="$slots['window-controls']" class="editor-window-controls">
         <slot name="window-controls" />
@@ -701,52 +786,69 @@ defineExpose({ openFile })
       </aside>
       <main class="editor-main" :inert="compact && sidebarOpen">
         <div v-if="notice" class="editor-message" role="status">{{ notice }}</div>
-        <div v-if="active.error" class="editor-message" role="alert">
-          <span>{{ active.error }}</span
-          ><button v-if="!active.dirty" type="button" @click="loadTab(active)">
-            {{ phrase('重试') }}</button
-          ><span v-else>{{ phrase('修改仍保留在此标签，请检查后重试保存。') }}</span>
-        </div>
-        <div
-          :id="`${id}-content`"
-          class="editor-canvas"
-          role="tabpanel"
-          :aria-labelledby="`${id}-tab-${tabs.indexOf(active)}`"
-          :aria-busy="active.loading"
+        <FileEditorPanes
+          ref="panes"
+          :tabs="tabs"
+          :active-path="activePath"
+          :split-available="splitAvailable"
+          :can-choose-file="props.showDirectoryNavigation"
+          :id-prefix="id"
+          @activate="activatePane"
+          @close="closeTab"
+          @choose-file="chooseFile"
         >
-          <div v-if="active.loading" class="editor-empty editor-empty--center" role="status">
-            <RefreshCw :size="20" class="spinning" />{{ phrase('正在打开文件…') }}
-          </div>
-          <CodeEditor
-            v-else-if="!active.error || active.dirty"
-            :key="active.entry.path"
-            ref="editor"
-            :model-value="active.content"
-            :file-name="active.entry.name"
-            :mime="active.entry.mime"
-            :size-bytes="active.entry.sizeBytes"
-            :session="active.session"
-            :line-wrap="active.lineWrap"
-            :auto-focus="false"
-            @change="changed"
-            @save="save"
-            @status="status = $event"
-            @ready="ready"
-          />
-        </div>
+          <template #default="{ tab }">
+            <div v-if="tab.error" class="editor-message" role="alert">
+              <span>{{ tab.error }}</span
+              ><button v-if="!tab.dirty" type="button" @click="loadTab(tab)">
+                {{ phrase('重试') }}</button
+              ><span v-else>{{ phrase('修改仍保留在此标签，请检查后重试保存。') }}</span>
+            </div>
+            <div class="editor-canvas" :aria-busy="tab.loading">
+              <div v-if="tab.loading" class="editor-empty editor-empty--center" role="status">
+                <RefreshCw :size="20" class="spinning" />{{ phrase('正在打开文件…') }}
+              </div>
+              <CodeEditor
+                v-else-if="!tab.error || tab.dirty"
+                :key="tab.entry.path"
+                :ref="editorRef(tab)"
+                :model-value="tab.content"
+                :file-name="tab.entry.name"
+                :mime="tab.entry.mime"
+                :size-bytes="tab.entry.sizeBytes"
+                :session="tab.session"
+                :line-wrap="tab.lineWrap"
+                :auto-focus="false"
+                @change="changed(tab)"
+                @save="save(tab)"
+                @status="tab.status = $event"
+                @ready="ready(tab, $event)"
+              />
+            </div>
+          </template>
+        </FileEditorPanes>
         <footer class="editor-status">
-          <span class="editor-status__position"
-            >{{ phrase('行') }} {{ status.line }}<span> : {{ status.column }}</span
-            ><span class="editor-status__extra">
-              · {{ status.lines }} {{ phrase('行') }}</span
-            ></span
-          ><span class="editor-status__language"
-            >{{ language || 'UTF-8' }}<span class="editor-status__extra"> · UTF-8</span></span
-          ><span class="editor-status__saved" role="status"
-            ><span v-if="active.dirty" class="editor-dirty" /><Check v-else :size="14" />{{
-              phrase(active.saving ? '保存中…' : active.dirty ? '未保存' : '已保存')
-            }}</span
-          >
+          <template v-if="target">
+            <button
+              class="editor-status__position"
+              type="button"
+              :disabled="!editorReady"
+              :title="phrase('跳转到行（Ctrl+G）')"
+              @click="gotoLine"
+            >
+              {{ phrase('行') }} {{ target.status.line }}<span> : {{ target.status.column }}</span
+              ><span class="editor-status__extra"> · {{ target.status.lines }} {{ phrase('行') }}</span>
+            </button>
+            <span v-if="selectionLabel" class="editor-status__selection">{{ selectionLabel }}</span
+            ><span class="editor-status__language"
+              >{{ target.language || 'UTF-8' }}<span class="editor-status__extra"> · UTF-8</span></span
+            ><span class="editor-status__saved" role="status"
+              ><span v-if="target.dirty" class="editor-dirty" /><Check v-else :size="14" />{{
+                phrase(target.saving ? '保存中…' : target.dirty ? '未保存' : '已保存')
+              }}</span
+            >
+          </template>
+          <span v-else class="editor-status__empty">{{ phrase('空白窗格：从文件列表或顶部标签打开文件') }}</span>
         </footer>
       </main>
     </div>
@@ -1011,6 +1113,10 @@ defineExpose({ openFile })
   border-top-color: var(--file-preview-accent);
   background: var(--file-preview-background);
 }
+/* Files open in another split pane stay readable with a quieter rule. */
+.editor-tab.is-shown {
+  border-top-color: color-mix(in srgb, var(--file-preview-accent) 38%, transparent);
+}
 .editor-tab__select {
   display: flex;
   align-items: center;
@@ -1024,8 +1130,11 @@ defineExpose({ openFile })
   background: transparent;
   font-size: 14px;
   cursor: pointer;
+  transition: color var(--motion-duration-fast) var(--motion-ease-fade);
 }
-.editor-tab.is-active .editor-tab__select {
+.editor-tab.is-active .editor-tab__select,
+.editor-tab.is-shown .editor-tab__select,
+.editor-tab__select:hover {
   color: var(--file-preview-text);
 }
 .editor-tab__select > span:first-of-type {
@@ -1078,6 +1187,31 @@ defineExpose({ openFile })
   background: var(--file-preview-panel);
   font-size: 13px;
   line-height: 1.5;
+}
+.editor-status__position {
+  display: inline-flex;
+  align-items: center;
+  margin: -4px -6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.editor-status__position:hover:not(:disabled) {
+  color: var(--file-preview-text);
+  background: var(--file-preview-panel-raised);
+}
+.editor-workspace .editor-status__position:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.editor-status__selection {
+  color: var(--file-preview-text);
+  font-variant-numeric: tabular-nums;
 }
 .editor-status__saved {
   display: inline-flex;

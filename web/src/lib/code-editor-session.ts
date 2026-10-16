@@ -6,3 +6,13 @@ export interface CodeEditorSession {
   scrollTop: number
   scrollLeft: number
 }
+
+/** Cursor and document facts the editor reports after every change. */
+export interface CodeEditorStatus {
+  line: number
+  column: number
+  lines: number
+  /** Characters across every selection range. */
+  selected: number
+  cursors: number
+}
