@@ -70,11 +70,13 @@ function assess(repo) {
   return assessCoverage({ repo, policy: POLICY, runs: loadRuns(repo) });
 }
 
-test('no completed full run always requires a full run', (t) => {
+test('no completed full run recommends a full run without blocking', (t) => {
   const { repo } = fixture(t);
   mkdirSync(join(repo, '.governance/security-audit'), { recursive: true });
   const report = assess(repo);
-  assert.equal(report.decision, 'full-required');
+  assert.equal(report.decision, 'full-recommended');
+  assert.equal(report.blocking, false);
+  assert.equal(report.participation, 'optional-candidate-only');
 });
 
 test('recent boundary changes are pending, while tests and non-boundary packages never count', (t) => {
@@ -90,7 +92,7 @@ test('recent boundary changes are pending, while tests and non-boundary packages
   assert.deepEqual(report.files, ['internal/agent/server.go']);
   commit(20, { 'README.md': 'later' });
   report = assess(repo);
-  assert.equal(report.decision, 'scoped-required');
+  assert.equal(report.decision, 'scoped-recommended');
   assert.match(report.reasons[0], /17 days old/);
 });
 
@@ -99,7 +101,7 @@ test('a new package is a new boundary and triggers a scoped run immediately', (t
   run('run-4', full(base));
   commit(1, { 'internal/mcpaccess/access.go': 'new' });
   const report = assess(repo);
-  assert.equal(report.decision, 'scoped-required');
+  assert.equal(report.decision, 'scoped-recommended');
   assert.deepEqual(report.newPackages, ['internal/mcpaccess']);
 });
 
@@ -109,7 +111,7 @@ test('a completed scoped run covers exactly its range; interrupted and partial r
   const first = commit(1, { 'internal/mcpaccess/access.go': 'new' });
   run('run-5', scoped(base, first, 'incomplete-platform-interruption'));
   let report = assess(repo);
-  assert.equal(report.decision, 'scoped-required');
+  assert.equal(report.decision, 'scoped-recommended');
   assert.deepEqual(report.interrupted.map((r) => r.name), ['run-5']);
   const second = commit(2, { 'internal/agent/server.go': 'v2' });
   run('run-6', scoped(first, second));
@@ -142,7 +144,7 @@ test('completed commit slices cover only declared commits and compose without co
   assert.deepEqual(report.commits.map((entry) => entry.sha), [second]);
   assert.deepEqual(report.files, ['internal/beta/b.go']);
   assert.deepEqual(report.newPackages, ['internal/beta']);
-  assert.equal(report.decision, 'scoped-required');
+  assert.equal(report.decision, 'scoped-recommended');
   assert.match(render(report, POLICY), /scoped_slice run=run-5 reviewed_commits=2/);
   const lastSlice = { ...scoped(base, third, 'complete', false), reviewed_commits: [second] };
   run('run-6', lastSlice);
@@ -304,7 +306,7 @@ test('an old full run requires a full run even without pending changes', (t) => 
   run('run-4', full(base));
   commit(31, { 'README.md': 'x' });
   const report = assess(repo);
-  assert.equal(report.decision, 'full-required');
+  assert.equal(report.decision, 'full-recommended');
   assert.match(report.reasons[0], /31 days old/);
 });
 
@@ -322,7 +324,7 @@ test('a package introduced only by a merge resolution is still a new boundary pa
   commit(2, {}, 'merge side');
   const report = assess(repo);
   assert.deepEqual(report.newPackages, ['internal/evil']);
-  assert.equal(report.decision, 'scoped-required');
+  assert.equal(report.decision, 'scoped-recommended');
 });
 
 test('a scoped run whose base object is missing is partial, and removed packages are not reported as new', (t) => {
@@ -357,7 +359,7 @@ test('runs outside the target history are not coverage', (t) => {
   git('checkout', '-q', '-');
   run('run-4', full(side));
   let report = assess(repo);
-  assert.equal(report.decision, 'full-required');
+  assert.equal(report.decision, 'full-recommended');
   assert.deepEqual(report.outside.map((r) => r.name), ['run-4']);
   run('run-5', full(base));
   report = assess(repo);
@@ -370,7 +372,7 @@ test('nested packages count as new boundary packages; nested non-boundary paths 
   run('run-4', full(base));
   commit(1, { 'internal/agent/sshlogin/login.go': 'new', 'internal/version/sub/x.go': 'v', 'internal/agent/assets/a.txt': 'x' });
   const report = assess(repo);
-  assert.equal(report.decision, 'scoped-required');
+  assert.equal(report.decision, 'scoped-recommended');
   assert.deepEqual(report.newPackages, ['internal/agent/sshlogin']);
 });
 
@@ -380,7 +382,7 @@ test('every invocation written in the workflows parses', () => {
     readFileSync(join(root, '.codex-workflows', name + '.workflow.yaml'), 'utf8')
       .split('\n')
       .filter((line) => line.includes('check-security-audit-coverage.mjs') && line.trim().startsWith('node')));
-  assert.equal(invocations.length, 3);
+  assert.equal(invocations.length, 2);
   for (const line of invocations) {
     const args = line.split('check-security-audit-coverage.mjs"')[1] ?? line.split('check-security-audit-coverage.mjs')[1];
     const argv = args.trim().split(/\s+/).map((part) => part.replace(/"\$\{\{[a-z_]+\}\}"/, 'HEAD'));
@@ -431,7 +433,7 @@ test('policy validation rejects stale or unexplained exclusions', (t) => {
   assert.match(failures, /internal\/version needs a concrete reason/);
 });
 
-test('main exits 3 only with --require and a pending decision', (t) => {
+test('legacy --require cannot block a candidate for pending coverage', (t) => {
   const { repo, commit, run, base } = fixture(t);
   run('run-4', full(base));
   commit(1, { 'internal/mcpaccess/access.go': 'new' });
@@ -440,9 +442,9 @@ test('main exits 3 only with --require and a pending decision', (t) => {
   try {
     assert.equal(main(['--validate'], repo), 0);
     assert.equal(main([], repo), 0);
-    assert.equal(main(['--require'], repo), 3);
-    assert.equal(main(['--require', '--format=json'], repo), 3);
-    assert.equal(main(['--target', 'HEAD', '--require'], repo), 3);
+    assert.equal(main(['--require'], repo), 0);
+    assert.equal(main(['--require', '--format=json'], repo), 0);
+    assert.equal(main(['--target', 'HEAD', '--require'], repo), 0);
   } finally {
     process.stdout.write = write;
   }
@@ -453,4 +455,36 @@ test('main exits 3 only with --require and a pending decision', (t) => {
   } finally {
     process.stderr.write = error;
   }
+});
+
+test('missing full and expired full remain advisory through legacy CLI', (t) => {
+  const { repo, commit, run, base } = fixture(t);
+  const write = process.stdout.write;
+  let output = '';
+  process.stdout.write = (text) => { output += text; return true; };
+  try {
+    assert.equal(main(['--require', '--format=json'], repo), 0);
+    assert.equal(JSON.parse(output).decision, 'full-recommended');
+    assert.equal(JSON.parse(output).blocking, false);
+    run('run-4', full(base));
+    commit(45, { 'internal/agent/server.go': 'changed' });
+    run('run-5', scoped(base, base, 'incomplete', false));
+    output = '';
+    assert.equal(main(['--require', '--format=json'], repo), 0);
+    const report = JSON.parse(output);
+    assert.equal(report.decision, 'full-recommended');
+    assert.equal(report.blocking, false);
+    assert.equal(report.interrupted.length, 1);
+    assert.equal(report.commits.length, 1);
+  } finally { process.stdout.write = write; }
+});
+
+test('release and ordinary governance do not invoke the optional coverage registry', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  for (const path of ['.codex-workflows/release-kpanel.workflow.yaml', 'scripts/verify-governance.sh']) {
+    const source = readFileSync(join(root, path), 'utf8');
+    assert.doesNotMatch(source, /^\s*node .*check-security-audit-coverage\.mjs/m);
+  }
+  const release = readFileSync(join(root, 'scripts/report-release-metrics.mjs'), 'utf8');
+  assert.doesNotMatch(release, /import.*check-security-audit-coverage|completedAuditRuns/);
 });

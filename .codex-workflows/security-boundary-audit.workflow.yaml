@@ -1,186 +1,114 @@
 ---
 name: security-boundary-audit
-description: "基于 Cloudflare security-audit-skill 方法的信任边界安全审计：侦察、覆盖账本、狩猎波、独立验证与结构化报告"
-version: "1.4"
-author: "Claude"
+description: "可选 CF 候选辅助：限时、聚焦、只读发现与独立验证，不阻断候选、集成或发布"
+version: "2.0"
+author: "Codex"
 tags: [security, audit, trust-boundary, governance]
 params: [project_dir, baseline_ref, ledger_dir, profile, scope_paths, skill_dir, governance_dir]
 created: "2026-09-18T00:00:00+08:00"
-updated: "2026-10-05T00:00:00+08:00"
+updated: "2026-10-16T00:00:00+08:00"
 ---
 
-# KPanel Security Boundary Audit
+# KPanel Optional Security Boundary Audit
 
 ## Purpose
 
-对 KPanel 执行跨信任边界的逻辑不变量安全审计，补充 `make security-audit`
-（govulncheck/npm audit）和 Trivy 只覆盖已知依赖漏洞的盲区：验证入口校验、
-授权绑定、写路径隔离和跨组件契约不变量。审计只读源码并产出结构化账本与
-findings；不修改业务代码，不替代 L0-L3，也不替代人工安全复核。
-
-三档模式按 `PROJECT_RULES.md` 5.4 选择：
-
-- **guidance**：回答安全问题或复查单个改动，不写任何文件，不编排子代理；
-- **scoped**：从 `${{scope_paths}}` 当前源码派生单元，复验相关旧单元并补充新入口、新边界与生命周期；
-- **full**：全量重建账本（覆盖检查判定 `full-required`，或用户明示）。
-
-是否到期不凭记忆判断，统一由 `scripts/check-security-audit-coverage.mjs` 按 5.4 计算。
-常规问答/单改动先 guidance；改变已有包内的关键安全不变量也按 5.4 优先做聚焦 scoped，
-不能以新包提醒未命中替代语义判断。full 不因每次发版或为了凑观察样本重复执行。
+按 PROJECT_RULES.md 5.4 为独立候选分支提供有价值的安全线索。普通开发、集成、RC、稳定发布和补验
+不必调用本 workflow，不自动追赶历史审计积压，不要求 Security-Audit trailer 或限期豁免。
+产品 L0-L3、依赖漏洞扫描与已证实高风险漏洞响应继续按原标准执行。
 
 ## Prerequisites
 
-- 已阅读 `PROJECT_RULES.md` 5.4 节、本 workflow 全文和 skill 的 `SKILL.md`。
-- Skill 来源（上游 repo `cloudflare/security-audit-skill`）必须先 pin 到固定
-  commit 并记录在 `${{ledger_dir}}` 的 run metadata 中。上游会持续迭代：发现
-  新 commit 只产生候选信号（检测经 `dependency-freshness` 节奏，不自动升级）；
-  升级决策按 `PROJECT_RULES.md` 5.2 受控自我改进执行——先对新 commit 跑一轮
-  scoped 对照并产出差异报告，新验证器必须重验既有账本通过，值得升级才换 pin，
-  换 pin 本身是独立治理提交。
-- `${{project_dir}}` 是干净的专用源码 worktree；审计只读目标。`${{ledger_dir}}` 必须为仓库外新建 run 目录，
-  先在外部完成审计，结束后由父任务将经过披露审查的最小治理产物提交到 `.governance/security-audit/run-<N>/`。
-  原始 scratch、运行环境、秘密与未复核攻击细节不得随目录整包入库。
-- `${{skill_dir}}` 是已按依赖策略 pin 检出的上游 `skills/security-audit` 绝对路径。
-- 审计智能体必须支持工具调用与并行子代理；验证器（`validate-findings.cjs`、
-  `validate-coverage-ledger.cjs`）需要 Node.js 且 `O_NOFOLLOW` 支持意味着
-  Windows 原生 Node 不可用，须在 WSL 或 Linux 下运行。
-- scoped/full 专用审计代理及每个侦察、hunter、coverage critic、独立验证、Phase-5 记录核验子代理
-  均按 `PROJECT_RULES.md` 5.4 显式配置 `gpt-6-luna` / `max`。启动前确认能提供该配置；
-  不可用就报告并保存实际终态，不静默替换。guidance 不编排子代理，治理复核不套用此配置。
-- 无 OS 沙箱（隔离网络、资源限额、scratch-only 写）时禁止执行目标代码；
-  需要动态确认的线索一律记为 `needs_validation` 并写明缺失能力，不得降级为
-  "已确认"。
+- 只在明确选择辅助任务时读取固定 pin 的 Cloudflare security-audit-skill/SKILL.md 与必要阶段说明。
+  上游更新只作候选，不自动升级 pin 或为维护工具启动产品审计。
+- guidance 仅回答、不写文件、不编排子代理；scoped 选定单个功能或相关不变量；full 仅接受用户明确
+  请求并在启动前确定预算。覆盖查询不是启动指令。
+- scoped 默认预算引用 PROJECT_RULES.md 5.4；记录最大时间、调用数（含负责人）、并发和停止条件。
+  没有独立资源直接 deferred，不能抢占产品发布资源或让发布等待。禁止自动续跑、补样本或扩大范围。
+- scoped/full 的专用负责人及每个侦察、hunter、coverage critic、独立验证和记录核验子代理均显式
+  使用 gpt-6-luna / max；不可用如实结束，不能静默替换。该配置不限制独立治理复核。
+- project_dir 是干净的专用源码 worktree，只读目标；ledger_dir 是仓库外新目录。无 OS 沙箱
+  （隔离网络、资源限额、scratch-only 写）禁止执行目标代码，动态能力不足保留 needs_validation。
 
 ## Steps
 
-### 1. 固定范围、基线与既有账本
+### 1. 冻结选定范围与预算
+
+记录 source_ref/tree/clean、治理入口提交、上游 pin、选定路径/不变量、预期产物及停止条件。
+开始/结束使用同一入口绑定源码身份：
 
 ```bash
-cd "${{project_dir}}"
 node "${{governance_dir}}/scripts/security-audit-baseline.mjs" "${{project_dir}}" "${{baseline_ref}}"
 ```
 
-将输出的 commit/tree/clean 写入 run metadata，结束时重跑且必须与开始时相同。
-不匹配或 dirty 时停止，不 reset/stash 他人改动；保存为独立提交或另建干净源码工作树后重新冻结。
-治理入口可来自独立工作树，目标源码无需为了加入脚本改变身份；记录该入口的提交身份。
-本入口只绑定 Git 跟踪源码；忽略文件不属于输入，不执行或依赖这些文件。
-
-`${{profile}}` 为 `full` 时读取全部既有 run 目录做增量输入；`scoped` 读取所有兼容旧 run 中
-与 `${{scope_paths}}` 相关的账本及 findings，比较相关源码而非只比较旧 ref。无账本（首次 full）时
-记录"no prior ledger"且不宣称既往覆盖。历史 dirty run 缺完整快照时明确不可完全复现，不追溯伪造证据。
-
-scoped 的范围取自覆盖检查，不手写：
+身份改变时停止并保存现场，禁止 reset/stash 他人内容。仅加载与本批有关的历史证据，不要求扫完所有 run。
+可选查询待审范围：
 
 ```bash
 node "${{governance_dir}}/scripts/check-security-audit-coverage.mjs" --target "${{baseline_ref}}" --format=json
 ```
 
-输出的 `nextScoped.comparison_base`（最近一次已完成 full 的源码）是本次 `comparison_base`，`files` 与 `commits`
-是全局待审面，`newPackages` 必须新增单元；已被其他 scoped 覆盖且相关不变量未变的提交不重复审。
-范围积压时按单个功能或相关不变量拆批，从上述待审面选择本批 `reviewed_commits` 精确 SHA；
-必须展开每个提交的全部边界文件与直接调用链，不能只从 `files` 选几个路径就宣布该提交已审。
-在 metadata 同时记录每个 SHA 对应的账本单元、范围理由、优先不变量、未审清单和复核证据。
-完整分批声明由独立 critic 核对；批次完成后 `run_status=complete`，仅累计列表覆盖，
-新分批统一 `scope_complete=false`，--validate 拒绝列表与 true 的歧义组合，使旧入口也只把它当 partial，
-不扩大区间。下一次检查仍列剩余提交。
-若未使用 `reviewed_commits`，仅在覆盖全部待审面时写 `scope_complete=true`；旧 partial 不计覆盖。
-run-4 起 `run-metadata.json` 必须含 `scope_mode`（`full`/`scoped`；skill 自带的 `project_mode` 视为同义）、`run_status`（完成写 `complete`，否则写中止原因）、
-精确 40 位 `source_ref`、`source_dirty: false`，scoped 另含 `comparison_base` 与 `scope_complete`（审完全部列出改动才写
-`true`）；`--validate` 在治理门禁中校验这些字段。
+输出 participation=optional-candidate-only、blocking=false；scoped-recommended/full-recommended 和
+14/30 天只帮助排序。查询出错记 unavailable，不形成产品阻断或“已审通过”。
+任务范围由选定问题决定，不强制吞下 files/commits 全局积压。若声明提交覆盖，reviewed_commits 必须
+覆盖每个 SHA 的全部边界文件及直接调用链；只审几个路径时不计该提交覆盖。
 
-启动前由审计负责人完成能力与预算预检，将 `execution_plan` 附在 metadata：`reviewed_commits`/账本单元范围、
-`model`、`reasoning_effort`、`validation_mode`（source-only 或实际 OS 沙箱证据）、`max_wall_seconds`、
-`max_agent_invocations`、`max_concurrency`、停止条件、需动态验证的风险及接手人。预算由本批规模和实际
-执行能力确定；无法提供动态能力时预先保留 needs_validation，不在猎取完成后临时扩大目标执行权限。
-每波前核对剩余预算，超限或中断时保存已完成证据和缺口、写 partial/incomplete 终态；未完成的本批不计
-覆盖。下一次从精确提交/单元接续并复核源码是否变化，不能复用变化后失效的 clean 结论。
-如调整预算，保存原计划并说明新增范围/验证任务和理由；不得通过无限续跑掩盖超预算。
+### 2. 聚焦侦察与猎取
 
-运行被平台中止或未能完成验证时，`run_status` 如实写中止原因并入库元数据，它不计入覆盖。续跑时从已落盘的
-账本按单元拆成更小批次重新进入验证，只做源码核对；仍无法完成的线索记为 `needs_validation`，不重复整轮重跑。
+按固定 skill 从当前源码建立范围内单元，相关旧账本仅作参考；范围外明确标记。
+在预算内安排只读侦察、hunter 与独立 coverage critic，父任务是账本唯一写入者。
+critic 发现的范围内缺口只在剩余预算内处理，超出则 deferred/incomplete；不能自动扩展到全仓。
+正式 complete 仍要求冻结范围全部完成并独立核对，未完成批次不计覆盖。
 
-### 2. 侦察与账本播种
+### 3. 候选独立验证与报告
 
-按 skill 的 RECONNAISSANCE.md 派出多个只读侦察代理（产品栈、身份授权、
-入口面与 sink、执行能力），合成 `architecture.md`；以
-表面 × 信任边界 × 子系统 × 攻击类 派生确定性覆盖单元并写入
-`coverage-ledger.json`，排序后运行验证器。重复 ID 或编码违规必须修复后
-才能进入狩猎。
-
-### 3. 覆盖狩猎波
-
-按 HUNTING.md 为每个单元指派隔离 hunter 子代理；hunter 返回的结构化结果
-按单元回写账本（单写者：父进程唯一持有账本写入权）。每波后由独立 coverage
-critic 复核缺口；critic 提出的新单元进入下一波。`scoped` 模式只指派
-范围内单元，包括 critic 新发现的范围内单元；范围外明确保留为 `out_of_scope`，不得沿用旧 covered
-声称本轮覆盖。full 模式持续到 critic 报告无缺口。
-
-信任边界范围以 `.governance/security-audit/boundary-policy.json` 为唯一权威（默认全部为边界，
-只有写明理由的包除外），本 workflow 不复述具体包名，防止双写漂移。
-
-### 4. 候选独立验证
-
-先去重 fingerprint 并核对旧未决项，在本轮范围内优先验证高权限/凭据/撤销等关键线索，再追加同类猎取。
-每个 hunter 产出的 candidate 交给未参与狩猎的独立验证代理尝试反驳；
-confirmed 必须有完整源码追溯，needs_validation 必须有精确 blocker。
-验证者不可是发现者。findings.json 按 skill 的 report-schema 写入并通过
-`validate-findings.cjs`。
-
-### 5. 记录核验与报告
-
-对每条 surviving 记录执行独立 Phase-5 记录核验（引用文件:行逐一打开核对）。
-最后派生 `REPORT.md`、`FINDINGS-DETAIL.md`、`NEEDS-VALIDATION.md`，与两个
-验证器最终结果一并入库。报告必须区分 confirmed / needs_validation / 加固
-建议，且明确"机器结论是高可信线索，不是人工安全复核结论"。
-
-### 6. 交付与试行观察
-
-按标准交付包回传：基线、账本变更、findings、成本（代理数/token/时长）和
-建议。full 结果同时记入试行观察（见 PROJECT_RULES.md 5.4 的试用退出条款）。
-新尝试附 `actual_cost`：真实开始/结束、`wall_seconds`、代理数、实际调用数、模型/推理配置、平台等待、
-验证与记录返工、`tokens`/金额（不可用写 null 和原因）。计划数、目录数、累计事件数不能冒充实际调用，
-等待/返工与猎取可能重叠，不把分项直接相加为总时长。运行身份绑定 source_ref、开始时间与原件摘要，
-run 序号不能作为唯一统计 ID；已登记外部/中断尝试也保留成本，不改历史记录。
-报告分开记录原始 confirmed、未决、独立成立且转修复的去重有效产出和后续关闭证据；覆盖遗漏/加固另记。
-新 needs_validation 在现有修复追踪登记 fingerprint、负责人、能力 blocker、最小验证计划、复核日与处置
-状态（合法值/时限引用 5.4），动态验证结果不追溯改写历史 verdict。稳定版任务读取当前候选未决项，
-不能因覆盖 ok 直接关闭风险；已确认高风险仍按既有漏洞响应阻断。
-与发布相关时由唯一发布任务记录 CF 确实阻塞发车的起止及原件，并与 L3、CI、构建、返工时间线对照；
-并行不相加，无原件保持未报告。观察窗口和退出准则以 5.4 为准，不据缺失 token 推断资金性价比。
-所有 confirmed finding 转入正常开发流程修复，不在审计任务内修复。
-在安全审计目录的修复追踪记录中保留 fingerprint、发现 run/source、修复 commit、独立复核与回归证据，
-分别核对 RC tag、stable tag 的祖先关系和实际 Release 状态；部署另以验收记录为证。
-稳定版尚未公开时状态保持 `pending-stable`，由该版本唯一发布任务在验收时补齐；不能为了关闭 finding
-提前删除仍服务 RC 的候选分支。候选处置引用 `docs/release-channels.md`，不在审计流程另定义归档规则。
-
-## Parameters
-
-- `${{project_dir}}`：审计目标 worktree。
-- `${{baseline_ref}}`：审计基线（full 默认 `origin/main`，scoped 为任务分支 HEAD）。
-- `${{ledger_dir}}`：仓库外的新 run 目录，结束后选择性入库；已有 run 只作为增量输入。
-- `${{skill_dir}}`：固定 commit 的上游 skill 绝对路径。
-- `${{governance_dir}}`：提供已提交基线检查入口的治理工作树，通常与 project_dir 相同；旧源码复核时可独立指定。
-- `${{profile}}`：`guidance` / `scoped` / `full` 之一。
-- `${{scope_paths}}`：scoped 模式的改动面，取自覆盖检查输出的 `files`。
-  分批时派生为 reviewed_commits 的全部边界文件/直接调用链，未选提交保持待审；不改变全局覆盖阈值。
-
-## Verification
+去重 fingerprint，优先验证能形成具体修复的已有线索。发现者与验证者必须不同；验证者尝试反驳，
+confirmed 必须有完整源码追溯和独立记录核验，needs_validation 写明能力缺口。
+无可验证线索可以结束；不能为形成分支制造漏洞、空提交或延长审计。
+正式 findings/ledger 运行固定 skill 验证器（Linux/WSL O_NOFOLLOW 支持），只证明结构有效：
 
 ```bash
 node "${{skill_dir}}/validate-findings.cjs" "${{ledger_dir}}/findings.json"
 node "${{skill_dir}}/validate-coverage-ledger.cjs" "${{ledger_dir}}/coverage-ledger.json"
 ```
 
-两个验证器 PASS 是结构有效性的机器下限；覆盖声明的质量以账本单元与
-reviewed_paths 为准，不以代理数量或运行时长为准。
-以上两个命令在支持 `O_NOFOLLOW` 的 Linux/WSL 中使用对应 Linux 路径执行；Windows 不静默跳过。
+预算耗尽时只保存已有证据、真实终态与缺口，不为完成三份报告或记录返工无限续跑。
+run-4 起沿用 scope_mode、run_status、精确 source_ref、source_dirty=false；scoped 含 comparison_base、
+scope_complete。reviewed_commits 列表仅在本批完整核验后计覆盖，scope_complete=false；不完整批次
+run_status=incomplete，不修改旧 verdict，不把停止、格式通过或发布完成当作覆盖通过。
+
+### 4. 候选交付
+
+保存真实起止、调用数、模型配置、范围和终态；tokens/金额未知写 null。不强制逐发布统计历史成本。
+有价值线索按 PROJECT_RULES.md 5.4 转入正常候选修复任务，由独立源码分支完成验证、修复和回归。
+记录 fingerprint、证据缺口、优先级、接手条件和后续修复身份；未验证线索不要求发布前补审或风险豁免。
+已独立证实的紧急/高风险漏洞仍按产品质量标准处置。审计任务自身只读源码，不直接合并或发布修复。
+
+共享入库是按需交付：先披露检查，再选择最小脱敏产物到 .governance/security-audit/run-<N>/。
+入库时显式运行治理入口的元数据检查：
+
+```bash
+node "${{governance_dir}}/scripts/check-security-audit-coverage.mjs" --validate
+```
+
+校验失败只阻止这些审计产物被宣称有效，不阻断无关产品任务。含可复用攻击细节的原件在对应修复
+公开前留在仓库外或不推送的本地分支。历史 run 与补审豁免保持原文，不承担现行门槛。
+
+## Parameters
+
+- project_dir / baseline_ref：精确干净源码 worktree 与提交。
+- ledger_dir：仓库外新运行目录，不能覆盖原件。
+- profile：guidance / scoped / full，选择与预算遵守 5.4。
+- scope_paths：本批明确选择的路径与直接调用链；覆盖查询仅辅助选择。
+- skill_dir：固定 pin 的上游 skills/security-audit 绝对路径。
+- governance_dir：提供已提交基线/覆盖工具的治理工作树，旧源码可独立指定。
+
+## Verification
+
+核对源码身份、已声明范围、独立验证与真实终态；正式结构化产物执行上述验证器。
+验证器通过不证明安全，未完成 run 不计覆盖；不需要为满足产品发布而完成此 workflow。
 
 ## Notes
 
-- KPanel 未建立实测检出率；不把上游比例或单次无发现当本项目安全保证，覆盖结论只在账本维度上声明。
-- 18+ 代理并行读仓时注意与其他并行任务的 worktree/资源冲突；审计本身
-  只读源码，不触碰测试环境与部署。
-- Linux CI 不运行本 workflow；它是例行安全复核手段，不是提交门禁。CI 只运行覆盖检查的 `--validate`
-  （策略与元数据结构），是否到期只在稳定版发车预检中阻断，预览版只记录。
-- run-1 基线（45 单元、1 confirmed、12 加固项，输出于
-  2026-09-18）应从历史目录读取为增量输入；不得复制到本次 `${{ledger_dir}}` 冒充当前证据。
+不新增定时任务、常驻监控、全仓追赶或自动恢复。历史收益保持真实，缺数据不推断零成本/零风险。
+工具代码回归可在治理测试中执行；普通 CI 不运行审计，也不无条件检查整个历史 run 注册表。

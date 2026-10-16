@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Trust-boundary audit trigger (PROJECT_RULES.md 5.4). For one target commit it answers: which
+// Optional trust-boundary audit advisory (PROJECT_RULES.md 5.4). For one target commit it answers: which
 // trust-boundary changes are not yet covered by a completed audit run, and is a scoped or full run due?
 // Coverage is the union of completed runs (see classifyRuns); an interrupted or undeclared partial run never counts.
 // Boundary scope is default-deny: every package under the policy's
@@ -228,10 +228,11 @@ export function assessCoverage({ repo = repoRoot, target = 'HEAD', policy, runs 
   const ageDays = (seconds) => Math.floor((targetTime - seconds) / DAY_SECONDS);
   const classes = classifyRuns(git, runs, targetSha);
   const report = {
+    participation: 'optional-candidate-only', blocking: false,
     target: targetSha, ...classes, fullAgeDays: null, commits: [], covered: {}, files: [], newPackages: [], reasons: [],
   };
   if (!classes.lastFull) {
-    report.decision = 'full-required';
+    report.decision = 'full-recommended';
     report.reasons.push('no completed full run in target history');
     return report;
   }
@@ -285,14 +286,14 @@ export function assessCoverage({ repo = repoRoot, target = 'HEAD', policy, runs 
   report.oldestAgeDays = report.commits.length ? Math.max(...report.commits.map((commit) => commit.ageDays)) : 0;
   if (report.fullAgeDays > policy.fullMaxAgeDays) report.reasons.push('last full run is ' + report.fullAgeDays + ' days old (max ' + policy.fullMaxAgeDays + ')');
   if (report.reasons.length) {
-    report.decision = 'full-required';
+    report.decision = 'full-recommended';
     return report;
   }
   if (report.newPackages.length) report.reasons.push('new boundary packages: ' + report.newPackages.join(', '));
   if (report.oldestAgeDays > policy.scopedMaxAgeDays) {
     report.reasons.push('oldest unaudited boundary change is ' + report.oldestAgeDays + ' days old (max ' + policy.scopedMaxAgeDays + ')');
   }
-  report.decision = report.reasons.length ? 'scoped-required' : 'ok';
+  report.decision = report.reasons.length ? 'scoped-recommended' : 'ok';
   return report;
 }
 
@@ -301,7 +302,7 @@ function short(sha) {
 }
 
 export function render(report, policy) {
-  const lines = ['security_audit_coverage target=' + short(report.target) + ' decision=' + report.decision];
+  const lines = ['security_audit_coverage participation=optional-candidate-only blocking=false target=' + short(report.target) + ' decision=' + report.decision];
   lines.push(...report.reasons.map((reason) => '  reason: ' + reason));
   if (report.lastFull) {
     lines.push('last_full run=' + report.lastFull.name + ' source=' + short(report.lastFull.source)
@@ -394,7 +395,9 @@ export function main(argv, repo = repoRoot) {
   } else {
     process.stdout.write(render(report, policy) + '\n');
   }
-  return options.require && report.decision !== 'ok' ? 3 : 0;
+  // Legacy callers cannot restore a release gate with --require. Invalid inputs still fail above.
+  if (options.require) process.stderr.write('CF audit is optional; --require no longer enforces coverage.\n');
+  return 0;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

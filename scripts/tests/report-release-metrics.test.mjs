@@ -1062,25 +1062,14 @@ test('summarizePreviewMetrics refuses to guess whether a train already shipped',
   ], options), TypeError);
 });
 
-test('stable records from v1.21.0 must state the coverage-check decision and how a pending one was resolved', () => {
-  const record = (line) => acceptanceDocument('v1.21.0', []) + (line === null ? '' : '\n' + line) + '\n';
-  const done = new Set(['run-6', 'run-7']);
-  const direct = (line) => securityCoverageErrors(record(line), 'stable', done).join('\n');
-  assert.match(direct(null), /must record the 覆盖检查 decision/);
-  assert.match(direct('- 覆盖检查：'), /must record the 覆盖检查 decision/);
-  assert.match(direct('- 覆盖检查：已运行'), /must name the decision/);
-  assert.equal(direct('- 覆盖检查（decision、未审计提交数）：decision=ok，未审计 0'), '');
-  assert.match(direct('- 覆盖检查：decision=scoped-required'), /recorded as complete/);
-  assert.equal(direct('- 覆盖检查：decision=scoped-required，补完 run-7 后重跑为 ok'), '');
-  assert.match(direct('- 覆盖检查：decision=scoped-required，run-3/run-5 曾中断'), /recorded as complete/);
-  assert.match(direct('- 覆盖检查：decision=full-required，用户豁免'), /user waiver/);
-  assert.equal(direct('- 覆盖检查：decision=full-required；用户原话"先发"，豁免，补审截止 2026-10-05'), '');
-
-  // Through the real validator and the repository's own runs: run-6 is complete, run-3 and run-5 were interrupted.
-  const stable = 'docs/release-v1.21.0-acceptance.md';
-  const errors = (line, label = stable) => validateAcceptanceMetricsRaw(record(line), label).join('\n');
-  assert.equal(errors('- 覆盖检查：decision=scoped-required，补完 run-6'), '');
-  assert.match(errors('- 覆盖检查：decision=scoped-required，历史边界包仍要求补审且 run-3/run-5 曾中断'), /recorded as complete/);
-  assert.equal(errors(null, 'docs/release-v1.21.0-rc.9-acceptance.md'), '');
-  assert.equal(validateAcceptanceMetricsRaw(acceptanceDocument('v1.20.0', []) + '\n', 'docs/release-v1.20.0-acceptance.md').join('\n'), '');
+test('stable acceptance treats CF as optional and accepts pending history without a waiver', () => {
+  const record = (line) => acceptanceDocument('v1.27.0', []) + (line === null ? '' : '\n' + line) + '\n';
+  for (const line of [null, '- 覆盖检查：', '- 覆盖检查：not-run', '- 覆盖检查：unavailable',
+    '- 覆盖检查：decision=ok', '- 覆盖检查：decision=scoped-recommended',
+    '- 覆盖检查：decision=full-recommended', '- 覆盖检查：decision=scoped-required，run-3 incomplete',
+    '- 覆盖检查：decision=full-required；历史豁免 2026-01-01 已过期']) {
+    assert.deepEqual(securityCoverageErrors(record(line)), [], String(line));
+    assert.deepEqual(validateAcceptanceMetricsRaw(record(line), 'docs/release-v1.27.0-acceptance.md'), [], String(line));
+  }
+  assert.match(securityCoverageErrors(record('- 覆盖检查：已运行')).join('\n'), /known decision/);
 });

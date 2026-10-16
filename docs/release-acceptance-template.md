@@ -41,8 +41,10 @@
 
 ## 外部审计与修复交付
 
+CF 栏目仅在有相关辅助结果时填写，不是发布前置；已证实漏洞的处置仍按正常质量标准记录。
+
 - 安全审计 run / 精确源码基线 / 范围与未覆盖项：
-- 覆盖检查（`check-security-audit-coverage.mjs` 的 decision、未审计提交数；RC 只记录。稳定版带 `--require`，非 ok 时写补审 run，或用户原话、理由与不超过 14 天的补审截止日）：
+- 覆盖检查（CF 可选；未运行可省略或写 not-run，查询失败写 unavailable；运行时记录真实 decision/范围，不要求补审或豁免，不代表安全通过）：
 - finding fingerprint / 修复 commit / 独立复核与回归证据：
 - 修复交付状态：源码 / RC / 稳定版 / 部署分别记录；stable tag 包含修复与公开 Release 的证据：
 - OCR 观察区间 / 适用候选计数及口径 / 有效、skipped、unreported 数 / 经抽查成立的 constrained-only：

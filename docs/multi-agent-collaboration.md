@@ -124,7 +124,8 @@ Windows 没有 Make 时使用 `node scripts/run-repo-bash.mjs <script>` 调用�
 
 - 按任务所需能力、当前上下文、工具可用性和路径冲突选择智能体，不为模型品牌固定永久角色。
 - 协调、分析、开发、验证、集成和发布均可由任一经授权智能体承担，但同一时刻角色和路径所有权唯一。
-- 信任边界安全审计（`PROJECT_RULES.md` 5.4）对执行框架中立：任何支持工具调用与并行子代理的
+- CF 信任边界审计（`PROJECT_RULES.md` 5.4）是非阻断的可选候选辅助，不自动参与开发/集成/发布；
+  历史未完成范围和未验证线索不要求限期补审或豁免。需要执行时对框架中立：任何支持工具调用与并行子代理的
   智能体经 `.codex-workflows/security-boundary-audit.workflow.yaml` 同一入口执行；账本与 findings
   入库 `.governance/security-audit/`，是跨框架共享的增量状态，格式由 skill 验证器统一校验。
   审计产出的 confirmed 记录是高可信线索而非人工复核结论，后续修复与验证仍按正常流程执行。

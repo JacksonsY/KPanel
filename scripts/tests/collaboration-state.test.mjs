@@ -261,7 +261,7 @@ test('code candidates get a proportional, non-blocking OCR line review reminder'
   }
 });
 
-test('a candidate that adds a trust-boundary package gets a non-blocking audit reminder', () => {
+test('candidate delivery never requires CF discovery or trailers, including broken audit policy', () => {
   const state = fixture();
   const check = () => run(state.writer, '--role', 'writer', '--base-ref', state.baseline, '--require-candidate');
   const write = (path, text) => {
@@ -287,26 +287,26 @@ test('a candidate that adds a trust-boundary package gets a non-blocking audit r
     git(state.writer, 'commit', '-m', 'feat: new boundary package');
     result = check();
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /security_audit=missing new_boundary_packages=internal\/mcpaccess advisory: run \.codex-workflows\/security-boundary-audit/);
+    assert.doesNotMatch(result.stdout, /security_audit=|Security-Audit:|security-boundary-audit/);
 
     git(state.writer, 'commit', '--allow-empty', '-m', 'docs: defer audit\n\nSecurity-Audit: deferred reason=test');
     result = check();
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /security_audit=recorded new_boundary_packages=internal\/mcpaccess\n/);
+    assert.doesNotMatch(result.stdout, /security_audit=|Security-Audit:|security-boundary-audit/);
 
     write('internal/mcpbridge/bridge.go', 'package mcpbridge\n');
     git(state.writer, 'add', '-A');
     git(state.writer, 'commit', '-m', 'feat: another boundary package after the decision');
     result = check();
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /security_audit=stale new_boundary_packages=internal\/mcpaccess,internal\/mcpbridge advisory:/);
+    assert.doesNotMatch(result.stdout, /security_audit=|Security-Audit:|security-boundary-audit/);
 
     write('.governance/security-audit/boundary-policy.json', '{not json');
     git(state.writer, 'add', '-A');
     git(state.writer, 'commit', '-m', 'test: broken policy');
     result = check();
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /security_audit=unavailable reason=/);
+    assert.doesNotMatch(result.stdout, /security_audit=|Security-Audit:|security-boundary-audit/);
   } finally {
     state.cleanup();
   }

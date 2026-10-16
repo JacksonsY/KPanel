@@ -5,7 +5,6 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadRuns } from './check-security-audit-coverage.mjs';
 
 const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
 const PREVIEW_RELEASE_TAG = /^(v\d+\.\d+\.\d+)-rc\.\d+$/;
@@ -191,31 +190,17 @@ const PROCESS_INCIDENT_POSITIONS = new Set(['before-production-write', 'after-pr
 const PROCESS_INCIDENT_PLACEHOLDER = /^(?:<.*>|无|未知|未记录|未验证|不适用|待.*|n\/?a|none|null|unknown|tbd|todo)$/i;
 const PROCESS_INCIDENT_REPEAT_WINDOW = 5;
 const PROCESS_INCIDENT_REPEAT_REQUIRED_FROM = [0, 100, 1];
-// PROJECT_RULES.md 5.4: from v1.21.0 every stable record states the coverage-check decision, and a pending
-// decision names the completed run or the user's waiver with its deadline. RC records only record it.
-const SECURITY_COVERAGE_REQUIRED_FROM = [1, 21, 0];
+// PROJECT_RULES.md 5.4: CF is optional for stable and preview releases. Preserve historical vocabulary
+// when a record supplies it, but do not load the audit registry or require completion/waivers.
 const SECURITY_COVERAGE_LINE = /^- 覆盖检查[^：\n]*：[ \t]*(.*)$/m;
-const SECURITY_COVERAGE_DECISIONS = /\b(?:ok|scoped-required|full-required)\b/g;
+const SECURITY_COVERAGE_DECISIONS = /\b(?:ok|scoped-recommended|full-recommended|scoped-required|full-required|not-run|unavailable)\b/;
 
-function completedAuditRuns() {
-  return new Set(loadRuns().filter((run) => run.complete).map((run) => run.name));
-}
-
-// A pending decision is resolved only by a run recorded as complete, not by mentioning an interrupted one.
-export function securityCoverageErrors(markdown, label = 'acceptance record', completedRuns = completedAuditRuns()) {
+export function securityCoverageErrors(markdown, label = 'acceptance record') {
   const value = validValue(markdown.replace(/\r\n/g, '\n').match(SECURITY_COVERAGE_LINE)?.[1]);
-  if (value === null) {
-    return [label + ': release v1.21.0 and later must record the 覆盖检查 decision (PROJECT_RULES.md 5.4)'];
-  }
-  const decisions = new Set(value.match(SECURITY_COVERAGE_DECISIONS) ?? []);
-  if (decisions.size === 0) return [label + ': 覆盖检查 must name the decision: ok, scoped-required or full-required'];
-  const pending = [...decisions].some((decision) => decision !== 'ok');
-  const namedComplete = (value.match(/\brun-\d+\b/g) ?? []).some((name) => completedRuns.has(name));
-  const waived = /豁免/.test(value) && /\b\d{4}-\d{2}-\d{2}\b/.test(value);
-  return pending && !namedComplete && !waived
-    ? [label + ': a pending 覆盖检查 decision must name a run-<N> recorded as complete in .governance/security-audit,'
-      + ' or the user waiver with its YYYY-MM-DD deadline']
-    : [];
+  if (value === null) return [];
+  return SECURITY_COVERAGE_DECISIONS.test(value)
+    ? []
+    : [label + ': optional 覆盖检查 must state a known decision, not-run or unavailable'];
 }
 
 function acceptanceFields(markdown) {
@@ -623,9 +608,7 @@ export function validateAcceptanceMetrics(markdown, label = 'acceptance record')
     errors.push(label + ': release v0.90.2 and later requires release-process-incidents evidence');
   }
   // Only a stable filename identifies a stable record; RC titles also parse as X.Y.Z.
-  if (versionAtLeast(versions.filename, SECURITY_COVERAGE_REQUIRED_FROM)) {
-    errors.push(...securityCoverageErrors(markdown, label));
-  }
+  errors.push(...securityCoverageErrors(markdown, label));
   for (const error of process.structureErrors) errors.push(label + ': ' + error);
   for (const error of processIncidents.structureErrors) errors.push(label + ': ' + error);
   if (process.defaultIgnorables) {

@@ -26,7 +26,8 @@
 - 界面与视觉变更统一参考 [`docs/ui-visual-language.md`](../docs/ui-visual-language.md)；本目录只提供执行适配，
   不复制字号、颜色或可访问性规则。
 - `security-boundary-audit.workflow.yaml`：按 `PROJECT_RULES.md` 5.4 执行跨信任边界的逻辑不变量安全审计
-  （guidance / scoped / full 三档），账本与 findings 入库 `.governance/security-audit/`；不是提交门禁。
+  （guidance / scoped / full 三档），仅按需形成候选修复线索；不作为候选、集成或任何发布门禁。
+  不自动启动或追赶历史积压，按需保存最小脱敏产物到 `.governance/security-audit/`。
 - `ocr-line-review.workflow.yaml`：按 `PROJECT_RULES.md` 5.5 以 open-code-review 委托模式为候选差异提供
   固定版本的文件圈选与逐文件覆盖清单，约束臂与自由臂双跑；代码候选交付前与质量审计中默认自动参与，不是门禁或独立复核。
 - `evolve-kpanel.workflow.yaml`：从可复核证据形成改进假设，经独立复核、最小试行、指标对比和观察窗口

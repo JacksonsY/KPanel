@@ -272,7 +272,7 @@
         "cloudflare/security-audit-skill": {
           "repository": "cloudflare/security-audit-skill",
           "pinnedCommit": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
-          "adoptionPolicy": "candidate-signal-only; upgrade requires scoped comparison run, ledger revalidation by new validators, and a separate governance commit (PROJECT_RULES 5.2/5.4)"
+          "adoptionPolicy": "optional-candidate-tool; upstream checks are opt-in and have no adoption deadline; upgrade requires pinned compatibility checks and a separate governance commit, not a product audit (PROJECT_RULES 5.2/5.4)"
         }
       }
     },

@@ -133,18 +133,20 @@ test('managed script revisions ignore unrelated repository commits but expose co
   assert.match(update.source, /managed file content/);
 });
 
-test('audit skill revisions become scoped-comparison candidates only when the upstream head moves', () => {
+test('audit skill revisions remain optional with no product audit or adoption deadline', () => {
   const pinned = 'a'.repeat(40);
   assert.equal(auditSkillRevisionCandidate('cloudflare/security-audit-skill', pinned, pinned, 'main'), null);
   const update = auditSkillRevisionCandidate('cloudflare/security-audit-skill', pinned, 'b'.repeat(40), 'main');
   assert.equal(update.componentKind, 'audit-skill-revision');
-  assert.equal(update.verificationFloor, 'scoped-comparison-run');
+  assert.equal(update.verificationFloor, 'pinned-tool-compatibility-check');
   assert.equal(update.candidateCommit, 'b'.repeat(40));
   assert.equal(update.current, 'a'.repeat(12));
   assert.throws(() => auditSkillRevisionCandidate('skill', pinned, 'not-a-sha', 'main'), /not a commit SHA/);
   const report = summarize({ policyVersion: 'test' }, [{ id: 'security-audit-skill', status: 'ok', candidates: [update], error: null }], new Date('2026-09-18T00:00:00Z'));
-  assert.equal(report.actionableCandidateCount, 1);
-  assert.equal(report.actionableCandidates[0].minimumVerification, 'scoped-comparison-run');
+  assert.equal(report.actionableCandidateCount, 0);
+  assert.equal(report.transitiveSignalCount, 0);
+  assert.equal(report.optionalToolCandidates[0].lifecycle, null);
+  assert.equal(report.optionalToolCandidates[0].minimumVerification, 'pinned-tool-compatibility-check');
 });
 
 test('policy validation requires github-commits components to pin a full commit SHA', () => {
@@ -364,4 +366,25 @@ test('every declared dependency group has an implemented collector', () => {
   for (const group of JSON.parse(readFileSync(resolve(process.cwd(), 'dependency-policy.json'), 'utf8')).groups) {
     assert.ok(covered.has(group.id), group.id);
   }
+});
+
+test('CF upstream discovery is opt-in and its failure cannot gate product maintenance', async () => {
+  const { collectSources, parseArguments, reportExitCode } = await import('../report-dependency-freshness.mjs');
+  let calls = 0;
+  const collectors = [{ id: 'security-audit-skill', collect() { calls++; throw new Error('offline'); } }];
+  const ordinary = await collectSources({}, {}, collectors);
+  assert.equal(calls, 0);
+  assert.equal(ordinary[0].status, 'not-requested');
+  const optional = await collectSources({ includeOptionalAuditTool: true }, {}, collectors);
+  assert.equal(calls, 1);
+  assert.equal(optional[0].status, 'error');
+  const policy = JSON.parse(readFileSync(resolve(process.cwd(), 'dependency-policy.json'), 'utf8'));
+  const report = summarize(policy, optional);
+  assert.equal(report.failedSources, 1);
+  assert.equal(report.blockingFailedSources, 0);
+  // Isolate source failure from unrelated real-world EOL/maintenance deadlines.
+  report.maintenance = { exceptionActionRequiredCount: 0, eolReviewStatus: 'current' };
+  assert.equal(reportExitCode(report), 0);
+  assert.equal(reportExitCode({ ...report, blockingFailedSources: 1 }), 2);
+  assert.equal(parseArguments(['--include-optional-audit-tool']).includeOptionalAuditTool, true);
 });

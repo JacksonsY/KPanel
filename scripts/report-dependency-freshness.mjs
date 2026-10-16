@@ -75,6 +75,7 @@ export function parseArguments(argv) {
     output: null,
     validateOnly: false,
     allowPartial: false,
+    includeOptionalAuditTool: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -89,6 +90,7 @@ export function parseArguments(argv) {
       continue;
     }
     if (argument === '--validate-only') options.validateOnly = true;
+    else if (argument === '--include-optional-audit-tool') options.includeOptionalAuditTool = true;
     else if (argument === '--allow-partial') options.allowPartial = true;
     else if (argument === '--help' || argument === '-h') options.help = true;
     else throw new Error('Unknown argument: ' + argument);
@@ -769,7 +771,9 @@ export function auditSkillRevisionCandidate(component, pinnedCommit, headCommit,
     candidate: headCommit.slice(0, 12),
     updateClass: 'major-toolchain-base',
     componentKind: 'audit-skill-revision',
-    verificationFloor: 'scoped-comparison-run',
+    verificationFloor: 'pinned-tool-compatibility-check',
+    dependencyScope: 'optional-tool',
+    actionability: 'optional-candidate-signal',
     pinnedCommit,
     candidateCommit: headCommit,
     branch,
@@ -809,13 +813,14 @@ export function summarize(policy, sources, now = new Date()) {
       group: source.id,
       dependencyScope,
       actionability,
-      lifecycle: policy.adoptionLifecycle?.classes?.[item.updateClass] ?? null,
+      lifecycle: dependencyScope === 'optional-tool' ? null : policy.adoptionLifecycle?.classes?.[item.updateClass] ?? null,
       minimumVerification: item.verificationFloor ?? policy.adoptionLifecycle?.classes?.[item.updateClass]?.minimumVerification ?? 'unreported',
     };
   }));
   const actionableScopes = new Set(policy.adoptionLifecycle?.actionableScopes ?? ['direct', 'foundation']);
-  const actionableCandidates = candidates.filter((item) => actionableScopes.has(item.dependencyScope));
-  const transitiveSignals = candidates.filter((item) => !actionableScopes.has(item.dependencyScope));
+  const actionableCandidates = candidates.filter((item) => item.dependencyScope !== 'optional-tool' && actionableScopes.has(item.dependencyScope));
+  const transitiveSignals = candidates.filter((item) => item.dependencyScope !== 'optional-tool' && !actionableScopes.has(item.dependencyScope));
+  const optionalToolCandidates = candidates.filter((item) => item.dependencyScope === 'optional-tool');
   const classCounts = Object.fromEntries(
     ['emergency-security', 'compatible-patch', 'minor', 'major-toolchain-base', 'prerelease']
       .map((name) => [name, candidates.filter((item) => item.updateClass === name).length]),
@@ -829,6 +834,7 @@ export function summarize(policy, sources, now = new Date()) {
     sourceCount: sources.length,
     successfulSources: sources.filter((source) => source.status === 'ok').length,
     failedSources: sources.filter((source) => source.status === 'error').length,
+    blockingFailedSources: sources.filter((source) => source.status === 'error' && source.id !== 'security-audit-skill').length,
     candidateCount: candidates.length,
     actionableCandidateCount: actionableCandidates.length,
     transitiveSignalCount: transitiveSignals.length,
@@ -837,6 +843,7 @@ export function summarize(policy, sources, now = new Date()) {
     candidates,
     actionableCandidates,
     transitiveSignals,
+    optionalToolCandidates,
     sources,
     maintenance: maintenanceStatus(policy, now),
     detectorQualification: policy.detectorQualification,
@@ -856,6 +863,7 @@ export function renderMarkdown(report) {
     '- 候选资格：仅表示版本通道稳定；EOL、许可证、架构、行为、资源与回滚仍须采用决策证据。',
     '- 需处理依赖例外：' + report.maintenance.exceptionActionRequiredCount,
     '- EOL 复核：' + report.maintenance.eolReviewStatus + '（下次截止 ' + report.maintenance.nextEolReview + '）',
+    '- CF 工具：默认不查询上游；显式 --include-optional-audit-tool 才查询，失败和版本信号不阻断，不设采用期限。',
     '- 决策边界：本报告只发现候选，不代表应升级，也不授权提交、合入、发布或部署。',
     '',
     '## 采用时限',
@@ -890,6 +898,9 @@ export function renderMarkdown(report) {
   for (const item of report.transitiveSignals) {
     lines.push('| ' + markdownCell(item.group) + ' | ' + markdownCell(item.component) + ' | ' + markdownCell(item.current) + ' | ' + markdownCell(item.candidate) + ' | ' + markdownCell(item.adoptionLane ?? 'owning-direct-dependency') + ' | ' + markdownCell(item.updateClass) + ' |');
   }
+  lines.push('', '## 可选审计工具信号', '', ...(report.optionalToolCandidates ?? []).map((item) =>
+    '- ' + markdownCell(item.component) + ': ' + markdownCell(item.current) + ' → ' + markdownCell(item.candidate)
+      + '；采用时做固定版本兼容检查，不要求产品 scoped/full。'));
   lines.push('', '## 例外与 EOL 复核', '', '| 组件 | 当前 | 候选 | 负责人 | 复核日期 | 状态 | 退出条件 |', '| --- | --- | --- | --- | --- | --- | --- |');
   if (report.maintenance.exceptions.length === 0) lines.push('| - | - | - | - | - | 无例外 | - |');
   for (const exception of report.maintenance.exceptions) {
@@ -916,13 +927,21 @@ function help() {
     '  --output <path>     Also write the rendered report to this path',
     '  --validate-only     Validate inventory and automation boundaries without network access',
     '  --allow-partial     Return success when an online source is unavailable',
+    '  --include-optional-audit-tool  Opt in to CF tool update discovery (never a release gate)',
   ].join('\n');
 }
 
 export function reportExitCode(report, allowPartial = false) {
-  if (report.failedSources > 0 && !allowPartial) return 2;
+  if ((report.blockingFailedSources ?? report.failedSources) > 0 && !allowPartial) return 2;
   if (report.maintenance.exceptionActionRequiredCount > 0 || report.maintenance.eolReviewStatus === 'due') return 3;
   return 0;
+}
+
+// CF tool maintenance must not schedule network work or adoption deadlines in ordinary product checks.
+export async function collectSources(options, policy, collectors = COLLECTORS) {
+  return Promise.all(collectors.map((source) => source.id === 'security-audit-skill' && !options.includeOptionalAuditTool
+    ? { id: source.id, status: 'not-requested', candidates: [], error: null }
+    : collectSource(source.id, () => source.collect(options.repo, policy))));
 }
 
 export async function main(argv) {
@@ -939,8 +958,7 @@ export async function main(argv) {
     process.stdout.write('Dependency policy validation passed (' + policy.groups.length + ' groups).\n');
     return 0;
   }
-  const sources = await Promise.all(COLLECTORS.map((source) =>
-    collectSource(source.id, () => source.collect(options.repo, policy))));
+  const sources = await collectSources(options, policy);
   const report = summarize(policy, sources);
   const rendered = options.format === 'json' ? JSON.stringify(report, null, 2) : renderMarkdown(report);
   process.stdout.write(rendered + '\n');

@@ -1,30 +1,19 @@
 # 信任边界安全审计状态
 
-本目录是 `PROJECT_RULES.md` 5.4 定义的审计账本与 findings 入库位置，执行入口为
-`.codex-workflows/security-boundary-audit.workflow.yaml`。
+本目录保留 PROJECT_RULES.md 5.4 的可选 CF 辅助产物，执行入口为
+.codex-workflows/security-boundary-audit.workflow.yaml。它不是候选、集成、RC 或稳定发布的门禁。
+历史补审期限、豁免和试用退出描述保留当时事实，当前行为只遵守 5.4；不自动恢复历史 incomplete。
 
-- `run-<N>/`：每次审计的 coverage-ledger.json、findings.json 与三份报告；
-  run 递增编号并以上一 run 为增量输入。
-- 本规范生效后执行的 run（run-2 起）的 metadata 必须记录：精确基线、上游 skill
-  来源的固定 commit、profile、实际成本（代理数/token/时长）与验证器结果。
-  run-1 为原样迁入的历史基线（2026-09-18 全仓审计，skill 原生 profile 词汇
-  standard≈full），不追溯补齐全字段、不改写内容。
-- 试用退出窗口（PROJECT_RULES.md 5.4）从 run-1 起算：run-1 计为首个 full run，
-  按已完成的 full run 计数（不再按稳定版计数）。覆盖按已完成 run 的并集计算，并行分支上的 scoped 同样计入。
-- 是否到期由 `scripts/check-security-audit-coverage.mjs` 从各 run 的 `run-metadata.json` 计算；边界范围见
-  `boundary-policy.json`。run-4 起元数据必须含 `scope_mode`（skill 的 `project_mode` 视为同义）、`run_status`、精确 `source_ref`、
-  `source_dirty: false`，scoped 另含 `comparison_base` 与 `scope_complete`。
-  分批 scoped 可附 `reviewed_commits` 精确 SHA 列表；complete 后只累计列表覆盖，剩余提交仍 pending。
-  没有该字段的历史完整区间与 partial 语义保持，不能按路径或 run 序号冒充已审提交。
-- 首个增量基线（run-1，2026-09-18，基线 6340e078，45 单元 / 1 confirmed /
-  12 加固项）迁入本目录后方可执行 run-2；迁移时保持文件原名不改。
+- run-<N>/ 保存按需入库的最小脱敏元数据、账本、findings 和报告，不要求每次运行都完整入库。
+- 新尝试先在仓库外冻结精确源码、固定上游 pin、范围、预算和真实终态。未知成本写 null。
+- run-1 至 run-3 沿用原形状；run-4 起记录 scope_mode、run_status、精确 source_ref、source_dirty=false；
+  scoped 另含 comparison_base 与 scope_complete。历史 dirty 局限保持，不追溯补造证据。
+- 完成覆盖仍按真实已完成 run 的并集计算。分批 reviewed_commits 只计完整核验的精确 SHA，
+  scope_complete=false；未完成批次和没有完整声明的 partial 不计覆盖。
+- scripts/check-security-audit-coverage.mjs 仅显式查询；14/30 天和新包产生 recommended 建议，
+  blocking=false，旧 --require 不再强制补审。--validate 在审计产物入库时显式执行，普通治理不依赖全注册表。
+- 入库前复核结构与披露边界；未修复问题的可复用攻击细节留在仓库外或不推送的本地候选。
 
-单次运行不构成安全结论；覆盖声明只在账本维度上成立（见 PROJECT_RULES.md 5.4）。
-
-新 run 先在仓库外的独立目录完成，父任务验证并审查披露边界后选择性入库。源码基线与产物提交分开记录；
-旧 run 的历史内容保持不变。scoped 必须从当前源码补充新单元，不能仅从 run-1 清单选行。
-修复、复核、RC、稳定版与部署状态分别在 [remediation-status.md](remediation-status.md) 追踪。
-
-运行选择、固定执行配置、预算、待验证线索闭环和收益/成本口径统一引用 `PROJECT_RULES.md` 5.4。
-统计需要核对已登记的仓库外尝试，以源码身份、开始时间和原始摘要去重；中断也有成本，未知不填零。
-覆盖检查 `ok` 不代表未决风险已关闭。历史 verdict 与后续验证/修复状态分别保存。
+有价值线索按需进入独立候选修复任务；沿用 [remediation-status.md](remediation-status.md) 追踪具体修复，
+无需为原始线索创建空分支。未验证不等于风险关闭；已证实紧急/高风险继续按产品漏洞响应处理。
+修复、独立复核、RC、稳定版和部署分别记录，历史 verdict 保持不变。没有新运行就不追加观察样本。
