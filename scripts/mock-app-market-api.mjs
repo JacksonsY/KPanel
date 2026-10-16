@@ -2946,6 +2946,10 @@ createServer(async (request, response) => {
       send(response, 409, { title: 'Terminal unavailable', code: 'terminal_unavailable' })
       return
     }
+    if (input.retained && !input.shortcutId && input.hostId === process.env.KPANEL_MOCK_TERMINAL_LEGACY_HOST) {
+      send(response, 409, { title: 'Legacy node does not support retention', code: 'terminal_retention_unavailable' })
+      return
+    }
     const shortcut = input.shortcutId && desktopWorkspace.shortcuts.find(item => item.id === input.shortcutId && item.command && (item.hostId || 'local') === input.hostId)
     if (input.shortcutId) {
       const existing = [...mockTerminalSessions.values()].find(session => session.metadata?.shortcutId === input.shortcutId && session.metadata?.hostId === input.hostId && !session.exitedAt)

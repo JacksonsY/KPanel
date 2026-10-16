@@ -64,7 +64,6 @@ const activeSessionId = ref('')
 const loading = ref(true)
 const openingHostId = ref('')
 const errorMessage = ref('')
-const temporaryHost = ref<ClusterHost>()
 const limitReached = ref(false)
 const search = ref('')
 const terminalMode = ref<'interactive' | 'batch'>('interactive')
@@ -209,10 +208,14 @@ async function openSession(host: ClusterHost, retained = true): Promise<void> {
   mobileConnectionsOpen.value = false
   openingHostId.value = host.id
   errorMessage.value = ''
-  temporaryHost.value = undefined
   limitReached.value = false
   try {
-	openingRequest = api.terminals.open(host.id, 30, 120, { retained })
+	openingRequest = api.terminals.open(host.id, 30, 120, { retained }).catch((reason) => {
+      if (disposed || !retained || !(reason instanceof ApiError)
+        || !['terminal_retention_unavailable', 'terminal_open_failed'].includes(reason.code)) throw reason
+      // Retry only a rejected plain-shell open, never an uncertain response or a command launch.
+      return api.terminals.open(host.id, 30, 120, { retained: false })
+    })
 	const opened = await openingRequest
 	if (disposed) {
       if (!opened.retained) {
@@ -232,10 +235,6 @@ async function openSession(host: ClusterHost, retained = true): Promise<void> {
     })
   } catch (reason) {
     if (reason instanceof ApiError && reason.code === 'terminal_limit') limitReached.value = true
-    else if (retained && reason instanceof ApiError && ['terminal_retention_unavailable', 'terminal_open_failed'].includes(reason.code)) {
-      temporaryHost.value = host
-      errorMessage.value = t(reason.code === 'terminal_retention_unavailable' ? 'terminal.retentionUnsupported' : 'terminal.retentionOpenFailed')
-    }
     else errorMessage.value = t('terminal.connectionFailed')
   } finally {
     openingRequest = undefined
@@ -523,7 +522,6 @@ onBeforeUnmount(() => {
 
     <div v-if="errorMessage" class="terminal-alert" role="alert">
       {{ errorMessage }}
-      <button v-if="temporaryHost" type="button" :disabled="!!openingHostId" @click="openSession(temporaryHost, false)">{{ t('terminal.openTemporary') }}</button>
     </div>
     <div v-for="item in sessions.filter(session => session.launchUncertain)" :key="`launch-${item.id}`" class="terminal-alert" role="alert">
       <strong>{{ sessionLabel(item) }}</strong>：{{ t('terminal.launchUncertain') }}
