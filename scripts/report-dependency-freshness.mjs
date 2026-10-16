@@ -240,7 +240,9 @@ export function validatePolicy(policy, repo) {
   for (const exception of policy.exceptions ?? []) {
     const status = maintenanceStatus(policy).exceptions.find((item) =>
       item.component === exception.component && item.currentVersion === exception.currentVersion)?.status;
-    if (status && status !== 'active') failures.push('dependency exception review is not active: ' + exception.component + ' (' + status + ')');
+    // Offline validation checks record structure (quality standard 4.7.3).
+    // Due records remain visible and fail the online report's exit status.
+    if (status === 'review-window-exceeds-policy') failures.push('dependency exception review is not active: ' + exception.component + ' (' + status + ')');
   }
   const reviewState = policy.reviewState ?? {};
   if (Number.isNaN(new Date(reviewState.lastEolReview).getTime())) failures.push('reviewState.lastEolReview is invalid');
@@ -917,6 +919,12 @@ function help() {
   ].join('\n');
 }
 
+export function reportExitCode(report, allowPartial = false) {
+  if (report.failedSources > 0 && !allowPartial) return 2;
+  if (report.maintenance.exceptionActionRequiredCount > 0 || report.maintenance.eolReviewStatus === 'due') return 3;
+  return 0;
+}
+
 export async function main(argv) {
   const options = parseArguments(argv);
   if (options.help) {
@@ -937,9 +945,7 @@ export async function main(argv) {
   const rendered = options.format === 'json' ? JSON.stringify(report, null, 2) : renderMarkdown(report);
   process.stdout.write(rendered + '\n');
   if (options.output) writeFileSync(options.output, rendered + '\n', 'utf8');
-  if (report.failedSources > 0 && !options.allowPartial) return 2;
-  if (report.maintenance.exceptionActionRequiredCount > 0 || report.maintenance.eolReviewStatus === 'due') return 3;
-  return 0;
+  return reportExitCode(report, options.allowPartial);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

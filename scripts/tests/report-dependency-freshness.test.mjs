@@ -21,6 +21,7 @@ import {
   requestHeaders,
   reviewAssistantCandidate,
   renderMarkdown,
+  reportExitCode,
   summarize,
   validatePolicy,
 } from '../report-dependency-freshness.mjs';
@@ -193,6 +194,20 @@ test('policy validation keeps automation, cadence, and workflow triggers enforce
   const failures = validatePolicy(policy, process.cwd());
   assert.ok(failures.some((failure) => failure.includes('security advisory')));
   assert.ok(failures.some((failure) => failure.includes('governed maximum') && failure.includes('eolReviewMaximumDays')));
+});
+
+test('offline validation accepts due records while online reports keep their failure signal', () => {
+  const policy = JSON.parse(readFileSync(resolve(process.cwd(), 'dependency-policy.json'), 'utf8'));
+  for (const exception of policy.exceptions) exception.reviewDate = '2000-01-01';
+  assert.deepEqual(validatePolicy(policy, process.cwd()), []);
+  const maintenance = maintenanceStatus(policy);
+  assert.equal(maintenance.exceptionActionRequiredCount, policy.exceptions.length);
+  assert.ok(maintenance.exceptions.every((exception) => exception.status === 'due'));
+  assert.equal(reportExitCode({ failedSources: 0, maintenance }), 3);
+  assert.equal(reportExitCode({ failedSources: 1, maintenance }), 2);
+  assert.equal(reportExitCode({ failedSources: 1, maintenance }, true), 3);
+  policy.exceptions[0].reviewDate = new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10);
+  assert.ok(validatePolicy(policy, process.cwd()).some((failure) => failure.includes('review-window-exceeds-policy')));
 });
 
 test('policy validation fixes the cross-repository linkage vocabulary and release boundaries', () => {
