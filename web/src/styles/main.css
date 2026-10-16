@@ -7340,6 +7340,30 @@ body.terminal-fullscreen-open .modal-panel {
   }
 }
 
+/* Phone dialogs and transient feedback share the viewport without covering controls. */
+@media (max-width: 680px) {
+  body.has-modal:has(.toast-region .toast) {
+    --modal-toast-height: min(20dvh, 112px);
+    --modal-toast-top: max(18px, env(safe-area-inset-top));
+  }
+
+  body.has-modal .toast-region:has(.toast) {
+    top: var(--modal-toast-top);
+    max-height: var(--modal-toast-height);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  body.has-modal:has(.toast-region .toast) .modal-backdrop {
+    align-items: end;
+    padding: calc(var(--modal-toast-top) + var(--modal-toast-height) + 12px) 0 0;
+  }
+
+  body.has-modal:has(.toast-region .toast) .modal-panel {
+    max-height: calc(100dvh - var(--modal-toast-top) - var(--modal-toast-height) - 12px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
