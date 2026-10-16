@@ -107,6 +107,11 @@ export async function initializeI18n(): Promise<void> {
   })
 }
 
+/** Refresh the login/paint cache without emitting another server write. */
+export async function applySyncedLocale(locale: SupportedLocale): Promise<void> {
+  if (await setLocale(locale, false)) persistLocale(locale)
+}
+
 export function t(key: MessageKey, params?: TranslationParams): string {
   const template = activeMessages.value[key] || zhCNMessages[key] || key
   if (!params) return template

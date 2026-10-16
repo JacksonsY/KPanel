@@ -153,3 +153,100 @@ it('clears cached windows when the shared layout is intentionally empty', () => 
   initializeDesktopMode()
   expect(useDesktopMode().windows.value).toHaveLength(0)
 })
+
+it('bounds migration retries even when GET succeeds but every PUT fails', async () => {
+  mocks.get.mockResolvedValue({ resourceVersion: 'empty' })
+  mocks.update.mockRejectedValue(new Error('read-only disk'))
+  await startPreferencesSync('admin')
+  await vi.advanceTimersByTimeAsync(60000)
+  expect(mocks.update).toHaveBeenCalledTimes(5)
+  expect(mocks.get).toHaveBeenCalledTimes(5)
+  expect(mocks.danger).toHaveBeenCalledTimes(1)
+})
+
+it('discards malformed window pending data without blocking a valid language edit', async () => {
+  sessionStorage.setItem('kpanel:preferences-pending:v1', JSON.stringify({ owner: 'admin', patch: {
+    locale: 'en-US', desktop: { ...desktop, windows: [{ id: 1, path: '/files', geometry: null }] },
+  } }))
+  await startPreferencesSync('admin')
+  expect(mocks.update.mock.calls[0]![0]).toEqual({ locale: 'en-US', expectedResourceVersion: 'v1' })
+  expect(getLocale()).toBe('en-US')
+})
+
+it('strips UI-only fields from recovered pending windows before sending them', async () => {
+  const value = { ...desktop, windows: [{ id: 1, path: '/files', geometry: { left: 20, top: 20, width: 800, height: 600 }, minimized: false, maximized: false, snap: '', z: 100, launchPending: true }] }
+  sessionStorage.setItem('kpanel:preferences-pending:v1', JSON.stringify({ owner: 'admin', patch: { desktop: value } }))
+  await startPreferencesSync('admin')
+  expect(mocks.update.mock.calls[0]![0].desktop.windows[0]).not.toHaveProperty('launchPending')
+})
+
+it('does not write an unchanged language choice', async () => {
+  await startPreferencesSync('admin')
+  await setLocale('zh-TW'); await flush()
+  expect(mocks.update).not.toHaveBeenCalled()
+})
+
+it('still saves an undo while the prior language write is in flight', async () => {
+  await startPreferencesSync('admin')
+  let resolve!: (value: UserPreferences) => void
+  mocks.update.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  await setLocale('en-US'); await flush()
+  await setLocale('zh-TW')
+  resolve({ ...remote(), locale: 'en-US', resourceVersion: 'v2' })
+  await flush()
+  expect(mocks.update.mock.calls[1]![0]).toEqual({ locale: 'zh-TW', expectedResourceVersion: 'v2' })
+})
+
+it('updates the browser language cache when server preferences are restored', async () => {
+  localStorage.setItem('kejilion-panel-locale', 'zh-CN')
+  await startPreferencesSync('admin')
+  expect(localStorage.getItem('kejilion-panel-locale')).toBe('zh-TW')
+  expect(mocks.update).not.toHaveBeenCalled()
+})
+
+it('allocates unique safe IDs after restoring sparse and maximum-sized window IDs', () => {
+  const windowValue = { path: '/files', geometry: { left: 20, top: 20, width: 800, height: 600 }, minimized: false, maximized: false, snap: '' as const, z: 100 }
+  applyDesktopPreferences({ ...desktop, windows: [1, 3, Number.MAX_SAFE_INTEGER].map(id => ({ ...windowValue, id })) })
+  const store = useDesktopMode()
+  expect(store.openWindow('/files', 'route.files', true)).toBe(2)
+  expect(store.openWindow('/files', 'route.files', true)).toBe(4)
+  expect(new Set(store.windows.value.map(w => w.id)).size).toBe(5)
+})
+
+it('recovers command-window size preferences and pending edits without re-running the command', async () => {
+  const value: DesktopSessionPreferences = { ...desktop, windows: [{ id: 1, path: '/command-shortcut/' + 'a'.repeat(32),
+    geometry: { left: 20, top: 20, width: 950, height: 650 }, minimized: false, maximized: false, snap: '', z: 100 }],
+    windowSizes: [{ path: '/command-shortcut', width: 950, height: 650 }] }
+  sessionStorage.setItem('kpanel:preferences-pending:v1', JSON.stringify({ owner: 'admin', patch: { desktop: value } }))
+  await startPreferencesSync('admin')
+  expect(mocks.update.mock.calls[0]![0].desktop.windowSizes).toEqual(value.windowSizes)
+  expect(desktopPreferencesSnapshot().windowSizes).toEqual(value.windowSizes)
+  expect(useDesktopMode().consumeWindowLaunch(1)).toBe(false)
+})
+
+it('does not resave an identical desktop DTO just because its property order differs', async () => {
+  const value: DesktopSessionPreferences = { ...desktop, windows: [{ id: 1, path: '/files',
+    geometry: { left: 20, top: 20, width: 800, height: 600 }, minimized: false, maximized: false, snap: '', z: 100 }] }
+  mocks.get.mockResolvedValue({ ...remote(), desktop: value })
+  await startPreferencesSync('admin')
+  // Recovered tab-storage DTOs use canonical field order, unlike Go's wire DTO.
+  const current = desktopPreferencesSnapshot()
+  window.dispatchEvent(new CustomEvent('kpanel:preferences-changed', { detail: { desktop: {
+    focusedId: current.focusedId, windowSizes: current.windowSizes, sideSplitRatio: current.sideSplitRatio,
+    windows: current.windows, mode: current.mode,
+  } } }))
+  await flush()
+  expect(mocks.update).not.toHaveBeenCalled()
+})
+
+it('cancels retry when a failed edit is undone to the server value', async () => {
+  await startPreferencesSync('admin')
+  mocks.update.mockRejectedValue(new Error('offline'))
+  await setLocale('en-US'); await flush()
+  await setLocale('zh-TW')
+  await vi.advanceTimersByTimeAsync(20000)
+  expect(mocks.update).toHaveBeenCalledTimes(1)
+  expect(sessionStorage.getItem('kpanel:preferences-pending:v1')).toBeNull()
+  await setLocale('en-US'); await flush()
+  expect(mocks.danger).toHaveBeenCalledTimes(2)
+})

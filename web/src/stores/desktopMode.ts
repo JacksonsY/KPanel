@@ -85,6 +85,41 @@ const windowPreferences = new Map<string, WindowSizePreference>()
 const sizeDirtyWindowIds = new Set<number>()
 let applyingPreferences = false
 
+/** Recover only the wire DTO, never trust UI-only fields from tab storage. */
+export function parseDesktopSessionPreferences(value: unknown): DesktopSessionPreferences | undefined {
+  if (!isWindowRecord(value) || !isDesktopMode(value.mode) || !Array.isArray(value.windows)
+    || value.windows.length > MAX_WINDOWS || !Array.isArray(value.windowSizes) || value.windowSizes.length > MAX_WINDOW_PREFERENCES
+    || typeof value.sideSplitRatio !== 'number' || !Number.isFinite(value.sideSplitRatio) || value.sideSplitRatio <= 0 || value.sideSplitRatio >= 1
+    || !Number.isSafeInteger(value.focusedId)) return undefined
+  const ids = new Set<number>()
+  const windows: DesktopSessionPreferences['windows'] = []
+  const dimension = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= MAX_WINDOW_PREFERENCE_DIMENSION
+  for (const item of value.windows) {
+    if (!isWindowRecord(item) || !Number.isSafeInteger(item.id) || Number(item.id) <= 0 || ids.has(Number(item.id))
+      || typeof item.path !== 'string' || !isSafeWindowFullPath(item.path) || !isWindowRecord(item.geometry)
+      || typeof item.minimized !== 'boolean' || typeof item.maximized !== 'boolean'
+      || (item.snap !== '' && !isWindowSnap(item.snap)) || !Number.isInteger(item.z) || Number(item.z) < 0 || Number(item.z) > 1000) return undefined
+    const g = item.geometry
+    if (!dimension(g.width) || !dimension(g.height) || typeof g.left !== 'number' || typeof g.top !== 'number'
+      || !Number.isFinite(g.left) || !Number.isFinite(g.top) || Math.abs(g.left) > MAX_WINDOW_PREFERENCE_DIMENSION
+      || Math.abs(g.top) > MAX_WINDOW_PREFERENCE_DIMENSION) return undefined
+    const id = Number(item.id)
+    ids.add(id)
+    windows.push({ id, path: item.path, minimized: item.minimized, maximized: item.maximized, snap: item.snap,
+      z: Number(item.z), geometry: { left: g.left, top: g.top, width: g.width, height: g.height } })
+  }
+  if (value.focusedId !== 0 && !ids.has(Number(value.focusedId))) return undefined
+  const paths = new Set<string>()
+  const windowSizes: DesktopSessionPreferences['windowSizes'] = []
+  for (const item of value.windowSizes) {
+    if (!isWindowRecord(item) || typeof item.path !== 'string' || windowPreferencePath(item.path) !== item.path
+      || paths.has(item.path) || !dimension(item.width) || !dimension(item.height)) return undefined
+    paths.add(item.path)
+    windowSizes.push({ path: item.path, width: item.width, height: item.height })
+  }
+  return { mode: value.mode, windows, windowSizes, sideSplitRatio: value.sideSplitRatio, focusedId: Number(value.focusedId) }
+}
+
 export function desktopPreferencesSnapshot(): DesktopSessionPreferences {
   ensureWindowPreferences()
   const windows = state.windows.filter((item) => isSafeWindowFullPath(item.path)).slice(0, MAX_WINDOWS).map((item) => ({
@@ -114,7 +149,9 @@ export function applyDesktopPreferences(value: DesktopSessionPreferences): void 
     initializeDesktopMode({ getItem: (key) => values[key] ?? null, setItem: () => {} })
     for (const item of state.windows) item.z = value.windows.find((saved) => saved.id === item.id)?.z ?? BASE_WINDOW_Z
     normalizeWindowStack()
-    state.focusedId = state.windows.some((item) => item.id === value.focusedId && !item.minimized) ? value.focusedId : state.focusedId
+    if (value.focusedId === 0 || state.windows.some((item) => item.id === value.focusedId && !item.minimized)) {
+      state.focusedId = value.focusedId
+    }
     sizeDirtyWindowIds.clear()
     windowPreferencesStorage = defaultStorage()
     persistMode(defaultStorage())
@@ -150,15 +187,15 @@ function isSafeWindowFullPath(fullPath: string): boolean {
   return (
     fullPath.startsWith('/')
     && !fullPath.startsWith('//')
-    && fullPath.length <= 768
-    && !/[\u0000-\u001f\\]/.test(fullPath)
+    && new TextEncoder().encode(fullPath).byteLength <= 768
+    && !/[\u0000-\u001f\u007f\\]/.test(fullPath)
     && Boolean(titleKeyForWindowPath(fullPath))
   )
 }
 
 function windowPreferencePath(path: string): string | undefined {
   const routePath = desktopRoutePath(path)
-  if (routePath === '/processes' || routePath === '/system' || routePath === '/app-script') return routePath
+  if (routePath === '/processes' || routePath === '/system' || routePath === '/app-script' || routePath === '/command-shortcut') return routePath
   return findDesktopApp(path)?.path
 }
 
@@ -418,7 +455,10 @@ export function initializeDesktopMode(
       z += 1
     }
     nextZ = z
-    nextWindowId = Math.max(nextWindowId, restored.reduce((max, w) => Math.max(max, w.id), 0) + 1)
+    // Restored IDs may be large; allocate a free small ID rather than overflowing
+    // Number.MAX_SAFE_INTEGER or colliding with another restored window.
+    nextWindowId = 1
+    while (restored.some((item) => item.id === nextWindowId)) nextWindowId += 1
     state.focusedId = [...state.windows]
       .filter((windowState) => !windowState.minimized)
       .sort((a, b) => b.z - a.z)[0]?.id ?? 0
@@ -471,6 +511,7 @@ export function useDesktopMode() {
       }
     }
     if (state.windows.length >= MAX_WINDOWS) return 0
+    while (state.windows.some((item) => item.id === nextWindowId)) nextWindowId += 1
     const id = nextWindowId++
     nextZ += 1
     const geometry = cascadeGeometry(id, path)

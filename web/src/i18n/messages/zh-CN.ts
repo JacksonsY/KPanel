@@ -3,6 +3,8 @@ import { panelAccessZhCN } from '../panelAccess'
 
 export const zhCNMessages = {
   'settings.preferencesSyncFailed': '界面状态尚未同步到服务端',
+  'settings.preferencesLoadFailed': '无法读取服务端界面状态',
+  'settings.preferencesLoadRetry': '当前使用本地界面；连接恢复后可刷新页面，恢复已保存的窗口。',
   'settings.preferencesSyncRetry': '连接恢复后会重试，请暂时保留此页面。',
   "terminal.launchUncertain": "启动结果未确认，未自动重试，请检查终端。",
   "terminal.retentionUnsupported": "节点不支持后台保留，请升级节点。也可临时连接，临时会话刷新后不保留。",

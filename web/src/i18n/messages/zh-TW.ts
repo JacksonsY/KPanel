@@ -4,6 +4,8 @@ import { panelAccessZhTW } from '../panelAccess'
 
 export const zhTWMessages = {
   'settings.preferencesSyncFailed': '介面狀態尚未同步至伺服器',
+  'settings.preferencesLoadFailed': '無法讀取伺服器介面狀態',
+  'settings.preferencesLoadRetry': '目前使用本機介面；連線恢復後可重新整理頁面，還原已儲存的視窗。',
   'settings.preferencesSyncRetry': '連線恢復後會重試，請暫時保留此頁面。',
   "terminal.launchUncertain": "啟動結果未確認，未自動重試，請檢查終端。",
   "terminal.retentionUnsupported": "節點不支援背景保留，請升級節點。也可暫時連線，暫時工作階段重新整理後不保留。",

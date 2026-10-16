@@ -8,7 +8,6 @@ import {
 } from '@/lib/navigation'
 import { resolveNavigationScroll } from '@/lib/navigationScroll'
 import { useSession } from '@/stores/session'
-import { startPreferencesSync } from '@/lib/preferencesSync'
 import type { MessageKey } from '@/i18n/messages/zh-CN'
 
 declare module 'vue-router' {
@@ -207,12 +206,13 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  if (to.meta.guestOnly && session.state.authenticated) {
-    await startPreferencesSync(session.state.user?.id ?? '')
-    return { name: 'overview' }
+  if (session.state.authenticated && (!to.meta.public || to.meta.guestOnly)) {
+    if (!(await session.restorePreferences())) return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  if (!to.meta.public && session.state.authenticated) await startPreferencesSync(session.state.user?.id ?? '')
+  if (to.meta.guestOnly && session.state.authenticated) {
+    return { name: 'overview' }
+  }
 
   return true
 })

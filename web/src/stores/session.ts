@@ -2,7 +2,7 @@ import { computed, reactive } from 'vue'
 import { applySiteBranding } from '@/stores/branding'
 import { api, resetApiSecurityState } from '@/lib/api'
 import { stopAppearanceSync } from '@/lib/appearanceSync'
-import { stopPreferencesSync } from '@/lib/preferencesSync'
+import { startPreferencesSync, stopPreferencesSync } from '@/lib/preferencesSync'
 import { applyLoginAppearance, cancelLoginWallpaper } from '@/lib/loginAppearance'
 import type { PasskeyCredentialJSON } from '@/lib/passkeys'
 import type { AgentStatus, AuthStatus, LoginRequest, SetupRequest, User } from '@/types/api'
@@ -30,7 +30,7 @@ let statusPromise: Promise<void> | undefined
 let generation = 0
 
 function applyStatus(status: AuthStatus): void {
-  if (!status.authenticated) stopPreferencesSync()
+  if (!status.authenticated || state.user?.id !== status.user?.id) stopPreferencesSync()
   applySiteBranding(status.authenticated ? status.appearance?.branding : status.loginAppearance?.branding)
   if (!status.authenticated && !status.setupRequired && status.loginAppearance) applyLoginAppearance(status.loginAppearance)
   else cancelLoginWallpaper()
@@ -137,6 +137,14 @@ function takeAppearanceSnapshot(): AuthStatus['appearance'] {
   return snapshot
 }
 
+/** A logout/account change may happen while the router awaits initial hydration. */
+async function restorePreferences(): Promise<boolean> {
+  const owner = state.user?.id
+  if (!state.authenticated || !owner) return false
+  await startPreferencesSync(owner)
+  return state.authenticated && state.user?.id === owner
+}
+
 export function useSession() {
   return {
     state,
@@ -149,5 +157,6 @@ export function useSession() {
     setup,
     logout,
     takeAppearanceSnapshot,
+    restorePreferences,
   }
 }

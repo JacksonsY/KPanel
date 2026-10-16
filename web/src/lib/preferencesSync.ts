@@ -1,6 +1,6 @@
 import { api, ApiError } from '@/lib/api'
-import { getLocale, setLocale, t } from '@/i18n'
-import { applyDesktopPreferences, desktopPreferencesSnapshot } from '@/stores/desktopMode'
+import { applySyncedLocale, getLocale, t } from '@/i18n'
+import { applyDesktopPreferences, desktopPreferencesSnapshot, parseDesktopSessionPreferences } from '@/stores/desktopMode'
 import { useToast } from '@/stores/toast'
 import type { UserPreferences, UserPreferencesPatch } from '@/types/api'
 
@@ -29,12 +29,8 @@ function readPending(owner: string): UserPreferencesPatch {
     if (value.owner !== owner) return {}
     const patch: UserPreferencesPatch = {}
     if (['zh-CN', 'zh-TW', 'en-US'].includes(value.patch?.locale)) patch.locale = value.patch.locale
-    const d = value.patch?.desktop
-    if (d && ['classic', 'desktop'].includes(d.mode) && Array.isArray(d.windows) && d.windows.length <= 8
-      && Array.isArray(d.windowSizes) && d.windowSizes.length <= 32 && typeof d.sideSplitRatio === 'number'
-      && typeof d.focusedId === 'number'
-      && d.windows.every((w: unknown) => w && typeof w === 'object' && typeof (w as { path?: unknown }).path === 'string')
-      && d.windowSizes.every((w: unknown) => w && typeof w === 'object')) patch.desktop = d
+    const desktop = parseDesktopSessionPreferences(value.patch?.desktop)
+    if (desktop) patch.desktop = desktop
     return patch
   } catch { return {} }
 }
@@ -50,10 +46,18 @@ function requestSignal(sync: Sync): AbortSignal {
   return AbortSignal.any([sync.controller.signal, AbortSignal.timeout(8000)])
 }
 
+function sameSection(key: keyof UserPreferencesPatch, left: unknown, right: unknown): boolean {
+  if (key === 'locale') return left === right
+  const a = parseDesktopSessionPreferences(left)
+  const b = parseDesktopSessionPreferences(right)
+  return a !== undefined && b !== undefined && JSON.stringify(a) === JSON.stringify(b)
+}
+
 function failed(sync: Sync): void {
   if (current !== sync) return
   if (!sync.notified) {
-    useToast().danger(t('settings.preferencesSyncFailed'), t('settings.preferencesSyncRetry'))
+    useToast().danger(t(sync.server ? 'settings.preferencesSyncFailed' : 'settings.preferencesLoadFailed'),
+      t(sync.server ? 'settings.preferencesSyncRetry' : 'settings.preferencesLoadRetry'))
     sync.notified = true
   }
   if (sync.retries < 4) schedule(sync, 1000 * 2 ** sync.retries++)
@@ -81,15 +85,17 @@ async function load(sync: Sync): Promise<void> {
       if (!server.locale) migration.locale = sync.initial.locale
       if (!server.desktop) migration.desktop = sync.initial.desktop
       sync.loaded = true
-      sync.retries = 0
-      sync.notified = false
       await save(sync, migration)
       if (current !== sync) return
       const locale = sync.pending.locale ?? sync.server?.locale ?? migration.locale
-      if (locale) await setLocale(locale, false)
+      if (locale) await applySyncedLocale(locale)
       if (current !== sync) return
       const desktop = sync.pending.desktop ?? sync.server?.desktop
       if (sync.hydrating && desktop) applyDesktopPreferences(desktop)
+      if (sync.loaded && !Object.keys(sync.pending).length) {
+        sync.retries = 0
+        sync.notified = false
+      }
     } catch {
       failed(sync)
     } finally { sync.loading = undefined }
@@ -112,7 +118,7 @@ function save(sync: Sync, migration: UserPreferencesPatch = {}): Promise<void> {
           sync.server = result
           migration = {}
           for (const key of Object.keys(patch) as (keyof UserPreferencesPatch)[]) {
-            if (JSON.stringify(sync.pending[key]) === JSON.stringify(patch[key])) delete sync.pending[key]
+            if (sameSection(key, sync.pending[key], patch[key])) delete sync.pending[key]
           }
           persist(sync)
         } catch (error) {
@@ -143,8 +149,20 @@ function changed(event: Event): void {
   const sync = current
   if (!sync) return
   Object.assign(sync.pending, (event as CustomEvent<UserPreferencesPatch>).detail)
+  // Do not erase an undo while an older write is in flight: its response may
+  // soon change the server away from the value the user just restored.
+  if (!sync.saving && sync.server) {
+    for (const key of Object.keys(sync.pending) as (keyof UserPreferencesPatch)[]) {
+      if (sameSection(key, sync.pending[key], sync.server[key])) delete sync.pending[key]
+    }
+  }
   persist(sync)
   sync.retries = 0
+  if (sync.loaded && !Object.keys(sync.pending).length) {
+    sync.notified = false
+    window.clearTimeout(sync.timer)
+    return
+  }
   schedule(sync)
 }
 

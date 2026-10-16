@@ -4,10 +4,12 @@ import type { AuthStatus } from '@/types/api'
 
 const mocks = vi.hoisted(() => ({
   status: vi.fn(), login: vi.fn(), logout: vi.fn(), reset: vi.fn(), stop: vi.fn(), apply: vi.fn(), cancel: vi.fn(),
+  startPreferences: vi.fn(), stopPreferences: vi.fn(),
 }))
 vi.mock('@/lib/api', () => ({ api: { auth: { status: mocks.status, login: mocks.login, logout: mocks.logout } }, resetApiSecurityState: mocks.reset }))
 vi.mock('@/lib/appearanceSync', () => ({ stopAppearanceSync: mocks.stop }))
 vi.mock('@/lib/loginAppearance', () => ({ applyLoginAppearance: mocks.apply, cancelLoginWallpaper: mocks.cancel }))
+vi.mock('@/lib/preferencesSync', () => ({ startPreferencesSync: mocks.startPreferences, stopPreferencesSync: mocks.stopPreferences }))
 import { useSession } from './session'
 
 const appearance = { configured: true, resourceVersion: 'sha256:current', theme: 'dark' as const, colors: null, wallpaper: 'prism', classicLevel: 'off' as const }
@@ -16,6 +18,32 @@ const guest: AuthStatus = {
   loginAppearance: { theme: 'dark', colors: null, wallpaper: { url: '/wallpapers/kpanel-desktop-prism.webp', focusX: 500, focusY: 500, bright: false } },
 }
 const authenticated: AuthStatus = { setupRequired: false, authenticated: true, user: { id: 'admin', username: 'admin' }, appearance }
+
+it('rechecks authentication after waiting for preferences so logout cannot enter the shell', async () => {
+  let resolve!: () => void
+  mocks.startPreferences.mockImplementationOnce(() => new Promise<void>(done => { resolve = done }))
+  const session = useSession()
+  mocks.login.mockResolvedValue(authenticated)
+  await session.login({ username: 'admin', password: 'fixture-only' })
+  const restore = session.restorePreferences()
+  mocks.status.mockResolvedValue(guest)
+  await session.refresh(true)
+  resolve()
+  expect(await restore).toBe(false)
+  expect(mocks.stopPreferences).toHaveBeenCalled()
+})
+
+it('rejects a hydration handoff belonging to the previous account', async () => {
+  let resolve!: () => void
+  mocks.startPreferences.mockImplementationOnce(() => new Promise<void>(done => { resolve = done }))
+  const session = useSession()
+  mocks.login.mockResolvedValueOnce(authenticated).mockResolvedValueOnce({ ...authenticated, user: { id: 'new', username: 'new' } })
+  await session.login({ username: 'admin', password: 'fixture-only' })
+  const restore = session.restorePreferences()
+  await session.login({ username: 'new', password: 'fixture-only' })
+  resolve()
+  expect(await restore).toBe(false)
+})
 
 describe('session appearance handoff', () => {
   beforeEach(() => vi.resetAllMocks())
