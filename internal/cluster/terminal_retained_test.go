@@ -12,7 +12,7 @@ import (
 
 func TestRetainedBackendRejectsLegacyWithoutOpening(t *testing.T) {
 	b := legacyTerminalBackend{TerminalBackend: managerTerminalBackend{manager: newEchoManager(t)}}
-	if _, err := openTerminalBackend(context.Background(), b, "owner", 24, 80, true); !errors.Is(err, ErrTerminalUnavailable) {
+	if _, err := openTerminalBackend(context.Background(), b, "owner", 24, 80, true); !errors.Is(err, ErrTerminalRetentionUnavailable) {
 		t.Fatal(err)
 	}
 }
@@ -110,7 +110,47 @@ func (b *falseRetainedBackend) Close(ctx context.Context, owner, id string) erro
 }
 func TestRetainedBackendCleansUnacknowledgedLaunch(t *testing.T) {
 	b := &falseRetainedBackend{managerTerminalBackend: managerTerminalBackend{manager: newEchoManager(t)}}
-	if _, err := openTerminalBackend(context.Background(), b, "owner", 24, 80, true); !errors.Is(err, ErrTerminalUnavailable) || !b.closed {
+	if _, err := openTerminalBackend(context.Background(), b, "owner", 24, 80, true); !errors.Is(err, ErrTerminalRetentionUnavailable) || !b.closed {
 		t.Fatalf("downgrade: %v closed=%v", err, b.closed)
+	}
+}
+
+func TestRetainedReconnectBoundsBlockedDialAndPreservesInputContract(t *testing.T) {
+	previous := terminalStreamFallbackAfter
+	terminalStreamFallbackAfter = 50 * time.Millisecond
+	defer func() { terminalStreamFallbackAfter = previous }()
+	for _, tc := range []struct {
+		name     string
+		reliable bool
+		expiring bool
+		degraded bool
+	}{
+		{"legacy-short-fallback", false, false, true},
+		{"expired-never-falls-back", false, true, false},
+		{"reliable-never-falls-back", true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			created := time.Now()
+			if tc.expiring {
+				created = created.Add(-terminal.DefaultLifetime + 20*time.Millisecond)
+			}
+			stream := &streamTerminal{ctx: ctx, retained: true, createdAt: created, reliable: tc.reliable,
+				buffer: terminal.NewBuffer(terminal.DefaultBufferBytes, 0), fallback: &recordingTerminalFallback{}}
+			stream.dial = func(ctx context.Context, _ byte, _ any) (*fileStreamConn, terminalStreamReady, error) {
+				if _, ok := ctx.Deadline(); !ok {
+					t.Error("dial has no retry deadline")
+					return nil, terminalStreamReady{}, context.Canceled
+				}
+				<-ctx.Done()
+				return nil, terminalStreamReady{}, ctx.Err()
+			}
+			started := time.Now()
+			stream.reconnect()
+			if time.Since(started) > time.Second || stream.isDegraded() != tc.degraded {
+				t.Fatalf("retry=%s degraded=%v", time.Since(started), stream.isDegraded())
+			}
+		})
 	}
 }

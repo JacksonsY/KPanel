@@ -344,6 +344,10 @@ func (s *Service) openPanelFileStream(ctx context.Context, hostID string, input 
 // startTerminalStream sends the first record on a fresh socket and waits for
 // the target's ready or reject answer.
 func startTerminalStream(ctx context.Context, conn *fileStreamConn, first byte, payload any) (*fileStreamConn, terminalStreamReady, error) {
+	// Bound the first write as well as the ready read. The socket itself has a
+	// longer-lived parent; stop this callback before handing it to the session.
+	stopCancel := context.AfterFunc(ctx, conn.close)
+	defer stopCancel()
 	if err := conn.writeJSON(first, payload); err != nil {
 		conn.close()
 		// The first record may have reached the target. Do not retry an

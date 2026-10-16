@@ -64,6 +64,7 @@ const activeSessionId = ref('')
 const loading = ref(true)
 const openingHostId = ref('')
 const errorMessage = ref('')
+const temporaryHost = ref<ClusterHost>()
 const limitReached = ref(false)
 const search = ref('')
 const terminalMode = ref<'interactive' | 'batch'>('interactive')
@@ -85,6 +86,7 @@ let initialHostLoad = true
 let hostsRequest: Promise<void> | undefined
 let openingRequest: ReturnType<typeof api.terminals.open> | undefined
 let checkingWindowClose = false
+let disposed = false
 let unsubscribeClusterHostOrder: (() => void) | undefined
 const connectionsCollapsedStorageKey = 'kpanel:terminal:connections-collapsed'
 
@@ -202,15 +204,24 @@ async function openHost(host: ClusterHost): Promise<void> {
 	await openSession(host)
 }
 
-async function openSession(host: ClusterHost): Promise<void> {
+async function openSession(host: ClusterHost, retained = true): Promise<void> {
 	if (initialHostLoad || checkingWindowClose || !host.terminalAvailable || openingHostId.value) return
   mobileConnectionsOpen.value = false
   openingHostId.value = host.id
   errorMessage.value = ''
+  temporaryHost.value = undefined
   limitReached.value = false
   try {
-	openingRequest = api.terminals.open(host.id, 30, 120, { retained: true })
+	openingRequest = api.terminals.open(host.id, 30, 120, { retained })
 	const opened = await openingRequest
+	if (disposed) {
+      if (!opened.retained) {
+        try {
+          if (!(await api.terminals.close(opened.sessionId)).closed) api.terminals.closeOnUnload(opened.sessionId)
+        } catch { api.terminals.closeOnUnload(opened.sessionId) }
+      }
+      return
+    }
 	const item: OpenTerminal = { id: opened.sessionId, hostId: host.id, hostName: host.name, retained: opened.retained, ordinal: nextOrdinal(host.id), offset: opened.offset, state: 'connecting' }
     sessions.value.push(item)
     activeSessionId.value = item.id
@@ -221,6 +232,10 @@ async function openSession(host: ClusterHost): Promise<void> {
     })
   } catch (reason) {
     if (reason instanceof ApiError && reason.code === 'terminal_limit') limitReached.value = true
+    else if (retained && reason instanceof ApiError && ['terminal_retention_unavailable', 'terminal_open_failed'].includes(reason.code)) {
+      temporaryHost.value = host
+      errorMessage.value = t(reason.code === 'terminal_retention_unavailable' ? 'terminal.retentionUnsupported' : 'terminal.retentionOpenFailed')
+    }
     else errorMessage.value = t('terminal.connectionFailed')
   } finally {
     openingRequest = undefined
@@ -495,6 +510,7 @@ onMounted(() => {
   void loadHosts()
 })
 onBeforeUnmount(() => {
+  disposed = true
   unsubscribeClusterHostOrder?.()
   unregisterWindowCloseGuard?.()
   controller?.abort()
@@ -505,7 +521,10 @@ onBeforeUnmount(() => {
   <div class="page terminal-page" :data-locale="locale">
     <PageHeader title="多主机终端" description="通过集群加密通道连接本机、已授权 KPanel 节点和轻量节点，无需开放额外 SSH 或公网端口。" />
 
-    <div v-if="errorMessage" class="terminal-alert" role="alert">{{ errorMessage }}</div>
+    <div v-if="errorMessage" class="terminal-alert" role="alert">
+      {{ errorMessage }}
+      <button v-if="temporaryHost" type="button" :disabled="!!openingHostId" @click="openSession(temporaryHost, false)">{{ t('terminal.openTemporary') }}</button>
+    </div>
     <div v-for="item in sessions.filter(session => session.launchUncertain)" :key="`launch-${item.id}`" class="terminal-alert" role="alert">
       <strong>{{ sessionLabel(item) }}</strong>：{{ t('terminal.launchUncertain') }}
     </div>

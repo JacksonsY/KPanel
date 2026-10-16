@@ -2,9 +2,13 @@ package cluster
 
 import (
 	"context"
-	"github.com/kejilion/kejilion-panel/internal/terminal"
+	"errors"
 	"time"
+
+	"github.com/kejilion/kejilion-panel/internal/terminal"
 )
+
+var ErrTerminalRetentionUnavailable = errors.New("retained terminals are not supported")
 
 // RetainedTerminalBackend is optional: old nodes must reject rather than silently downgrade.
 type RetainedTerminalBackend interface {
@@ -17,14 +21,14 @@ func openTerminalBackend(ctx context.Context, b TerminalBackend, owner string, r
 	}
 	r, ok := b.(RetainedTerminalBackend)
 	if !ok {
-		return terminal.Snapshot{}, ErrTerminalUnavailable
+		return terminal.Snapshot{}, ErrTerminalRetentionUnavailable
 	}
 	snapshot, err := r.OpenRetained(ctx, owner, rows, cols)
 	if err == nil && !snapshot.Retained {
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = b.Close(cleanup, owner, snapshot.ID)
-		return terminal.Snapshot{}, ErrTerminalUnavailable
+		return terminal.Snapshot{}, ErrTerminalRetentionUnavailable
 	}
 	return snapshot, err
 }

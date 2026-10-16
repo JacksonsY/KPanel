@@ -103,6 +103,8 @@ func terminalStreamCode(err error) string {
 		return "terminal_input_sequence"
 	case errors.Is(err, terminal.ErrInputUncertain):
 		return "terminal_input_uncertain"
+	case errors.Is(err, ErrTerminalRetentionUnavailable):
+		return "terminal_retention_unavailable"
 	default:
 		return "terminal_failed"
 	}
@@ -122,6 +124,8 @@ func terminalStreamError(code string) error {
 		return terminal.ErrInputSequence
 	case "terminal_input_uncertain":
 		return terminal.ErrInputUncertain
+	case "terminal_retention_unavailable":
+		return ErrTerminalRetentionUnavailable
 	default:
 		return ErrTerminalUnavailable
 	}
@@ -493,7 +497,7 @@ func openStreamTerminal(ctx, parent context.Context, hostID string, dial streamT
 		stop()
 		t.cancel()
 		conn.close()
-		return nil, TerminalOpenResponse{}, ErrTerminalUnavailable
+		return nil, TerminalOpenResponse{}, ErrTerminalRetentionUnavailable
 	}
 	return t, TerminalOpenResponse{Retained: ready.Retained, SessionID: ready.SessionID, Offset: ready.Offset, CreatedAt: ready.CreatedAt}, nil
 }
@@ -594,22 +598,29 @@ func (t *streamTerminal) reconnect() {
 	}
 	deadline := time.Now().Add(window)
 	if t.retained {
-		deadline = t.createdAt.Add(terminal.DefaultLifetime)
+		// Reliable input cannot fall back to unsequenced v2 writes. Keep trying
+		// that same stream until expiry; legacy input keeps its short fallback.
+		expires := t.createdAt.Add(terminal.DefaultLifetime)
+		if t.fallback == nil || t.reliable || expires.Before(deadline) {
+			deadline = expires
+		}
 	}
+	reconnectCtx, cancel := context.WithDeadline(t.ctx, deadline)
+	defer cancel()
 	delay := 250 * time.Millisecond
-	for t.ctx.Err() == nil && time.Now().Before(deadline) {
+	for reconnectCtx.Err() == nil {
 		protocol := ""
 		if t.reliable {
 			protocol = terminal.InputProtocol
 		}
-		conn, ready, err := t.dial(t.ctx, termAttach, terminalStreamAttach{SessionID: t.sessionID, Offset: t.buffer.Next(), InputProtocol: protocol})
+		conn, ready, err := t.dial(reconnectCtx, termAttach, terminalStreamAttach{SessionID: t.sessionID, Offset: t.buffer.Next(), InputProtocol: protocol})
 		if err == nil && ready.InputProtocol != protocol {
 			conn.close()
 			err = ErrTerminalUnavailable
 		}
 		if err == nil {
 			t.mu.Lock()
-			if t.closing || t.ctx.Err() != nil {
+			if t.closing || reconnectCtx.Err() != nil {
 				t.mu.Unlock()
 				conn.close()
 				return
@@ -625,14 +636,14 @@ func (t *streamTerminal) reconnect() {
 		}
 		timer := time.NewTimer(delay)
 		select {
-		case <-t.ctx.Done():
+		case <-reconnectCtx.Done():
 			timer.Stop()
-			return
+			// The retry deadline also bounds a blocked dial and backoff sleep.
 		case <-timer.C:
 		}
 		delay = min(delay*2, 4*time.Second)
 	}
-	if t.fallback != nil && !t.reliable && t.ctx.Err() == nil {
+	if t.fallback != nil && !t.reliable && t.ctx.Err() == nil && (!t.retained || time.Now().Before(t.createdAt.Add(terminal.DefaultLifetime))) {
 		t.mu.Lock()
 		t.degraded = true
 		t.mu.Unlock()

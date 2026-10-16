@@ -3,6 +3,9 @@ import { passkeyEnUS } from '../passkeys'
 
 export const enUSMessages = {
   "terminal.launchUncertain": "Launch is unconfirmed. No automatic retry was made; check the terminal.",
+  "terminal.retentionUnsupported": "This node does not support background sessions. Upgrade the node, or connect temporarily. Temporary sessions do not survive a page reload.",
+  "terminal.retentionOpenFailed": "Could not open a background session. Check the connection and upgrade older nodes, or connect temporarily. Temporary sessions do not survive a page reload.",
+  "terminal.openTemporary": "Connect temporarily",
   "appScript.backgroundNotice": "Closing the window or reloading keeps the task running. Reopen to reconnect.",
   "appScript.endTask": "End task",
 

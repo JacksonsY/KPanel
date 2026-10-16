@@ -3,6 +3,9 @@ import { passkeyZhTW } from '../passkeys'
 
 export const zhTWMessages = {
   "terminal.launchUncertain": "啟動結果未確認，未自動重試，請檢查終端。",
+  "terminal.retentionUnsupported": "節點不支援背景保留，請升級節點。也可暫時連線，暫時工作階段重新整理後不保留。",
+  "terminal.retentionOpenFailed": "背景工作階段未能建立，請檢查連線；舊節點請先升級。也可暫時連線，暫時工作階段重新整理後不保留。",
+  "terminal.openTemporary": "暫時連線",
   "appScript.backgroundNotice": "關閉視窗或重新整理不會結束任務，重新開啟可繼續連接。",
   "appScript.endTask": "結束任務",
 

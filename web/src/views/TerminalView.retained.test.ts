@@ -3,10 +3,11 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TerminalView from './TerminalView.vue'
+import { ApiError } from '@/lib/api'
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), open: vi.fn(), hosts: vi.fn() }))
+const mocks = vi.hoisted(() => ({ list: vi.fn(), open: vi.fn(), hosts: vi.fn(), close: vi.fn(), closeOnUnload: vi.fn() }))
 vi.mock('vue-router', async (original) => ({ ...await original<typeof import('vue-router')>(), useRoute: () => ({ path: '/terminal', query: {} }) }))
-vi.mock('@/lib/api', () => ({ api: { cluster: { hosts: mocks.hosts }, terminals: { list: mocks.list, open: mocks.open } }, ApiError: class extends Error {} }))
+vi.mock('@/lib/api', () => ({ api: { cluster: { hosts: mocks.hosts }, terminals: { list: mocks.list, open: mocks.open, close: mocks.close, closeOnUnload: mocks.closeOnUnload } }, ApiError: class extends Error { code = '' } }))
 vi.mock('@/components/terminal/HostTerminal.vue', () => ({ default: defineComponent({
   name: 'HostTerminalStub', props: ['sessionId', 'retained', 'initialOffset'],
   setup(_, { expose }) { expose({ closeSession: async () => {}, focusTerminal() {}, executeCommand() { return true }, scheduleResize() {} }); return () => null },
@@ -19,6 +20,44 @@ beforeEach(() => {
 })
 
 describe('retained terminal restoration', () => {
+  it('reclaims a temporary connection that completes after unmount', async () => {
+    mocks.list.mockResolvedValue({ items: [] })
+    mocks.open.mockRejectedValueOnce(Object.assign(new ApiError('old node', 409, 'terminal_retention_unavailable'), { code: 'terminal_retention_unavailable' }))
+    const wrapper = mount(TerminalView)
+    await flushPromises()
+    let resolve!: (value: unknown) => void
+    mocks.open.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    await wrapper.get('[role="alert"] button').trigger('click')
+    wrapper.unmount()
+    mocks.close.mockResolvedValueOnce({ closed: false })
+    resolve({ sessionId: 'late', retained: false })
+    await flushPromises()
+    expect(mocks.close).toHaveBeenCalledWith('late')
+    expect(mocks.closeOnUnload).toHaveBeenCalledWith('late')
+  })
+  it('offers an explicit temporary connection after a rejected retained open without silently retrying', async () => {
+    mocks.list.mockResolvedValue({ items: [] })
+    mocks.open.mockRejectedValueOnce(Object.assign(new ApiError('old node', 409, 'terminal_retention_unavailable'), { code: 'terminal_retention_unavailable' }))
+    const wrapper = mount(TerminalView)
+    await flushPromises()
+    expect(mocks.open).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('请升级节点')
+    mocks.open.mockResolvedValue({ sessionId: 'temporary', hostId: 'local', retained: false, offset: 0 })
+    await wrapper.get('[role="alert"] button').trigger('click')
+    await flushPromises()
+    expect(mocks.open).toHaveBeenLastCalledWith('local', 30, 120, { retained: false })
+    expect(wrapper.findComponent({ name: 'HostTerminalStub' }).props('retained')).toBe(false)
+    wrapper.unmount()
+  })
+  it('does not offer a second open for an uncertain network response', async () => {
+    mocks.list.mockResolvedValue({ items: [] })
+    mocks.open.mockRejectedValueOnce(Object.assign(new ApiError('lost response', 0, 'network_error'), { code: 'network_error' }))
+    const wrapper = mount(TerminalView)
+    await flushPromises()
+    expect(wrapper.find('[role="alert"] button').exists()).toBe(false)
+    expect(mocks.open).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
   it('restores the same local and remote shortcut sessions without replay or new opens', async () => {
     mocks.list.mockResolvedValue({ items: [
       { sessionId: 'original', hostId: 'local', offset: 123, retained: true },

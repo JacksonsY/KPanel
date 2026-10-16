@@ -2,6 +2,9 @@ import { passkeyZhCN } from '../passkeys'
 
 export const zhCNMessages = {
   "terminal.launchUncertain": "启动结果未确认，未自动重试，请检查终端。",
+  "terminal.retentionUnsupported": "节点不支持后台保留，请升级节点。也可临时连接，临时会话刷新后不保留。",
+  "terminal.retentionOpenFailed": "后台会话未能建立，请检查连接；旧节点请先升级。也可临时连接，临时会话刷新后不保留。",
+  "terminal.openTemporary": "临时连接",
   "appScript.backgroundNotice": "关闭窗口或刷新不会结束任务，重新打开可继续连接。",
   "appScript.endTask": "结束任务",
 

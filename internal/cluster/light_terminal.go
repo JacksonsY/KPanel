@@ -325,7 +325,7 @@ func (item *lightTerminalNode) finishCommand(event TerminalRelayEvent, session *
 	}
 	delete(item.pending, event.CommandID)
 	if event.Kind == "opened" && session.retained && !event.Retained {
-		completeLightTerminalCommand(command, ErrTerminalUnavailable)
+		completeLightTerminalCommand(command, ErrTerminalRetentionUnavailable)
 		return
 	}
 	if event.Kind == "closed" {

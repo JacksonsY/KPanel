@@ -19,6 +19,7 @@ const session = ref<TerminalSession>()
 const opening = ref(true)
 const closing = ref(false)
 const error = ref('')
+const temporaryAvailable = ref(false)
 // Snapshot the command for this terminal session.
 const command = props.command
 const hostName = props.hostName
@@ -36,10 +37,13 @@ async function reclaim(opened: TerminalSession): Promise<void> {
   if (!result.closed) throw new Error('Terminal close was not confirmed')
 }
 
-async function open(): Promise<void> {
+async function open(retained = true): Promise<void> {
+  opening.value = true
+  error.value = ''
+  temporaryAvailable.value = false
   try {
     const opened = props.existingSession || await (props.shortcutId
-      ? api.terminals.open(hostId, 30, 120, { retained: true, shortcutId: props.shortcutId, shortcutVersion: props.shortcutVersion })
+      ? api.terminals.open(hostId, 30, 120, { retained, shortcutId: props.shortcutId, shortcutVersion: props.shortcutVersion })
       : api.terminals.open(hostId, 30, 120))
     if (disposed) {
       if (!opened.retained) await reclaim(opened).catch(() => api.terminals.closeOnUnload(opened.sessionId))
@@ -48,12 +52,22 @@ async function open(): Promise<void> {
     session.value = opened
     if (opened.launchUncertain) error.value = t('terminal.launchUncertain')
   } catch (reason) {
+    if (!disposed && retained && props.shortcutId && reason instanceof ApiError && ['terminal_retention_unavailable', 'terminal_open_failed'].includes(reason.code)) {
+      temporaryAvailable.value = true
+      error.value = t(reason.code === 'terminal_retention_unavailable' ? 'terminal.retentionUnsupported' : 'terminal.retentionOpenFailed')
+      return
+    }
     if (!disposed) error.value = reason instanceof ApiError && reason.code === 'terminal_limit'
       ? phrase('已达到终端会话上限，请先关闭不用的终端。')
       : phrase('终端启动失败，请检查主机连接后重新打开。')
   } finally {
     opening.value = false
   }
+}
+
+function openTemporary(): void {
+  if (disposed || closing.value || opening.value || !temporaryAvailable.value) return
+  openingRequest = open(false)
 }
 
 async function onStateChange(state: string): Promise<void> {
@@ -105,7 +119,10 @@ onBeforeUnmount(() => {
 <template>
   <section class="shortcut-command-terminal" :aria-label="name">
       <div v-if="opening" class="shortcut-command-terminal__state" role="status"><LoaderCircle class="spin" :size="20" />{{ phrase('正在连接终端…') }}</div>
-      <div v-if="error" class="inline-alert inline-alert--danger" role="alert">{{ error }}</div>
+      <div v-if="error" class="inline-alert inline-alert--danger" role="alert">
+        {{ error }}
+        <button v-if="temporaryAvailable" type="button" class="button button--secondary" @click="openTemporary">{{ t('terminal.openTemporary') }}</button>
+      </div>
       <HostTerminal v-if="session" ref="terminal" :session-id="session.sessionId" :retained="session.retained" :host-name="hostName" :initial-offset="session.retained ? 0 : session.offset" @state-change="onStateChange" />
   </section>
 </template>

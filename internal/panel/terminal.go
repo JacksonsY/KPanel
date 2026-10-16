@@ -92,7 +92,7 @@ func (s clusterTerminalSource) OpenRetained(ctx context.Context, owner string, r
 		if result.ID != "" {
 			_ = s.Close(ctx, owner, result.ID)
 		}
-		return terminal.Snapshot{}, errors.New("Agent does not support retained terminals")
+		return terminal.Snapshot{}, cluster.ErrTerminalRetentionUnavailable
 	}
 	return result, nil
 }
@@ -263,8 +263,8 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		s.writeValidationProblem(w, r, "containerId", "a full container identity and resource version are required together")
 		return
 	}
-	if input.Retained && input.ContainerID != "" || input.ShortcutID != "" && (!input.Retained || !desktopworkspace.ValidShortcutID(input.ShortcutID)) || input.ShortcutID == "" && input.ShortcutVersion != "" {
-		s.writeValidationProblem(w, r, "retained", "retained shortcuts require a valid shortcut ID and cannot target containers")
+	if input.Retained && input.ContainerID != "" || input.ShortcutID != "" && (input.ContainerID != "" || !desktopworkspace.ValidShortcutID(input.ShortcutID)) || input.ShortcutID == "" && input.ShortcutVersion != "" {
+		s.writeValidationProblem(w, r, "retained", "shortcuts require a valid shortcut ID and cannot target containers")
 		return
 	}
 	var launchCommand, launchTitle string
@@ -359,6 +359,9 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 	if err != nil {
 		_ = s.audit(r, userID, "terminal.open", auditType, auditTarget, "failure", nil)
 		switch {
+		case errors.Is(err, cluster.ErrTerminalRetentionUnavailable):
+			s.writeProblem(w, r, http.StatusConflict, "terminal_retention_unavailable", "This host does not support retained sessions", "Upgrade the node or explicitly open a temporary terminal")
+			return
 		case errors.Is(err, terminal.ErrLimit):
 			s.writeProblem(w, r, http.StatusTooManyRequests, "terminal_limit", "Terminal session limit reached", "")
 			return
@@ -752,7 +755,7 @@ func (s *Server) resumeShortcut(w http.ResponseWriter, r *http.Request, userID s
 	s.terminalMu.Lock()
 	var item panelTerminalSession
 	for _, existing := range s.terminalSessions {
-		if existing.UserID == userID && existing.Retained && existing.ShortcutID == input.ShortcutID {
+		if existing.UserID == userID && existing.ShortcutID == input.ShortcutID {
 			item = existing
 			break
 		}

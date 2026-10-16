@@ -184,7 +184,7 @@ func (s *Service) TerminalOpen(ctx context.Context, hostID string, input Termina
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = remote.TerminalCloseV2(cleanup, record.Origin, record.ControllerID, record.RemoteNodeID, noiseKeyV2(credential), credential.TargetPublic, s.now().UTC(), TerminalCloseRequest{SessionID: response.SessionID})
-		return TerminalOpenResponse{}, ErrTerminalUnavailable
+		return TerminalOpenResponse{}, ErrTerminalRetentionUnavailable
 	}
 	return response, err
 }

@@ -16,13 +16,17 @@ import (
 
 type retainedAgentStub struct {
 	terminalAgentStub
-	unsupported bool
-	failInput   bool
-	failClose   bool
-	beforeInput func()
+	unsupported  bool
+	strictLegacy bool
+	failInput    bool
+	failClose    bool
+	beforeInput  func()
 }
 
 func (a *retainedAgentStub) Do(ctx context.Context, method, path, query, id string, body []byte) (AgentResponse, error) {
+	if path == "/v1/terminals" && a.strictLegacy && strings.Contains(string(body), `"retained"`) {
+		return AgentResponse{StatusCode: 400, Body: []byte(`{"code":"invalid_request","title":"Unknown field"}`)}, nil
+	}
 	if strings.HasSuffix(path, "/input") && a.beforeInput != nil {
 		a.beforeInput()
 	}
@@ -196,8 +200,53 @@ func TestRetainedAgentNegotiationRejectsOldAgent(t *testing.T) {
 	s.agent = stub
 	cookie, csrf := bootstrapCookies(t, s, path)
 	got := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions", []byte(`{"hostId":"local","rows":24,"columns":80,"retained":true}`), cookie, csrf, retainedHeaders(csrf))
-	if got.Code < 400 || stub.closed != 1 || len(s.terminalSessions) != 0 {
+	if got.Code != 409 || !strings.Contains(got.Body.String(), "terminal_retention_unavailable") || stub.closed != 1 || len(s.terminalSessions) != 0 {
 		t.Fatalf("old Agent silently downgraded: %d closed%d", got.Code, stub.closed)
+	}
+}
+
+func TestTemporaryShortcutUsesSavedCommandAndReusesUncertainLaunch(t *testing.T) {
+	s, path := newTestServer(t)
+	stub := &retainedAgentStub{unsupported: true, failInput: true}
+	s.agent = stub
+	cookie, csrf := bootstrapCookies(t, s, path)
+	version := saveRetainedShortcut(t, s)
+	body := []byte(strings.Replace(string(retainedShortcutBody(version)), `"retained":true`, `"retained":false`, 1))
+	first := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions", body, cookie, csrf, retainedHeaders(csrf))
+	var opened terminalOpenResponse
+	_ = json.Unmarshal(first.Body.Bytes(), &opened)
+	if first.Code != 201 || opened.Retained || !opened.LaunchUncertain {
+		t.Fatalf("temporary launch: %d %s", first.Code, first.Body)
+	}
+	stub.failInput = false
+	// Switching back to background mode must resume even a temporary session.
+	retry := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions", retainedShortcutBody(version), cookie, csrf, retainedHeaders(csrf))
+	var resumed terminalOpenResponse
+	_ = json.Unmarshal(retry.Body.Bytes(), &resumed)
+	if retry.Code != 200 || resumed.SessionID != opened.SessionID || stub.opened != 1 || len(stub.inputs) != 0 {
+		t.Fatalf("temporary launch replayed: %d %s", retry.Code, retry.Body)
+	}
+}
+
+func TestStrictLegacyAgentExplicitTemporaryShortcutExecutesSavedCommandOnce(t *testing.T) {
+	s, path := newTestServer(t)
+	stub := &retainedAgentStub{strictLegacy: true, unsupported: true}
+	s.agent = stub
+	cookie, csrf := bootstrapCookies(t, s, path)
+	version := saveRetainedShortcut(t, s)
+	rejected := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions", retainedShortcutBody(version), cookie, csrf, retainedHeaders(csrf))
+	if rejected.Code != 502 || stub.opened != 0 || len(stub.inputs) != 0 {
+		t.Fatalf("strict legacy rejection: %d opened=%d inputs=%d", rejected.Code, stub.opened, len(stub.inputs))
+	}
+	body := []byte(strings.Replace(string(retainedShortcutBody(version)), `"retained":true`, `"retained":false`, 1))
+	for i := range 2 {
+		got := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions", body, cookie, csrf, retainedHeaders(csrf))
+		if got.Code != []int{201, 200}[i] {
+			t.Fatalf("temporary shortcut: %d %s", got.Code, got.Body)
+		}
+	}
+	if stub.opened != 1 || len(stub.inputs) != 1 || string(stub.inputs[0]) != "printf secret-test-command\n" {
+		t.Fatalf("temporary command opened=%d inputs=%q", stub.opened, stub.inputs)
 	}
 }
 func TestRetainedRegistrySkipsIdleButKeepsUnconfirmedExpiry(t *testing.T) {

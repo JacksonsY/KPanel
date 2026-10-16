@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { desktopWindowCloseGuardKey } from '@/lib/desktopRouteKeys'
 import ShortcutCommandTerminal from './ShortcutCommandTerminal.vue'
 import type { TerminalSession } from '@/types/api'
+import { ApiError } from '@/lib/api'
 
 const mocks = vi.hoisted(() => ({ open: vi.fn(), close: vi.fn(), closeOnUnload: vi.fn(), execute: vi.fn(), childClose: vi.fn() }))
 vi.mock('@/lib/api', () => ({
@@ -36,6 +37,20 @@ beforeEach(() => {
 afterEach(() => { for (const wrapper of wrappers.splice(0)) wrapper.unmount() })
 
 describe('shortcut command terminal lifecycle', () => {
+  it('uses the saved shortcut on an explicit temporary retry without client-side command submission', async () => {
+    mocks.open.mockRejectedValueOnce(Object.assign(new ApiError('old node', 502, 'terminal_open_failed'), { code: 'terminal_open_failed' }))
+    const wrapper = create('remote-1', 'Old node', { shortcutId: 'a'.repeat(32), shortcutVersion: 'v1' })
+    await flushPromises()
+    expect(mocks.open).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('刷新后不保留')
+    await wrapper.get('[role="alert"] button').trigger('click')
+    await flushPromises()
+    expect(mocks.open).toHaveBeenLastCalledWith('remote-1', 30, 120, { retained: false, shortcutId: 'a'.repeat(32), shortcutVersion: 'v1' })
+    wrapper.findComponent(HostTerminal).vm.$emit('stateChange', 'connected')
+    await flushPromises()
+    expect(mocks.execute).not.toHaveBeenCalled()
+    expect(await closeGuard()).toBe(true)
+  })
   it('opens the local host, submits once after connection, and never replays on reconnect', async () => {
     const wrapper = create()
     await flushPromises()
