@@ -24,8 +24,8 @@ if (remote.split('\n').some(line => line.endsWith(`refs/tags/${tag}`))) throw ne
 if (remote !== `${sha}\trefs/heads/${branch}`) throw new Error('Candidate branch does not match the frozen SHA');
 // The workflow implementation must already be trusted on main: a dispatch never executes
 // release automation supplied only by an unreviewed candidate.
-const automation = ref => git('ls-tree', '-r', ref, '--', '.github/workflows', 'scripts',
-  'packaging/tests/release-browser', 'packaging/release-browser', 'packaging/release-runner')
+const automation = ref => git('ls-tree', '-r', ref, '--', '.github/workflows', 'scripts', 'Makefile',
+  'packaging/tests', 'packaging/release-browser', 'packaging/release-runner')
   .split('\n').filter(line => !line.endsWith('\tscripts/torrent-backport-scan-scope.json')).join('\n');
 // Source-version qualification intentionally changes with every release version;
 // all executable release helpers, including newly added files, must already be trusted.

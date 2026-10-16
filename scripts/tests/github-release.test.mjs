@@ -35,7 +35,8 @@ test('preview pipeline binds trusted workflows, atomic Git writes and explicit d
   assert.match(controller, /Candidate branch does not match/);
   assert.match(controller, /Release automation must be integrated on main/);
   assert.match(controller, /'ls-tree', '-r', ref/);
-  assert.match(controller, /packaging\/tests\/release-browser/);
+  assert.match(controller, /'packaging\/tests'/);
+  assert.match(controller, /'Makefile'/);
   assert.match(controller, /'push', '--atomic'/);
   assert.match(controller, /force-with-lease=refs\/heads\/main/);
   assert.match(controller, /before !== process.env.RELEASE_BASE/);
