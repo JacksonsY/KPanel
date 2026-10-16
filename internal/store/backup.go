@@ -28,6 +28,7 @@ func (s *Store) ExportIdentity() ([]byte, error) {
 		ClusterHostDetails: maps.Clone(s.data.ClusterHostDetails),
 		ClusterTraffic:     maps.Clone(s.data.ClusterTraffic),
 		Appearance:         cloneAppearance(s.data.Appearance),
+		Preferences:        clonePreferences(s.data.Preferences),
 	})
 }
 
@@ -46,6 +47,9 @@ func ValidateIdentityBackup(data []byte) error {
 	}
 	if state.Appearance != nil && ValidateAppearance(*state.Appearance) != nil {
 		return errors.New("invalid panel appearance backup")
+	}
+	if ValidatePreferences(state.Preferences) != nil {
+		return errors.New("invalid panel preferences backup")
 	}
 	if validateClusterHostDetailsMap(state.ClusterHostDetails) != nil {
 		return errors.New("invalid cluster host details backup")
@@ -94,6 +98,7 @@ func (s *Store) RestoreIdentity(data []byte) error {
 	s.data.ClusterHostDetails = maps.Clone(incoming.ClusterHostDetails)
 	s.data.ClusterTraffic = maps.Clone(incoming.ClusterTraffic)
 	s.data.Appearance = cloneAppearance(incoming.Appearance)
+	s.data.Preferences = clonePreferences(incoming.Preferences)
 	if err := s.persistLocked(); err != nil {
 		s.data = previous
 		return err

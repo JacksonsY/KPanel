@@ -83,7 +83,10 @@ export async function setLocale(locale: SupportedLocale, persist = true): Promis
     activeMessages.value = messages
     activeLocale.value = locale
     applyDocumentLocale(locale)
-    if (persist) persistLocale(locale)
+    if (persist) {
+      persistLocale(locale)
+      window.dispatchEvent?.(new CustomEvent('kpanel:preferences-changed', { detail: { locale } }))
+    }
     return true
   } catch {
     if (sequence !== changeSequence) return false

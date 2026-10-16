@@ -2,6 +2,7 @@ import { computed, reactive } from 'vue'
 import { applySiteBranding } from '@/stores/branding'
 import { api, resetApiSecurityState } from '@/lib/api'
 import { stopAppearanceSync } from '@/lib/appearanceSync'
+import { stopPreferencesSync } from '@/lib/preferencesSync'
 import { applyLoginAppearance, cancelLoginWallpaper } from '@/lib/loginAppearance'
 import type { PasskeyCredentialJSON } from '@/lib/passkeys'
 import type { AgentStatus, AuthStatus, LoginRequest, SetupRequest, User } from '@/types/api'
@@ -29,6 +30,7 @@ let statusPromise: Promise<void> | undefined
 let generation = 0
 
 function applyStatus(status: AuthStatus): void {
+  if (!status.authenticated) stopPreferencesSync()
   applySiteBranding(status.authenticated ? status.appearance?.branding : status.loginAppearance?.branding)
   if (!status.authenticated && !status.setupRequired && status.loginAppearance) applyLoginAppearance(status.loginAppearance)
   else cancelLoginWallpaper()
@@ -55,6 +57,7 @@ async function refresh(force = false): Promise<void> {
       cancelLoginWallpaper()
       state.appearance = undefined
       state.authenticated = false
+      stopPreferencesSync()
       state.setupRequired = false
       state.user = undefined
       state.error = error
@@ -115,6 +118,7 @@ async function logout(): Promise<void> {
   }
   if (run !== generation) return
   stopAppearanceSync()
+  stopPreferencesSync()
   resetApiSecurityState()
   cancelLoginWallpaper()
   state.authenticated = false

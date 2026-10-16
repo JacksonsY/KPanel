@@ -2,6 +2,8 @@ import { passkeyZhCN } from '../passkeys'
 import { panelAccessZhCN } from '../panelAccess'
 
 export const zhCNMessages = {
+  'settings.preferencesSyncFailed': '界面状态尚未同步到服务端',
+  'settings.preferencesSyncRetry': '连接恢复后会重试，请暂时保留此页面。',
   "terminal.launchUncertain": "启动结果未确认，未自动重试，请检查终端。",
   "terminal.retentionUnsupported": "节点不支持后台保留，请升级节点。也可临时连接，临时会话刷新后不保留。",
   "terminal.retentionOpenFailed": "后台会话未能建立，请检查连接；旧节点请先升级。也可临时连接，临时会话刷新后不保留。",

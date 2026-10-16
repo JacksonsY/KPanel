@@ -1,0 +1,50 @@
+package panel
+
+import (
+	"encoding/json"
+	"net/http"
+	"testing"
+)
+
+func TestPreferencesAuthenticatedSharedStateAndFailureBoundaries(t *testing.T) {
+	s, tokenPath := newTestServer(t)
+	session, csrf := bootstrapCookies(t, s, tokenPath)
+	if r := performRequest(s, http.MethodGet, preferencesPath, nil, nil); r.Code != 401 {
+		t.Fatalf("anonymous: %d", r.Code)
+	}
+	read := authenticatedSiteRequest(s, session, csrf, http.MethodGet, preferencesPath, nil, false)
+	var initial preferencesResponse
+	if err := json.Unmarshal(read.Body.Bytes(), &initial); err != nil || read.Code != 200 || read.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("read: %d %v", read.Code, err)
+	}
+	body, _ := json.Marshal(map[string]any{"locale": "en-US", "expectedResourceVersion": initial.ResourceVersion})
+	if r := authenticatedSiteRequest(s, session, csrf, http.MethodPut, preferencesPath, body, false); r.Code != 403 {
+		t.Fatalf("CSRF: %d", r.Code)
+	}
+	if r := authenticatedRequest(s, http.MethodPut, preferencesPath, body, session, csrf, map[string]string{"Content-Type": "application/json", "Origin": "http://evil.test", "X-CSRF-Token": csrf.Value}); r.Code != 403 {
+		t.Fatalf("origin: %d", r.Code)
+	}
+	saved := authenticatedSiteRequest(s, session, csrf, http.MethodPut, preferencesPath, body, true)
+	if saved.Code != 200 {
+		t.Fatalf("save: %d %s", saved.Code, saved.Body.String())
+	}
+	if r := authenticatedSiteRequest(s, session, csrf, http.MethodPut, preferencesPath, body, true); r.Code != 409 {
+		t.Fatalf("conflict: %d", r.Code)
+	}
+	var state preferencesResponse
+	_ = json.Unmarshal(saved.Body.Bytes(), &state)
+	invalid, _ := json.Marshal(map[string]any{"locale": "unsupported", "expectedResourceVersion": state.ResourceVersion})
+	if r := authenticatedSiteRequest(s, session, csrf, http.MethodPut, preferencesPath, invalid, true); r.Code != 422 {
+		t.Fatalf("invalid: %d", r.Code)
+	}
+	unknown, _ := json.Marshal(map[string]any{"locale": "zh-CN", "launchPending": true, "expectedResourceVersion": state.ResourceVersion})
+	if r := authenticatedSiteRequest(s, session, csrf, http.MethodPut, preferencesPath, unknown, true); r.Code != 400 {
+		t.Fatalf("unknown fields: %d", r.Code)
+	}
+	read = authenticatedSiteRequest(s, session, csrf, http.MethodGet, preferencesPath, nil, false)
+	var reread preferencesResponse
+	_ = json.Unmarshal(read.Body.Bytes(), &reread)
+	if reread.Locale != "en-US" || reread.ResourceVersion != state.ResourceVersion {
+		t.Fatal("failed write changed preferences")
+	}
+}

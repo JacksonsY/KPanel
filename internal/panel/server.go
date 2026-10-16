@@ -464,6 +464,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.handlePanelAccess(w, r)
 	case r.URL.Path == appearancePath:
 		s.handleAppearance(w, r)
+	case r.URL.Path == preferencesPath:
+		s.handlePreferences(w, r)
 	case r.URL.Path == "/api/v1/settings/automatic-update" ||
 		r.URL.Path == "/api/v1/settings/automatic-update/check" ||
 		r.URL.Path == "/api/v1/settings/automatic-update/install":

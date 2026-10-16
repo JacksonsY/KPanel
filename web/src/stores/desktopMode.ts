@@ -12,13 +12,14 @@ import {
   type WindowSnapTarget,
 } from '@/lib/desktopWindowGeometry'
 import { canonicalDesktopAppPath, desktopRoutePath, findDesktopApp } from '@/lib/desktopApps'
+import type { DesktopSessionPreferences } from '@/types/api'
 
 /**
  * Desktop (Windows-style) mode state.
  *
  * The desktop shell reuses the existing lazy-loaded route views as window
- * contents. This store owns only mode/open-window state and browser-local
- * window geometry; icon layout and shortcuts live in `desktopIcons.ts` and the
+ * contents. This store owns mode/open-window state; browser storage is a paint
+ * cache and one-time migration input for preferencesSync. Icon layout lives in the
  * authenticated Panel workspace API.
  */
 
@@ -82,6 +83,46 @@ let windowPreferencesLoaded = false
 let windowPreferencesStorage: StorageLike | undefined
 const windowPreferences = new Map<string, WindowSizePreference>()
 const sizeDirtyWindowIds = new Set<number>()
+let applyingPreferences = false
+
+export function desktopPreferencesSnapshot(): DesktopSessionPreferences {
+  ensureWindowPreferences()
+  const windows = state.windows.filter((item) => isSafeWindowFullPath(item.path)).slice(0, MAX_WINDOWS).map((item) => ({
+    id: item.id, path: item.path, geometry: { ...item.geometry }, minimized: item.minimized,
+    maximized: item.maximized, snap: item.snap ?? '' as const, z: item.z,
+  }))
+  return {
+    mode: state.mode, windows, windowSizes: [...windowPreferences.values()].map((item) => ({ ...item })),
+    sideSplitRatio: state.sideSplitRatio, focusedId: windows.some((item) => item.id === state.focusedId) ? state.focusedId : 0,
+  }
+}
+
+function preferencesChanged(): void {
+  if (!applyingPreferences) window.dispatchEvent(new CustomEvent('kpanel:preferences-changed', {
+    detail: { desktop: desktopPreferencesSnapshot() },
+  }))
+}
+
+/** Restore through the existing route/geometry validator; never restore launch intent. */
+export function applyDesktopPreferences(value: DesktopSessionPreferences): void {
+  applyingPreferences = true
+  try {
+    const values: Record<string, string> = {
+      [MODE_KEY]: value.mode, [WINDOWS_KEY]: JSON.stringify(value.windows),
+      [WINDOW_PREFERENCES_KEY]: JSON.stringify(value.windowSizes), [SIDE_SPLIT_RATIO_KEY]: String(value.sideSplitRatio),
+    }
+    initializeDesktopMode({ getItem: (key) => values[key] ?? null, setItem: () => {} })
+    for (const item of state.windows) item.z = value.windows.find((saved) => saved.id === item.id)?.z ?? BASE_WINDOW_Z
+    normalizeWindowStack()
+    state.focusedId = state.windows.some((item) => item.id === value.focusedId && !item.minimized) ? value.focusedId : state.focusedId
+    sizeDirtyWindowIds.clear()
+    windowPreferencesStorage = defaultStorage()
+    persistMode(defaultStorage())
+    persistWindows(defaultStorage())
+    persistWindowPreferences()
+    persistSideSplitRatio(defaultStorage())
+  } finally { applyingPreferences = false }
+}
 
 function isDesktopMode(value: unknown): value is DesktopMode {
   return value === 'classic' || value === 'desktop'
@@ -159,6 +200,7 @@ function ensureWindowPreferences(): void {
 }
 
 function persistWindowPreferences(): void {
+  preferencesChanged()
   try {
     windowPreferencesStorage?.setItem(WINDOW_PREFERENCES_KEY, JSON.stringify([...windowPreferences.values()]))
   } catch {
@@ -252,6 +294,7 @@ function readPersistedWindows(
 }
 
 function persistWindows(storage: StorageLike | undefined): void {
+  preferencesChanged()
   try {
     const snapshot = state.windows
       .slice(0, MAX_WINDOWS)
@@ -271,6 +314,7 @@ function persistWindows(storage: StorageLike | undefined): void {
 }
 
 function persistMode(storage: StorageLike | undefined): void {
+  preferencesChanged()
   try {
     storage?.setItem(MODE_KEY, state.mode)
   } catch {
@@ -294,6 +338,7 @@ function readPersistedSideSplitRatio(
 }
 
 function persistSideSplitRatio(storage: StorageLike | undefined): void {
+  preferencesChanged()
   try {
     storage?.setItem(SIDE_SPLIT_RATIO_KEY, String(state.sideSplitRatio))
   } catch {
@@ -327,8 +372,13 @@ function resizeForViewport(viewport: ViewportSize, persist = true): void {
     if (windowState.snap && !supportsSideWindowSnap(viewport)) windowState.snap = null
   }
   if (persist) {
-    persistWindows(defaultStorage())
-    persistSideSplitRatio(defaultStorage())
+    // Viewport fitting is local presentation, not an explicit shared layout edit.
+    const previous = applyingPreferences
+    applyingPreferences = true
+    try {
+      persistWindows(defaultStorage())
+      persistSideSplitRatio(defaultStorage())
+    } finally { applyingPreferences = previous }
   }
 }
 
@@ -349,6 +399,11 @@ export function initializeDesktopMode(
   storage: StorageLike | undefined = defaultStorage(),
   viewport: ViewportSize = defaultViewport(),
 ): void {
+  nextWindowId = 1
+  nextZ = BASE_WINDOW_Z
+  sizeDirtyWindowIds.clear()
+  state.windows.splice(0, state.windows.length)
+  state.focusedId = 0
   state.mode = readPersistedMode(storage)
   state.sideSplitRatio = readPersistedSideSplitRatio(storage, viewport)
   loadWindowPreferences(storage)
@@ -367,7 +422,6 @@ export function initializeDesktopMode(
     state.focusedId = [...state.windows]
       .filter((windowState) => !windowState.minimized)
       .sort((a, b) => b.z - a.z)[0]?.id ?? 0
-    persistWindows(storage)
   }
 }
 
@@ -511,6 +565,7 @@ export function useDesktopMode() {
     if (!target || target.minimized) return
     if (state.focusedId === id) return
     bringToFront(id)
+    persistWindows(defaultStorage())
   }
 
   function updateGeometry(id: number, geometry: WindowGeometry, persist = true): void {

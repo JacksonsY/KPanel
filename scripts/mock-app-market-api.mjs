@@ -1902,6 +1902,9 @@ function mockTrafficInterfacesSnapshot() {
   }
 }
 
+let mockPreferences = { resourceVersion: mockRevision(1) }
+let mockPreferencesRevision = 1
+
 createServer(async (request, response) => {
   const url = new URL(request.url, 'http://127.0.0.1:8080')
   if (mockTutorials(request, response, url, send)) return
@@ -1911,6 +1914,28 @@ createServer(async (request, response) => {
   if (await mockDesktopWallpapers(request, response, url, send)) return
   if (await mockGallery(request, response, url, send, readJSON)) return
   if (await mockOffers(request, response, url, send)) return
+  if (url.pathname === '/api/v1/settings/preferences' && request.method === 'GET') {
+    send(response, 200, mockPreferences)
+    return
+  }
+  if (url.pathname === '/api/v1/settings/preferences' && request.method === 'PUT') {
+    const input = await readJSON(request)
+    if (input.expectedResourceVersion !== mockPreferences.resourceVersion) {
+      send(response, 409, { title: 'Preferences changed', code: 'resource_version_changed' })
+      return
+    }
+    const changes = {}
+    if (['zh-CN', 'zh-TW', 'en-US'].includes(input.locale)) changes.locale = input.locale
+    if (input.desktop && Array.isArray(input.desktop.windows) && input.desktop.windows.length <= 8
+      && Array.isArray(input.desktop.windowSizes) && input.desktop.windowSizes.length <= 32) changes.desktop = input.desktop
+    if (!Object.keys(changes).length) {
+      send(response, 422, { title: 'Preferences are invalid', code: 'preferences_invalid' })
+      return
+    }
+    mockPreferences = { ...mockPreferences, ...changes, resourceVersion: mockRevision(++mockPreferencesRevision) }
+    send(response, 200, mockPreferences)
+    return
+  }
   // Appearance sync reads this on every page; without it previews show a load failure toast.
   if (url.pathname === '/api/v1/settings/appearance' && request.method === 'GET') {
     send(response, 200, mockAppearance)

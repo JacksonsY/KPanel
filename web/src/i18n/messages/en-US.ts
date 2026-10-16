@@ -3,6 +3,8 @@ import { passkeyEnUS } from '../passkeys'
 import { panelAccessEnUS } from '../panelAccess'
 
 export const enUSMessages = {
+  'settings.preferencesSyncFailed': 'Interface state has not synced to the server',
+  'settings.preferencesSyncRetry': 'Sync will retry when the connection returns. Keep this page open for now.',
   "terminal.launchUncertain": "Launch is unconfirmed. No automatic retry was made; check the terminal.",
   "terminal.retentionUnsupported": "This node does not support background sessions. Upgrade the node, or connect temporarily. Temporary sessions do not survive a page reload.",
   "terminal.retentionOpenFailed": "Could not open a background session. Check the connection and upgrade older nodes, or connect temporarily. Temporary sessions do not survive a page reload.",

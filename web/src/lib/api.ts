@@ -17,6 +17,8 @@ import type {
 	SSHDefenseSnapshot,
   ApiList,
   AppearanceSettings,
+  UserPreferences,
+  UserPreferencesPatch,
   AgentStatus,
   AppInstallPortStatus,
   AppMarketInventory,
@@ -1358,6 +1360,11 @@ export const api = {
       }
     },
     logout: () => request<void>('/auth/logout', { method: 'POST' }),
+  },
+  preferences: {
+    get: (signal?: AbortSignal): Promise<UserPreferences> => request<UserPreferences>('/settings/preferences', { signal }),
+    update: (body: UserPreferencesPatch & { expectedResourceVersion: string }, signal?: AbortSignal): Promise<UserPreferences> =>
+      request<UserPreferences>('/settings/preferences', { method: 'PUT', body, signal }),
   },
   desktop: {
     appearance: (signal?: AbortSignal): Promise<AppearanceSettings> =>

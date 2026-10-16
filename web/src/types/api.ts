@@ -2337,6 +2337,30 @@ export interface SiteBranding {
   icon: string
 }
 
+export interface DesktopSessionPreferences {
+  mode: 'classic' | 'desktop'
+  windows: Array<{
+    id: number
+    path: string
+    geometry: { left: number; top: number; width: number; height: number }
+    minimized: boolean
+    maximized: boolean
+    snap: '' | 'left' | 'right'
+    z: number
+  }>
+  windowSizes: Array<{ path: string; width: number; height: number }>
+  sideSplitRatio: number
+  focusedId: number
+}
+
+export interface UserPreferences {
+  resourceVersion: string
+  locale?: 'zh-CN' | 'zh-TW' | 'en-US'
+  desktop?: DesktopSessionPreferences
+}
+
+export type UserPreferencesPatch = Partial<Pick<UserPreferences, 'locale' | 'desktop'>>
+
 export interface AppearanceSettings {
   branding?: SiteBranding
   configured: boolean

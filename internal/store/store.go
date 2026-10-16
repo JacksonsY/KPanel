@@ -179,6 +179,7 @@ type diskState struct {
 	ClusterHostDetails map[string]ClusterHostDetails   `json:"clusterHostDetails,omitempty"`
 	ClusterTraffic     map[string]ClusterTrafficRecord `json:"clusterTraffic,omitempty"`
 	Appearance         *Appearance                     `json:"appearance,omitempty"`
+	Preferences        Preferences                     `json:"preferences,omitempty"`
 	FileShares         []FileShare                     `json:"fileShares,omitempty"`
 }
 
@@ -254,6 +255,9 @@ func Open(path string) (*Store, error) {
 		}
 		if err := validateClusterHostDetailsMap(s.data.ClusterHostDetails); err != nil {
 			return nil, fmt.Errorf("validate cluster host details: %w", err)
+		}
+		if err := ValidatePreferences(s.data.Preferences); err != nil {
+			return nil, fmt.Errorf("validate preferences: %w", err)
 		}
 		if err := validateClusterTraffic(s.data.ClusterTraffic, s.data.ClusterHostDetails); err != nil {
 			return nil, fmt.Errorf("validate cluster traffic: %w", err)
@@ -1176,6 +1180,7 @@ func cloneDiskState(source diskState) diskState {
 		ClusterHostDetails: maps.Clone(source.ClusterHostDetails),
 		ClusterTraffic:     maps.Clone(source.ClusterTraffic),
 		Appearance:         cloneAppearance(source.Appearance),
+		Preferences:        clonePreferences(source.Preferences),
 		FileShares:         cloneFileShares(source.FileShares),
 	}
 }
