@@ -36,7 +36,19 @@ test('preview pipeline binds trusted workflows, atomic Git writes and explicit d
   assert.match(controller, /Release automation must be integrated on main/);
   assert.match(controller, /'push', '--atomic'/);
   assert.match(controller, /force-with-lease=refs\/heads\/main/);
+  assert.match(controller, /before !== process.env.RELEASE_BASE/);
+  assert.match(controller, /Preview version must advance/);
   assert.doesNotMatch(controller, /shell:\s*true|console\.log\(.*auth/);
+});
+
+test('public acceptance retries cannot rebuild or repush the published image', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8');
+  const publicJob = workflow.slice(workflow.indexOf('\n  public-acceptance:'));
+  assert.match(publicJob, /needs: release/);
+  assert.match(publicJob, /contents: read/);
+  assert.doesNotMatch(publicJob, /build-push-action|DOCKERHUB_TOKEN|contents: write|gh release edit/);
+  assert.match(publicJob, /restore-snapshot/);
+  assert.ok(workflow.indexOf('Reject an already occupied') < workflow.indexOf('- name: Build and push multi-architecture image'));
 });
 
 test('version image guard admits only an authoritative missing manifest and rejects occupied/uncertain tags', () => {

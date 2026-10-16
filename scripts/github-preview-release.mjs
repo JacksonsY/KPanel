@@ -29,6 +29,15 @@ for (const path of ['.github/workflows/preview-release.yml', '.github/workflows/
 }
 if (process.argv[2] === 'check') {
   if (process.env.GITHUB_REF !== 'refs/heads/main') throw new Error('Dispatch Publish preview from main only');
+  const mainVersion = git('show', 'origin/main:VERSION').trim();
+  const parseVersion = value => {
+    const match = value.match(/^(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/);
+    if (!match) throw new Error('Main version identity is invalid');
+    return [Number(match[1]), Number(match[2]), Number(match[3]), match[4] ? Number(match[4]) : Infinity];
+  };
+  const next = parseVersion(version), current = parseVersion(mainVersion);
+  const firstDifference = next.findIndex((number, i) => number !== current[i]);
+  if (firstDifference === -1 || next[firstDifference] < current[firstDifference]) throw new Error('Preview version must advance the current main version');
   const runs = JSON.parse(execute('gh', ['api', `repos/kejilion/KPanel/actions/workflows/ci.yml/runs?event=push&head_sha=${sha}&per_page=100`]));
   if (!runs.workflow_runs.some(run => run.head_sha === sha && run.head_branch === branch && run.status === 'completed' && run.conclusion === 'success')) {
     throw new Error('Frozen candidate must first pass its own push CI');
@@ -37,6 +46,7 @@ if (process.argv[2] === 'check') {
 } else if (process.argv[2] === 'promote') {
   if (process.env.RELEASE_TAG !== tag || process.env.RELEASE_BRANCH !== branch) throw new Error('Frozen release identity changed');
   const before = git('rev-parse', 'origin/main');
+  if (before !== process.env.RELEASE_BASE) throw new Error('Main moved since candidate qualification; stop and refreeze');
   git('config', 'user.name', 'github-actions[bot]');
   git('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com');
   git('tag', '-a', tag, sha, '-m', `KPanel ${version}; GitHub run ${process.env.GITHUB_RUN_ID}`);

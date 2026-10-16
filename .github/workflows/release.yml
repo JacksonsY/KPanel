@@ -32,6 +32,11 @@ jobs:
     if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      digest: ${{ steps.image.outputs.digest }}
+      stable: ${{ steps.release.outputs.stable }}
+      stable_snapshot: ${{ steps.snapshot.outputs.snapshot }}
     permissions:
       contents: write
     env:
@@ -147,6 +152,7 @@ jobs:
         run: make security-audit-go
 
       - name: Freeze stable channel before preview publication
+        id: snapshot
         if: steps.release.outputs.stable == 'false'
         env:
           EXPECTED_VERSION: ${{ steps.release.outputs.version }}
@@ -510,32 +516,15 @@ jobs:
               --notes-file release/RELEASE_NOTES.md
           fi
 
-      - name: Verify public preview assets and multiarchitecture identity
-        if: steps.release.outputs.stable == 'false'
-        env:
-          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
-          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-        run: node scripts/verify-github-public-release.mjs verify
-
-      - name: Verify public preview in real browsers and isolated containers
-        if: steps.release.outputs.stable == 'false'
-        env:
-          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
-          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-        run: bash packaging/tests/release-browser/run.sh
-
-      - name: Preserve public acceptance including failures
+      - name: Preserve release metadata including failures
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-${{ github.run_id }}-${{ github.run_attempt }}
+          name: publication-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/kpanel-public-*/**/*.json
-            ${{ runner.temp }}/kpanel-real-*/results/**
-            ${{ runner.temp }}/kpanel-browser-*/results/**
             release/RELEASE_NOTES.md
             release/KPANEL_MODIFIED_COMPONENTS.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
 
       - name: Archive published candidate branch
@@ -546,3 +535,46 @@ jobs:
         run: |
           node scripts/archive-release-candidate.mjs \
             --tag "$GITHUB_REF_NAME" --release-sha "$RELEASE_SHA" --apply
+
+  public-acceptance:
+    needs: release
+    if: needs.release.outputs.stable == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    env:
+      EXPECTED_VERSION: ${{ needs.release.outputs.version }}
+      EXPECTED_SHA: ${{ inputs.candidate || github.sha }}
+      IMAGE_DIGEST: ${{ needs.release.outputs.digest }}
+      STABLE_SNAPSHOT: ${{ needs.release.outputs.stable_snapshot }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+      - name: Restore frozen publication identity
+        run: |
+          echo "PUBLIC_EVIDENCE=$RUNNER_TEMP/kpanel-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+      - run: node scripts/verify-github-public-release.mjs restore-snapshot
+      - name: Verify public preview assets and multiarchitecture identity
+        run: node scripts/verify-github-public-release.mjs verify
+
+      - name: Verify public preview in real browsers and isolated containers
+        run: bash packaging/tests/release-browser/run.sh
+
+      - name: Preserve public acceptance including failures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/kpanel-public-*/**/*.json
+            ${{ runner.temp }}/kpanel-real-*/results/**
+            ${{ runner.temp }}/kpanel-browser-*/results/**
+          if-no-files-found: error
+          retention-days: 90
+

@@ -20,8 +20,7 @@ npm audit --prefix "$RELEASE_BROWSER_RUNTIME" --audit-level=high
 chmod -R a+rX "$RELEASE_BROWSER_RUNTIME"
 docker build -f "$repo/packaging/release-runner/Dockerfile" -t "$RELEASE_TEST_RUNNER" "$repo"
 docker image inspect "$RELEASE_TEST_RUNNER" > "$PUBLIC_EVIDENCE/test-runner.json"
-export PREVIOUS_PREVIEW_VERSION=1.27.0-rc.2
-export PREVIOUS_PREVIEW_IMAGE=docker.io/kjlion/kejilion-panel@sha256:207aa4614c703914df69dcd2e1a392ed55f4864ce31d971bd910e02ee667f659
+: "${PREVIOUS_PREVIEW_VERSION:?}" "${PREVIOUS_PREVIEW_IMAGE:?}"
 image="docker.io/kjlion/kejilion-panel@$IMAGE_DIGEST"
 sudo -E timeout --kill-after=30s 15m bash "$repo/packaging/tests/release-browser/real-feature-public.sh" "$image" public "$RUNNER_TEMP/kpanel-real-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$IMAGE_DIGEST"
 for mode in published upgrade; do

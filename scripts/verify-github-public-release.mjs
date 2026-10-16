@@ -9,6 +9,16 @@ if (!/^\d+\.\d+\.\d+(?:-rc\.[1-9]\d*)?$/.test(version ?? '') || !/^[a-f0-9]{40}$
 if (env.GITHUB_ACTIONS !== 'true' || env.RUNNER_ENVIRONMENT !== 'github-hosted') throw new Error('GitHub-hosted execution required');
 const directory = env.PUBLIC_EVIDENCE;
 if (!directory?.startsWith(env.RUNNER_TEMP + '/')) throw new Error('Evidence must be owned runner temporary data');
+if (process.argv[2] === 'restore-snapshot') {
+  const snapshot = JSON.parse(env.STABLE_SNAPSHOT);
+  if (!/^v\d+\.\d+\.\d+$/.test(snapshot.tag) || !/^sha256:[a-f0-9]{64}$/.test(snapshot.digest)
+      || !/^\d+\.\d+\.\d+-rc\.[1-9]\d*$/.test(snapshot.previousPreview?.version)
+      || !/^sha256:[a-f0-9]{64}$/.test(snapshot.previousPreview?.digest)) throw new Error('Invalid frozen publication snapshot');
+  mkdirSync(directory, { recursive: false });
+  writeFileSync(join(directory, 'stable-before.json'), JSON.stringify(snapshot, null, 2) + '\n', { flag: 'wx' });
+  writeFileSync(env.GITHUB_ENV, `PREVIOUS_PREVIEW_VERSION=${snapshot.previousPreview.version}\nPREVIOUS_PREVIEW_IMAGE=docker.io/kjlion/kejilion-panel@${snapshot.previousPreview.digest}\n`, { flag: 'a' });
+  process.exit(0);
+}
 const request = async (url, headers = {}, limit = 64 * 1024 * 1024) => {
   const response = await fetch(url, { headers, signal: AbortSignal.timeout(180_000) });
   if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
@@ -49,6 +59,7 @@ if (process.argv[2] === 'snapshot') {
   if (!/^\d+\.\d+\.\d+-rc\.[1-9]\d*$/.test(previousVersion) || previousVersion === version) throw new Error('Valid distinct previous preview required');
   writeFileSync(snapshotPath, JSON.stringify({ tag: latestRelease.tag_name, digest: latestImage.digest,
     previousPreview: { version: previousVersion, digest: previous.digest } }, null, 2) + '\n', { flag: 'wx' });
+  writeFileSync(env.GITHUB_OUTPUT, `snapshot=${JSON.stringify(JSON.parse(readFileSync(snapshotPath)))}\n`, { flag: 'a' });
   writeFileSync(env.GITHUB_ENV, `PREVIOUS_PREVIEW_VERSION=${previousVersion}\nPREVIOUS_PREVIEW_IMAGE=docker.io/kjlion/kejilion-panel@${previous.digest}\n`, { flag: 'a' });
   process.exit(0);
 }

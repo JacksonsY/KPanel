@@ -64,6 +64,7 @@ jobs:
           CANDIDATE: ${{ needs.inputs.outputs.candidate }}
           RELEASE_TAG: ${{ needs.inputs.outputs.tag }}
           RELEASE_BRANCH: ${{ needs.inputs.outputs.branch }}
+          RELEASE_BASE: ${{ needs.inputs.outputs.base }}
           GH_TOKEN: ${{ github.token }}
         run: node scripts/github-preview-release.mjs promote
   main-ci:
