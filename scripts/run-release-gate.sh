@@ -1,6 +1,26 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+if [ "${1:-}" = --github-hosted ]; then
+  [ "$#" -eq 3 ] && [ "${GITHUB_ACTIONS:-}" = true ] &&
+    [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ] &&
+    [ "${GITHUB_REPOSITORY:-}" = kejilion/KPanel ] && [ "$(uname -s)" = Linux ]
+  cd "$(dirname "${BASH_SOURCE[0]}")/.."
+  test "$(git rev-parse HEAD)" = "$2"
+  test -z "$(git status --short --untracked-files=all)"
+  git merge-base --is-ancestor "$3" HEAD
+  go version | grep -F 'go1.27.2 '
+  test "$(node --version)" = v24.21.0
+  export VERIFY_BASE_REF="$3"
+  make verify-release
+  docker run --rm -e KPANEL_APP_CONF_TEST_ROOTFS=1 -v "$PWD:/src:ro" \
+    bash:5.2.37-alpine3.22@sha256:3bee76a96d86d5d2d5efc7c1c570e5a7c95db22348a26944e0e546fa174e3324 \
+    bash /src/packaging/tests/app-conf-lifecycle.sh /src
+  sudo -E bash packaging/tests/image-e2e.sh kejilion-panel:verify
+  echo "release_gate_runner=pass commit=$2 environment=github-hosted"
+  exit 0
+fi
+
 usage() {
   echo "usage: $0 EXPECTED_COMMIT EXPECTED_BASE_TAG RUNNER_IMAGE" >&2
   exit 2

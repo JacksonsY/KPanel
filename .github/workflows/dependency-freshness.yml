@@ -8,6 +8,7 @@ on:
       - go.sum
       - web/package.json
       - web/package-lock.json
+      - packaging/release-browser/**
       - Dockerfile
       - Makefile
       - scripts/report-dependency-freshness.mjs
@@ -55,7 +56,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install the locked Node dependency graph
-        run: npm ci --prefix web
+        run: |
+          npm ci --prefix web
+          npm ci --prefix packaging/release-browser --ignore-scripts
 
       - name: Detect stable dependency candidates
         env:
@@ -96,7 +99,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Audit the current dependency graph
-        run: make security-audit
+        run: |
+          make security-audit
+          npm audit --prefix packaging/release-browser --audit-level=high
 
       - name: Scan source dependencies and supply-chain configuration
         env:

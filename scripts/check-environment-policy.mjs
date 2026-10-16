@@ -47,6 +47,10 @@ export function validatePolicy(policy) {
         for (const key of Object.keys(environment.transport)) {
           if (!['kind', 'target'].includes(key)) failures.push(`${name}: unsupported ssh transport field ${key}`);
         }
+      } else if (environment.transport.kind === 'github-actions') {
+        if (environment.transport.runner !== 'ubuntu-latest' || Object.keys(environment.transport).some(key => !['kind', 'runner'].includes(key))) {
+          failures.push(`${name}: GitHub transport must use the fixed hosted runner`);
+        }
       } else if (environment.transport.kind === 'wsl') {
         if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(environment.transport.distribution ?? '')) {
           failures.push(`${name}: wsl distribution is invalid`);

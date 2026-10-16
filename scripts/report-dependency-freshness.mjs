@@ -560,11 +560,13 @@ async function collectGoModules(repo) {
 
 async function collectNpm(repo) {
   const invocation = npmInvocation();
-  const raw = run(repo, invocation.command, [...invocation.prefixArguments, 'outdated', '--all', '--json', '--prefix', 'web'], [0, 1]);
-  if (!raw) return [];
-  const packageJson = JSON.parse(readFileSync(resolve(repo, 'web/package.json'), 'utf8'));
-  const direct = new Set([...Object.keys(packageJson.dependencies ?? {}), ...Object.keys(packageJson.devDependencies ?? {})]);
-  return npmCandidatesFromOutdated(JSON.parse(raw), direct, [packageJson.name, basename(resolve(repo, 'web'))]);
+  return ['web', 'packaging/release-browser'].flatMap(prefix => {
+    const raw = run(repo, invocation.command, [...invocation.prefixArguments, 'outdated', '--all', '--json', '--prefix', prefix], [0, 1]);
+    if (!raw) return [];
+    const packageJson = JSON.parse(readFileSync(resolve(repo, prefix, 'package.json'), 'utf8'));
+    const direct = new Set([...Object.keys(packageJson.dependencies ?? {}), ...Object.keys(packageJson.devDependencies ?? {})]);
+    return npmCandidatesFromOutdated(JSON.parse(raw), direct, [packageJson.name, basename(resolve(repo, prefix))]);
+  });
 }
 
 function currentToolchains(repo) {

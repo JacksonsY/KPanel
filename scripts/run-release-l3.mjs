@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 import { COVERAGE_BASELINE } from './check-release-acceptance-coverage.mjs';
 import { checkEnvironment, loadPolicy } from './check-environment-policy.mjs';
+import { runGitHubL3 } from './github-release-l3.mjs';
 
 const scriptRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const stableTagPattern = /^v(\d+)\.(\d+)\.(\d+)$/;
@@ -795,7 +796,12 @@ function uploadAndRun(options, prepared) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) try {
+  if (process.argv.slice(2).join(' ') === '--github-hosted') {
+    runGitHubL3();
+    process.exit(0);
+  }
   const options = parseArgs(process.argv.slice(2));
+  if (!options.prepareOnly) throw new Error('SSH/WSL release execution retired; use GitHub Publish preview or Release L3');
   if (options.executeKit) {
     const prepared = loadPreparedKit(options.executeKit, options.kitManifestSha256);
     options.runId = prepared.runId;

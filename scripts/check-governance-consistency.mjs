@@ -377,7 +377,7 @@ for (const path of ['AGENTS.md', 'CLAUDE.md', 'docs/multi-agent-collaboration.md
   requireText(path, ['10.2']);
 }
 requireText('docs/release-acceptance-template.md', ['精确 tip', '归档 ref', '责任人']);
-requireText('.github/workflows/release.yml', ['name: Archive published candidate branch', 'node scripts/archive-release-candidate.mjs', '--release-sha "$GITHUB_SHA" --apply']);
+requireText('.github/workflows/release.yml', ['name: Archive published candidate branch', 'node scripts/archive-release-candidate.mjs', '--release-sha "$RELEASE_SHA" --apply']);
 requireText('scripts/verify-governance.sh', ['scripts/tests/archive-release-candidate.test.mjs']);
 requireText('scripts/verify-change.sh', ['scripts/archive-release-candidate.mjs', 'scripts/tests/archive-release-candidate.test.mjs']);
 requireText('docs/release-channels.md', [
@@ -516,34 +516,11 @@ requireText('scripts/verify-change.sh', [
   'gofmt -l',
 ]);
 requireText('.codex-workflows/release-kpanel.workflow.yaml', [
-  'scripts/check-collaboration-state.mjs',
-  'scripts/run-release-gate.sh',
-  'scripts/run-release-l3.mjs',
-  'scripts/run-production-evidence.mjs',
-  '--artifact-dir',
-  '--target',
-  'Docker 自动分配',
-  '持久业务结果',
-  'evidence_dir=<本次唯一持久化证据目录>',
-  'timeout_seconds=<风险窗口加清理余量>',
-  'command_spec=<无秘密、已哈希的仓库测试命令规格>',
-  '--validate-acceptance',
-  '首次生产写操作前被门禁拦截的流程异常只计流程指标',
-  '有生产完成证据的部署频率',
-  '流程异常指纹',
-  '冻结执行方案',
-  '一次列全必需能力',
-  '`visual-composition`',
-  'crossRepositoryReleaseLinkage',
-  'scriptLinkageState',
-  '无需发布脚本（不适用）',
-  'block-kpanel-candidate-or-remove-dependent-scope',
-  'script-only',
-  'releaseChannel',
-  'releaseTrain',
-  '${{release_channel}}',
-  '${{release_train}}',
-  '预览版禁止生产部署',
+  'scripts/check-collaboration-state.mjs', 'scripts/run-release-gate.sh', 'scripts/run-release-l3.mjs',
+  'github-hosted', 'preview-release.yml', 'release-l3.yml', 'Docker Hub',
+  'crossRepositoryReleaseLinkage', 'scriptLinkageState', '无需发布脚本（不适用）',
+  'releaseChannel', 'releaseTrain', '${{release_channel}}', '${{release_train}}',
+  '预览版禁止生产部署', '--validate-acceptance', '10.1', '10.2', '13.1',
 ]);
 if (read('.codex-workflows/release-kpanel.workflow.yaml').includes('git fetch origin --tags')) {
   failures.push('.codex-workflows/release-kpanel.workflow.yaml: unbounded tag fetch is forbidden');

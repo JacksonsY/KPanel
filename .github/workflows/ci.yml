@@ -1,6 +1,19 @@
 name: CI
 
 on:
+  workflow_call:
+    inputs:
+      candidate:
+        required: true
+        type: string
+      base:
+        required: false
+        default: origin/main
+        type: string
+      main-check:
+        required: false
+        default: false
+        type: boolean
   pull_request:
   push:
     branches:
@@ -15,7 +28,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ inputs.candidate || github.ref }}-${{ github.job }}
   cancel-in-progress: true
 
 jobs:
@@ -26,6 +39,7 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.candidate || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -45,7 +59,9 @@ jobs:
       - name: Run change-aware verification
         env:
           GOVERNANCE_CI_TOKEN: ${{ github.token }}
-          VERIFY_BASE_REF: ${{ github.event.pull_request.base.sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'origin/main' }}
+          GITHUB_SHA: ${{ inputs.candidate || github.sha }}
+          GITHUB_REF_NAME: ${{ inputs.candidate && (inputs.main-check && 'main' || 'release/validated-candidate') || github.ref_name }}
+          VERIFY_BASE_REF: ${{ inputs.base || github.event.pull_request.base.sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'origin/main' }}
         run: make verify-change
 
       - name: Detect races in privileged core packages

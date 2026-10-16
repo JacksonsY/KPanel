@@ -104,7 +104,7 @@ function publishedFixture() {
   mkdirSync(join(controller, 'scripts'), { recursive: true });
   for (const name of ['run-release-l3.mjs', 'run-release-l3-remote.sh',
     'check-release-acceptance-coverage.mjs', 'report-release-metrics.mjs',
-    'check-security-audit-coverage.mjs', 'check-environment-policy.mjs']) {
+    'check-security-audit-coverage.mjs', 'check-environment-policy.mjs', 'github-release-l3.mjs']) {
     writeFileSync(join(controller, 'scripts', name), readFileSync(join(repoRoot, 'scripts', name)));
   }
   writeFileSync(join(controller, 'environment-policy.json'), readFileSync(join(repoRoot, 'environment-policy.json')));

@@ -1,0 +1,85 @@
+name: Publish preview
+run-name: Publish preview from ${{ inputs.candidate }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: "Frozen release/vX.Y.Z-candidate full commit SHA (CI must pass)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: kpanel-release-publication
+  cancel-in-progress: false
+
+jobs:
+  inputs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      candidate: ${{ steps.check.outputs.candidate }}
+      tag: ${{ steps.check.outputs.tag }}
+      branch: ${{ steps.check.outputs.branch }}
+      base: ${{ steps.check.outputs.base }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        env:
+          CANDIDATE: ${{ inputs.candidate }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/github-preview-release.mjs check
+  candidate-ci:
+    needs: inputs
+    uses: ./.github/workflows/ci.yml
+    with:
+      candidate: ${{ needs.inputs.outputs.candidate }}
+      base: ${{ needs.inputs.outputs.base }}
+  l3:
+    needs: [inputs, candidate-ci]
+    uses: ./.github/workflows/release-l3.yml
+    with:
+      candidate: ${{ needs.inputs.outputs.candidate }}
+  promote:
+    needs: [inputs, l3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.inputs.outputs.candidate }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Atomically fast-forward main and create the annotated preview tag
+        env:
+          CANDIDATE: ${{ needs.inputs.outputs.candidate }}
+          RELEASE_TAG: ${{ needs.inputs.outputs.tag }}
+          RELEASE_BRANCH: ${{ needs.inputs.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/github-preview-release.mjs promote
+  main-ci:
+    needs: [inputs, promote]
+    uses: ./.github/workflows/ci.yml
+    with:
+      candidate: ${{ needs.inputs.outputs.candidate }}
+      base: ${{ needs.inputs.outputs.base }}
+      main-check: true
+  publish:
+    needs: [inputs, main-ci]
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/release.yml
+    with:
+      candidate: ${{ needs.inputs.outputs.candidate }}
+      tag: ${{ needs.inputs.outputs.tag }}
+    secrets: inherit

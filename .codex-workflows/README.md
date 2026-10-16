@@ -57,8 +57,7 @@
   GitHub Actions 每周生成候选、每日复核当前依赖图安全通告，并在例外或 EOL 复核到期时失败告警；采用
   资格仍由风险分级任务补齐。
 - 主机必须登记在 `environment-policy.json`。`prod-108`/`108` 已禁用全部 KPanel 操作，测试、只读检查、
-  备份、发布、部署和安全核对均由机器门禁拒绝；默认隔离验收与唯一正式部署环境均为 `arena-154`。
-  `local-wsl-dr` 仅是明确选择的候选 L3 灾备执行环境，不承载其他验收或生产操作。
+  备份、发布、部署和安全核对均由机器门禁拒绝；发布全链路只使用 `github-hosted` 的 GitHub Actions，终止于 Docker Hub 与公开产物验收，不提供自有服务器或 WSL 方案、不附带生产部署。
 
 工作流由 `codex-workflows` 技能管理。使用前运行 `workflow.py list`，执行前使用
 `workflow.py run <name> --param key=value` 渲染参数，修改后必须运行

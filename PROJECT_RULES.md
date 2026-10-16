@@ -213,7 +213,7 @@ KPanel 是面向单管理员、直接管理 Linux 宿主机真实资源的轻量
 后台浏览器验收：本地或远程长时间浏览器 E2E、跨视口回归和稳定性测试必须作为后台作业运行，使用
 `.codex-workflows/background-browser-validation.workflow.yaml` 和 `scripts/background-browser-test.mjs`
 记录精确候选、环境、job ID、硬超时、资源保护、终态与证据目录；不得依赖前台浏览器标签、交互式
-SSH 或单个 AI 会话持续存在。后台化不降低断言或门禁。普通确定性交互按完成条件验收；只有生命周期、
+SSH 或单个 AI 会话持续存在。发布链路例外使用 GitHub Actions 的后台 job/run、timeout、watchdog 与 artifact 作为同等终态协议，无须套用 SSH 后台适配器。后台化不降低断言或门禁。普通确定性交互按完成条件验收；只有生命周期、
 重连、并发、流式或资源趋势风险才执行 soak，时长或循环数由发布画像决定，禁止机械套用固定 10/30 分钟。
 
 本地功能预览：可见功能会话按 [`docs/local-feature-preview-standard.md`](docs/local-feature-preview-standard.md)
@@ -292,9 +292,7 @@ SSH 或单个 AI 会话持续存在。后台化不降低断言或门禁。普通
    生产数据。验证目标必须登记在 `environment-policy.json` 并通过用途检查；未登记目标默认拒绝。
    `prod-108`（含别名 `108`）已禁用全部 KPanel 操作。任何任务都不得连接 108 执行测试、只读检查、
    候选/功能验收、浏览器 E2E、灰度、备份、部署、升级、回滚演练、健康采样、日志读取或清理，也不存在
-   稳定版本或临时授权例外。发布验证与唯一正式部署默认均使用 `arena-154`。当默认验证环境不可达且
-   本次明确选择灾备时，`local-wsl-dr` 只可承载候选 L3 验证；它不获得浏览器、性能、故障注入、灰度、
-   生产安全核对或生产部署权限。迁移正式部署或使用其他主机必须先由用户明确指定并登记新的非 108 环境。
+   稳定版本或临时授权例外。发布链路仅使用 GitHub-hosted Actions（`github-hosted`），从候选 CI、完整 L3、主线/tag、Release 到 Docker Hub 和公开镜像浏览器验收均不依赖自有服务器。发布不附带生产部署；产品宿主机安装与独立生产授权不属于该链路。旧 SSH/WSL 发布执行入口退役，不提供自有服务器或灾备替代方案。
 4. 至少按滚动 14 天和最近 20 个正式版本分别记录稳定标签形成的正式发布频率、有生产完成证据的
    部署频率及覆盖率，并记录提交到生产用时、变更失败/回滚/紧急热修复、恢复时间和重复发布原因；
    使必需步骤无效、失败或需要重试的发布基础设施、执行器、验证通道和无效证据另计“发布流程异常”。
@@ -319,17 +317,18 @@ SSH 或单个 AI 会话持续存在。后台化不降低断言或门禁。普通
    固定脚本、跨 Shell 参数传递和证据解析；生产写操作开始后不得临时拼接新的多层 PowerShell/SSH/Shell
    命令或首次引入未预检工具。若冻结入口不可用，先停止、保持或恢复服务健康，在非生产环境修复唯一
    入口并重跑受影响门禁；不把一次成功的现场绕行直接当作永久流程。
-9. L3 的外层权威入口是 `scripts/run-release-l3.mjs`，内部质量入口仍是
-   `scripts/run-release-gate.sh` / `make verify-release`。外层入口只按 `environment-policy.json` 选择 SSH
-   或 `local-wsl-dr` 传输，负责精确 Tag、bundle、固定执行脚本、计划中的预期 Runner ID 与实际 ID 精确
-   比对、唯一 run ID 和证据终态；不得为单次发布另写 PowerShell/SSH/WSL/远端 wrapper。WSL 缺少固定
-   Runner 时只能导入同时冻结 SHA-256 的可信离线归档，不能现场重建同名镜像并放行新 ID。
-   发布验证移交只使用同一入口的 `--execute-kit` 模式；交接双方须通过独立通道核对 manifest SHA-256，
-   接收方重新验证 kit 内全部摘要和环境用途，并沿用原 run ID。kit 不传递凭据、生产授权或环境别名覆盖。
-   执行主机可通过标准 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 环境变量提供本地网络出口；入口只把当前值
-   临时传入隔离 Runner 及其固定安全扫描容器，镜像构建只使用 BuildKit secret，任何代理值都不得进入
-   kit、计划、manifest、日志或证据。移交接收方使用自己的环境配置，不沿用交出方的代理凭据。
-   每次重试必须使用新 run ID 并保留旧证据，不能覆盖失败后将其报告为首轮成功。
+9. L3 的外层权威入口是 `scripts/run-release-l3.mjs --github-hosted`，内部质量入口仍是
+   `scripts/run-release-gate.sh` / `make verify-release`。`.github/workflows/release-l3.yml` 在 GitHub-hosted
+   Linux runner 上执行，记录精确 candidate、固定 Go/Node、runner image/version、工作流 run ID/attempt、
+   入口摘要及终态。源码、安全、场景包、镜像和生命周期门禁保留；不再要求与自有主机本地镜像 ID 相等。
+   发布验收使用固定 Dockerfile 构建一次性测试 Runner，保存实际 ID，不声称它等于旧服务器 ID。
+   `.github/workflows/preview-release.yml` 是预览发布调度入口：从 main 显式 dispatch 冻结候选 SHA，
+   依次调用候选 CI、L3、主线/tag 原子提升、主线 CI 和可复用 Release；临时 Token 写入不依赖递归 push 触发。
+   发布自动化必须已在 main 独立复核并取得同 SHA 候选 CI；拒绝未集成的工作流差异、候选漂移和已占用版本。
+   Docker Hub 最小范围 Token 仅在正式发布 job 使用；候选 CI/L3 无镜像推送或仓库写权限。
+   公开验收复核两架构 OCI/source、15 个附件、校验清单、Latest/latest 不变，并运行真实 Panel/Agent 的
+   浏览器与隔离业务断言。GitHub artifact 保存失败/成功日志、截图与回执，run ID/attempt 唯一，禁止覆盖失败。
+   旧 bundle 只读准备/历史证据工具保留兼容，不再执行 SSH/WSL 发布，不把旧 kit 当作 GitHub L3 证据。
 10. 稳定版与预览版统一遵守 [`docs/release-channels.md`](docs/release-channels.md)。稳定版是公共默认；
     预览版必须显式加入，只允许规范 `X.Y.Z-rc.N`，不得成为 GitHub Latest 或 Docker `latest`，不得进入
     正式生产部署。更新通道与自动安装是两个独立授权，退出预览版计划不得触发自动降级。

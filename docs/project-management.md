@@ -138,9 +138,7 @@ clean 或覆盖未知改动。写角色必须是链接 task worktree 和非 `mai
 - “生产已部署”表示已授权目标完成备份、标准部署和部署安全核对；它不新增质量验证证据，公开镜像 E2E
   也不能替代部署事实。
 - 目标必须登记在 `environment-policy.json`。`prod-108`（含别名 `108`）已禁用全部 KPanel 操作，
-  测试、只读检查、备份、部署、升级、回滚演练、健康采样、日志读取和清理均不得连接。发布验证与
-  唯一正式部署默认均使用 `arena-154`。默认验证环境不可达且本次明确选择灾备时，`local-wsl-dr` 只允许
-  候选 L3 验证，不能用于其他验收或任何生产操作；其他目标必须由用户明确指定并登记，且不得回退到 108。
+  测试、只读检查、备份、部署、升级、回滚演练、健康采样、日志读取和清理均不得连接。发布验证只使用 `github-hosted` 的 GitHub Actions，发布流程终止于 Docker Hub 与公开产物验收，不提供自有服务器或 WSL 发布方案，也不包含生产部署。
 - 同时进行的写任务上限为 3，其中发布通道最多 1 个、同一业务领域最多 1 个。只读分析不计入上限。
 - 协调中心通过 `git worktree list`、SSH 远端分支和提交差集重建全局状态；Codex 或 Claude 会话列表
   只用于各自工具内的等待、权限记录和恢复，不维护会话 ID 台账。
@@ -592,14 +590,8 @@ git worktree list --porcelain
 - 每个开发任务：Definition of Ready 后启动，完成后只回传一个标准交付包；中间只报告关键风险、
   范围变化或阻塞，不重复发送无状态进展。
 - 每个发布窗口：按第 10.1 节由发布任务独立闭环；协调中心等待完成交付，不创建周期巡检或把修复派回旧任务。
-- 每次版本：先形成精确发布范围，再冻结；L3 统一由 `scripts/run-release-l3.mjs` 生成自包含
-  执行包，按登记环境选择 SSH 或本地 WSL 传输，精确校验冻结 Runner ID 后调用
-  `scripts/run-release-gate.sh`，随后进入候选 CI、主线、标签、隔离验收和授权生产部署；
-  不在会话中重写跨 Shell wrapper，浏览器长测在后台运行，108 禁用全部 KPanel 操作。
-- 需要更换发布责任任务或控制主机时，原任务交付 prepare-only kit、独立 manifest 摘要、精确候选 SHA、
-  Runner ID/归档摘要和未完成阶段；接收方只用 `run-release-l3.mjs --execute-kit` 继续原 run ID。移交不新增
-  推送、主线、Release 或生产权限，不能通过重打包或新 run ID 抹去旧终态。代理配置属于接收执行主机：
-  只允许从标准代理环境变量临时传入 Runner 和 BuildKit secret，不随 kit、日志或证据移交。
+- 每次版本：先形成精确发布范围，再冻结；L3 统一由 `scripts/run-release-l3.mjs --github-hosted` 执行，流程和证据按 PROJECT_RULES.md 5.1。GitHub run ID/attempt、精确 candidate、artifact 与终态是接手真源；失败保留原件，不再移交 SSH/WSL kit。
+- 更换发布责任任务时交接 GitHub run ID/attempt、精确候选 SHA、artifact、已公开产物与未完成阶段；接手不新增发布或生产授权，不使用 SSH/WSL kit。
 - 每次发布后：整理未上线提交、废弃候选、风险和下一版本队列，更新滚动交付/稳定性数据；不把旧分支
   存在等同于未上线功能，也不为同一微调机械拆分多个生产版本。
 

@@ -3,7 +3,9 @@
   "environments": {
     "arena-154": {
       "role": "hybrid",
-      "aliases": ["154"],
+      "aliases": [
+        "154"
+      ],
       "transport": {
         "kind": "ssh",
         "target": "arena-154"
@@ -32,9 +34,25 @@
     },
     "prod-108": {
       "role": "production",
-      "aliases": ["108"],
+      "aliases": [
+        "108"
+      ],
       "disabled": true,
       "allowedPurposes": []
+    },
+    "github-hosted": {
+      "role": "validation",
+      "aliases": [],
+      "transport": {
+        "kind": "github-actions",
+        "runner": "ubuntu-latest"
+      },
+      "allowedPurposes": [
+        "candidate-validation",
+        "browser-validation",
+        "performance-validation",
+        "failure-injection"
+      ]
     }
   }
 }

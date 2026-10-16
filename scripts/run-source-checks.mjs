@@ -120,7 +120,7 @@ export async function runPlan({ lanes, cwd, evidenceDir, jobs = 2, timeoutMs = M
 }
 
 export async function main(argv) {
-  const options = { repo: process.cwd(), jobs: 2, timeoutMs: MAX_TIMEOUT_MS };
+  const options = { repo: process.cwd(), jobs: 2, timeoutMs: MAX_TIMEOUT_MS, evidenceDir: process.env.KPANEL_SOURCE_CHECK_ARTIFACT_DIR };
   const keys = new Map([['--repo', 'repo'], ['--jobs', 'jobs'], ['--timeout-ms', 'timeoutMs'], ['--evidence-dir', 'evidenceDir']]);
   const seen = new Set();
   for (let i = 0; i < argv.length; i++) {

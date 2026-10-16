@@ -9,6 +9,7 @@ node scripts/check-governance-consistency.mjs
 node scripts/check-business-context-freshness.mjs
 node scripts/check-environment-policy.mjs --validate-only
 node --test \
+  scripts/tests/github-release.test.mjs \
   scripts/tests/source-checks.test.mjs \
   scripts/tests/torrent-backport-provenance.test.mjs \
   scripts/tests/task-preflight.test.mjs \

@@ -1,30 +1,52 @@
 name: Release
 
 on:
+  workflow_call:
+    inputs:
+      candidate:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
   push:
     tags:
       - "v*.*.*"
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
+  l3:
+    if: inputs.candidate == ''
+    uses: ./.github/workflows/release-l3.yml
+    with:
+      candidate: ${{ github.sha }}
   release:
+    needs: l3
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     permissions:
       contents: write
     env:
       DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE || 'kjlion/kejilion-panel' }}
       DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME || 'kjlion' }}
+      GITHUB_REF_NAME: ${{ inputs.tag || github.ref_name }}
+      RELEASE_SHA: ${{ inputs.candidate || github.sha }}
+      EXPECTED_SHA: ${{ inputs.candidate || github.sha }}
+      PUBLIC_EVIDENCE: ${{ runner.temp }}/kpanel-public-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.candidate || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Validate release inputs
@@ -34,6 +56,10 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse "$GITHUB_REF_NAME^{commit}")" = "$RELEASE_SHA"
+          test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag
+          git merge-base --is-ancestor HEAD origin/main
           version="${GITHUB_REF_NAME#v}"
           stable_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           preview_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.([1-9][0-9]*)$'
@@ -119,6 +145,12 @@ jobs:
       - name: Scan Go call paths for known vulnerabilities
         run: make security-audit-go
 
+      - name: Freeze stable channel before preview publication
+        if: steps.release.outputs.stable == 'false'
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+        run: node scripts/verify-github-public-release.mjs snapshot
+
       - name: Audit Node dependencies
         run: |
           set -euo pipefail
@@ -196,7 +228,7 @@ jobs:
           tags: kejilion-panel:release-check
           build-args: |
             VERSION=${{ steps.release.outputs.version }}
-            REVISION=${{ github.sha }}
+            REVISION=${{ env.RELEASE_SHA }}
           provenance: false
           sbom: false
           cache-from: type=gha
@@ -209,7 +241,7 @@ jobs:
       - name: Verify runtime image contract
         shell: bash
         env:
-          REVISION: ${{ github.sha }}
+          REVISION: ${{ env.RELEASE_SHA }}
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
@@ -338,7 +370,7 @@ jobs:
           tags: ${{ steps.release.outputs.image }}:${{ steps.release.outputs.version }}
           build-args: |
             VERSION=${{ steps.release.outputs.version }}
-            REVISION=${{ github.sha }}
+            REVISION=${{ env.RELEASE_SHA }}
           provenance: mode=max
           sbom: true
           cache-from: type=gha
@@ -355,7 +387,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/torrent-backport-provenance.mjs \
-            --candidate "$GITHUB_SHA" --version "$VERSION" \
+            --candidate "$RELEASE_SHA" --version "$VERSION" \
             --image "$IMAGE" --digest "$IMAGE_DIGEST" \
             --output release/KPANEL_MODIFIED_COMPONENTS.json
           release_id="$(gh release view "$GITHUB_REF_NAME" --repo kejilion/KPanel \
@@ -472,6 +504,34 @@ jobs:
               --notes-file release/RELEASE_NOTES.md
           fi
 
+      - name: Verify public preview assets and multiarchitecture identity
+        if: steps.release.outputs.stable == 'false'
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: node scripts/verify-github-public-release.mjs verify
+
+      - name: Verify public preview in real browsers and isolated containers
+        if: steps.release.outputs.stable == 'false'
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: bash packaging/tests/release-browser/run.sh
+
+      - name: Preserve public acceptance including failures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/kpanel-public-*/**/*.json
+            ${{ runner.temp }}/kpanel-real-*/results/**
+            ${{ runner.temp }}/kpanel-browser-*/results/**
+            release/RELEASE_NOTES.md
+            release/KPANEL_MODIFIED_COMPONENTS.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Archive published candidate branch
         if: steps.release.outputs.stable == 'true'
         shell: bash
@@ -479,4 +539,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           node scripts/archive-release-candidate.mjs \
-            --tag "$GITHUB_REF_NAME" --release-sha "$GITHUB_SHA" --apply
+            --tag "$GITHUB_REF_NAME" --release-sha "$RELEASE_SHA" --apply

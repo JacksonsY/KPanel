@@ -74,3 +74,5 @@
 
 - 发布后的分支归档与下一轮候选筛选统一按 `docs/project-management.md` 10.2 执行；`archive/` 不进入
   活跃候选队列，含未知或未提交内容的本地工作树单独保留待处置，不凭分支名称推断上线状态。
+
+发布链路统一按 PROJECT_RULES.md 5.1 使用 GitHub-hosted Actions；L3 调用 `scripts/run-release-l3.mjs --github-hosted`，预览从 main 的 `Publish preview` dispatch 冻结候选 SHA，不使用自有服务器或 WSL 发布方案。

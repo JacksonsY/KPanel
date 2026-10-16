@@ -177,7 +177,9 @@
       "scope": "production-and-development-direct-and-transitive",
       "manifests": [
         "web/package.json",
-        "web/package-lock.json"
+        "web/package-lock.json",
+        "packaging/release-browser/package.json",
+        "packaging/release-browser/package-lock.json"
       ],
       "detector": "npm-outdated-all"
     },

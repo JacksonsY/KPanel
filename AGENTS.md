@@ -82,8 +82,8 @@ git worktree list
   产出进入独立候选修复流程，未完成审计不阻断主线，已证实漏洞按正常风险规则处理。
 - 本地或远程长时间浏览器验收使用 `background-browser-validation` 工作流后台运行；先通过
   `environment-policy.json` 目标检查，再以持久化终态和证据交付，不占用前台会话等待。
-- L3 只使用 `scripts/run-release-l3.mjs`；默认走 `arena-154`。明确选择 `local-wsl-dr` 灾备时只执行候选
-  验证，必须精确匹配冻结 Runner ID，并把 WSL 终态日志回收到本地证据目录，不能扩展为生产权限。
+- L3 只使用 `scripts/run-release-l3.mjs --github-hosted`，由 `Release L3` 在 GitHub-hosted Actions 执行。
+  预览发布从 main 的 `Publish preview` dispatch 冻结候选 SHA；不使用自有服务器或 WSL 发布方案。
 - 工作树、分支、`HEAD` 或文件所有权出现非预期变化时立即停止，按项目管理规范保留现场并迁移，
   不执行 `reset --hard`、`clean`、强切分支或覆盖他人改动。
 
