@@ -179,7 +179,12 @@ function problemLabel(result: PanelDomainCheck): string {
 async function focusFromIntent(): Promise<void> {
   if (route.query.section !== panelAccessSection) return
   await nextTick()
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  // Let the router finish its own scroll first. Background tabs and hidden
+  // windows may never deliver a frame, so a timer bounds the wait.
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+    setTimeout(resolve, 100)
+  })
   root.value?.scrollIntoView?.({ block: 'start' })
   root.value?.focus({ preventScroll: true })
 }
