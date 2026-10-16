@@ -18,8 +18,8 @@
 - `local-feature-preview.workflow.yaml`：为可见功能交付统一的 mock/本地集成预览，自动分配回环端口，
   固定候选身份、体验步骤、证据目录和停止责任；不替代真机、L0-L3 或发布验收。
 - `release-kpanel.workflow.yaml`：按 [`docs/release-channels.md`](../docs/release-channels.md) 执行稳定版或
-  预览版的版本准备、冻结执行方案、标准 Linux Runner、CI、Release、Docker Hub 通道提升、应用市场、
-  隔离验收，以及仅适用于稳定版的生产部署安全核对和重复流程异常收敛。
+  预览版的版本准备、冻结候选、GitHub-hosted L3、CI、Release、Docker Hub 通道提升、应用市场和
+  隔离验收，记录并收敛重复流程异常；发布链路止于公开产物，不附带生产部署。
 - KPanel 与 `kejilion.sh` 的发布联动统一读取 `dependency-policy.json#crossRepositoryReleaseLinkage`：
   `not-required` 明确表示“无需发布脚本（不适用）”，`coupled` 必须先有兼容脚本发布，`script-only`
   走脚本独立流程且不改变 KPanel 版本、tag、Release 或镜像；禁止使用“暂不发布脚本”等模糊状态。
@@ -47,7 +47,9 @@
   验证网站图标缓存、安全边界、性能预算及系统发行版图标映射。
 - `normalize-kpanel-app-icons.workflow.yaml`：以现有应用图标为身份参考，生成统一风格候选，完成透明背景、
   视觉居中、真实桌面尺寸复核和单问题定向返工；默认只输出预览，上游采用与 KPanel 同步分开授权。
-- 新版本发布后使用 `docs/release-acceptance-template.md` 记录多维质量状态、证据层级、生产部署安全核对、
+- 已发布预览的独立恢复验收使用 GitHub Actions `Verify published preview`（`release-public-verify.yml`），
+  传入冻结 source SHA、version、image digest 和发布前 stable snapshot；该入口只读，不重推版本镜像。
+- 新版本发布后使用 `docs/release-acceptance-template.md` 记录多维质量状态、证据层级、公开产物与隔离验收、
   交付节奏和回滚点；产品变更失败与发布流程异常/无效证据独立统计，缺失数据保持“未报告”。除有明确
   追溯依据的单版本补录外，不批量改写历史验收记录。
 - 重复缺陷、指标恶化或门禁缺口使用 `docs/quality-improvement-proposal-template.md` 建立提案，并通过
