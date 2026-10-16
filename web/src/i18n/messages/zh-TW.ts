@@ -2,9 +2,6 @@ import type { LocaleMessages } from './zh-CN'
 import { passkeyZhTW } from '../passkeys'
 
 export const zhTWMessages = {
-  "terminal.retainedNotice": "關閉視窗或重新整理後會話繼續，可從終端重新連接。最長 8 小時；服務或節點重啟會結束會話，超過 1 MiB 的舊輸出會截斷。",
-  "terminal.endSession": "結束會話",
-  "terminal.endSessionConfirm": "結束會話將停止終端處理程序。是否繼續？",
   "terminal.launchUncertain": "啟動結果未確認，未自動重試，請檢查終端。",
   "appScript.backgroundNotice": "關閉視窗或重新整理不會結束任務，重新開啟可繼續連接。",
   "appScript.endTask": "結束任務",
@@ -521,7 +518,7 @@ export const zhTWMessages = {
   "terminal.connectionsLoadFailed": "連線列表載入失敗，請檢查 Agent 與叢集狀態。",
   "terminal.sessionLimitReached": "所有主機合計的終端數已達上限，請先關閉不用的終端。",
   "terminal.connectionFailed": "終端連線失敗，請確認目標節點在線上且中心與節點均已更新。",
-  "terminal.closeSessionsConfirm": "關閉視窗將中斷 {count} 個終端會話，是否繼續？",
+  "terminal.closeSessionsConfirm": "關閉視窗將終止 {count} 個終端會話，是否繼續？",
   "terminal.emptyTitle": "選擇主機，開啟終端",
   "terminal.emptyDescription": "從連線列表選擇一台可用主機，開始加密終端會話。",
   "terminal.task.title": "{kind}終端",

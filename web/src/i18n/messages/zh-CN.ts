@@ -1,9 +1,6 @@
 import { passkeyZhCN } from '../passkeys'
 
 export const zhCNMessages = {
-  "terminal.retainedNotice": "关闭窗口或刷新后会话继续，可从终端重新连接。最长 8 小时；服务或节点重启会结束会话，超过 1 MiB 的旧输出会截断。",
-  "terminal.endSession": "结束会话",
-  "terminal.endSessionConfirm": "结束会话将停止终端进程。是否继续？",
   "terminal.launchUncertain": "启动结果未确认，未自动重试，请检查终端。",
   "appScript.backgroundNotice": "关闭窗口或刷新不会结束任务，重新打开可继续连接。",
   "appScript.endTask": "结束任务",
@@ -577,7 +574,7 @@ export const zhCNMessages = {
   'terminal.connectionsLoadFailed': '连接列表加载失败，请检查 Agent 与集群状态。',
   'terminal.sessionLimitReached': '所有主机合计的终端数已达上限，请先关闭不用的终端。',
   'terminal.connectionFailed': '终端连接失败，请确认目标节点在线且中心与节点均已更新。',
-  'terminal.closeSessionsConfirm': '关闭窗口将断开 {count} 个终端会话，是否继续？',
+  'terminal.closeSessionsConfirm': '关闭窗口将终止 {count} 个终端会话，是否继续？',
   'terminal.emptyTitle': '选择主机，打开终端',
   'terminal.emptyDescription': '从连接列表选择一台可用主机，开始加密终端会话。',
   'terminal.task.title': '{kind}终端',

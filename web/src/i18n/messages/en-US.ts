@@ -2,9 +2,6 @@ import type { LocaleMessages } from './zh-CN'
 import { passkeyEnUS } from '../passkeys'
 
 export const enUSMessages = {
-  "terminal.retainedNotice": "Sessions continue after closing the window or reloading. Reconnect from Terminal. Maximum 8 hours; service or node restart ends the session. Output older than 1 MiB is truncated.",
-  "terminal.endSession": "End session",
-  "terminal.endSessionConfirm": "Ending this session stops its terminal process. Continue?",
   "terminal.launchUncertain": "Launch is unconfirmed. No automatic retry was made; check the terminal.",
   "appScript.backgroundNotice": "Closing the window or reloading keeps the task running. Reopen to reconnect.",
   "appScript.endTask": "End task",
@@ -578,7 +575,7 @@ export const enUSMessages = {
   'terminal.connectionsLoadFailed': 'Failed to load connections. Check the Agent and cluster status.',
   'terminal.sessionLimitReached': 'You have reached the limit of open terminals across all hosts. Close one you no longer need first.',
   'terminal.connectionFailed': 'Terminal connection failed. Confirm that the target node is online and both the center and node are up to date.',
-  'terminal.closeSessionsConfirm': 'Closing this window will disconnect {count} terminal session(s). Continue?',
+  'terminal.closeSessionsConfirm': 'Closing this window will terminate {count} terminal session(s). Continue?',
   'terminal.emptyTitle': 'Select a host and open a terminal',
   'terminal.emptyDescription': 'Choose an available host from the connection list to start an encrypted terminal session.',
   'terminal.task.title': '{kind} terminal',

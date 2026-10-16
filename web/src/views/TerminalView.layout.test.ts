@@ -59,7 +59,7 @@ describe('multi-host terminal workspace layout', () => {
     expect(terminalSource).toContain("t('terminal.hostState.available')")
     expect(terminalSource).toContain("t('terminal.hostState.monitoringOnly')")
     expect(terminalSource).toContain("t('terminal.hostCount'")
-    expect(terminalSource).toContain("t('terminal.retainedNotice'")
+    expect(terminalSource).not.toContain('terminal-retained-notice')
     expect(terminalSource).toContain(':placeholder="t(\'terminal.searchPlaceholder\')"')
     expect(terminalSource).toContain(':disabled="openingHostId === host.id || !hostConnectable(host)"')
     expect(terminalSource).not.toContain('isWindows(host)')

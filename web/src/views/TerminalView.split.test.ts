@@ -114,7 +114,7 @@ describe('terminal split workspace integration', () => {
   it('preserves failed closes and removes a pane only after retry confirms close', async () => {
     await add(); await layout('columns')
     mocks.close.mockRejectedValueOnce(new Error('offline'))
-    await wrapper.get('[data-session-id="s2"] [aria-label^="结束会话"]').trigger('click')
+    await wrapper.get('[data-session-id="s2"] [aria-label^="关闭终端"]').trigger('click')
     await flushPromises()
     expect(visibleIds()).toContain('s2')
     expect(mocks.unmounted).toEqual([])

@@ -82,6 +82,9 @@ const workspaceSessions = computed(() => sessions.value.map((item) => ({
 const route = useRoute()
 let controller: AbortController | undefined
 let initialHostLoad = true
+let hostsRequest: Promise<void> | undefined
+let openingRequest: ReturnType<typeof api.terminals.open> | undefined
+let checkingWindowClose = false
 let unsubscribeClusterHostOrder: (() => void) | undefined
 const connectionsCollapsedStorageKey = 'kpanel:terminal:connections-collapsed'
 
@@ -121,7 +124,12 @@ const batchSessionCapacity = computed(() => Math.max(0, 4 - activeTerminalSessio
 const hostOperatingSystemIdentity = (host: ClusterHost) =>
   detectOperatingSystemIdentity(host.lastSnapshot?.telemetry)
 
-async function loadHosts(): Promise<void> {
+function loadHosts(): Promise<void> {
+  hostsRequest = performLoadHosts()
+  return hostsRequest
+}
+
+async function performLoadHosts(): Promise<void> {
   controller?.abort()
   const request = new AbortController()
   controller = request
@@ -183,7 +191,7 @@ function nextOrdinal(hostId: string): number {
 // Choosing a host goes to its terminal: the active one if it is on that host,
 // otherwise the one opened last. Only a host without a terminal gets a new one.
 async function openHost(host: ClusterHost): Promise<void> {
-	if (initialHostLoad || !hostConnectable(host)) return
+	if (initialHostLoad || checkingWindowClose || !hostConnectable(host)) return
 	const onHost = sessions.value.filter((item) => item.hostId === host.id)
 	const existing = onHost.find((item) => item.id === activeSessionId.value) ?? onHost.at(-1)
   if (existing) {
@@ -195,13 +203,14 @@ async function openHost(host: ClusterHost): Promise<void> {
 }
 
 async function openSession(host: ClusterHost): Promise<void> {
-	if (initialHostLoad || !host.terminalAvailable || openingHostId.value) return
+	if (initialHostLoad || checkingWindowClose || !host.terminalAvailable || openingHostId.value) return
   mobileConnectionsOpen.value = false
   openingHostId.value = host.id
   errorMessage.value = ''
   limitReached.value = false
   try {
-	const opened = await api.terminals.open(host.id, 30, 120, { retained: true })
+	openingRequest = api.terminals.open(host.id, 30, 120, { retained: true })
+	const opened = await openingRequest
 	const item: OpenTerminal = { id: opened.sessionId, hostId: host.id, hostName: host.name, retained: opened.retained, ordinal: nextOrdinal(host.id), offset: opened.offset, state: 'connecting' }
     sessions.value.push(item)
     activeSessionId.value = item.id
@@ -214,21 +223,29 @@ async function openSession(host: ClusterHost): Promise<void> {
     if (reason instanceof ApiError && reason.code === 'terminal_limit') limitReached.value = true
     else errorMessage.value = t('terminal.connectionFailed')
   } finally {
+    openingRequest = undefined
     openingHostId.value = ''
   }
 }
 
-async function closeSession(id: string): Promise<void> {
+async function closeSession(id: string): Promise<boolean> {
   const item = sessions.value.find((session) => session.id === id)
   const handle = terminalRefs.get(id)
-  if (!item || item.closing || !handle) return
+  if (!item) return true
+  if (item.closing) return false
   item.closing = true
   item.closeFailed = false
   try {
-    await handle.closeSession()
+    if (handle) await handle.closeSession()
+    else {
+      const result = await api.terminals.close(id)
+      if (!result.closed) throw new Error('Terminal close was not confirmed')
+    }
     removeSession(id)
+    return true
   } catch {
     item.closeFailed = true
+    return false
   } finally {
     item.closing = false
   }
@@ -455,9 +472,22 @@ onMounted(() => {
   } catch {
     connectionsCollapsed.value = false
   }
-  const guard = () => {
-    if (batchRunning.value) return window.confirm(t('terminal.closeBatchExecutionConfirm'))
-    return true // Retained interactive sessions detach; only tab close ends them.
+  const guard = async () => {
+    if (checkingWindowClose) return false
+    checkingWindowClose = true
+    try {
+      await hostsRequest
+      // Wait for a pending open so closing the window cannot orphan its PTY.
+      await openingRequest?.catch(() => undefined)
+      await nextTick()
+      if (batchRunning.value && !window.confirm(t('terminal.closeBatchExecutionConfirm'))) return false
+      const activeCount = activeInteractiveSessionCount.value
+      if (!batchRunning.value && activeCount && !window.confirm(t('terminal.closeSessionsConfirm', { count: activeCount }))) return false
+      const results = await Promise.all(sessions.value.map(item => closeSession(item.id)))
+      return results.every(Boolean)
+    } finally {
+      checkingWindowClose = false
+    }
   }
   unregisterWindowCloseGuard = desktopWindowCloseGuards
     ? desktopWindowCloseGuards.register(guard)
@@ -475,7 +505,6 @@ onBeforeUnmount(() => {
   <div class="page terminal-page" :data-locale="locale">
     <PageHeader title="多主机终端" description="通过集群加密通道连接本机、已授权 KPanel 节点和轻量节点，无需开放额外 SSH 或公网端口。" />
 
-    <p v-if="terminalMode === 'interactive'" class="terminal-retained-notice">{{ t('terminal.retainedNotice') }}</p>
     <div v-if="errorMessage" class="terminal-alert" role="alert">{{ errorMessage }}</div>
     <div v-for="item in sessions.filter(session => session.launchUncertain)" :key="`launch-${item.id}`" class="terminal-alert" role="alert">
       <strong>{{ sessionLabel(item) }}</strong>：{{ t('terminal.launchUncertain') }}
@@ -689,7 +718,7 @@ onBeforeUnmount(() => {
               <SquareTerminal :size="14" /><span class="terminal-tab__name">{{ sessionLabel(item) }}</span>
               <span class="sr-only">{{ sessionStateLabel(item.state) }}</span>
               </button>
-              <button type="button" class="terminal-tab__close" :disabled="item.closing" :aria-label="t('terminal.endSession')" :title="t('terminal.endSession')" @click="closeSession(item.id)" @keydown.enter.prevent="closeSession(item.id)" @keydown.space.prevent="closeSession(item.id)">
+              <button type="button" class="terminal-tab__close" :disabled="item.closing" aria-label="关闭终端" @click="closeSession(item.id)" @keydown.enter.prevent="closeSession(item.id)" @keydown.space.prevent="closeSession(item.id)">
               <LoaderCircle v-if="item.closing" class="spin" :size="14" aria-label="正在关闭终端" />
               <X v-else :size="14" />
               </button>
@@ -762,7 +791,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.terminal-retained-notice { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-soft); }
 .terminal-connection-options { display: grid; gap: 12px; }
 .terminal-connection-options .button { justify-content: flex-start; min-height: 52px; }
 .terminal-connection-options small { color: var(--muted); line-height: 1.6; }

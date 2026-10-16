@@ -119,7 +119,7 @@ describe('translations', () => {
     expect(t('apps.installTitle', { name: 'Cloudreve' })).toBe('Install Cloudreve')
     expect(t('terminal.task.title', { kind: 'App' })).toBe('App terminal')
     expect(t('terminal.closeSessionsConfirm', { count: 2 }))
-      .toBe('Closing this window will disconnect 2 terminal session(s). Continue?')
+      .toBe('Closing this window will terminate 2 terminal session(s). Continue?')
     expect(t('cluster.confirm.revokeController', { name: 'node-1' }))
       .toBe('Revoke access for node-1?')
 
