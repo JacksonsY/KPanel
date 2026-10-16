@@ -84,6 +84,20 @@ let windowPreferencesStorage: StorageLike | undefined
 const windowPreferences = new Map<string, WindowSizePreference>()
 const sizeDirtyWindowIds = new Set<number>()
 let applyingPreferences = false
+// Shared layout is independent from the clamped presentation on this screen.
+const sharedLayouts = new Map<number, { geometry: WindowGeometry; snap: WindowSnap | null }>()
+let sharedSideSplitRatio = DEFAULT_SIDE_SPLIT_RATIO
+const desktopFallbackViewport = { width: 1440, height: 1000 }
+const compactViewport = (viewport = defaultViewport()): boolean => viewport.width <= 760
+
+function sharedGeometry(raw: unknown): WindowGeometry {
+  if (isWindowRecord(raw) && ['left', 'top', 'width', 'height'].every((key) => typeof raw[key] === 'number'
+    && Number.isFinite(raw[key]) && Math.abs(Number(raw[key])) <= MAX_WINDOW_PREFERENCE_DIMENSION)
+    && Number(raw.width) > 0 && Number(raw.height) > 0) {
+    return { left: Number(raw.left), top: Number(raw.top), width: Number(raw.width), height: Number(raw.height) }
+  }
+  return normalizeGeometry(isWindowRecord(raw) ? raw : undefined, desktopFallbackViewport)
+}
 
 /** Recover only the wire DTO, never trust UI-only fields from tab storage. */
 export function parseDesktopSessionPreferences(value: unknown): DesktopSessionPreferences | undefined {
@@ -123,12 +137,12 @@ export function parseDesktopSessionPreferences(value: unknown): DesktopSessionPr
 export function desktopPreferencesSnapshot(): DesktopSessionPreferences {
   ensureWindowPreferences()
   const windows = state.windows.filter((item) => isSafeWindowFullPath(item.path)).slice(0, MAX_WINDOWS).map((item) => ({
-    id: item.id, path: item.path, geometry: { ...item.geometry }, minimized: item.minimized,
-    maximized: item.maximized, snap: item.snap ?? '' as const, z: item.z,
+    id: item.id, path: item.path, geometry: { ...(sharedLayouts.get(item.id)?.geometry ?? item.geometry) }, minimized: item.minimized,
+    maximized: item.maximized, snap: sharedLayouts.get(item.id)?.snap ?? '' as const, z: item.z,
   }))
   return {
     mode: state.mode, windows, windowSizes: [...windowPreferences.values()].map((item) => ({ ...item })),
-    sideSplitRatio: state.sideSplitRatio, focusedId: windows.some((item) => item.id === state.focusedId) ? state.focusedId : 0,
+    sideSplitRatio: sharedSideSplitRatio, focusedId: windows.some((item) => item.id === state.focusedId) ? state.focusedId : 0,
   }
 }
 
@@ -245,11 +259,11 @@ function persistWindowPreferences(): void {
   }
 }
 
-function rememberWindowPreference(path: string, geometry: WindowGeometry, viewport = defaultViewport()): void {
+function rememberWindowPreference(path: string, geometry: WindowGeometry): void {
   ensureWindowPreferences()
   const preferencePath = windowPreferencePath(path)
   if (!preferencePath) return
-  const normalized = normalizeGeometry(geometry, viewport)
+  const normalized = geometry
   const next = {
     path: preferencePath,
     width: Math.round(normalized.width),
@@ -269,7 +283,7 @@ function rememberWindowPreference(path: string, geometry: WindowGeometry, viewpo
 
 function commitWindowPreference(windowState: DesktopWindowState): void {
   if (windowState.maximized || !sizeDirtyWindowIds.delete(windowState.id)) return
-  rememberWindowPreference(windowState.path, windowState.geometry)
+  if (!compactViewport()) rememberWindowPreference(windowState.path, sharedLayouts.get(windowState.id)?.geometry ?? windowState.geometry)
 }
 
 function readPersistedMode(storage: StorageLike | undefined): DesktopMode {
@@ -309,14 +323,13 @@ function readPersistedWindows(
       const id = canReuseId ? Number(persistedId) : allocateId()
       usedIds.add(id)
       const maximized = Boolean(value.maximized)
+      const geometry = sharedGeometry(value.geometry)
+      sharedLayouts.set(id, { geometry, snap: !maximized && isWindowSnap(value.snap) ? value.snap : null })
       restored.push({
         id,
         path,
         titleKey,
-        geometry: normalizeGeometry(
-          isWindowRecord(value.geometry) ? (value.geometry as Partial<WindowGeometry>) : undefined,
-          viewport,
-        ),
+        geometry: clampToViewport(geometry, viewport),
         minimized: Boolean(value.minimized),
         maximized,
         snap: !maximized && isWindowSnap(value.snap) && supportsSideWindowSnap(viewport) ? value.snap : null,
@@ -339,10 +352,10 @@ function persistWindows(storage: StorageLike | undefined): void {
         id: windowState.id,
         path: windowState.path,
         titleKey: windowState.titleKey,
-        geometry: windowState.geometry,
+        geometry: sharedLayouts.get(windowState.id)?.geometry ?? windowState.geometry,
         minimized: windowState.minimized,
         maximized: windowState.maximized,
-        snap: windowState.snap,
+        snap: sharedLayouts.get(windowState.id)?.snap ?? null,
       }))
     storage?.setItem(WINDOWS_KEY, JSON.stringify(snapshot))
   } catch {
@@ -362,13 +375,14 @@ function persistMode(storage: StorageLike | undefined): void {
 function readPersistedSideSplitRatio(
   storage: StorageLike | undefined,
   viewport: ViewportSize,
+  fit = true,
 ): number {
   try {
     const raw = storage?.getItem(SIDE_SPLIT_RATIO_KEY) ?? null
     if (!raw || raw.length > 32) return DEFAULT_SIDE_SPLIT_RATIO
     const ratio = Number(raw)
     if (!Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) return DEFAULT_SIDE_SPLIT_RATIO
-    return normalizeSideSplitRatio(ratio, viewport)
+    return fit ? normalizeSideSplitRatio(ratio, viewport) : ratio
   } catch {
     return DEFAULT_SIDE_SPLIT_RATIO
   }
@@ -377,7 +391,7 @@ function readPersistedSideSplitRatio(
 function persistSideSplitRatio(storage: StorageLike | undefined): void {
   preferencesChanged()
   try {
-    storage?.setItem(SIDE_SPLIT_RATIO_KEY, String(state.sideSplitRatio))
+    storage?.setItem(SIDE_SPLIT_RATIO_KEY, String(sharedSideSplitRatio))
   } catch {
     // The divider remains adjustable when browser storage is unavailable.
   }
@@ -403,10 +417,11 @@ function normalizeWindowStack(): void {
 }
 
 function resizeForViewport(viewport: ViewportSize, persist = true): void {
-  state.sideSplitRatio = normalizeSideSplitRatio(state.sideSplitRatio, viewport)
+  state.sideSplitRatio = normalizeSideSplitRatio(sharedSideSplitRatio, viewport)
   for (const windowState of state.windows) {
-    windowState.geometry = clampToViewport(windowState.geometry, viewport)
-    if (windowState.snap && !supportsSideWindowSnap(viewport)) windowState.snap = null
+    const layout = sharedLayouts.get(windowState.id)
+    windowState.geometry = clampToViewport(layout?.geometry ?? windowState.geometry, viewport)
+    windowState.snap = !windowState.maximized && supportsSideWindowSnap(viewport) ? layout?.snap ?? null : null
   }
   if (persist) {
     // Viewport fitting is local presentation, not an explicit shared layout edit.
@@ -439,10 +454,12 @@ export function initializeDesktopMode(
   nextWindowId = 1
   nextZ = BASE_WINDOW_Z
   sizeDirtyWindowIds.clear()
+  sharedLayouts.clear()
   state.windows.splice(0, state.windows.length)
   state.focusedId = 0
   state.mode = readPersistedMode(storage)
   state.sideSplitRatio = readPersistedSideSplitRatio(storage, viewport)
+  sharedSideSplitRatio = readPersistedSideSplitRatio(storage, viewport, false)
   loadWindowPreferences(storage)
   const restored = readPersistedWindows(storage, viewport)
   if (restored.length) {
@@ -515,11 +532,12 @@ export function useDesktopMode() {
     const id = nextWindowId++
     nextZ += 1
     const geometry = cascadeGeometry(id, path)
+    sharedLayouts.set(id, { geometry, snap: null })
     state.windows.push({
       id,
       path,
       titleKey,
-      geometry,
+      geometry: clampToViewport(geometry, defaultViewport()),
       minimized: false,
       maximized: false,
       snap: null,
@@ -534,7 +552,7 @@ export function useDesktopMode() {
 
   function cascadeGeometry(id: number, path: string): WindowGeometry {
     const index = state.windows.filter((windowState) => windowState.id !== id).length
-    const viewport = defaultViewport()
+    const viewport = compactViewport() ? desktopFallbackViewport : defaultViewport()
     ensureWindowPreferences()
     const preferencePath = windowPreferencePath(path)
     const preference = preferencePath ? windowPreferences.get(preferencePath) : undefined
@@ -548,6 +566,7 @@ export function useDesktopMode() {
     commitWindowPreference(state.windows[index]!)
     sizeDirtyWindowIds.delete(id)
     state.windows.splice(index, 1)
+    sharedLayouts.delete(id)
     if (state.focusedId === id) {
       const top = [...state.windows]
         .filter((windowState) => !windowState.minimized)
@@ -597,6 +616,10 @@ export function useDesktopMode() {
     if (!target) return
     target.maximized = !target.maximized
     target.snap = null
+    if (!compactViewport()) {
+      const layout = sharedLayouts.get(id)
+      if (layout) layout.snap = null
+    }
     bringToFront(id)
     persistWindows(defaultStorage())
   }
@@ -615,6 +638,15 @@ export function useDesktopMode() {
     const previousWidth = target.geometry.width
     const previousHeight = target.geometry.height
     target.geometry = clampToViewport(geometry, defaultViewport())
+    const layout = sharedLayouts.get(id)
+    if (layout && !compactViewport()) {
+      layout.geometry = {
+        ...target.geometry,
+        width: target.geometry.width !== previousWidth ? target.geometry.width : layout.geometry.width,
+        height: target.geometry.height !== previousHeight ? target.geometry.height : layout.geometry.height,
+      }
+      layout.snap = target.snap
+    }
     if (target.geometry.width !== previousWidth || target.geometry.height !== previousHeight) {
       sizeDirtyWindowIds.add(id)
     }
@@ -637,10 +669,12 @@ export function useDesktopMode() {
     viewport: ViewportSize = defaultViewport(),
   ): void {
     state.sideSplitRatio = normalizeSideSplitRatio(ratio, viewport)
+    if (persist && !compactViewport(viewport)) sharedSideSplitRatio = state.sideSplitRatio
     if (persist) persistSideSplitRatio(defaultStorage())
   }
 
   function commitSideSplitRatio(): void {
+    if (!compactViewport()) sharedSideSplitRatio = state.sideSplitRatio
     persistSideSplitRatio(defaultStorage())
   }
 
@@ -656,6 +690,10 @@ export function useDesktopMode() {
       target.snap = snap
     }
     bringToFront(id)
+    if (!compactViewport()) {
+      const layout = sharedLayouts.get(id)
+      if (layout) layout.snap = target.snap
+    }
     persistWindows(defaultStorage())
   }
 
@@ -665,6 +703,11 @@ export function useDesktopMode() {
     target.maximized = false
     target.snap = null
     target.geometry = clampToViewport(geometry, defaultViewport())
+    const layout = sharedLayouts.get(id)
+    if (layout && !compactViewport()) {
+      layout.geometry = { ...target.geometry, width: layout.geometry.width, height: layout.geometry.height }
+      layout.snap = null
+    }
     bringToFront(id)
     return target.geometry
   }
@@ -708,6 +751,8 @@ export function useDesktopMode() {
 }
 
 export function resetDesktopModeForTest(): void {
+  sharedLayouts.clear()
+  sharedSideSplitRatio = DEFAULT_SIDE_SPLIT_RATIO
   state.mode = 'classic'
   state.windows.splice(0, state.windows.length)
   state.focusedId = 0

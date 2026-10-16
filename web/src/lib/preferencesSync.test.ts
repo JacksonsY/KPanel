@@ -144,7 +144,8 @@ it('fits saved windows to the viewport without saving a passive resize or replay
   useDesktopMode().resizeForViewport({ width: 390, height: 844 })
   await flush()
   expect(mocks.update).not.toHaveBeenCalled()
-  expect(desktopPreferencesSnapshot().windows[0]!.geometry.width).toBeLessThanOrEqual(390)
+  expect(useDesktopMode().windows.value[0]!.geometry.width).toBeLessThanOrEqual(390)
+  expect(desktopPreferencesSnapshot().windows[0]!.geometry.width).toBe(1200)
 })
 
 it('clears cached windows when the shared layout is intentionally empty', () => {
@@ -249,4 +250,88 @@ it('cancels retry when a failed edit is undone to the server value', async () =>
   expect(sessionStorage.getItem('kpanel:preferences-pending:v1')).toBeNull()
   await setLocale('en-US'); await flush()
   expect(mocks.danger).toHaveBeenCalledTimes(2)
+})
+
+it('phone window actions save desktop geometry, snap, sizes and split ratio unchanged', async () => {
+  const geometry = { left: 250, top: 150, width: 1200, height: 750 }
+  const value: DesktopSessionPreferences = { ...desktop, sideSplitRatio: .62,
+    windows: [{ id: 1, path: '/files', geometry, minimized: false, maximized: false, snap: 'left', z: 100 }],
+    windowSizes: [{ path: '/files', width: 1200, height: 750 }], focusedId: 1 }
+  Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })
+  Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true })
+  mocks.get.mockResolvedValue({ ...remote(), desktop: value })
+  await startPreferencesSync('admin')
+  const store = useDesktopMode()
+  expect(store.windows.value[0]!.geometry.width).toBeLessThanOrEqual(390)
+  store.minimizeWindow(1)
+  await flush()
+  const sent = mocks.update.mock.calls[0]![0].desktop
+  expect(sent.windows[0]).toMatchObject({ geometry, snap: 'left', minimized: true })
+  expect(sent.windowSizes).toEqual(value.windowSizes)
+  expect(sent.sideSplitRatio).toBe(.62)
+  // A subsequent computer session must get the original desktop layout.
+  stopPreferencesSync(); resetDesktopModeForTest(); sessionStorage.clear()
+  Object.defineProperty(window, 'innerWidth', { value: 1600, configurable: true })
+  Object.defineProperty(window, 'innerHeight', { value: 1000, configurable: true })
+  mocks.get.mockResolvedValue({ ...remote(), desktop: sent })
+  await startPreferencesSync('admin')
+  expect(store.windows.value[0]!.geometry).toEqual(geometry)
+})
+
+it('restores preferred geometry when the same browser grows from phone to desktop', () => {
+  const geometry = { left: 200, top: 80, width: 1100, height: 700 }
+  applyDesktopPreferences({ ...desktop, windows: [{ id: 1, path: '/files', geometry, minimized: false, maximized: false, snap: 'right', z: 100 }] })
+  const store = useDesktopMode()
+  store.resizeForViewport({ width: 390, height: 844 })
+  expect(store.windows.value[0]!.snap).toBeNull()
+  store.resizeForViewport({ width: 1600, height: 1000 })
+  expect(store.windows.value[0]!.geometry).toEqual(geometry)
+  expect(store.windows.value[0]!.snap).toBe('right')
+})
+
+it('phone geometry commits and new windows cannot establish phone-sized desktop preferences', () => {
+  Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true })
+  Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true })
+  applyDesktopPreferences(desktop)
+  const store = useDesktopMode()
+  const id = store.openWindow('/files', 'route.files', true)
+  store.updateGeometry(id, { left: 0, top: 0, width: 300, height: 400 })
+  store.commitGeometry(id)
+  const sent = desktopPreferencesSnapshot()
+  expect(sent.windows[0]!.geometry.width).toBeGreaterThan(760)
+  expect(sent.windowSizes).toEqual([])
+  // Local caches also preserve the preferred layout across refresh.
+  resetDesktopModeForTest()
+  initializeDesktopMode()
+  expect(desktopPreferencesSnapshot().windows[0]!.geometry.width).toBeGreaterThan(760)
+})
+
+it('desktop resizing still updates the shared window and app size preference', () => {
+  applyDesktopPreferences({ ...desktop, windows: [{ id: 1, path: '/files', geometry: { left: 100, top: 100, width: 900, height: 600 }, minimized: false, maximized: false, snap: '', z: 100 }] })
+  useDesktopMode().updateGeometry(1, { left: 120, top: 110, width: 1000, height: 650 })
+  const sent = desktopPreferencesSnapshot()
+  expect(sent.windows[0]!.geometry).toEqual({ left: 120, top: 110, width: 1000, height: 650 })
+  expect(sent.windowSizes).toEqual([{ path: '/files', width: 1000, height: 650 }])
+})
+
+it('drag activation followed immediately by commit saves the detached layout', () => {
+  applyDesktopPreferences({ ...desktop, windows: [{ id: 1, path: '/files', geometry: { left: 100, top: 100, width: 900, height: 600 }, minimized: false, maximized: false, snap: 'left', z: 100 }] })
+  const store = useDesktopMode()
+  store.restoreWindowForDrag(1, { left: 200, top: 90, width: 900, height: 600 })
+  store.commitGeometry(1)
+  expect(desktopPreferencesSnapshot().windows[0]).toMatchObject({ snap: '', geometry: { left: 200, top: 90, width: 900, height: 600 } })
+})
+
+it('cancelled divider motion cannot replace the shared ratio with a viewport-clamped value', () => {
+  Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true })
+  applyDesktopPreferences({ ...desktop, sideSplitRatio: .8 })
+  const store = useDesktopMode()
+  const fittedStartRatio = store.sideSplitRatio.value
+  expect(fittedStartRatio).not.toBe(.8)
+  store.setSideSplitRatio(.5, false)
+  store.setSideSplitRatio(fittedStartRatio, false)
+  expect(desktopPreferencesSnapshot().sideSplitRatio).toBe(.8)
+  store.setSideSplitRatio(.5, false)
+  store.commitSideSplitRatio()
+  expect(desktopPreferencesSnapshot().sideSplitRatio).toBe(.5)
 })
