@@ -157,6 +157,21 @@ func TestSaveLocalAppRejectsInvalidIcons(t *testing.T) {
 	}
 }
 
+func TestLocalAppIconDimensionsCheckedBeforeFullDecode(t *testing.T) {
+	// A valid oversized header with a truncated body must be rejected for its
+	// dimensions before decoding image pixels. Keep this fixture small even on
+	// the unfixed implementation.
+	data := testPNG(t, maxLocalAppIconSide+1, maxLocalAppIconSide+1)
+	data = data[:len(data)-12] // Remove IEND while keeping DecodeConfig valid.
+	if _, err := png.DecodeConfig(bytes.NewReader(data)); err != nil {
+		t.Fatalf("invalid header fixture: %v", err)
+	}
+	err := validateLocalAppIcon(&LocalAppIcon{ContentType: "image/png", Data: data})
+	if !errors.Is(err, ErrLocalAppInvalid) || !strings.Contains(err.Error(), "边长") {
+		t.Fatalf("oversized header must fail before pixel decoding: %v", err)
+	}
+}
+
 func TestUpdateLocalAppRequiresVersionAndKeepsInstalledIdentity(t *testing.T) {
 	service, _ := newLocalAppWriteService(t)
 	created, err := service.SaveLocalApp(context.Background(), LocalAppWriteInput{

@@ -292,6 +292,17 @@ func TestPanelDomainCheckRequiresValidDomainAndCSRF(t *testing.T) {
 	}
 }
 
+func TestPanelDomainCheckRejectsUnrelatedNoContentServer(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	result := checkPanelDomain(context.Background(), strings.TrimPrefix(upstream.URL, "https://"), "nonce", upstream.Client())
+	if !result.Reachable || result.Matched || result.Problem != "not_this_panel" {
+		t.Fatalf("generic 204 response must not prove panel identity: %+v", result)
+	}
+}
+
 func TestPanelDomainProbeAnswersOnlyPendingNoncesThroughHostValidation(t *testing.T) {
 	server, _ := newTestServer(t)
 	nonce, err := server.addDomainProbe()
