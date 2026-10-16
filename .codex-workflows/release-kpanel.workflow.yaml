@@ -50,7 +50,7 @@ git ls-remote origin refs/heads/main refs/heads/release/v${{release_train}}-cand
 
 ### 2. GitHub L3
 
-`.github/workflows/release-l3.yml` 在候选 push 自动执行完整 L3；外层唯一入口：
+`.github/workflows/release-l3.yml` 在迁移分支 push 资格化及发布 dispatch 内执行完整 L3；外层唯一入口：
 
 ```bash
 node scripts/run-release-l3.mjs --github-hosted
@@ -78,6 +78,7 @@ gh workflow run preview-release.yml --repo kejilion/KPanel --ref main -f candida
 
 Release 复核 tag/源码/主线身份、版本与实际发布说明解析器；源码、安全和 native 镜像契约通过后，
 创建 draft 与二进制/元数据附件，推送 amd64/arm64 OCI 镜像并生成 SBOM/provenance。
+元数据附件命名为 `kejilion-panel-meta-${{version}}.tar.gz`，不是可构建源码包。
 modified-component provenance 上传并验证后，最终说明门禁通过才提升 preview 并公开 prerelease。
 stable tag 的 Release 先调用同一 L3；stable 分支收尾继续使用唯一 archive-release-candidate.mjs。
 Release 公开失败或公开后验收失败分别报告，不得把已公开产物重建覆盖；恢复应复核现状并保留失败原件。

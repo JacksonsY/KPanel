@@ -149,7 +149,7 @@ test('release workflow publishes isolated stable and preview channels', () => {
   assert.match(workflow, /--latest=false/);
   assert.match(workflow, /if: steps\.release\.outputs\.stable == 'true'/);
   assert.match(workflow, /node scripts\/archive-release-candidate\.mjs/);
-  assert.match(workflow, /--tag "\$GITHUB_REF_NAME" --release-sha "\$GITHUB_SHA" --apply/);
+  assert.match(workflow, /--tag "\$GITHUB_REF_NAME" --release-sha "\$RELEASE_SHA" --apply/);
   assert.doesNotMatch(workflow, /gh api --method DELETE/);
 });
 

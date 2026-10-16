@@ -5,7 +5,7 @@ import { join } from 'node:path';
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const env = process.env;
 const version = env.EXPECTED_VERSION;
-if (!/^\d+\.\d+\.\d+-rc\.[1-9]\d*$/.test(version ?? '') || !/^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? '')) throw new Error('Exact preview identity required');
+if (!/^\d+\.\d+\.\d+(?:-rc\.[1-9]\d*)?$/.test(version ?? '') || !/^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? '')) throw new Error('Exact release identity required');
 if (env.GITHUB_ACTIONS !== 'true' || env.RUNNER_ENVIRONMENT !== 'github-hosted') throw new Error('GitHub-hosted execution required');
 const directory = env.PUBLIC_EVIDENCE;
 if (!directory?.startsWith(env.RUNNER_TEMP + '/')) throw new Error('Evidence must be owned runner temporary data');
@@ -20,6 +20,15 @@ const json = async (url, headers) => JSON.parse((await request(url, headers, 4 *
 const token = (await json('https://auth.docker.io/token?service=registry.docker.io&scope=repository:kjlion/kejilion-panel:pull')).token;
 const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' };
 const registry = 'https://registry-1.docker.io/v2/kjlion/kejilion-panel';
+if (process.argv[2] === 'unused') {
+  const response = await fetch(`${registry}/manifests/${version}`, { headers, signal: AbortSignal.timeout(30_000) });
+  if (response.status !== 404) throw new Error(`Refusing version image publication: registry HTTP ${response.status}; existing or uncertain tags cannot be overwritten`);
+  const body = await response.json();
+  if (!Array.isArray(body.errors) || body.errors.length !== 1 || body.errors[0].code !== 'MANIFEST_UNKNOWN') throw new Error('Registry did not establish an unused version');
+  console.log(`version_image=unused version=${version}`);
+  process.exit(0);
+}
+if (!version.includes('-rc.')) throw new Error('Public preview validation requires a preview version');
 const manifest = async ref => {
   const r = await request(`${registry}/manifests/${ref}`, headers, 4 * 1024 * 1024);
   const digest = 'sha256:' + sha256(r.bytes);
@@ -31,7 +40,16 @@ const latestImage = await manifest('latest');
 const snapshotPath = join(directory, 'stable-before.json');
 if (process.argv[2] === 'snapshot') {
   mkdirSync(directory, { recursive: false });
-  writeFileSync(snapshotPath, JSON.stringify({ tag: latestRelease.tag_name, digest: latestImage.digest }, null, 2) + '\n', { flag: 'wx' });
+  const previous = await manifest('preview');
+  const native = previous.body.manifests.find(m => m.platform?.os === 'linux' && m.platform?.architecture === 'amd64');
+  if (!native) throw new Error('Previous preview lacks the required upgrade platform');
+  const previousManifest = await manifest(native.digest);
+  const config = await json(`${registry}/blobs/${previousManifest.body.config.digest}`, headers);
+  const previousVersion = config.config.Labels['org.opencontainers.image.version'];
+  if (!/^\d+\.\d+\.\d+-rc\.[1-9]\d*$/.test(previousVersion) || previousVersion === version) throw new Error('Valid distinct previous preview required');
+  writeFileSync(snapshotPath, JSON.stringify({ tag: latestRelease.tag_name, digest: latestImage.digest,
+    previousPreview: { version: previousVersion, digest: previous.digest } }, null, 2) + '\n', { flag: 'wx' });
+  writeFileSync(env.GITHUB_ENV, `PREVIOUS_PREVIEW_VERSION=${previousVersion}\nPREVIOUS_PREVIEW_IMAGE=docker.io/kjlion/kejilion-panel@${previous.digest}\n`, { flag: 'a' });
   process.exit(0);
 }
 if (process.argv[2] !== 'verify') throw new Error('snapshot or verify required');

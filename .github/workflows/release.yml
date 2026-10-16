@@ -18,7 +18,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: release-${{ inputs.tag || github.ref }}
+  group: kpanel-image-publication
   cancel-in-progress: false
 
 jobs:
@@ -40,7 +40,6 @@ jobs:
       GITHUB_REF_NAME: ${{ inputs.tag || github.ref_name }}
       RELEASE_SHA: ${{ inputs.candidate || github.sha }}
       EXPECTED_SHA: ${{ inputs.candidate || github.sha }}
-      PUBLIC_EVIDENCE: ${{ runner.temp }}/kpanel-public-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,6 +100,8 @@ jobs:
             echo "Repository variable DOCKERHUB_USERNAME is required" >&2
             exit 1
           }
+          test "$DOCKERHUB_IMAGE" = kjlion/kejilion-panel
+          echo "PUBLIC_EVIDENCE=$RUNNER_TEMP/kpanel-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
           test -n "${DOCKERHUB_TOKEN:-}" || {
             echo "Repository secret DOCKERHUB_TOKEN is required" >&2
             exit 1
@@ -359,6 +360,11 @@ jobs:
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Reject an already occupied or uncertain version image
+        env:
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+        run: node scripts/verify-github-public-release.mjs unused
 
       - name: Build and push multi-architecture image
         id: image

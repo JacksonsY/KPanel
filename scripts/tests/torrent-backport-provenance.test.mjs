@@ -244,7 +244,7 @@ test('workflow generation, draft upload and digest/size verification precede bot
   assert.ok(push < gate && gate < promote && promote < publish);
   const step = workflow.slice(gate, workflow.indexOf('- name: Validate final release notes', gate));
   assert.match(step, /set -euo pipefail/);
-  assert.match(step, /--candidate "\$GITHUB_SHA" --version "\$VERSION"/);
+  assert.match(step, /--candidate "\$RELEASE_SHA" --version "\$VERSION"/);
   assert.match(step, /gh release upload/);
   assert.match(step, /\.draft == true and \.tag_name == \$tag/);
   assert.match(step, /\.\[0\]\.digest == \$digest and \.\[0\]\.size == \$size/);
