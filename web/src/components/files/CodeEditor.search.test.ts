@@ -2,7 +2,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { SearchQuery } from '@codemirror/search'
+import { SearchQuery, getSearchQuery } from '@codemirror/search'
+import { undo } from '@codemirror/commands'
+import type { CodeEditorSession } from '@/lib/code-editor-session'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CodeEditor from './CodeEditor.vue'
 import { countSearchMatches } from '@/lib/code-editor-search'
@@ -16,9 +18,9 @@ afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount())
   vi.restoreAllMocks()
 })
-async function setup(modelValue: string) {
+async function setup(modelValue: string, session?: CodeEditorSession) {
   const wrapper = mount(CodeEditor, {
-    props: { modelValue, fileName: 'notes.txt', sizeBytes: modelValue.length, autoFocus: false },
+    props: { modelValue, fileName: 'notes.txt', sizeBytes: modelValue.length, autoFocus: false, session },
     attachTo: document.body,
   })
   wrappers.push(wrapper)
@@ -28,6 +30,27 @@ async function setup(modelValue: string) {
 const view = (wrapper: Awaited<ReturnType<typeof setup>>) => EditorView.findFromDOM(wrapper.get<HTMLElement>('.cm-content').element)!
 
 describe('CodeEditor find, go to line and selections', () => {
+  it('restores a parked draft and undo history without an orphaned search highlight', async () => {
+    const original = 'alpha\nbeta alpha'
+    const first = await setup(original)
+    view(first).dispatch({ changes: { from: original.length, insert: ' draft' } })
+    first.vm.openSearch()
+    await flushPromises()
+    await first.get<HTMLInputElement>('[aria-label="查找内容"]').setValue('alpha')
+    expect(first.findAll('.cm-searchMatch')).toHaveLength(2)
+    const session = first.vm.getSession()!
+    first.unmount()
+    wrappers.splice(wrappers.indexOf(first), 1)
+
+    const restored = await setup(original + ' draft', session)
+    expect(restored.find('.code-search').exists()).toBe(false)
+    expect(restored.findAll('.cm-searchMatch')).toHaveLength(0)
+    expect(getSearchQuery(view(restored).state).search).toBe('')
+    expect(view(restored).state.doc.toString()).toBe(original + ' draft')
+    expect(undo(view(restored))).toBe(true)
+    expect(view(restored).state.doc.toString()).toBe(original)
+  })
+
   it('counts matches, reports the current one and paints them without CodeMirror\'s panel', async () => {
     const wrapper = await setup('alpha\nbeta alpha\ngamma alpha')
     wrapper.vm.openSearch()

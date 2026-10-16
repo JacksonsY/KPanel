@@ -34,7 +34,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,6 +64,23 @@ jobs:
           VERIFY_BASE_REF: ${{ inputs.base || github.event.pull_request.base.sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'origin/main' }}
         run: |
           export GITHUB_SHA="$KPANEL_CI_SHA" GITHUB_REF_NAME="$KPANEL_CI_REF_NAME"
+          # Only raise the existing verification floor; L3 still requires the release workflow.
+          trailers="$(git log -1 --format=%B | git interpret-trailers --parse)"
+          requested_level=""
+          while IFS= read -r trailer; do
+            [[ "${trailer,,}" == verification-level:* ]] || continue
+            if [[ -n "$requested_level" ]]; then
+              echo "Duplicate Verification-Level trailer" >&2
+              exit 1
+            fi
+            requested_level="${trailer#*:}"
+            requested_level="${requested_level# }"
+            case "$requested_level" in
+              L0|L1) ;;
+              L2|L3) export VERIFY_LEVEL=2 ;;
+              *) echo "Invalid Verification-Level trailer" >&2; exit 1 ;;
+            esac
+          done <<< "$trailers"
           make verify-change
 
       - name: Detect races in privileged core packages

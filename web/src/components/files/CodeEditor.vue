@@ -523,7 +523,11 @@ async function initialize(): Promise<void> {
     editor = new EditorView({
       parent: host.value,
       state: props.session
-        ? props.session.state.update({ effects: StateEffect.reconfigure.of(extensions) }).state
+        ? props.session.state.update({ effects: [
+          StateEffect.reconfigure.of(extensions),
+          // The restored component starts with a closed find bar, so parked queries must not paint orphaned matches.
+          setSearchQuery.of(new SearchQuery({ search: '' })),
+        ] }).state
         : EditorState.create({ doc: props.modelValue, extensions }),
     })
     if (props.session) {

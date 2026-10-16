@@ -63,9 +63,9 @@
 ### 保留会话协议
 
 `POST /api/v1/terminal-sessions` 可带 `retained:true`，目标 Agent 或节点必须显式返回保留能力确认；
-旧节点拒绝该模式。普通多主机终端收到 `terminal_retention_unavailable` 或 `terminal_open_failed` 后，
+旧节点拒绝该模式。普通多主机终端仅收到明确的能力拒绝 `terminal_retention_unavailable` 后，
 自动尝试一次 `retained:false`，成功后直接进入终端，不追加提示或标识；临时连接失败、网络响应不确定、
-权限拒绝或达到会话上限时不继续重试。此回退不用于桌面命令快捷方式，不自动重放命令。
+通用 `terminal_open_failed`、权限拒绝或达到会话上限时不继续重试。此回退不用于桌面命令快捷方式，不自动重放命令。
 `GET /api/v1/terminal-sessions` 仅返回当前登录用户的
 保留会话元数据，不返回命令、内部后端 ID 或其他用户会话，也不延长会话寿命。
 桌面命令首次启动提交 `shortcutId` 和 `shortcutVersion`，服务端校验当前工作区版本、类型和目标主机，

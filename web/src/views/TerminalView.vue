@@ -212,8 +212,8 @@ async function openSession(host: ClusterHost, retained = true): Promise<void> {
   try {
 	openingRequest = api.terminals.open(host.id, 30, 120, { retained }).catch((reason) => {
       if (disposed || !retained || !(reason instanceof ApiError)
-        || !['terminal_retention_unavailable', 'terminal_open_failed'].includes(reason.code)) throw reason
-      // Retry only a rejected plain-shell open, never an uncertain response or a command launch.
+        || reason.code !== 'terminal_retention_unavailable') throw reason
+      // Only an explicit capability rejection permits fallback; generic upstream failure may have created a PTY.
       return api.terminals.open(host.id, 30, 120, { retained: false })
     })
 	const opened = await openingRequest

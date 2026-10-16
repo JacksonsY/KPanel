@@ -112,6 +112,35 @@ test('reusable CI explicitly exports the frozen identity after runner default in
   assert.doesNotMatch(l3, /^\s+GITHUB_(?:SHA|REF_NAME):/m);
   assert.match(l3, /export GITHUB_SHA="\$KPANEL_CANDIDATE_SHA" GITHUB_REF_NAME=release\/validated-candidate/);
 });
+test('CI reads real Git trailers and only raises the verification floor', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+  const body = workflowStep(workflow, 'Run change-aware verification');
+  for (const [trailers, expected] of [
+    ['', 'auto'], ['Verification-Level: L0', 'auto'], ['Verification-Level: L1', 'auto'],
+    ['Verification-Level: L2', '2'], ['Verification-Level: L3', '2'],
+    ['verification-level: L2', '2'], ['Verification-Level: garbage', null],
+    ['Verification-Level: L2\nVerification-Level: L1', null],
+    ['Verification-Level: L2\nVerification-Level: L2', null],
+    ['Verification-Level: $(echo injected)', null], ['Verification-Level:', null],
+  ]) {
+    const result = spawnSync(resolveBash(), ['--noprofile', '--norc', '-c',
+      'set -euo pipefail\nunset VERIFY_LEVEL\ngit() { if [[ "$1" == log ]]; then printf "%s" "$TEST_COMMIT_MESSAGE"; else command git "$@"; fi; }\n' +
+      'make() { printf "%s" "${VERIFY_LEVEL:-auto}"; }\n' + body], {
+      encoding: 'utf8', timeout: 10_000,
+      env: { ...process.env, TEST_COMMIT_MESSAGE: 'Candidate\n\n' + trailers + '\n',
+        KPANEL_CI_SHA: 'b'.repeat(40), KPANEL_CI_REF_NAME: 'feature/candidate' },
+    });
+    assert.ifError(result.error);
+    if (expected === null) {
+      assert.notEqual(result.status, 0, trailers);
+      assert.equal(result.stdout, '', trailers);
+    } else {
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout, expected, trailers);
+    }
+  }
+});
+
 test('L3 rejects self-hosted, fork, missing identity and unsupported platform', () => {
   validateGitHubRun(valid, 'linux');
   for (const [field, value] of [['GITHUB_ACTIONS', 'false'], ['RUNNER_ENVIRONMENT', 'self-hosted'], ['GITHUB_REPOSITORY', 'attacker/KPanel'], ['GITHUB_RUN_ID', ''], ['GITHUB_SHA', 'main']]) {

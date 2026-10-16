@@ -35,7 +35,7 @@ describe('retained terminal restoration', () => {
     expect(mocks.close).toHaveBeenCalledWith('late')
     expect(mocks.closeOnUnload).toHaveBeenCalledWith('late')
   })
-  it.each(['terminal_retention_unavailable', 'terminal_open_failed'])('automatically falls back once after %s', async (code) => {
+  it.each(['terminal_retention_unavailable'])('automatically falls back once after %s', async (code) => {
     mocks.list.mockResolvedValue({ items: [] })
     mocks.open.mockRejectedValueOnce(Object.assign(new ApiError('old node'), { code }))
     mocks.open.mockResolvedValue({ sessionId: 'temporary', hostId: 'local', retained: false, offset: 0 })
@@ -49,7 +49,7 @@ describe('retained terminal restoration', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
     wrapper.unmount()
   })
-  it.each(['network_error', 'forbidden', 'terminal_limit'])('does not retry %s', async (code) => {
+  it.each(['network_error', 'terminal_open_failed', 'forbidden', 'terminal_limit'])('does not retry %s', async (code) => {
     mocks.list.mockResolvedValue({ items: [] })
     mocks.open.mockRejectedValueOnce(Object.assign(new ApiError('failed'), { code }))
     const wrapper = mount(TerminalView)
@@ -60,7 +60,8 @@ describe('retained terminal restoration', () => {
   })
   it('stops after a failed temporary fallback', async () => {
     mocks.list.mockResolvedValue({ items: [] })
-    mocks.open.mockRejectedValue(Object.assign(new ApiError('failed'), { code: 'terminal_open_failed' }))
+    mocks.open.mockRejectedValueOnce(Object.assign(new ApiError('unsupported'), { code: 'terminal_retention_unavailable' }))
+    mocks.open.mockRejectedValueOnce(Object.assign(new ApiError('failed'), { code: 'terminal_open_failed' }))
     const wrapper = mount(TerminalView)
     await flushPromises()
     expect(mocks.open).toHaveBeenCalledTimes(2)
