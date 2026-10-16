@@ -1947,7 +1947,11 @@ export const api = {
       request<TerminalQuickCommands>('/terminal-commands', { signal }),
     updateCommands: (body: TerminalQuickCommandsUpdate): Promise<TerminalQuickCommands> =>
       request<TerminalQuickCommands>('/terminal-commands', { method: 'PUT', body }),
-    open: (hostId: string, rows: number, columns: number, options?: { containerId?: string; resourceVersion?: string; retained?: boolean; shortcutId?: string; shortcutVersion?: string }): Promise<TerminalSession> =>
+    prepareShortcut: (hostId: string, shortcutId: string): Promise<{ launchId: string; expiresAt: string }> =>
+      request('/terminal-sessions', { method: 'POST', body: { hostId, shortcutId, rows: 30, columns: 120, prepareOnly: true } }),
+    resolveShortcut: (hostId: string, shortcutId: string, launchId?: string): Promise<TerminalSession> =>
+      request<TerminalSession>('/terminal-sessions', { method: 'POST', body: { hostId, shortcutId, launchId, rows: 30, columns: 120, lookupOnly: true } }),
+    open: (hostId: string, rows: number, columns: number, options?: { containerId?: string; resourceVersion?: string; retained?: boolean; shortcutId?: string; shortcutVersion?: string; launchId?: string }): Promise<TerminalSession> =>
       request<TerminalSession>('/terminal-sessions', {
         method: 'POST',
         body: { hostId, rows, columns, ...options },

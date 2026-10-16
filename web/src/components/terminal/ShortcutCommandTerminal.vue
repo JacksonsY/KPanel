@@ -26,6 +26,7 @@ const hostName = props.hostName
 const hostId = props.hostId || 'local'
 let disposed = false
 let submitted = false
+let launchId: string | undefined
 
 function phrase(value: string): string {
   phraseCatalogVersion.value
@@ -42,8 +43,17 @@ async function open(retained = true): Promise<void> {
   error.value = ''
   temporaryAvailable.value = false
   try {
+    if (props.shortcutId && !props.existingSession && !launchId) {
+      launchId = (await api.terminals.prepareShortcut(hostId, props.shortcutId)).launchId
+      if (!launchId) throw new Error('Terminal launch identity is missing')
+      if (disposed) {
+        void api.terminals.resolveShortcut(hostId, props.shortcutId, launchId).catch(() => undefined)
+        return
+      }
+      if (closing.value) return
+    }
     const opened = props.existingSession || await (props.shortcutId
-      ? api.terminals.open(hostId, 30, 120, { retained, shortcutId: props.shortcutId, shortcutVersion: props.shortcutVersion })
+      ? api.terminals.open(hostId, 30, 120, { retained, shortcutId: props.shortcutId, shortcutVersion: props.shortcutVersion, launchId })
       : api.terminals.open(hostId, 30, 120))
     if (disposed) {
       if (!opened.retained) await reclaim(opened).catch(() => api.terminals.closeOnUnload(opened.sessionId))
@@ -85,9 +95,21 @@ async function close(): Promise<boolean> {
   closing.value = true
   try {
     await openingRequest
-    if (session.value) {
-      if (terminal.value) await terminal.value.closeSession()
-      else await reclaim(session.value)
+    let target = session.value
+    if (!target && props.shortcutId) {
+      try { target = await api.terminals.resolveShortcut(hostId, props.shortcutId, launchId) }
+      catch (reason) {
+        if (!(reason instanceof ApiError && reason.code === 'terminal_shortcut_session_not_found')) throw reason
+      }
+    }
+    if (target) {
+      try {
+        if (session.value && terminal.value) await terminal.value.closeSession()
+        else await reclaim(target)
+      } catch (reason) {
+        session.value = target
+        throw reason
+      }
       session.value = undefined
     }
     disposed = true

@@ -28,6 +28,7 @@ const (
 	maxPanelTerminals       = 16
 	maxPanelTerminalsByUser = 4
 	panelTerminalIdleTTL    = 35 * time.Minute
+	panelTerminalLaunchTTL  = 5 * time.Minute
 )
 
 type clusterTerminalSource struct{ agent agentAPI }
@@ -51,6 +52,9 @@ type panelTerminalSession struct {
 }
 
 type terminalOpenRequest struct {
+	LookupOnly      bool   `json:"lookupOnly,omitempty"`
+	PrepareOnly     bool   `json:"prepareOnly,omitempty"`
+	LaunchID        string `json:"launchId,omitempty"`
 	Retained        bool   `json:"retained,omitempty"`
 	ShortcutID      string `json:"shortcutId,omitempty"`
 	ShortcutVersion string `json:"shortcutVersion,omitempty"`
@@ -59,6 +63,13 @@ type terminalOpenRequest struct {
 	Columns         uint16 `json:"columns"`
 	ContainerID     string `json:"containerId,omitempty"`
 	ResourceVersion string `json:"resourceVersion,omitempty"`
+}
+
+// Launch intents are issued before any PTY request. Removing an intent fences
+// delayed opens without retaining cancellation tombstones indefinitely.
+type panelTerminalLaunchIntent struct {
+	UserID, ShortcutID, HostID string
+	ExpiresAt                  time.Time
 }
 
 type terminalOpenResponse struct {
@@ -263,7 +274,7 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		s.writeValidationProblem(w, r, "containerId", "a full container identity and resource version are required together")
 		return
 	}
-	if input.Retained && input.ContainerID != "" || input.ShortcutID != "" && (input.ContainerID != "" || !desktopworkspace.ValidShortcutID(input.ShortcutID)) || input.ShortcutID == "" && input.ShortcutVersion != "" {
+	if input.Retained && input.ContainerID != "" || input.ShortcutID != "" && (input.ContainerID != "" || !desktopworkspace.ValidShortcutID(input.ShortcutID)) || input.ShortcutID == "" && (input.ShortcutVersion != "" || input.LookupOnly || input.PrepareOnly || input.LaunchID != "") || input.LookupOnly && input.PrepareOnly || input.LaunchID != "" && !validTerminalLaunchID(input.LaunchID) {
 		s.writeValidationProblem(w, r, "retained", "shortcuts require a valid shortcut ID and cannot target containers")
 		return
 	}
@@ -273,8 +284,33 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		// HTTP response must never cause a second execution on the next launch.
 		s.terminalLaunchMu.Lock()
 		defer s.terminalLaunchMu.Unlock()
-		if s.resumeShortcut(w, r, userID, input) {
+		if input.PrepareOnly {
+			s.prepareTerminalLaunch(w, r, userID, input)
 			return
+		}
+		if input.LookupOnly && input.LaunchID != "" {
+			if intent, ok := s.terminalLaunchIntents[input.LaunchID]; ok && intent.UserID == userID && intent.ShortcutID == input.ShortcutID && intent.HostID == input.HostID {
+				delete(s.terminalLaunchIntents, input.LaunchID)
+			}
+		}
+		if s.resumeShortcut(w, r, userID, input) {
+			if intent, ok := s.terminalLaunchIntents[input.LaunchID]; ok && intent.UserID == userID && intent.ShortcutID == input.ShortcutID && intent.HostID == input.HostID {
+				delete(s.terminalLaunchIntents, input.LaunchID)
+			}
+			return
+		}
+		if input.LookupOnly {
+			// A fenced launch cannot arrive later and create a replacement.
+			// Legacy callers without an intent can only inspect existing state.
+			s.writeProblem(w, r, 404, "terminal_shortcut_session_not_found", "Shortcut session not found", "")
+			return
+		}
+		if input.LaunchID != "" {
+			intent, ok := s.terminalLaunchIntents[input.LaunchID]
+			if !ok || intent.UserID != userID || intent.ShortcutID != input.ShortcutID || intent.HostID != input.HostID || !time.Now().Before(intent.ExpiresAt) {
+				s.writeProblem(w, r, 409, "terminal_launch_intent_invalid", "Terminal launch expired or was cancelled", "")
+				return
+			}
 		}
 		if s.desktopWorkspace == nil {
 			s.writeProblem(w, r, 503, "desktop_workspace_unavailable", "Desktop workspace unavailable", "")
@@ -399,6 +435,9 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 	s.terminalMu.Lock()
 	s.terminalSessions[publicID] = item
 	s.terminalMu.Unlock()
+	if input.LaunchID != "" {
+		delete(s.terminalLaunchIntents, input.LaunchID)
+	}
 	if launchCommand != "" {
 		// Persist the identity in bounded server memory BEFORE input. Any write error
 		// is uncertain, never a reason to repeat the command on a new connection.
@@ -418,8 +457,43 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 	s.writeJSON(w, http.StatusCreated, terminalSessionResponse(item))
 }
 
+func (s *Server) prepareTerminalLaunch(w http.ResponseWriter, r *http.Request, userID string, input terminalOpenRequest) {
+	now := time.Now()
+	userCount := 0
+	for id, intent := range s.terminalLaunchIntents {
+		if !now.Before(intent.ExpiresAt) {
+			delete(s.terminalLaunchIntents, id)
+		} else if intent.UserID == userID {
+			userCount++
+		}
+	}
+	if len(s.terminalLaunchIntents) >= maxPanelTerminals || userCount >= maxPanelTerminalsByUser {
+		s.writeProblem(w, r, 429, "terminal_limit", "Terminal launch limit reached", "")
+		return
+	}
+	id, err := randomTerminalSessionID()
+	if err != nil {
+		s.writeProblem(w, r, 500, "terminal_session_failed", "Terminal session failed", "")
+		return
+	}
+	if s.terminalLaunchIntents == nil {
+		s.terminalLaunchIntents = make(map[string]panelTerminalLaunchIntent)
+	}
+	expires := now.Add(panelTerminalLaunchTTL)
+	s.terminalLaunchIntents[id] = panelTerminalLaunchIntent{UserID: userID, ShortcutID: input.ShortcutID, HostID: input.HostID, ExpiresAt: expires}
+	s.writeJSON(w, 201, map[string]any{"launchId": id, "expiresAt": expires})
+}
+
 func validContainerTerminalID(id string) bool {
 	if len(id) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(id)
+	return err == nil
+}
+
+func validTerminalLaunchID(id string) bool {
+	if len(id) != 64 || id != strings.ToLower(id) {
 		return false
 	}
 	_, err := hex.DecodeString(id)
@@ -766,6 +840,12 @@ func (s *Server) resumeShortcut(w http.ResponseWriter, r *http.Request, userID s
 	}
 	if item.HostID != input.HostID {
 		s.writeProblem(w, r, 409, "terminal_shortcut_host_changed", "Existing shortcut session belongs to another host", "End the existing session before changing its host")
+		return true
+	}
+	if input.LookupOnly {
+		// Closing must recover the identity even when the host is offline,
+		// expiry was reached, or a previous close remains unconfirmed.
+		s.writeJSON(w, http.StatusOK, terminalSessionResponse(item))
 		return true
 	}
 	if item.HostID != cluster.LocalHostID {

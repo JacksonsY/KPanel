@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { mockMonitoringHistory } from './mock-monitoring-history.mjs'
 import { mockBackups } from './mock-backups.mjs'
 import { mockEditorFiles, handleMockEditor } from './mock-file-editor.mjs'
@@ -2686,6 +2687,16 @@ createServer(async (request, response) => {
   }
   if (request.method === 'POST' && url.pathname === '/api/v1/terminal-sessions') {
     const input = await readJSON(request)
+    if (input.prepareOnly && input.shortcutId) {
+      send(response, 201, { launchId: randomBytes(32).toString('hex'), expiresAt: new Date(Date.now() + 300_000).toISOString() })
+      return
+    }
+    if (input.lookupOnly && input.shortcutId) {
+      const existing = [...mockTerminalSessions.values()].find(session => session.metadata?.shortcutId === input.shortcutId && session.metadata?.hostId === input.hostId && !session.exitedAt)
+      if (existing) send(response, 200, existing.metadata)
+      else send(response, 404, { title: 'Shortcut session not found', code: 'terminal_shortcut_session_not_found' })
+      return
+    }
     const host = input.hostId === 'local'
       ? visualClusterHosts.find((item) => item.isLocal)
       : visualClusterHosts.find((item) => item.id === input.hostId)
