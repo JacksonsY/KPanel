@@ -28,6 +28,20 @@ export function currentPanelLocation(): PanelLocation {
   return { protocol, host, origin }
 }
 
+const ipv4Pattern = /^\d{1,3}(?:\.\d{1,3}){3}$/
+
+/**
+ * True unless this page was reached through an HTTPS domain. Blocking
+ * IP+port for KPanel itself from such a page would cut off the session that
+ * is making the change, so the block must go through the verify-and-switch
+ * flow instead.
+ */
+export function panelReachedWithoutTrustedDomain(location: PanelLocation = currentPanelLocation()): boolean {
+  if (location.protocol !== 'https:') return true
+  const hostname = location.host.replace(/:\d+$/, '')
+  return hostname.startsWith('[') || ipv4Pattern.test(hostname)
+}
+
 export function navigatePanel(target: string): void {
   window.location.assign(target)
 }

@@ -2,7 +2,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PanelAccessSettings from './PanelAccessSettings.vue'
-import { panelDomainQuery, panelDomainSwitchPath } from '@/lib/panelAccess'
+import { panelDomainQuery, panelDomainSwitchPath, panelReachedWithoutTrustedDomain } from '@/lib/panelAccess'
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(), updateSelfSignedTLS: vi.fn(), checkDomain: vi.fn(),
@@ -162,5 +162,14 @@ describe('panel access routing helpers', () => {
     expect(panelDomainQuery('evil.com/path')).toBe('')
     expect(panelDomainQuery(['panel.example.com'])).toBe('')
     expect(panelDomainSwitchPath('panel.example.com')).toBe('/settings?section=panel-access&domain=panel.example.com')
+  })
+
+  it('treats only an HTTPS domain page as safe for blocking IP access to KPanel itself', () => {
+    const at = (protocol: string, host: string) => ({ protocol, host, origin: protocol + '//' + host })
+    expect(panelReachedWithoutTrustedDomain(at('http:', 'panel.example.com'))).toBe(true)
+    expect(panelReachedWithoutTrustedDomain(at('https:', '203.0.113.5:8080'))).toBe(true)
+    expect(panelReachedWithoutTrustedDomain(at('https:', '[2001:db8::1]:8080'))).toBe(true)
+    expect(panelReachedWithoutTrustedDomain(at('https:', 'panel.example.com'))).toBe(false)
+    expect(panelReachedWithoutTrustedDomain(at('https:', 'panel.example.com:8443'))).toBe(false)
   })
 })

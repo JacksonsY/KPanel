@@ -60,7 +60,7 @@ import {
   kpanelAppToken,
   releaseMatchesTarget,
 } from '@/lib/kpanelUpdate'
-import { panelDomainSwitchPath } from '@/lib/panelAccess'
+import { panelAccessSection, panelDomainSwitchPath, panelReachedWithoutTrustedDomain } from '@/lib/panelAccess'
 import { reloadPanelInterface } from '@/lib/pageLifecycle'
 import { usePanelState } from '@/stores/panel'
 import { useToast } from '@/stores/toast'
@@ -1069,6 +1069,19 @@ async function toggleAccess(): Promise<void> {
     !capability(item, 'direct_access')
   ) return
   const next = item.runtime.accessMode === 'domain_only' ? 'direct' : 'domain_only'
+  // Blocking KPanel's own IP+port from an IP or plain-HTTP page would lock this
+  // session out. Hand off to Settings, which verifies a domain reaches this
+  // panel, jumps there and only then submits the block.
+  if (next === 'domain_only' && item.id === kpanelAppID && panelReachedWithoutTrustedDomain()) {
+    const domain = selectedDomains.value.find((site) => site.enabled)?.primaryDomain
+    toast.show('请先验证域名', {
+      message: domain
+        ? '当前正通过 IP 访问 KPanel，直接阻止会断开本次会话。请在设置页检测域名后跳转并阻止。'
+        : '当前正通过 IP 访问 KPanel，且尚未绑定可用域名。请先在设置页绑定并检测域名。',
+    })
+    await router.push(domain ? panelDomainSwitchPath(domain) : `/settings?section=${panelAccessSection}`)
+    return
+  }
   operation.value = 'direct_access'
   try {
     let result

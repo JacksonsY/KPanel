@@ -761,6 +761,21 @@ describe('AppsView domain binding', () => {
     })
     expect(view.activeJob.value?.id).toBe('access-job')
   })
+
+  it('never blocks KPanel itself from an IP page and hands off to the settings switch flow', async () => {
+    const result = inventory('kpanel-version')
+    const item = result.items[0]
+    if (!item) throw new Error('test inventory is incomplete')
+    item.id = 'thirdparty-kpanel'
+    const view = setupView()
+    view.inventory.value = result
+    view.selectedID.value = 'thirdparty-kpanel'
+
+    await view.toggleAccess()
+
+    expect(mocks.action).not.toHaveBeenCalled()
+    expect(mocks.routerPush).toHaveBeenCalledWith('/settings?section=panel-access')
+  })
 })
 
 describe('AppsView update checks', () => {
