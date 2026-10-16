@@ -28,6 +28,7 @@ import {
   Gauge,
   Globe2,
   HardDrive,
+  History,
   KeyRound,
   MemoryStick,
   Network,
@@ -1218,8 +1219,8 @@ onBeforeUnmount(() => {
               {{ processManagerLabel }}
             </RouterLink>
             <RouterLink class="button button--secondary" to="/monitoring">
+              <History :size="16" />
               查看历史
-              <ChevronRight :size="16" />
             </RouterLink>
           </div>
         </header>
