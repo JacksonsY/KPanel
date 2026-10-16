@@ -60,6 +60,7 @@ const emit = defineEmits<{ close: []; changed: []; manage: [item: AppMarketItem]
 
 .onboarding-flow small {
   color: var(--text-secondary);
+  font-size: 13px;
 }
 
 @media (max-width: 560px) {

@@ -1308,7 +1308,7 @@ watch(windowActive, syncJobPollingForWindow)
         <div><strong>{{ inventory.items.filter((item) => capability(item, 'install') || capability(item, 'update')).length }}</strong><span>可直接安装</span></div>
       </div>
       <div class="market-hero__actions">
-        <button class="button button--secondary button--small" type="button" @click="onboardingOpen = true">
+        <button class="button button--secondary button--small app-onboarding-trigger" type="button" @click="onboardingOpen = true">
           <PackagePlus :size="15" /> 应用入驻
         </button>
         <a class="button button--secondary button--small" href="https://app.kejilion.sh" target="_blank" rel="noopener noreferrer">
@@ -2007,6 +2007,7 @@ watch(windowActive, syncJobPollingForWindow)
 </template>
 
 <style scoped>
+.app-onboarding-trigger { min-height: 36px; font-size: 14px; }
 .app-job-switcher {
   display: flex;
   flex-wrap: wrap;

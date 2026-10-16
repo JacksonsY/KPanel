@@ -442,6 +442,21 @@ onBeforeUnmount(() => {
 .local-editor {
   display: grid;
   gap: 12px;
+  font-size: 14px;
+}
+
+.local-apps .button,
+.local-editor .button,
+.local-saved .button,
+.local-apps .inline-alert,
+.local-editor .inline-alert,
+.local-editor__name input {
+  font-size: 14px;
+}
+
+.local-apps small,
+.local-editor small {
+  font-size: 13px;
 }
 
 .local-apps__header,

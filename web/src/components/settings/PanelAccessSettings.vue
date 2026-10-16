@@ -370,6 +370,7 @@ onBeforeUnmount(() => controller.abort())
 .panel-access__origin { color: var(--text-soft); font-size: 13px; overflow-wrap: anywhere; }
 .panel-access__origin code { font-size: 13px; }
 .panel-access .inline-alert--success { color: var(--success); background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 22%, transparent); }
+.panel-access .inline-alert { font-size: 14px; }
 .panel-access .inline-alert > svg { flex-shrink: 0; margin-top: 2px; }
 .panel-access__limits { margin: 12px 0 0; padding-left: 20px; color: var(--text-soft); font-size: 13px; }
 .panel-access__block { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
