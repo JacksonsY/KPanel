@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import {
   ArrowLeft, ArrowUpRight, Check, CheckCircle2, Copy, ImagePlus, LoaderCircle, Pencil, Plus, Send, ShieldAlert, Trash2, X,
@@ -7,6 +8,11 @@ import { ApiError, api } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
 import type { AppMarketItem, LocalAppDocument, LocalAppWriteInput } from '@/types/api'
 import { localAppNamePattern, localAppTemplate, officialSubmissionUrl } from './localAppTemplate'
+
+function phrase(value: string): string {
+  phraseCatalogVersion.value
+  return translatePhrase(value)
+}
 
 const props = defineProps<{ apps: AppMarketItem[] }>()
 const emit = defineEmits<{ changed: []; manage: [item: AppMarketItem] }>()
@@ -231,85 +237,85 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section v-if="view === 'list'" class="local-apps" aria-label="本机的本地应用">
+  <section v-if="view === 'list'" class="local-apps" :aria-label="phrase('本机的本地应用')">
     <header class="local-apps__header">
       <div>
-        <strong>本机的本地应用</strong>
-        <small>保存在 /root/apps-local，kejilion.sh 菜单同步可见</small>
+        <strong>{{ phrase('本机的本地应用') }}</strong>
+        <small>{{ phrase('保存在 /root/apps-local，kejilion.sh 菜单同步可见') }}</small>
       </div>
       <button class="button button--primary button--small" type="button" @click="startCreate">
-        <Plus :size="14" /> 新建本地应用
+        <Plus :size="14" /> {{ phrase('新建本地应用') }}
       </button>
     </header>
 
     <p v-if="!sortedApps.length" class="local-apps__empty">
-      还没有本地应用。点击“新建本地应用”，粘贴配置并保存，即可在应用市场安装和管理。
+      {{ phrase('还没有本地应用。点击“新建本地应用”，粘贴配置并保存，即可在应用市场安装和管理。') }}
     </p>
     <ul v-else class="local-apps__list">
       <li v-for="item in sortedApps" :key="item.id">
         <img :src="item.icon" alt="" />
         <div class="local-apps__meta">
           <strong>{{ item.name_zh }}</strong>
-          <small>{{ item.token }}.conf · {{ appStatus(item) }}</small>
+          <small>{{ item.token }}.conf · {{ phrase(appStatus(item)) }}</small>
         </div>
         <template v-if="pendingDelete === item.token">
-          <span class="local-apps__confirm">确认删除？</span>
+          <span class="local-apps__confirm">{{ phrase('确认删除？') }}</span>
           <button class="button button--danger button--small" type="button" :disabled="busy" @click="confirmDelete(item)">
-            <LoaderCircle v-if="busy" class="spin" :size="14" /> 删除
+            <LoaderCircle v-if="busy" class="spin" :size="14" /> {{ phrase('删除') }}
           </button>
-          <button class="button button--ghost button--small" type="button" @click="pendingDelete = ''">取消</button>
+          <button class="button button--ghost button--small" type="button" @click="pendingDelete = ''">{{ phrase('取消') }}</button>
         </template>
         <template v-else>
           <button
             class="button button--ghost button--small"
             type="button"
-            title="本机验证通过后提交到官方市场"
+            :title="phrase('本机验证通过后提交到官方市场')"
             @click="startSubmit(item.token)"
           >
-            <Send :size="14" /> 提交官方
+            <Send :size="14" /> {{ phrase('提交官方') }}
           </button>
           <button class="button button--ghost button--small" type="button" @click="startEdit(item)">
-            <Pencil :size="14" /> 编辑
+            <Pencil :size="14" /> {{ phrase('编辑') }}
           </button>
           <button
             v-if="item.runtime.installed"
             class="button button--ghost button--small"
             type="button"
-            title="已安装的应用需先卸载再删除配置"
+            :title="phrase('已安装的应用需先卸载再删除配置')"
             @click="emit('manage', item)"
           >
-            先卸载
+            {{ phrase('先卸载') }}
           </button>
           <button v-else class="button button--ghost button--small" type="button" @click="pendingDelete = item.token">
-            <Trash2 :size="14" /> 删除
+            <Trash2 :size="14" /> {{ phrase('删除') }}
           </button>
         </template>
       </li>
     </ul>
-    <p v-if="error" class="local-apps__error" role="alert">{{ error }}</p>
+    <p v-if="error" class="local-apps__error" role="alert">{{ phrase(error) }}</p>
 
     <div class="inline-alert inline-alert--warning">
       <ShieldAlert :size="17" />
-      本地应用未经官方审核，会以 root 身份执行；请只使用自己编写或信任的配置。需要较新的 kejilion.sh。
+      {{ phrase('本地应用未经官方审核，会以 root 身份执行；请只使用自己编写或信任的配置。需要较新的 kejilion.sh。') }}
     </div>
   </section>
 
-  <section v-else-if="view === 'edit'" class="local-editor" :aria-label="isNew ? '新建本地应用' : '编辑本地应用'">
+  <section v-else-if="view === 'edit'" class="local-editor" :aria-label="phrase(isNew ? '新建本地应用' : '编辑配置')">
     <header class="local-editor__header">
       <button class="button button--ghost button--small" type="button" @click="backToList">
-        <ArrowLeft :size="14" /> 返回列表
+        <ArrowLeft :size="14" /> {{ phrase('返回列表') }}
       </button>
-      <strong v-if="isNew">新建本地应用</strong>
-      <strong v-else>编辑配置</strong>
+      <strong v-if="isNew">{{ phrase('新建本地应用') }}</strong>
+      <strong v-else>{{ phrase('编辑配置') }}</strong>
       <code v-if="!isNew">{{ name }}.conf</code>
     </header>
 
     <div class="local-editor__identity">
       <div class="local-editor__icon">
-        <img :src="currentIcon" alt="应用图标预览" />
+        <img :src="currentIcon" :alt="phrase('应用图标预览')" />
         <div>
           <button class="button button--secondary button--small" type="button" @click="iconInput?.click()">
-            <ImagePlus :size="14" /> 上传图标
+            <ImagePlus :size="14" /> {{ phrase('上传图标') }}
           </button>
           <button
             v-if="iconPreview || (loaded?.iconUrl && !removeIcon)"
@@ -317,14 +323,14 @@ onBeforeUnmount(() => {
             type="button"
             @click="clearIcon"
           >
-            <X :size="14" /> 移除
+            <X :size="14" /> {{ phrase('移除') }}
           </button>
-          <small>PNG / WebP，正方形 64–512 px，≤64 KB</small>
+          <small>{{ phrase('PNG / WebP，正方形 64–512 px，≤64 KB') }}</small>
         </div>
         <input ref="iconInput" class="local-editor__file" type="file" accept="image/png,image/webp" @change="pickIcon" />
       </div>
       <label class="local-editor__name">
-        <span>名称（即文件名与 app_id）</span>
+        <span>{{ phrase('名称（即文件名与 app_id）') }}</span>
         <input
           v-model.trim="name"
           type="text"
@@ -334,95 +340,95 @@ onBeforeUnmount(() => {
           spellcheck="false"
           @input="onNameInput"
         />
-        <small v-if="nameError" class="local-apps__error">{{ nameError }}</small>
+        <small v-if="nameError" class="local-apps__error">{{ phrase(nameError) }}</small>
       </label>
     </div>
 
     <div v-if="loaded?.installed" class="inline-alert inline-alert--info">
-      应用已安装：docker_name 不能修改；端口等改动在下次更新或重新安装时生效。
+      {{ phrase('应用已安装：docker_name 不能修改；端口等改动在下次更新或重新安装时生效。') }}
     </div>
 
     <details class="local-editor__tips" :open="isNew">
-      <summary>编写要点</summary>
+      <summary>{{ phrase('编写要点') }}</summary>
       <ul>
-        <li>app_id 与名称保持一致，docker_name 写成固定的容器名</li>
-        <li>数据统一放在 /home/docker/应用名 下，不要写到 /root、/etc 等目录</li>
-        <li>docker-compose 设置 restart: always 或 unless-stopped</li>
-        <li>卸载要删除容器、镜像和 /home/docker/应用名 目录</li>
-        <li>下载 GitHub 资源时加上 ${gh_proxy} 前缀，结尾保留 docker_app_plus</li>
+        <li>{{ phrase('app_id 与名称保持一致，docker_name 写成固定的容器名') }}</li>
+        <li>{{ phrase('数据统一放在 /home/docker/应用名 下，不要写到 /root、/etc 等目录') }}</li>
+        <li>{{ phrase('docker-compose 设置 restart: always 或 unless-stopped') }}</li>
+        <li>{{ phrase('卸载要删除容器、镜像和 /home/docker/应用名 目录') }}</li>
+        <li>{{ phrase('下载 GitHub 资源时加上 ${gh_proxy} 前缀，结尾保留 docker_app_plus') }}</li>
       </ul>
     </details>
 
     <label class="local-editor__content">
-      <span>配置内容（可直接粘贴）</span>
+      <span>{{ phrase('配置内容（可直接粘贴）') }}</span>
       <textarea v-model="content" spellcheck="false" rows="16" :disabled="busy && !loaded && !isNew" />
     </label>
 
     <p v-if="error" class="local-apps__error" role="alert">
-      {{ error }}
+      {{ phrase(error) }}
       <button v-if="conflict" class="button button--ghost button--small" type="button" @click="reloadAfterConflict">
-        重新加载
+        {{ phrase('重新加载') }}
       </button>
     </p>
 
     <footer class="local-editor__footer">
-      <button class="button button--secondary" type="button" @click="backToList">取消</button>
+      <button class="button button--secondary" type="button" @click="backToList">{{ phrase('取消') }}</button>
       <button
         class="button button--primary"
         type="button"
         :disabled="busy || !name || Boolean(nameError)"
         @click="save"
       >
-        <LoaderCircle v-if="busy" class="spin" :size="16" /> 保存
+        <LoaderCircle v-if="busy" class="spin" :size="16" /> {{ phrase('保存') }}
       </button>
     </footer>
   </section>
 
-  <section v-else-if="view === 'saved'" class="local-saved" aria-label="已添加本地应用">
+  <section v-else-if="view === 'saved'" class="local-saved" :aria-label="phrase('已添加本地应用')">
     <CheckCircle2 :size="28" />
-    <strong>已添加</strong>
+    <strong>{{ phrase('已添加') }}</strong>
     <code>{{ name }}.conf</code>
-    <p>接下来在应用市场安装并验证，运行正常后即可提交到官方市场。</p>
+    <p>{{ phrase('接下来在应用市场安装并验证，运行正常后即可提交到官方市场。') }}</p>
     <ol class="local-saved__steps">
       <li>
-        <span>安装验证：完整走一遍安装、更新、卸载</span>
+        <span>{{ phrase('安装验证：完整走一遍安装、更新、卸载') }}</span>
         <button class="button button--primary button--small" type="button" :disabled="!savedApp" @click="savedApp && emit('manage', savedApp)">
-          去安装
+          {{ phrase('去安装') }}
         </button>
       </li>
       <li>
-        <span>提交官方：在 GitHub 发起 PR，审核后所有用户可见</span>
+        <span>{{ phrase('提交官方：在 GitHub 发起 PR，审核后所有用户可见') }}</span>
         <button class="button button--secondary button--small" type="button" @click="startSubmit(name)">
-          <Send :size="14" /> 提交官方
+          <Send :size="14" /> {{ phrase('提交官方') }}
         </button>
       </li>
     </ol>
-    <button class="button button--ghost button--small" type="button" @click="backToList">返回列表</button>
+    <button class="button button--ghost button--small" type="button" @click="backToList">{{ phrase('返回列表') }}</button>
   </section>
 
-  <section v-else class="local-editor" aria-label="提交到官方市场">
+  <section v-else class="local-editor" :aria-label="phrase('提交到官方市场')">
     <header class="local-editor__header">
       <button class="button button--ghost button--small" type="button" @click="backToList">
-        <ArrowLeft :size="14" /> 返回列表
+        <ArrowLeft :size="14" /> {{ phrase('返回列表') }}
       </button>
-      <strong>提交到官方市场</strong>
+      <strong>{{ phrase('提交到官方市场') }}</strong>
       <code>{{ name }}.conf</code>
     </header>
     <ol class="local-submit__checks">
-      <li>已在本机完成安装、更新、卸载验证</li>
-      <li>数据与配置都放在 /home/docker/应用名 下，没有写到 /root、/etc 等目录</li>
-      <li>docker-compose 设置了 restart: always 或 unless-stopped</li>
-      <li>卸载会删除容器、镜像和 /home/docker/应用名 目录</li>
-      <li>下载 GitHub 资源时使用了 ${gh_proxy} 前缀</li>
+      <li>{{ phrase('已在本机完成安装、更新、卸载验证') }}</li>
+      <li>{{ phrase('数据与配置都放在 /home/docker/应用名 下，没有写到 /root、/etc 等目录') }}</li>
+      <li>{{ phrase('docker-compose 设置了 restart: always 或 unless-stopped') }}</li>
+      <li>{{ phrase('卸载会删除容器、镜像和 /home/docker/应用名 目录') }}</li>
+      <li>{{ phrase('下载 GitHub 资源时使用了 ${gh_proxy} 前缀') }}</li>
     </ol>
-    <p v-if="submission.prefilled" class="local-submit__hint">打开后 GitHub 会自动 fork 并填好配置，确认无误后点击“Propose new file”发起 PR。</p>
-    <p v-else class="local-submit__hint">配置较长，GitHub 页面不会自动填入：请先复制配置，再粘贴到新建文件页。</p>
-    <p class="local-submit__hint">如有图标，可在 PR 描述里附上图片。</p>
-    <p v-if="error" class="local-apps__error" role="alert">{{ error }}</p>
+    <p v-if="submission.prefilled" class="local-submit__hint">{{ phrase('打开后 GitHub 会自动 fork 并填好配置，确认无误后点击“Propose new file”发起 PR。') }}</p>
+    <p v-else class="local-submit__hint">{{ phrase('配置较长，GitHub 页面不会自动填入：请先复制配置，再粘贴到新建文件页。') }}</p>
+    <p class="local-submit__hint">{{ phrase('如有图标，可在 PR 描述里附上图片。') }}</p>
+    <p v-if="error" class="local-apps__error" role="alert">{{ phrase(error) }}</p>
     <footer class="local-editor__footer">
       <button class="button button--secondary" type="button" :disabled="!content" @click="copy('config', content)">
         <Check v-if="copied === 'config'" :size="14" /><Copy v-else :size="14" />
-        {{ copyLabel('config', '复制配置') }}
+        {{ phrase(copyLabel('config', '复制配置')) }}
       </button>
       <a
         class="button button--primary"
@@ -431,7 +437,7 @@ onBeforeUnmount(() => {
         target="_blank"
         rel="noopener noreferrer"
       >
-        <ArrowUpRight :size="15" /> 在 GitHub 发起 PR
+        <ArrowUpRight :size="15" /> {{ phrase('在 GitHub 发起 PR') }}
       </a>
     </footer>
   </section>

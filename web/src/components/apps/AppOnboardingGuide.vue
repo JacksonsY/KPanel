@@ -1,8 +1,14 @@
 <script setup lang="ts">
+import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import { ArrowUpRight } from '@lucide/vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import type { AppMarketItem } from '@/types/api'
 import LocalAppManager from './LocalAppManager.vue'
+
+function phrase(value: string): string {
+  phraseCatalogVersion.value
+  return translatePhrase(value)
+}
 
 defineProps<{ open: boolean; localApps: AppMarketItem[] }>()
 const emit = defineEmits<{ close: []; changed: []; manage: [item: AppMarketItem] }>()
@@ -11,24 +17,24 @@ const emit = defineEmits<{ close: []; changed: []; manage: [item: AppMarketItem]
 <template>
   <ModalDialog
     :open="open"
-    title="应用入驻"
-    description="在本机添加自己的 Docker 应用，安装验证后一键提交到官方市场，让所有用户都能使用。"
+    :title="phrase('应用入驻')"
+    :description="phrase('在本机添加自己的 Docker 应用，安装验证后一键提交到官方市场，让所有用户都能使用。')"
     size="large"
     @close="emit('close')"
   >
-    <ol class="onboarding-flow" aria-label="入驻流程">
-      <li><strong>添加配置</strong><small>粘贴或按模板编写 .conf</small></li>
-      <li><strong>安装验证</strong><small>在应用市场完整走一遍安装、更新、卸载</small></li>
-      <li><strong>提交官方</strong><small>一键在 GitHub 发起 PR，审核后上架</small></li>
+    <ol class="onboarding-flow" :aria-label="phrase('入驻流程')">
+      <li><strong>{{ phrase('添加配置') }}</strong><small>{{ phrase('粘贴或按模板编写 .conf') }}</small></li>
+      <li><strong>{{ phrase('安装验证') }}</strong><small>{{ phrase('在应用市场完整走一遍安装、更新、卸载') }}</small></li>
+      <li><strong>{{ phrase('提交官方') }}</strong><small>{{ phrase('一键在 GitHub 发起 PR，审核后上架') }}</small></li>
     </ol>
 
     <LocalAppManager :apps="localApps" @changed="emit('changed')" @manage="emit('manage', $event)" />
 
     <template #footer>
       <a class="button button--secondary" href="https://dev.kejilion.sh/" target="_blank" rel="noopener noreferrer">
-        <ArrowUpRight :size="15" /> 开发者指南
+        <ArrowUpRight :size="15" /> {{ phrase('开发者指南') }}
       </a>
-      <button class="button button--primary" type="button" @click="emit('close')">关闭</button>
+      <button class="button button--primary" type="button" @click="emit('close')">{{ phrase('关闭') }}</button>
     </template>
   </ModalDialog>
 </template>

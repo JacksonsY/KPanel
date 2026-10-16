@@ -324,7 +324,7 @@ export const zhCNMessages = {
   'common.closeDialog': '关闭对话框',
   'common.closeNotification': '关闭通知',
   'common.language': '界面语言',
-  'common.languageDescription': '仅保存在当前浏览器，不上传服务器',
+  'common.languageDescription': '登录后保存到面板，换浏览器或设备登录时恢复',
   'common.locale.zhCN': '简体中文',
   'common.locale.zhTW': '繁体中文',
   'common.locale.enUS': 'English',

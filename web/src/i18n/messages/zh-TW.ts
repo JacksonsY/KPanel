@@ -326,7 +326,7 @@ export const zhTWMessages = {
   "common.closeDialog": "關閉對話方塊",
   "common.closeNotification": "關閉通知",
   "common.language": "介面語言",
-  "common.languageDescription": "僅儲存在目前瀏覽器，不上傳伺服器",
+  "common.languageDescription": "登入後儲存至面板，換瀏覽器或裝置登入時恢復",
   "common.locale.zhCN": "簡體中文",
   "common.locale.zhTW": "繁體中文",
   "common.locale.enUS": "English",

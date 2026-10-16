@@ -325,7 +325,7 @@ export const enUSMessages = {
   'common.closeDialog': 'Close dialog',
   'common.closeNotification': 'Dismiss notification',
   'common.language': 'Language',
-  'common.languageDescription': 'Stored only in this browser and never uploaded',
+  'common.languageDescription': 'Saved to the panel after sign-in and restored in other browsers or devices',
   'common.locale.zhCN': '简体中文',
   'common.locale.zhTW': '繁体中文',
   'common.locale.enUS': 'English',
