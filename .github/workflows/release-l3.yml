@@ -39,12 +39,11 @@ jobs:
       - name: Run authoritative L3
         env:
           KPANEL_CANDIDATE_SHA: ${{ inputs.candidate || github.sha }}
-          GITHUB_REF_NAME: release/validated-candidate
-          GITHUB_SHA: ${{ inputs.candidate || github.sha }}
           KPANEL_L3_EVIDENCE: ${{ runner.temp }}/l3-${{ github.run_id }}-${{ github.run_attempt }}
           GOVERNANCE_CI_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          export GITHUB_SHA="$KPANEL_CANDIDATE_SHA" GITHUB_REF_NAME=release/validated-candidate
           node scripts/run-release-l3.mjs --github-hosted 2>&1 | tee "$RUNNER_TEMP/l3.log"
       - name: Preserve L3 evidence including failures
         if: always()

@@ -59,10 +59,12 @@ jobs:
       - name: Run change-aware verification
         env:
           GOVERNANCE_CI_TOKEN: ${{ github.token }}
-          GITHUB_SHA: ${{ inputs.candidate || github.sha }}
-          GITHUB_REF_NAME: ${{ inputs.candidate && (inputs.main-check && 'main' || 'release/validated-candidate') || github.ref_name }}
+          KPANEL_CI_SHA: ${{ inputs.candidate || github.sha }}
+          KPANEL_CI_REF_NAME: ${{ inputs.candidate && (inputs.main-check && 'main' || 'release/validated-candidate') || github.ref_name }}
           VERIFY_BASE_REF: ${{ inputs.base || github.event.pull_request.base.sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'origin/main' }}
-        run: make verify-change
+        run: |
+          export GITHUB_SHA="$KPANEL_CI_SHA" GITHUB_REF_NAME="$KPANEL_CI_REF_NAME"
+          make verify-change
 
       - name: Detect races in privileged core packages
         run: go test -race ./internal/panel ./internal/auth ./internal/dockerx

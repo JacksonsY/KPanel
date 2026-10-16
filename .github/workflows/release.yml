@@ -42,7 +42,7 @@ jobs:
     env:
       DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE || 'kjlion/kejilion-panel' }}
       DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME || 'kjlion' }}
-      GITHUB_REF_NAME: ${{ inputs.tag || github.ref_name }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       RELEASE_SHA: ${{ inputs.candidate || github.sha }}
       EXPECTED_SHA: ${{ inputs.candidate || github.sha }}
     steps:
@@ -61,10 +61,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          test "$(git rev-parse "$GITHUB_REF_NAME^{commit}")" = "$RELEASE_SHA"
-          test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$RELEASE_SHA"
+          test "$(git cat-file -t "refs/tags/$RELEASE_TAG")" = tag
           git merge-base --is-ancestor HEAD origin/main
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_TAG#v}"
           stable_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           preview_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.([1-9][0-9]*)$'
           if [[ "$version" =~ $stable_pattern ]]; then
@@ -318,9 +318,9 @@ jobs:
             create_flags+=(--prerelease)
             prerelease_value=true
           fi
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             draft="$(
-              gh release view "$GITHUB_REF_NAME" \
+              gh release view "$RELEASE_TAG" \
                 --json isDraft \
                 --jq '.isDraft'
             )"
@@ -328,12 +328,12 @@ jobs:
               echo "Refusing to replace an already-published release" >&2
               exit 1
             }
-            gh release edit "$GITHUB_REF_NAME" \
+            gh release edit "$RELEASE_TAG" \
               --latest=false \
               --prerelease="$prerelease_value" \
               --title "KPanel $VERSION" \
               --notes-file release/DRAFT_NOTES.md
-            gh release upload "$GITHUB_REF_NAME" --clobber \
+            gh release upload "$RELEASE_TAG" --clobber \
               release/kpanel-mcp-* \
               release/kejilion-agent-linux-amd64 \
               release/kejilion-agent-linux-arm64 \
@@ -344,7 +344,7 @@ jobs:
               LICENSE \
               THIRD_PARTY_NOTICES.md
           else
-            gh release create "$GITHUB_REF_NAME" \
+            gh release create "$RELEASE_TAG" \
               release/kpanel-mcp-* \
               --verify-tag \
               --draft \
@@ -402,17 +402,17 @@ jobs:
             --candidate "$RELEASE_SHA" --version "$VERSION" \
             --image "$IMAGE" --digest "$IMAGE_DIGEST" \
             --output release/KPANEL_MODIFIED_COMPONENTS.json
-          release_id="$(gh release view "$GITHUB_REF_NAME" --repo kejilion/KPanel \
+          release_id="$(gh release view "$RELEASE_TAG" --repo kejilion/KPanel \
             --json databaseId --jq '.databaseId')"
           [[ "$release_id" =~ ^[1-9][0-9]*$ ]]
           gh api "repos/kejilion/KPanel/releases/$release_id" \
             --jq '.draft' | grep -qx true
-          gh release upload "$GITHUB_REF_NAME" \
+          gh release upload "$RELEASE_TAG" \
             --repo kejilion/KPanel --clobber release/KPANEL_MODIFIED_COMPONENTS.json
           asset_digest="sha256:$(sha256sum release/KPANEL_MODIFIED_COMPONENTS.json | awk '{print $1}')"
           asset_size="$(wc -c < release/KPANEL_MODIFIED_COMPONENTS.json)"
           gh api "repos/kejilion/KPanel/releases/$release_id" |
-            jq -e --arg tag "$GITHUB_REF_NAME" --arg digest "$asset_digest" --argjson size "$asset_size" '
+            jq -e --arg tag "$RELEASE_TAG" --arg digest "$asset_digest" --argjson size "$asset_size" '
               .draft == true and .tag_name == $tag and
               ([.assets[] | select(.name == "KPANEL_MODIFIED_COMPONENTS.json")] |
                 length == 1 and .[0].state == "uploaded" and
@@ -501,14 +501,14 @@ jobs:
           set -euo pipefail
           test "$BACKPORT_PROVENANCE_VERIFIED" = true
           if [ "$STABLE" = true ]; then
-            gh release edit "$GITHUB_REF_NAME" \
+            gh release edit "$RELEASE_TAG" \
               --draft=false \
               --prerelease=false \
               --latest \
               --title "KPanel $VERSION" \
               --notes-file release/RELEASE_NOTES.md
           else
-            gh release edit "$GITHUB_REF_NAME" \
+            gh release edit "$RELEASE_TAG" \
               --draft=false \
               --prerelease \
               --latest=false \
@@ -534,7 +534,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           node scripts/archive-release-candidate.mjs \
-            --tag "$GITHUB_REF_NAME" --release-sha "$RELEASE_SHA" --apply
+            --tag "$RELEASE_TAG" --release-sha "$RELEASE_SHA" --apply
 
   public-acceptance:
     needs: release

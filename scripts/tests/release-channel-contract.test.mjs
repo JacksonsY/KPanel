@@ -149,7 +149,7 @@ test('release workflow publishes isolated stable and preview channels', () => {
   assert.match(workflow, /--latest=false/);
   assert.match(workflow, /if: steps\.release\.outputs\.stable == 'true'/);
   assert.match(workflow, /node scripts\/archive-release-candidate\.mjs/);
-  assert.match(workflow, /--tag "\$GITHUB_REF_NAME" --release-sha "\$RELEASE_SHA" --apply/);
+  assert.match(workflow, /--tag "\$RELEASE_TAG" --release-sha "\$RELEASE_SHA" --apply/);
   assert.doesNotMatch(workflow, /gh api --method DELETE/);
 });
 
@@ -157,7 +157,7 @@ test('modified-component upload queries the draft by its numeric release ID', ()
   const workflow = readFileSync(join(repoRoot, '.github', 'workflows', 'release.yml'), 'utf8');
   const step = workflow.slice(workflow.indexOf('- name: Verify and upload modified-component provenance'),
     workflow.indexOf('- name: Validate final release notes'));
-  assert.match(step, /gh release view "\$GITHUB_REF_NAME" --repo kejilion\/KPanel/);
+  assert.match(step, /gh release view "\$RELEASE_TAG" --repo kejilion\/KPanel/);
   assert.match(step, /--json databaseId --jq '\.databaseId'/);
   assert.ok(step.includes('[[ "$release_id" =~ ^[1-9][0-9]*$ ]]'));
   assert.equal(step.split('gh api "repos/kejilion/KPanel/releases/$release_id"').length - 1, 2);

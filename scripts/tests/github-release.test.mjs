@@ -1,13 +1,69 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { resolveBash } from '../run-repo-bash.mjs';
 import { validateGitHubRun } from '../github-release-l3.mjs';
 import { checkEnvironment, loadPolicy } from '../check-environment-policy.mjs';
 
 const valid = { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', GITHUB_REPOSITORY: 'kejilion/KPanel',
   GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', GITHUB_SHA: 'a'.repeat(40) };
+
+const workflowStep = (workflow, name) => {
+  const step = workflow.split(`      - name: ${name}\n`)[1]?.split('\n      - ')[0];
+  assert.ok(step, `step ${name} exists`);
+  const body = step.split('        run: |\n')[1];
+  assert.ok(body, `step ${name} has a shell body`);
+  return body.split('\n').filter(line => line.startsWith('          ')).map(line => line.slice(10)).join('\n');
+};
+
+test('release input validation uses the explicit tag when GitHub retains the caller main ref', () => {
+  const read = name => readFileSync(new URL('../../' + name, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+  const workflow = read('.github/workflows/release.yml');
+  assert.doesNotMatch(workflow, /GITHUB_REF_NAME/);
+  assert.match(workflow, /RELEASE_TAG: \$\{\{ inputs\.tag \|\| github\.ref_name \}\}/);
+  const root = mkdtempSync(join(tmpdir(), 'kpanel-release-ref-'));
+  try {
+    const version = read('VERSION').trim();
+    const prefix = `git() {
+case "$*" in
+  'rev-parse HEAD'|"rev-parse $RELEASE_TAG^{commit}") printf '%s' "$RELEASE_SHA";;
+  "cat-file -t refs/tags/$RELEASE_TAG") printf tag;;
+  'merge-base --is-ancestor HEAD origin/main') return 0;;
+  *) printf 'unexpected Git request: %s' "$*" >&2; return 1;;
+esac
+}\n`;
+    const result = spawnSync(resolveBash(), ['--noprofile', '--norc', '-c', prefix + workflowStep(workflow, 'Validate release inputs')], {
+      cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 10_000,
+      env: { ...process.env, ...valid, GITHUB_REF_NAME: 'main', RELEASE_TAG: 'v' + version, RELEASE_SHA: 'b'.repeat(40),
+        DOCKERHUB_IMAGE: 'kjlion/kejilion-panel', DOCKERHUB_USERNAME: 'kjlion', DOCKERHUB_TOKEN: 'fixture',
+        RUNNER_TEMP: root, GITHUB_ENV: join(root, 'env'), GITHUB_OUTPUT: join(root, 'outputs') },
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(readFileSync(join(root, 'outputs'), 'utf8'), new RegExp(`version=${version.replaceAll('.', '\\.')}`));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('reusable CI explicitly exports the frozen identity after runner default injection', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+  assert.doesNotMatch(workflow, /^\s+GITHUB_(?:SHA|REF_NAME):/m);
+  const result = spawnSync(resolveBash(), ['--noprofile', '--norc', '-c',
+    'make() { printf "%s|%s" "$GITHUB_SHA" "$GITHUB_REF_NAME"; }\n' + workflowStep(workflow, 'Run change-aware verification')], {
+    encoding: 'utf8', timeout: 10_000,
+    env: { ...process.env, GITHUB_SHA: 'a'.repeat(40), GITHUB_REF_NAME: 'main', KPANEL_CI_SHA: 'b'.repeat(40), KPANEL_CI_REF_NAME: 'release/validated-candidate' },
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, 'b'.repeat(40) + '|release/validated-candidate');
+  const l3 = readFileSync(new URL('../../.github/workflows/release-l3.yml', import.meta.url), 'utf8');
+  assert.doesNotMatch(l3, /^\s+GITHUB_(?:SHA|REF_NAME):/m);
+  assert.match(l3, /export GITHUB_SHA="\$KPANEL_CANDIDATE_SHA" GITHUB_REF_NAME=release\/validated-candidate/);
+});
 test('L3 rejects self-hosted, fork, missing identity and unsupported platform', () => {
   validateGitHubRun(valid, 'linux');
   for (const [field, value] of [['GITHUB_ACTIONS', 'false'], ['RUNNER_ENVIRONMENT', 'self-hosted'], ['GITHUB_REPOSITORY', 'attacker/KPanel'], ['GITHUB_RUN_ID', ''], ['GITHUB_SHA', 'main']]) {
