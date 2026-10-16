@@ -138,6 +138,8 @@ type Server struct {
 	mcp                     *mcpService
 	selfTLS                 *selfSignedTLS
 	domainCheckClient       *http.Client
+	domainProbeMu           sync.Mutex
+	domainProbes            map[string]time.Time
 }
 
 type agentAPI interface {
@@ -456,6 +458,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleTOTPRecoveryCodes(w, r)
 	case (r.Method == http.MethodGet || r.Method == http.MethodPut) && r.URL.Path == "/api/v1/settings/security-entry":
 		s.handleSecurityEntranceSettings(w, r)
+	case strings.HasPrefix(r.URL.Path, panelAccessProbePrefix):
+		s.handlePanelDomainProbe(w, r)
 	case r.URL.Path == panelAccessPath || strings.HasPrefix(r.URL.Path, panelAccessPath+"/"):
 		s.handlePanelAccess(w, r)
 	case r.URL.Path == appearancePath:
@@ -1013,7 +1017,7 @@ func securityEntrancePublicPath(requestPath string) bool {
 	if _, _, _, ok := scenePackFilePath(requestPath); ok {
 		return true
 	}
-	return requestPath == "/api/v1/health" || isStaticAssetPath(requestPath) || isClusterSharePagePath(requestPath) || isPublicClusterShareAPIPath(requestPath) || isFileSharePagePath(requestPath) || isPublicFileShareAPIPath(requestPath) || isPublicFileShareContentPath(requestPath) || strings.HasPrefix(requestPath, "/api/v1/federation/") || strings.HasPrefix(requestPath, "/api/v2/federation/") || strings.HasPrefix(requestPath, "/api/v3/federation/light/")
+	return requestPath == "/api/v1/health" || strings.HasPrefix(requestPath, panelAccessProbePrefix) || isStaticAssetPath(requestPath) || isClusterSharePagePath(requestPath) || isPublicClusterShareAPIPath(requestPath) || isFileSharePagePath(requestPath) || isPublicFileShareAPIPath(requestPath) || isPublicFileShareContentPath(requestPath) || strings.HasPrefix(requestPath, "/api/v1/federation/") || strings.HasPrefix(requestPath, "/api/v2/federation/") || strings.HasPrefix(requestPath, "/api/v3/federation/light/")
 }
 
 func isStaticAssetPath(requestPath string) bool {

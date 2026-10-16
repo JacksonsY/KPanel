@@ -52,7 +52,7 @@ beforeEach(() => {
   mocks.inventory.mockResolvedValue({ items: [kpanelItem] })
   mocks.listSites.mockResolvedValue({ items: [] })
   mocks.createSite.mockResolvedValue({ id: 'site-1', primaryDomain: 'panel.example.com', type: 'proxy', upstream: 'http://127.0.0.1:8080', enabled: true })
-  mocks.checkDomain.mockResolvedValue({ domain: 'panel.example.com', reachable: true, matched: true, version: '1.0.0' })
+  mocks.checkDomain.mockResolvedValue({ domain: 'panel.example.com', reachable: true, matched: true })
   mocks.action.mockImplementation(async () => { mocks.calls.push('block'); return { ok: true } })
   mocks.navigate.mockImplementation((target: string) => { mocks.calls.push(`navigate ${target}`) })
 })

@@ -2443,15 +2443,14 @@ export type PanelDomainCheckProblem =
   | 'connection_refused'
   | 'unreachable'
   | 'unexpected_status'
-  | 'not_kpanel'
-  | 'version_mismatch'
+  | 'host_rejected'
+  | 'not_this_panel'
   | 'request_invalid'
 
 export interface PanelDomainCheck {
   domain: string
   reachable: boolean
   matched: boolean
-  version?: string
   problem?: PanelDomainCheckProblem
 }
 

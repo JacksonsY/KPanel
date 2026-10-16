@@ -2022,7 +2022,7 @@ createServer(async (request, response) => {
     const domain = String(body.domain || '').toLowerCase()
     send(response, 200, domain.startsWith('fail')
       ? { domain, reachable: false, matched: false, problem: 'certificate_invalid' }
-      : { domain, reachable: true, matched: true, version: '1.26.0' })
+      : { domain, reachable: true, matched: true })
     return
   }
   if (request.method === 'POST' && url.pathname === '/api/v1/sites') {

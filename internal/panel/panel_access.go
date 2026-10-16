@@ -2,7 +2,8 @@ package panel
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"io"
 	"log/slog"
@@ -12,8 +13,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/kejilion/kejilion-panel/internal/version"
 )
 
 const (
@@ -22,6 +21,12 @@ const (
 	panelAccessCertificatePath    = panelAccessSelfSignedTLSPath + "/certificate"
 	panelAccessDomainCheckPath    = panelAccessPath + "/domain-check"
 	panelAccessDomainCheckTimeout = 10 * time.Second
+	// The probe is public but only answers for a nonce this process is
+	// waiting on, so a match proves the domain reaches this very panel
+	// through normal Host validation, not merely some KPanel.
+	panelAccessProbePrefix = "/api/v1/panel-access/probe/"
+	panelAccessProbeTTL    = 30 * time.Second
+	panelAccessProbeLimit  = 16
 )
 
 type panelAccessResponse struct {
@@ -38,7 +43,6 @@ type panelDomainCheckResponse struct {
 	Domain    string `json:"domain"`
 	Reachable bool   `json:"reachable"`
 	Matched   bool   `json:"matched"`
-	Version   string `json:"version,omitempty"`
 	Problem   string `json:"problem,omitempty"`
 }
 
@@ -171,9 +175,64 @@ func (s *Server) handlePanelDomainCheck(w http.ResponseWriter, r *http.Request) 
 		s.writeProblem(w, r, http.StatusBadRequest, "invalid_domain", "Invalid domain", "")
 		return
 	}
+	nonce, err := s.addDomainProbe()
+	if err != nil {
+		s.writeProblem(w, r, http.StatusTooManyRequests, "domain_check_busy", "Too many domain checks in progress", "")
+		return
+	}
+	defer s.removeDomainProbe(nonce)
 	ctx, cancel := context.WithTimeout(r.Context(), panelAccessDomainCheckTimeout)
 	defer cancel()
-	s.writeJSON(w, http.StatusOK, checkPanelDomain(ctx, domain, s.panelDomainCheckClient()))
+	s.writeJSON(w, http.StatusOK, checkPanelDomain(ctx, domain, nonce, s.panelDomainCheckClient()))
+}
+
+func (s *Server) addDomainProbe() (string, error) {
+	buffer := make([]byte, 32)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", err
+	}
+	nonce := hex.EncodeToString(buffer)
+	now := time.Now()
+	s.domainProbeMu.Lock()
+	defer s.domainProbeMu.Unlock()
+	if s.domainProbes == nil {
+		s.domainProbes = map[string]time.Time{}
+	}
+	for pending, expires := range s.domainProbes {
+		if now.After(expires) {
+			delete(s.domainProbes, pending)
+		}
+	}
+	if len(s.domainProbes) >= panelAccessProbeLimit {
+		return "", errors.New("too many pending domain probes")
+	}
+	s.domainProbes[nonce] = now.Add(panelAccessProbeTTL)
+	return nonce, nil
+}
+
+func (s *Server) removeDomainProbe(nonce string) {
+	s.domainProbeMu.Lock()
+	defer s.domainProbeMu.Unlock()
+	delete(s.domainProbes, nonce)
+}
+
+// handlePanelDomainProbe answers 204 only for a nonce this process issued.
+// It is deliberately not exempt from Host validation, so a domain the panel
+// would reject at login also fails the switch check.
+func (s *Server) handlePanelDomainProbe(w http.ResponseWriter, r *http.Request) {
+	nonce := strings.TrimPrefix(r.URL.Path, panelAccessProbePrefix)
+	if r.Method != http.MethodGet || len(nonce) != 64 || strings.Trim(nonce, "0123456789abcdef") != "" {
+		http.NotFound(w, r)
+		return
+	}
+	s.domainProbeMu.Lock()
+	expires, ok := s.domainProbes[nonce]
+	s.domainProbeMu.Unlock()
+	if !ok || time.Now().After(expires) {
+		http.NotFound(w, r)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) panelDomainCheckClient() *http.Client {
@@ -210,39 +269,31 @@ func refuseInternalDial(_, address string, _ syscall.RawConn) error {
 	return nil
 }
 
-func checkPanelDomain(ctx context.Context, domain string, client *http.Client) panelDomainCheckResponse {
+func checkPanelDomain(ctx context.Context, domain, nonce string, client *http.Client) panelDomainCheckResponse {
 	result := panelDomainCheckResponse{Domain: domain}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+domain+"/api/v1/health", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+domain+panelAccessProbePrefix+nonce, nil)
 	if err != nil {
 		result.Problem = "request_invalid"
 		return result
 	}
-	request.Header.Set("Accept", "application/json")
 	response, err := client.Do(request)
 	if err != nil {
 		result.Problem = classifyDomainCheckError(err)
 		return result
 	}
-	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 16<<10))
+	response.Body.Close()
 	result.Reachable = true
-	if response.StatusCode != http.StatusOK {
+	switch response.StatusCode {
+	case http.StatusNoContent:
+		result.Matched = true
+	case http.StatusMisdirectedRequest:
+		result.Problem = "host_rejected"
+	case http.StatusNotFound:
+		result.Problem = "not_this_panel"
+	default:
 		result.Problem = "unexpected_status"
-		return result
 	}
-	var health struct {
-		Status  string `json:"status"`
-		Version string `json:"version"`
-	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 16<<10)).Decode(&health); err != nil || health.Status != "ok" {
-		result.Problem = "not_kpanel"
-		return result
-	}
-	result.Version = health.Version
-	if health.Version != version.Version {
-		result.Problem = "version_mismatch"
-		return result
-	}
-	result.Matched = true
 	return result
 }
 

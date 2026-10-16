@@ -13,8 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/kejilion/kejilion-panel/internal/version"
 )
 
 func TestSelfSignedTLSKeepsFingerprintAcrossToggleAndRestart(t *testing.T) {
@@ -237,14 +235,14 @@ func TestPanelAccessSelfSignedTLSSettings(t *testing.T) {
 	}
 }
 
-func TestPanelDomainCheckVerifiesTrustedHTTPSAndVersion(t *testing.T) {
-	healthVersion := version.Version
+func TestPanelDomainCheckRequiresThisInstanceOverTrustedHTTPS(t *testing.T) {
+	answer := http.StatusNoContent
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/health" {
+		if r.URL.Path != panelAccessProbePrefix+"expected-nonce" {
 			http.NotFound(w, r)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": healthVersion})
+		w.WriteHeader(answer)
 	}))
 	defer upstream.Close()
 	client := upstream.Client()
@@ -254,15 +252,18 @@ func TestPanelDomainCheckVerifiesTrustedHTTPSAndVersion(t *testing.T) {
 	}
 	client.Transport = transport
 
-	if result := checkPanelDomain(context.Background(), "example.com", client); !result.Matched || result.Problem != "" {
+	if result := checkPanelDomain(context.Background(), "example.com", "expected-nonce", client); !result.Matched || result.Problem != "" {
 		t.Fatalf("matching panel not recognized: %+v", result)
 	}
-	healthVersion = "0.0.1"
-	if result := checkPanelDomain(context.Background(), "example.com", client); result.Matched || result.Problem != "version_mismatch" {
-		t.Fatalf("version mismatch not reported: %+v", result)
+	if result := checkPanelDomain(context.Background(), "example.com", "other-nonce", client); result.Matched || result.Problem != "not_this_panel" {
+		t.Fatalf("another panel must not match: %+v", result)
+	}
+	answer = http.StatusMisdirectedRequest
+	if result := checkPanelDomain(context.Background(), "example.com", "expected-nonce", client); result.Matched || result.Problem != "host_rejected" {
+		t.Fatalf("host-rejected domain must not match: %+v", result)
 	}
 	untrusted := &http.Client{Transport: &http.Transport{DialContext: transport.DialContext}}
-	if result := checkPanelDomain(context.Background(), "example.com", untrusted); result.Matched || result.Problem != "certificate_invalid" {
+	if result := checkPanelDomain(context.Background(), "example.com", "expected-nonce", untrusted); result.Matched || result.Problem != "certificate_invalid" {
 		t.Fatalf("untrusted certificate must fail: %+v", result)
 	}
 	if err := refuseInternalDial("tcp", "127.0.0.1:443", nil); err == nil {
@@ -288,6 +289,61 @@ func TestPanelDomainCheckRequiresValidDomainAndCSRF(t *testing.T) {
 		map[string]string{"Content-Type": "application/json", "Origin": "http://panel.test"})
 	if noCSRF.Code == http.StatusOK {
 		t.Fatal("domain check must require CSRF")
+	}
+}
+
+func TestPanelDomainProbeAnswersOnlyPendingNoncesThroughHostValidation(t *testing.T) {
+	server, _ := newTestServer(t)
+	nonce, err := server.addDomainProbe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := performRequest(server, http.MethodGet, panelAccessProbePrefix+nonce, nil, nil); response.Code != http.StatusNoContent {
+		t.Fatalf("pending nonce must answer 204: %d", response.Code)
+	}
+	if response := performRequest(server, http.MethodGet, panelAccessProbePrefix+nonce, nil, map[string]string{"Host": "other.example.com"}); response.Code != http.StatusMisdirectedRequest {
+		t.Fatalf("probe must stay behind Host validation: %d", response.Code)
+	}
+	unknown := strings.Repeat("a", 64)
+	if response := performRequest(server, http.MethodGet, panelAccessProbePrefix+unknown, nil, nil); response.Code != http.StatusNotFound {
+		t.Fatalf("unknown nonce must be 404: %d", response.Code)
+	}
+	server.removeDomainProbe(nonce)
+	if response := performRequest(server, http.MethodGet, panelAccessProbePrefix+nonce, nil, nil); response.Code != http.StatusNotFound {
+		t.Fatalf("finished check must stop answering: %d", response.Code)
+	}
+	for index := 0; index < panelAccessProbeLimit; index++ {
+		if _, err := server.addDomainProbe(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := server.addDomainProbe(); err == nil {
+		t.Fatal("pending probes must be bounded")
+	}
+}
+
+func TestPanelDomainProbeWorksBehindSecurityEntrance(t *testing.T) {
+	server, tokenPath := newTestServer(t)
+	sessionCookie, csrfCookie := bootstrapCookies(t, server, tokenPath)
+	_, resourceVersion := server.store.SecurityEntrance()
+	body, err := json.Marshal(map[string]any{"enabled": true, "path": "panel-secure1", "expectedResourceVersion": resourceVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := authenticatedRequest(server, http.MethodPut, "/api/v1/settings/security-entry", body, sessionCookie, csrfCookie,
+		map[string]string{"Content-Type": "application/json", "Origin": "http://panel.test", "X-CSRF-Token": csrfCookie.Value})
+	if updated.Code != http.StatusOK {
+		t.Fatalf("enable security entry failed: %d %s", updated.Code, updated.Body.String())
+	}
+	nonce, err := server.addDomainProbe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := performRequest(server, http.MethodGet, panelAccessProbePrefix+nonce, nil, nil); response.Code != http.StatusNoContent {
+		t.Fatalf("hidden login must not hide the domain probe: %d", response.Code)
+	}
+	if response := performRequest(server, http.MethodGet, "/api/v1/settings/panel-access", nil, nil); response.Code == http.StatusOK {
+		t.Fatal("settings must stay behind the security entrance")
 	}
 }
 

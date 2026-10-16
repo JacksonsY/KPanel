@@ -171,7 +171,7 @@ function openSelfSignedAddress(): void {
 
 function problemLabel(result: PanelDomainCheck): string {
   const key = `panelAccess.problem.${result.problem || 'unreachable'}` as MessageKey
-  return i18n.t(key, { version: result.version || '' })
+  return i18n.t(key)
 }
 
 async function focusFromIntent(): Promise<void> {
