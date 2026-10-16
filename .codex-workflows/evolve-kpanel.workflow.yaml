@@ -1,12 +1,12 @@
 ---
 name: evolve-kpanel
 description: "用可验证证据驱动 KPanel 规范、门禁和开发流程的受控自我改进，写任务形成本地候选但不自动推送、发布或放宽质量要求"
-version: "1.8"
+version: "1.9"
 author: "Codex"
 tags: [quality, governance, continuous-improvement, multi-agent, metrics]
 params: [project_dir, baseline_ref, observation_window, release_count, proposal_slug, candidate_branch]
 created: "2026-08-11T00:00:00+08:00"
-updated: "2026-10-04T00:00:00+08:00"
+updated: "2026-10-16T10:15:51Z"
 ---
 
 # KPanel Controlled Evolution
@@ -20,6 +20,8 @@ updated: "2026-10-04T00:00:00+08:00"
 ## Prerequisites
 
 - 复杂治理写任务按 `docs/project-management.md` 6.2.1 使用 `scripts/task-preflight.mjs` 成组预检输入与交付。
+- 执行效率遵循同文档 6.2.2 / 7.2：治理唯一入口自动做离线前置探测；相同输入的失败先修复原因再重试，
+  仅同 SHA、环境、工具和参数的有效证据可复用。局部提速实测不能冒充端到端或长期收益。
 - 草案和待复核共用提案日期的 14 天时限；实现进入 main 时更新生命周期，不能用草案逃避复核。
   具体规则以 `PROJECT_RULES.md` 5.2.7 为准；已推送历史证据和 trailer 不改写。
 
@@ -96,11 +98,14 @@ node scripts/check-collaboration-state.mjs --role writer --base-ref "${{baseline
 
 ### 6. 从受影响层级验证并比较指标
 
+开发中按需跑受影响的定向测试。最终候选使用唯一分级入口；其已包含的治理检查和回归集不再手工重复执行：
+
 ```bash
-node scripts/check-governance-consistency.mjs
-node --test scripts/tests/report-release-metrics.test.mjs
-make verify-change
+VERIFY_BASE_REF="${{baseline_ref}}" make verify-change
 ```
+
+调用时传入精确批准基线；Windows 使用现有 `scripts/run-repo-bash.mjs scripts/verify-change.sh <exact-base>`
+适配入口。检查完整原始输出，确认预定回归集实际执行；缺失覆盖必须补齐，不能只看到总入口成功就推定覆盖。
 
 按风险补 `make verify-l2`、`make verify-release`、隔离真机、公开产物或生产部署安全核对。长时间浏览器
 验收使用 `background-browser-validation` 后台执行；所有远程验证目标先通过 `environment-policy.json`。
@@ -158,11 +163,11 @@ Tag、Release、镜像或生产变化。
 
 ## Verification
 
+核对第 6 步最终候选的完整证据。没有新差异、失败或未解决风险时，不为本清单再次执行同一入口；
+本地成功不代替候选 Linux CI、主线 CI、独立复核或适用的实机验收。结构检查可单独执行：
+
 ```bash
 git diff --check
-node scripts/check-governance-consistency.mjs
-node --test scripts/tests/governance-candidate-ci.test.mjs
-node --test scripts/tests/report-release-metrics.test.mjs
 py -3 "${CODEX_WORKFLOWS_CLI:-$HOME/.codex/skills/codex-workflows/scripts/workflow.py}" \
   validate evolve-kpanel --project-dir "${{project_dir}}"
 ```

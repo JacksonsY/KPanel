@@ -7,6 +7,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cleanShellEnvironment, resolveBash } from './run-repo-bash.mjs';
+import { validateBackport } from './torrent-backport-baseline.mjs';
 
 const SHA = /^[a-f0-9]{40}$/;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -17,6 +18,46 @@ const paths = (value) => Array.isArray(value) && value.length > 0 && value.lengt
   && !path.split('/').some((part) => ['.', '..'].includes(part)));
 const inside = (root, path) => { const diff = relative(root, path); return !isAbsolute(diff) && diff !== '..' && !diff.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')); };
 const covered = (path, rules) => rules.some((rule) => rule.endsWith('/') ? path.startsWith(rule) : path === rule);
+
+// Fixed, offline prerequisite checks for the canonical governance gate. Never consume contract argv.
+export function qualifyGovernance({ repo, probe = spawnSync, checkSources = validateBackport }) {
+  const started = performance.now();
+  const root = realpathSync.native(resolve(repo));
+  const failures = [];
+  const checks = [];
+  const check = (id, action) => {
+    try { action(); checks.push({ id, status: 'passed' }); }
+    catch (error) { checks.push({ id, status: 'failed' }); failures.push(id + ': ' + error.message); }
+  };
+  const environment = { ...cleanShellEnvironment(), GOTOOLCHAIN: 'local' };
+  const runnable = (command, args) => {
+    const result = probe(command, args, { cwd: root, env: environment, encoding: 'utf8',
+      shell: false, timeout: 5000, maxBuffer: 64 * 1024, windowsHide: true });
+    if (result.error || result.signal || result.status !== 0) {
+      // Tool output may contain local configuration; report only bounded process status.
+      throw new Error('unavailable or failed version probe (exit=' + result.status + ')');
+    }
+  };
+  check('node', () => runnable(process.execPath, ['--version']));
+  check('git', () => runnable('git', ['--version']));
+  check('go-native', () => runnable('go', ['version']));
+  check('go-repo-bash', () => runnable(resolveBash(), ['-c', 'go version']));
+  check('governance-inputs', () => {
+    const gate = readFileSync(resolve(root, 'scripts/verify-governance.sh'), 'utf8');
+    // Read the test inventory from its only authority, rather than maintain a second list.
+    const tests = [...new Set(gate.match(/scripts\/tests\/[a-z0-9-]+\.test\.mjs/g) ?? [])];
+    if (tests.length === 0) throw new Error('canonical governance test inventory is empty');
+    const required = ['go.mod', 'go.sum', 'scripts/check-release-notes.sh', ...tests];
+    const missing = required.filter((path) => {
+      const target = resolve(root, path);
+      return !existsSync(target) || !statSync(target).isFile() || !inside(root, realpathSync(target));
+    });
+    if (missing.length) throw new Error('missing or out-of-repository inputs: ' + missing.join(', '));
+  });
+  check('vendor-source-bytes', () => checkSources(root));
+  return { schemaVersion: 1, phase: 'governance', status: failures.length ? 'failed' : 'passed', checks, failures,
+    durationMs: Math.round(performance.now() - started), qualificationOnly: true, permissionsGranted: false };
+}
 
 export function qualify({ repo, contract, phase, contractDir = process.cwd(), now = Date.now() }) {
   const failures = [];
@@ -96,7 +137,7 @@ export function qualify({ repo, contract, phase, contractDir = process.cwd(), no
 }
 
 export function main(argv) {
-  if (argv.includes('--help')) { process.stdout.write('usage: task-preflight.mjs ready|handoff --contract JSON [--repo PATH]\n'); return 0; }
+  if (argv.includes('--help')) { process.stdout.write('usage: task-preflight.mjs ready|handoff --contract JSON [--repo PATH]\n       task-preflight.mjs governance [--repo PATH]\n'); return 0; }
   const phase = argv.shift();
   const options = { repo: process.cwd() };
   const seen = new Set();
@@ -104,6 +145,12 @@ export function main(argv) {
     const key = new Map([['--repo', 'repo'], ['--contract', 'contract']]).get(argv[i]);
     if (!key || seen.has(key) || !argv[i + 1]) throw new Error('invalid option: ' + argv[i]);
     seen.add(key); options[key] = argv[i + 1];
+  }
+  if (phase === 'governance') {
+    if (options.contract) throw new Error('governance uses fixed probes, not a contract');
+    const report = qualifyGovernance({ repo: options.repo });
+    process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    return report.status === 'passed' ? 0 : 1;
   }
   if (!options.contract) throw new Error('--contract is required');
   const contractPath = resolve(options.contract);

@@ -5,9 +5,94 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { qualify } from '../task-preflight.mjs';
+import { qualify, qualifyGovernance } from '../task-preflight.mjs';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
+
+function governanceFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'kpanel-governance-preflight-'));
+  mkdirSync(join(root, 'scripts/tests'), { recursive: true });
+  for (const path of ['go.mod', 'go.sum', 'scripts/check-release-notes.sh', 'scripts/tests/example.test.mjs']) {
+    writeFileSync(join(root, path), 'fixture\n');
+  }
+  writeFileSync(join(root, 'scripts/verify-governance.sh'), 'node --test scripts/tests/example.test.mjs\n');
+  return root;
+}
+
+test('governance preflight groups tool and input failures before the unchanged suite', () => {
+  const root = governanceFixture();
+  try {
+    rmSync(join(root, 'go.sum'));
+    rmSync(join(root, 'scripts/tests/example.test.mjs'));
+    const probes = [];
+    const report = qualifyGovernance({ repo: root, probe(command, args, options) {
+      probes.push({ command, args });
+      assert.equal(options.shell, false);
+      assert.equal(options.timeout, 5000);
+      assert.equal(options.env.GOTOOLCHAIN, 'local');
+      return { status: null, error: new Error('broken shim; private output must not be logged') };
+    }, checkSources() { throw new Error('Backport source digest mismatch: fixture'); } });
+    assert.equal(report.status, 'failed');
+    assert.equal(report.failures.length, 6);
+    assert.match(report.failures.join('\n'), /go.sum/);
+    assert.match(report.failures.join('\n'), /example.test.mjs/);
+    assert.doesNotMatch(JSON.stringify(report), /private output/);
+    assert.deepEqual(probes.map((p) => p.args), [['--version'], ['--version'], ['version'], ['-c', 'go version']]);
+    assert.ok(probes.every((p) => !p.args.includes('--test')));
+    assert.equal(report.qualificationOnly, true);
+    assert.equal(report.permissionsGranted, false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('governance preflight derives newly added tests from the gate and rejects empty inventories', () => {
+  const root = governanceFixture();
+  const probe = () => ({ status: 0 });
+  const checkSources = () => {};
+  try {
+    assert.equal(qualifyGovernance({ repo: root, probe, checkSources }).status, 'passed');
+    writeFileSync(join(root, 'scripts/verify-governance.sh'), 'node --test scripts/tests/new-check.test.mjs\n');
+    assert.match(qualifyGovernance({ repo: root, probe, checkSources }).failures.join('\n'), /new-check.test.mjs/);
+    writeFileSync(join(root, 'scripts/verify-governance.sh'), 'node --test\n');
+    assert.match(qualifyGovernance({ repo: root, probe, checkSources }).failures.join('\n'), /inventory is empty/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('governance preflight rejects signals and keeps canonical source byte validation', () => {
+  const root = governanceFixture();
+  try {
+    const report = qualifyGovernance({ repo: root, probe: () => ({ status: 0, signal: 'SIGTERM' }) });
+    assert.equal(report.checks.filter((check) => check.status === 'failed').length, 5);
+    assert.ok(report.failures.some((failure) => failure.startsWith('vendor-source-bytes:')));
+    assert.equal(report.status, 'failed');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('canonical governance gate stops on failed preflight instead of launching tests', () => {
+  const root = governanceFixture();
+  try {
+    cpSync(join(repoRoot, 'scripts/verify-governance.sh'), join(root, 'scripts/verify-governance.sh'));
+    const envFile = join(root, 'bash-env.sh');
+    const log = join(root, 'commands.log');
+    writeFileSync(envFile, 'node() { printf "%s\\n" "$*" >> "$PREFLIGHT_CALL_LOG"; return 17; }\nexport -f node\n');
+    const result = spawnSync(process.execPath, [join(repoRoot, 'scripts/run-repo-bash.mjs'), 'scripts/verify-governance.sh'], {
+      cwd: root, encoding: 'utf8', env: { ...process.env, PREFLIGHT_CALL_LOG: log,
+        BASH_ENV: envFile.replace(/^([A-Za-z]):/, (_, drive) => '/' + drive.toLowerCase()).replaceAll('\\', '/') },
+      timeout: 10_000, windowsHide: true,
+    });
+    assert.equal(result.status, 17, result.stderr);
+    const commands = readFileSync(log, 'utf8').trim().split(/\r?\n/);
+    assert.equal(commands.length, 1);
+    assert.match(commands[0], /^scripts\/task-preflight.mjs governance --repo /);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('governance CLI cannot execute a supplied contract or arbitrary probe', () => {
+  for (const args of [['--contract', 'should-not-be-read.json'], ['--command', 'echo unsafe']]) {
+    const result = spawnSync(process.execPath, [join(repoRoot, 'scripts/task-preflight.mjs'), 'governance', ...args], { encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.equal(JSON.parse(result.stdout).status, 'failed');
+  }
+});
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'kpanel-task-qualification-'));
   const management = join(root, 'management');

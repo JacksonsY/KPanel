@@ -29,6 +29,9 @@
 
 ## 实施与验证
 
+- 成组预检、有限重试和精确证据复用统一执行 `docs/project-management.md` 6.2.2 / 7.2；完整治理
+  入口自带离线前提检查，不另建平行工具清单。相同已通过验证不因换角色而重跑。
+
 - 先使用 `rg` 定位直接相关代码、测试和文档，已有精确证据足够时不重复全仓扫描。
 - 使用 `PROJECT_RULES.md` 的 L0-L3 和 `make verify-change`、`make verify-l2`、`make verify-release`
   权威入口，不创建 Claude 专属平行命令。本地 `verify-change` 会自动复核工作树角色并拒绝主工作树

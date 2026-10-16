@@ -71,6 +71,10 @@ Windows 没有 Make 时使用 `node scripts/run-repo-bash.mjs <script>` 调用�
 
 ## 上下文与证据效率
 
+执行预检、失败分类与外层重试边界统一遵循 `docs/project-management.md` 6.2.2；复核者读取原始
+证据并独立判断，不因接手而重复相同门禁。普通执行细节由当前负责人在既有权限内闭环；只有影响
+目标、风险或权限的选择才回到协调中心，不能把反复询问或新增监工任务当作质量保证。
+
 复杂任务的路径、工具和字段资格统一按 `docs/project-management.md` 6.2.1 使用
 `scripts/task-preflight.mjs ready|handoff`；先将必需输入缺项成组处置，再进入长验证。
 复用已交付候选和精确原始证据；发布接管不召回旧 writer、不增加监工。源码发布检查按该文档第 10 节

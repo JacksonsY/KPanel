@@ -7,6 +7,8 @@
 - `session-collaboration.workflow.yaml`：复用或创建任务、检查管理/写入工作树角色、等待、复核并统一交付。
 - 复杂任务输入与交付复用只读 `scripts/task-preflight.mjs`，源码发布核验复用有界并行
   `scripts/run-source-checks.mjs`；权威语义见 `docs/project-management.md` 6.2.1 / 10，小任务不新增重流程。
+- 执行预检、失败分类、外层重试和同身份证据复用统一引用 `docs/project-management.md` 6.2.2 / 7.2；
+  治理门禁自带 `task-preflight.mjs governance` 固定离线探测，通过不替代完整测试或发布证据。
 - 任务复用截止到候选交付；发布接管后按 `docs/project-management.md` 10.1 由发布任务独立闭环，
   不召回旧任务、不增加复核或监工任务，协调中心等待完成交付后再复盘。
 - 本地磁盘回收按 `docs/project-management.md` 13.1 在新建工作树前、任务交付后和发布结束后执行；
