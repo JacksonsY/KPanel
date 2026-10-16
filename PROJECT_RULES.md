@@ -323,8 +323,10 @@ SSH 或单个 AI 会话持续存在。发布链路例外使用 GitHub Actions �
    入口摘要及终态。源码、安全、场景包、镜像和生命周期门禁保留；不再要求与自有主机本地镜像 ID 相等。
    发布验收使用固定 Dockerfile 构建一次性测试 Runner，保存实际 ID，不声称它等于旧服务器 ID。
    `.github/workflows/preview-release.yml` 是预览发布调度入口：从 main 显式 dispatch 冻结候选 SHA，
-   依次调用候选 CI、L3、主线/tag 原子提升、主线 CI 和可复用 Release；临时 Token 写入不依赖递归 push 触发。
+   候选 CI 与完整 L3 并行，双成功后依次执行主线/tag 原子提升、主线 CI 和可复用 Release；临时 Token 写入不依赖递归 push 触发。
    发布自动化必须已在 main 独立复核并取得同 SHA 候选 CI；拒绝未集成的工作流差异、候选漂移和已占用版本。
+   发布前稳定通道及上一预览快照连同 candidate/version/run/attempt 身份必须先成功上传独立 artifact；
+   上传失败不进入公开发布。恢复读取该原件并核对摘要，不重新生成旧基线或重推版本镜像。
    Docker Hub 最小范围 Token 仅在正式发布 job 使用；候选 CI/L3 无镜像推送或仓库写权限。
    公开验收复核两架构 OCI/source、15 个附件、校验清单、Latest/latest 不变，并运行真实 Panel/Agent 的
    浏览器与隔离业务断言。GitHub artifact 保存失败/成功日志、截图与回执，run ID/attempt 唯一，禁止覆盖失败。

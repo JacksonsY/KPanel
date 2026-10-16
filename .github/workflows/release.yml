@@ -158,6 +158,17 @@ jobs:
           EXPECTED_VERSION: ${{ steps.release.outputs.version }}
         run: node scripts/verify-github-public-release.mjs snapshot
 
+      - name: Preserve frozen preview recovery inputs before publication
+        if: steps.snapshot.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: snapshot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.PUBLIC_EVIDENCE }}/stable-before.json
+            ${{ env.PUBLIC_EVIDENCE }}/publication-identity.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Audit Node dependencies
         run: |
           set -euo pipefail
@@ -524,6 +535,8 @@ jobs:
           path: |
             release/RELEASE_NOTES.md
             release/KPANEL_MODIFIED_COMPONENTS.json
+            ${{ env.PUBLIC_EVIDENCE }}/stable-before.json
+            ${{ env.PUBLIC_EVIDENCE }}/publication-identity.json
           if-no-files-found: warn
           retention-days: 90
 

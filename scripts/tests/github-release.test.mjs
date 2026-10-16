@@ -4,6 +4,7 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { resolveBash } from '../run-repo-bash.mjs';
 import { validateGitHubRun } from '../github-release-l3.mjs';
 import { checkEnvironment, loadPolicy } from '../check-environment-policy.mjs';
@@ -18,6 +19,53 @@ const workflowStep = (workflow, name) => {
   assert.ok(body, `step ${name} has a shell body`);
   return body.split('\n').filter(line => line.startsWith('          ')).map(line => line.slice(10)).join('\n');
 };
+
+test('preview recovery inputs are preserved before publication and bind original snapshot bytes', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8');
+  const start = workflow.indexOf('      - name: Preserve frozen preview recovery inputs before publication');
+  assert.ok(start > workflow.indexOf('run: node scripts/verify-github-public-release.mjs snapshot'));
+  assert.ok(start < workflow.indexOf('      - name: Build and push multi-architecture image'));
+  const upload = workflow.slice(start, workflow.indexOf('\n      - ', start + 1));
+  assert.match(upload, /if: steps.snapshot.outcome == 'success'/);
+  assert.match(upload, /if-no-files-found: error/);
+  assert.match(upload, /snapshot-\$\{\{ github.run_id \}\}-\$\{\{ github.run_attempt \}\}/);
+  assert.match(upload, /stable-before.json/);
+  assert.match(upload, /publication-identity.json/);
+  assert.doesNotMatch(upload, /continue-on-error/);
+  const root = mkdtempSync(join(tmpdir(), 'kpanel-frozen-snapshot-')).replaceAll('\\', '/');
+  try {
+    const moduleUrl = new URL('../verify-github-public-release.mjs', import.meta.url).href;
+    const script = `import {createHash} from 'node:crypto';
+const digest = body => 'sha256:'+createHash('sha256').update(JSON.stringify(body)).digest('hex');
+const image = {config:{digest:'sha256:'+'c'.repeat(64)}};
+const index = {manifests:[{platform:{os:'linux',architecture:'amd64'},digest:digest(image)}]};
+globalThis.fetch = async url => {
+  if(url.includes('auth.docker.io')) return Response.json({token:'fixture'});
+  if(url.includes('/releases/latest')) return Response.json({tag_name:'v1.26.0'});
+  if(url.includes('/blobs/')) return Response.json({config:{Labels:{'org.opencontainers.image.version':'1.27.0-rc.4'}}});
+  const body = url.endsWith(digest(image)) ? image : index;
+  return new Response(JSON.stringify(body),{headers:{'docker-content-digest':digest(body)}});
+};process.argv[2]='snapshot';await import(${JSON.stringify(moduleUrl)});`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      encoding: 'utf8', timeout: 5000, env: { ...process.env, ...valid, EXPECTED_VERSION: '1.27.0-rc.5',
+        EXPECTED_SHA: 'b'.repeat(40), RUNNER_TEMP: root, PUBLIC_EVIDENCE: root + '/snapshot',
+        GITHUB_OUTPUT: root + '/outputs', GITHUB_ENV: root + '/env' },
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    const raw = readFileSync(root + '/snapshot/stable-before.json');
+    const identity = JSON.parse(readFileSync(root + '/snapshot/publication-identity.json'));
+    assert.equal(identity.candidate, 'b'.repeat(40));
+    assert.equal(identity.controllerSha, valid.GITHUB_SHA);
+    assert.equal(identity.version, '1.27.0-rc.5');
+    assert.equal(identity.runId, valid.GITHUB_RUN_ID);
+    assert.equal(identity.attempt, valid.GITHUB_RUN_ATTEMPT);
+    assert.equal(identity.snapshotSha256, createHash('sha256').update(raw).digest('hex'));
+    assert.equal(JSON.parse(raw).previousPreview.version, '1.27.0-rc.4');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('release input validation uses the explicit tag when GitHub retains the caller main ref', () => {
   const read = name => readFileSync(new URL('../../' + name, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
@@ -81,7 +129,8 @@ test('GitHub environment never grants production access', () => {
 test('preview pipeline binds trusted workflows, atomic Git writes and explicit downstream calls', () => {
   const read = path => readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
   const flow = read('.github/workflows/preview-release.yml');
-  assert.match(flow, /needs: \[inputs, l3\]/);
+  assert.match(flow, /l3:\s+needs: inputs/);
+  assert.match(flow, /promote:\s+needs: \[inputs, candidate-ci, l3\]/);
   assert.match(flow, /needs: \[inputs, main-ci\]/);
   for (const entry of ['ci.yml', 'release-l3.yml', 'release.yml']) assert.ok(flow.includes(`uses: ./.github/workflows/${entry}`));
   assert.doesNotMatch(flow, /self-hosted|\bssh\b|DOCKERHUB_TOKEN/);

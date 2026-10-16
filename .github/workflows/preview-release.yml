@@ -43,12 +43,12 @@ jobs:
       candidate: ${{ needs.inputs.outputs.candidate }}
       base: ${{ needs.inputs.outputs.base }}
   l3:
-    needs: [inputs, candidate-ci]
+    needs: inputs
     uses: ./.github/workflows/release-l3.yml
     with:
       candidate: ${{ needs.inputs.outputs.candidate }}
   promote:
-    needs: [inputs, l3]
+    needs: [inputs, candidate-ci, l3]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

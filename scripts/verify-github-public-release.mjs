@@ -59,6 +59,11 @@ if (process.argv[2] === 'snapshot') {
   if (!/^\d+\.\d+\.\d+-rc\.[1-9]\d*$/.test(previousVersion) || previousVersion === version) throw new Error('Valid distinct previous preview required');
   writeFileSync(snapshotPath, JSON.stringify({ tag: latestRelease.tag_name, digest: latestImage.digest,
     previousPreview: { version: previousVersion, digest: previous.digest } }, null, 2) + '\n', { flag: 'wx' });
+  writeFileSync(join(directory, 'publication-identity.json'), JSON.stringify({ schemaVersion: 1,
+    candidate: env.EXPECTED_SHA, version, controllerSha: env.GITHUB_SHA,
+    runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT,
+    snapshotSha256: sha256(readFileSync(snapshotPath)), phase: 'before-publication',
+  }, null, 2) + '\n', { flag: 'wx' });
   writeFileSync(env.GITHUB_OUTPUT, `snapshot=${JSON.stringify(JSON.parse(readFileSync(snapshotPath)))}\n`, { flag: 'a' });
   writeFileSync(env.GITHUB_ENV, `PREVIOUS_PREVIEW_VERSION=${previousVersion}\nPREVIOUS_PREVIEW_IMAGE=docker.io/kjlion/kejilion-panel@${previous.digest}\n`, { flag: 'a' });
   process.exit(0);

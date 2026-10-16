@@ -87,3 +87,11 @@ KPanel 只接受以下两种规范版本，所有数字段禁止前导零且不�
 Latest/prerelease 状态、版本镜像和通道标签 digest、候选分支处置、自更新通道用例及生产适用性。
 可执行发布步骤以 `.codex-workflows/release-kpanel.workflow.yaml` 为准，验收结构以
 `docs/release-acceptance-template.md` 为准。
+
+## GitHub 发布执行与恢复
+
+发布入口为 main 的 `Publish preview`，候选 CI 与完整 L3 并行，均成功后才原子提升 main/tag；
+主线 CI 通过后才运行 Release、Docker Hub 与公开浏览器验收。并行不减少任何检查或变更权限。
+发布前的 stable/previous-preview 快照和源码身份先保存为 `snapshot-<run ID>-<attempt>` artifact。
+公开后的验收恢复从原 artifact 读取快照并核对摘要，使用 main 的 `Verify published preview` 只读入口；
+不重建或覆盖已发布的版本镜像。新业务变更必须递增 RC 序号，不能复用已公开的版本/tag。
