@@ -13,6 +13,10 @@ permissions:
   contents: read
   actions: read
 
+concurrency:
+  group: l3-${{ github.workflow }}-${{ inputs.candidate || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   l3:
     runs-on: ubuntu-latest

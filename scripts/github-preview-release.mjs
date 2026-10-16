@@ -24,9 +24,12 @@ if (remote.split('\n').some(line => line.endsWith(`refs/tags/${tag}`))) throw ne
 if (remote !== `${sha}\trefs/heads/${branch}`) throw new Error('Candidate branch does not match the frozen SHA');
 // The workflow implementation must already be trusted on main: a dispatch never executes
 // release automation supplied only by an unreviewed candidate.
-for (const path of ['.github/workflows/preview-release.yml', '.github/workflows/release.yml', '.github/workflows/release-l3.yml', '.github/workflows/ci.yml', 'scripts/github-preview-release.mjs']) {
-  if (git('rev-parse', `origin/main:${path}`) !== git('rev-parse', `${sha}:${path}`)) throw new Error(`Release automation must be integrated on main before dispatch: ${path}`);
-}
+const automation = ref => git('ls-tree', '-r', ref, '--', '.github/workflows', 'scripts',
+  'packaging/tests/release-browser', 'packaging/release-browser', 'packaging/release-runner')
+  .split('\n').filter(line => !line.endsWith('\tscripts/torrent-backport-scan-scope.json')).join('\n');
+// Source-version qualification intentionally changes with every release version;
+// all executable release helpers, including newly added files, must already be trusted.
+if (automation('origin/main') !== automation(sha)) throw new Error('Release automation must be integrated on main before dispatch');
 if (process.argv[2] === 'check') {
   if (process.env.GITHUB_REF !== 'refs/heads/main') throw new Error('Dispatch Publish preview from main only');
   const mainVersion = git('show', 'origin/main:VERSION').trim();
