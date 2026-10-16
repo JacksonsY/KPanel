@@ -54,8 +54,8 @@ func newLocalAppWriteService(t *testing.T) (*Service, string) {
 
 func TestLocalAppMissingFilesUseIsolatedRoot(t *testing.T) {
 	service, _ := newLocalAppWriteService(t)
-	if _, err := service.LocalApp(context.Background(), "missing-app"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing config = %v, want ErrNotFound", err)
+	if _, err := service.LocalApp(context.Background(), "missing-app"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing config = %v, want os.ErrNotExist", err)
 	}
 	if _, err := service.LocalAppIcon("missing-app"); !errors.Is(err, ErrAppIconNotFound) {
 		t.Fatalf("missing icon = %v, want ErrAppIconNotFound", err)
