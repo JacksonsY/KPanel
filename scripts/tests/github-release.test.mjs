@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -227,6 +227,59 @@ esac
     });
     assert.ifError(result.error);
     assert.equal(result.status, expected, result.stderr);
+  }
+});
+
+test('public recovery binds only the trusted controller runner recipe and rejects changed product identities', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/release-public-verify.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+  const body = workflowStep(workflow, 'Bind controller-owned test runner recipe');
+  assert.ok(workflow.indexOf('Verify public preview assets') < workflow.indexOf('Bind controller-owned'));
+  assert.ok(workflow.indexOf('Bind controller-owned') < workflow.indexOf('Verify public preview in real browsers'));
+  for (const scenario of ['updated-recipe', 'untrusted-controller', 'dirty-product', 'wrong-head', 'wrong-version', 'missing-controller']) {
+    const root = mkdtempSync(join(tmpdir(), 'kpanel-recipe-'));
+    const git = (...args) => {
+      const r = spawnSync('git', args, { cwd: root, encoding: 'utf8', timeout: 10_000 });
+      assert.equal(r.status, 0, r.stderr);
+      return r.stdout.trim();
+    };
+    try {
+      git('init', '-q');
+      git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
+      git('config', 'core.autocrlf', 'false');
+      mkdirSync(join(root, 'packaging/release-runner'), { recursive: true });
+      const path = 'packaging/release-runner/Dockerfile';
+      const original = 'FROM example@sha256:' + 'a'.repeat(64) + '\nRUN old-fixed-recipe\n';
+      const recipe = original.replace('old-fixed', 'new-fixed');
+      writeFileSync(join(root, path), original); writeFileSync(join(root, 'VERSION'), '1.27.0-rc.5\n');
+      git('add', '.'); git('commit', '-qm', 'frozen product');
+      const candidate = git('rev-parse', 'HEAD');
+      writeFileSync(join(root, path), recipe); git('add', path); git('commit', '-qm', 'test runner only');
+      const controller = git('rev-parse', 'HEAD');
+      git('update-ref', 'refs/remotes/origin/main', scenario === 'untrusted-controller' ? candidate : controller);
+      git('checkout', '--detach', '-q', candidate);
+      if (scenario === 'dirty-product') writeFileSync(join(root, 'VERSION'), 'dirty\n');
+      const evidence = mkdtempSync(join(tmpdir(), 'kpanel-recipe-evidence-'));
+      try {
+        const r = spawnSync(resolveBash(), ['--noprofile', '--norc', '-c', body], { cwd: root, encoding: 'utf8', timeout: 15_000,
+          env: { ...process.env, GITHUB_SHA: scenario === 'missing-controller' ? '0'.repeat(40) : controller,
+            EXPECTED_SHA: scenario === 'wrong-head' ? controller : candidate,
+            EXPECTED_VERSION: scenario === 'wrong-version' ? '1.27.0-rc.4' : '1.27.0-rc.5',
+            GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', PUBLIC_EVIDENCE: evidence } });
+        assert.ifError(r.error);
+        assert.equal(r.status === 0, scenario === 'updated-recipe', `${scenario}: ${r.stderr}`);
+        assert.equal(git('rev-parse', 'HEAD'), candidate);
+        if (scenario === 'updated-recipe') {
+          const receipt = JSON.parse(readFileSync(join(evidence, 'test-runner-recipe.json')));
+          assert.equal(receipt.candidate, candidate); assert.equal(receipt.controller, controller);
+          assert.equal(receipt.original, original); assert.equal(receipt.recipe, recipe);
+          assert.equal(receipt.originalSha256, createHash('sha256').update(original).digest('hex'));
+          assert.equal(receipt.recipeSha256, createHash('sha256').update(recipe).digest('hex'));
+          assert.match(receipt.diff, /-RUN old-fixed-recipe/); assert.match(receipt.diff, /\+RUN new-fixed-recipe/);
+          assert.equal(git('diff', '--name-only'), path);
+          assert.equal(readFileSync(join(root, 'VERSION'), 'utf8'), '1.27.0-rc.5\n');
+        } else assert.equal(readFileSync(join(root, path), 'utf8'), original);
+      } finally { rmSync(evidence, { recursive: true, force: true }); }
+    } finally { rmSync(root, { recursive: true, force: true }); }
   }
 });
 

@@ -88,6 +88,42 @@ jobs:
       - name: Verify public preview assets and multiarchitecture identity
         run: node scripts/verify-github-public-release.mjs verify
 
+      - name: Bind controller-owned test runner recipe
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { join } from 'node:path';
+          const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
+          const { GITHUB_SHA: controller, EXPECTED_SHA: candidate, EXPECTED_VERSION: version,
+            GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: attempt, PUBLIC_EVIDENCE: evidence } = process.env;
+          const path = 'packaging/release-runner/Dockerfile';
+          const sha = bytes => createHash('sha256').update(bytes).digest('hex');
+          if (!/^[a-f0-9]{40}$/.test(controller ?? '') || !/^[a-f0-9]{40}$/.test(candidate ?? '')
+            || !/^[1-9][0-9]*$/.test(runId ?? '') || !/^[1-9][0-9]*$/.test(attempt ?? '') || !evidence) {
+            throw Error('Invalid frozen test runner identity');
+          }
+          git('merge-base', '--is-ancestor', controller, 'origin/main');
+          if (git('rev-parse', 'HEAD') !== candidate || readFileSync('VERSION', 'utf8').trim() !== version
+            || git('status', '--porcelain')) throw Error('Frozen product source must start clean');
+          const original = readFileSync(path);
+          const recipe = execFileSync('git', ['show', `${controller}:${path}`]);
+          writeFileSync(path, recipe);
+          const changed = git('diff', '--name-only');
+          if (git('rev-parse', 'HEAD') !== candidate || readFileSync('VERSION', 'utf8').trim() !== version
+            || (changed !== '' && changed !== path) || git('diff', '--cached', '--name-only')) {
+            throw Error('Test runner overlay changed frozen product identity');
+          }
+          writeFileSync(join(evidence, 'test-runner-recipe.json'), JSON.stringify({
+            schemaVersion: 1, candidate, controller, version, runId, attempt, path,
+            originalSha256: sha(original), recipeSha256: sha(recipe),
+            original: original.toString('utf8'), recipe: recipe.toString('utf8'),
+            diff: git('diff', '--', path), productImageUnchanged: true,
+          }, null, 2) + '\n', { flag: 'wx' });
+          NODE
+
       - name: Verify public preview in real browsers and isolated containers
         run: bash packaging/tests/release-browser/run.sh
 

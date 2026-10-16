@@ -95,3 +95,10 @@ Latest/prerelease 状态、版本镜像和通道标签 digest、候选分支处�
 发布前的 stable/previous-preview 快照和源码身份先保存为 `snapshot-<run ID>-<attempt>` artifact。
 公开后的验收恢复从原 artifact 读取快照并核对摘要，使用 main 的 `Verify published preview` 只读入口；
 不重建或覆盖已发布的版本镜像。新业务变更必须递增 RC 序号，不能复用已公开的版本/tag。
+
+公开验收的产品始终绑定原 tag/SHA/digest；测试 runner 的 Dockerfile 则取当前可信控制面
+`GITHUB_SHA` 的固定路径，要求该提交已纳入 main。只允许覆盖这一个测试配方，不改变版本、
+HEAD 或产品镜像；JSON 回执保存产品/控制面/run/attempt、原新配方全文、摘要与差异。
+这允许在 Alpine 修订版退出仓库后更新固定验收环境并只读恢复历史产物，不放宽 APK 固定版本、
+公开断言或隔离限制。恢复记录必须区分原产品与新测试环境，保留原失败，不能声称冻结源树 clean
+或原发布流水线全绿；未来发布也使用其已审查控制面的测试配方。

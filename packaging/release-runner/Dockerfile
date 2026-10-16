@@ -19,8 +19,8 @@ RUN --mount=type=secret,id=https_proxy,required=false \
       build-base=0.5-r4 \
       ca-certificates=20260909-r0 \
       coreutils=9.11-r0 \
-      docker-cli=29.8.2-r0 \
-      docker-cli-buildx=0.34.1-r1 \
+      docker-cli=29.8.2-r1 \
+      docker-cli-buildx=0.34.1-r2 \
       git=2.54.0-r0 \
       make=4.4.1-r4'
 
