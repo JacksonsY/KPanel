@@ -19,6 +19,7 @@ const emit = defineEmits<{ changed: []; manage: [item: AppMarketItem] }>()
 
 const defaultIcon = '/app-icons/thirdparty-default.svg'
 const maxIconBytes = 64 << 10
+const localAppScriptOutdated = '请先更新 kejilion.sh 以支持 ~/apps-local 本地应用'
 
 type View = 'list' | 'edit' | 'saved' | 'submit'
 const view = ref<View>('list')
@@ -37,6 +38,9 @@ const copied = ref('')
 const iconInput = ref<HTMLInputElement>()
 
 const sortedApps = computed(() => [...props.apps].sort((a, b) => a.token.localeCompare(b.token)))
+const scriptOutdated = computed(() => props.apps.some((item) =>
+  Object.values(item.capabilities).some((capability) => capability.reason === localAppScriptOutdated),
+))
 const nameError = computed(() => {
   if (!isNew.value || !name.value) return ''
   return localAppNamePattern.test(name.value) ? '' : '名称只能使用字母、数字、下划线和短横线，且以字母或数字开头'
@@ -298,6 +302,7 @@ onBeforeUnmount(() => {
       <ShieldAlert :size="17" />
       {{ phrase('本地应用未经官方审核，会以 root 身份执行；请只使用自己编写或信任的配置。需要较新的 kejilion.sh。') }}
     </div>
+    <p v-if="scriptOutdated" class="inline-alert inline-alert--info">{{ phrase(localAppScriptOutdated) }}</p>
   </section>
 
   <section v-else-if="view === 'edit'" class="local-editor" :aria-label="phrase(isNew ? '新建本地应用' : '编辑配置')">
