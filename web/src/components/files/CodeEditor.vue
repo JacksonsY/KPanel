@@ -162,6 +162,11 @@ function runSearch(direction: 'next' | 'previous'): void {
   if (!editor || !searchRuntime || !updateSearchQuery()) return
   if (direction === 'next') searchRuntime.findNext(editor)
   else searchRuntime.findPrevious(editor)
+  // F3 with the find bar closed only moves the selection; with no bar to
+  // close, the query must not keep painting every match.
+  if (!searchOpen.value) {
+    editor.dispatch({ effects: searchRuntime.setSearchQuery.of(new searchRuntime.SearchQuery({ search: '' })) })
+  }
   refreshSearchCount()
 }
 
@@ -303,7 +308,7 @@ async function initialize(): Promise<void> {
     if (cancelled || !host.value) return
 
     const highlightStyle = HighlightStyle.define([
-      { tag: tags.comment, color: 'var(--code-comment)', fontStyle: 'italic' },
+      { tag: tags.comment, color: 'var(--code-comment)' },
       { tag: [tags.keyword, tags.controlKeyword, tags.operatorKeyword], color: 'var(--code-keyword)' },
       { tag: [tags.string, tags.special(tags.string)], color: 'var(--code-string)' },
       { tag: [tags.number, tags.bool, tags.null], color: 'var(--code-number)' },

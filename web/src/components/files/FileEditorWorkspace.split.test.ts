@@ -109,6 +109,13 @@ describe('file editor split panes', () => {
     expect(mocks.openSearch).toHaveBeenCalledWith('a.conf')
     await wrapper.get('.editor-status__position').trigger('click')
     expect(mocks.openGotoLine).toHaveBeenCalledWith('a.conf')
+
+    await wrapper.get(`[data-pane-path="${b.path}"] [aria-label="最大化窗格"]`).trigger('click')
+    expect(shown(wrapper)).toEqual([b.path])
+    expect(wrapper.find('.editor-panes__divider').exists()).toBe(false)
+    await wrapper.get(`[data-pane-path="${b.path}"] [aria-label="恢复分屏"]`).trigger('click')
+    expect(shown(wrapper)).toEqual([a.path, b.path])
+    expect(textarea(wrapper, 'a.conf').element.value).toBe('edited a')
   })
 
   it('opens new files into an empty pane first and otherwise into the active pane', async () => {

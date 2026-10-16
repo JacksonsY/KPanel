@@ -46,7 +46,14 @@ describe('CodeEditor find, go to line and selections', () => {
     await wrapper.get('[aria-label="使用正则表达式"]').trigger('click')
     await input.setValue('(')
     expect(wrapper.get('.code-search__count').text()).toBe('表达式无效')
+    await wrapper.get('[aria-label="使用正则表达式"]').trigger('click')
+    await input.setValue('alpha')
     await wrapper.get('[aria-label="关闭查找"]').trigger('click')
+    expect(wrapper.findAll('.cm-searchMatch')).toHaveLength(0)
+    // F3 without the bar still finds the last term but leaves nothing painted.
+    view(wrapper).contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true }))
+    await flushPromises()
+    expect(view(wrapper).state.selection.main).toMatchObject({ from: 23, to: 28 })
     expect(wrapper.findAll('.cm-searchMatch')).toHaveLength(0)
   })
 
