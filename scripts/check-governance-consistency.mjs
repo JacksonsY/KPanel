@@ -682,6 +682,8 @@ requireText('docs/multi-agent-collaboration.md', FALLBACK_REASONS.map((reason) =
 requireText('docs/project-management.md', ['scripts/task-preflight.mjs', 'permissionsGranted', 'candidateCommit', 'sha256']);
 for (const path of ['scripts/verify-change.sh', '.github/workflows/release.yml']) requireText(path, ['node scripts/run-source-checks.mjs']);
 requireText('scripts/verify-governance.sh', ['scripts/tests/source-checks.test.mjs', 'scripts/tests/task-preflight.test.mjs']);
+requireText('scripts/verify-governance.sh', ['node scripts/task-preflight.mjs governance --repo "$repo_root"']);
+for (const path of ['AGENTS.md', 'CLAUDE.md', '.codex-workflows/README.md', '.codex-workflows/session-collaboration.workflow.yaml', '.codex-workflows/release-kpanel.workflow.yaml', '.codex-workflows/evolve-kpanel.workflow.yaml']) requireText(path, ['6.2.2', '7.2']);
 for (const path of ['AGENTS.md', 'CLAUDE.md', '.codex-workflows/session-collaboration.workflow.yaml']) requireText(path, ['scripts/task-preflight.mjs']);
 requireText('.codex-workflows/quality-audit-kpanel.workflow.yaml', ['node scripts/report-governance-health.mjs --strict --since=']);
 requireText('docs/multi-agent-collaboration.md', ['Independent-Review: reviewer=<提供商> author=<提供商>', '默认由与实现者不同的模型']);

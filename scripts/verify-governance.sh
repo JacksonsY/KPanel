@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+node scripts/task-preflight.mjs governance --repo "$repo_root"
 node scripts/check-governance-consistency.mjs
 node scripts/check-business-context-freshness.mjs
 node scripts/check-environment-policy.mjs --validate-only

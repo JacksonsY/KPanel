@@ -1,12 +1,12 @@
 ---
 name: release-kpanel
 description: "按稳定版或预览版发布画像完成 KPanel 多维质量验收、CI、Release、公开镜像、通道提升及适用的生产核对"
-version: "3.6"
+version: "3.7"
 author: "Codex"
 tags: [release, deploy, docker, github, appmarket, verification]
 params: [project_dir, version, release_channel, release_train, previous_version, image, runner_image, runner_id, apps_repo, validation_environment, production_environment]
 created: "2026-07-27T13:00:00Z"
-updated: "2026-10-08T00:18:57Z"
+updated: "2026-10-16T10:15:51Z"
 ---
 
 # Release KPanel
@@ -19,6 +19,9 @@ updated: "2026-10-08T00:18:57Z"
 
 ## Prerequisites
 
+- 按 `docs/project-management.md` 6.2.2、7.2 和第 10 节执行成组预检、有边界重试与证据复用。
+  同一授权范围的未公开小调整可先汇总为本地候选；需要用户及时验证、紧急修复或独立定位问题时仍可单独发 RC。
+  每个实际发布的 RC / 稳定版仍执行对应完整 L3；不能跨候选 SHA 复用整套发布通过结论。
 - 已阅读 `AGENTS.md`、`PROJECT_RULES.md` 和 `docs/project-management.md`，并取得用户对本次
   发布、推送的明确授权。
 - 发布范围已经由协调中心按精确提交哈希确认；当前只有一个发布任务、一个候选 worktree 和

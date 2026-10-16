@@ -62,6 +62,9 @@ git worktree list
 
 ## 执行与验证
 
+- 成组预检、有限重试和精确证据复用统一执行 `docs/project-management.md` 6.2.2 / 7.2；完整治理
+  入口自带离线前提检查，不另建平行工具清单。相同已通过验证不因换角色而重跑。
+
 - 使用 `rg` 定位受影响代码、测试和设计；先复用类型、限额、任务框架和 `kejilion.sh` 协议。
 - 修改使用最小、可回滚补丁。新网络入口、宿主机写操作、终端、归档、身份或迁移先覆盖失败边界。
 - 日常运行 `make verify-change`；L2 使用 `make verify-l2`；发布使用 `make verify-release`。定向测试用于
