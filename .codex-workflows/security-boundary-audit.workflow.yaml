@@ -39,33 +39,39 @@ review 档每次最多 6 组，按鉴权/凭据 > 跨节点/导入 > 其他排�
 
 ### 2. 导出盲审快照
 
-每组导出该目录整包（不只是 diff）与规范上下文，不含 Git 历史：
+导出粒度与回放基准一致，不含 Git 历史：
+
+- 目录不超过约 8000 行非测试代码：导出整个目录（不只是 diff）；
+- 更大的目录（如 `internal/panel`、`internal/cluster`）：只导出本次改动的文件，加上它们直接调用的同目录文件；
+- 目录少于约 300 行时，可把直接调用方所在目录一并导出。导出了哪些文件写进核实记录。
 
 ```bash
 snapshot="$(mktemp -d)/<group-slug>"
 mkdir -p "$snapshot"
-git -C "${{project_dir}}" archive HEAD -- <group> PROJECT_RULES.md docs/development-quality-standard.md \
+git -C "${{project_dir}}" archive HEAD -- <路径...> PROJECT_RULES.md docs/development-quality-standard.md \
   | tar -x -C "$snapshot"
 ```
-
-包组过小（单文件改动所在目录少于约 300 行）时，可把直接调用方所在目录一并导出，在记录里写明。
 
 ### 3. 盲审
 
 把 `.governance/security-audit/review-prompt.md` 的「提示正文」原样交给复核者，只替换 `{{SNAPSHOT}}`。
 不得附带实现说明、diff 解释、已知问题或期望结论。并发不超过 3 名复核者；单名复核者不设固定时长，
-回放基准中每组 1–4 分钟。复核者中断时用同一会话续跑，不重新起一轮。
+回放基准中每个 case 约 1–4 分钟。复核者中断时用同一会话续跑，不重新起一轮。复核者的最终报告原样保存到
+仓库外证据目录，再开始第 4 步。
 
 ### 4. 逐条核实与处置
 
-实现者对每条发现打开 file:line 追溯数据流，标记 confirmed / rejected（写一句理由）/ needs-validation：
+先去重：既有代码上、已记入仓库外安全待办的线索直接标 known，不重复核实。其余发现由实现者打开 file:line
+追溯数据流，标记 confirmed / rejected（写一句理由）/ needs-validation：
 
-- confirmed 紧急/高（第 11 节）：本候选内修复并补回归测试后才能交付；
-- confirmed 中：本候选修复，或记录负责人、触发条件和期限后作为独立修复任务；
+- 落在本候选改动的文件或函数上、confirmed 紧急/高（第 11 节）：本候选内修复并补回归测试后才能交付；
+- 落在本候选改动上、confirmed 中：本候选修复，或记录负责人、触发条件和期限后作为独立修复任务；
 - confirmed 低与 needs-validation：进入待办，不阻断；
-- 发现指向本次范围外的既有代码：同样核实，成立者开独立修复任务，不混入本候选。
+- 既有代码上的新发现：只核实新出现的紧急/高，其余记入待办。confirmed 紧急/高另起紧急修复任务，
+  不阻止本候选，但按第 11 节阻止下一次发布；不混入本候选。
 
 复核者给出的严重度只作参考，最终级别以实现者核实后的影响为准，判断依据写进修复提交或任务。
+安全待办与原始报告都保存在仓库外，攻击细节不入库。
 
 ### 5. 留痕
 
@@ -76,8 +82,10 @@ Security-Review: v1 scope=<group>[,<group>...] reviewer=<provider>/<model> findi
 ```
 
 findings 是复核者原始分级计数，confirmed/fixed/deferred 是核实后结果。确实无需审查时写
-`Security-Review: skipped reason=<理由>`（例如只改注释、只改测试辅助代码）。trailer 之后又改动同组代码
-时需重审该组。`check-collaboration-state.mjs --require-candidate` 只提醒 `security_review=missing|stale`，不失败。
+`Security-Review: skipped scope=<group>[,<group>...] reason=<理由>`（例如只改注释、只增删
+`internal/panel/server.go` 的路由注册），skip 只覆盖所列包组。trailer 只覆盖它所在提交及其祖先上的改动；
+之后又改动同组代码需重审该组。`check-collaboration-state.mjs --require-candidate` 只提醒
+`security_review=missing|stale`，不失败。
 
 ## Parameters
 
@@ -89,7 +97,8 @@ findings 是复核者原始分级计数，confirmed/fixed/deferred 是核实后�
 ## Verification
 
 - 每个 pending 组都有一名独立复核者的原始输出，且自由报告先于任何实现者解释落盘；
-- 每条发现都有核实结论，confirmed 紧急/高已在候选内修复并有回归测试；
+- 每条需核实的发现都有结论；本候选改动上的 confirmed 紧急/高已在候选内修复并有回归测试，
+  既有代码上的已另起紧急修复任务；
 - trailer 计数与核实记录一致，`security-review-scope.mjs` 对该范围输出 recorded。
 
 ## Notes

@@ -44,7 +44,7 @@
 安全盲审按 PROJECT_RULES.md 5.4 记录；已证实漏洞的处置仍按正常质量标准记录，盲审完成不代表安全通过。
 
 - 安全盲审补漏（quality-audit review 档）：基线 tag / 已审包组 / 未审余下包组 / 发现 H/M/L / confirmed、fixed、deferred：
-- 本周期候选 `Security-Review:` trailer 计数（recorded / skipped / 提醒仍为 missing 的候选）：
+- `node scripts/security-review-scope.mjs --base <上一稳定 tag>` 输出（recorded / missing / stale 包组）：
 - finding fingerprint / 修复 commit / 独立复核与回归证据：
 - 修复交付状态：源码 / RC / 稳定版 / 部署分别记录；stable tag 包含修复与公开 Release 的证据：
 - OCR 观察区间 / 适用候选计数及口径 / 有效、skipped、unreported 数 / 经抽查成立的 constrained-only：

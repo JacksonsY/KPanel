@@ -1,35 +1,55 @@
 {
   "schemaVersion": 1,
-  "boundaryRoots": ["internal", "cmd", "deploy", "packaging", "Dockerfile"],
-  "packageRoots": ["internal", "cmd"],
+  "boundaryRoots": [
+    "internal",
+    "cmd",
+    "deploy",
+    "packaging",
+    "Dockerfile"
+  ],
+  "packageRoots": [
+    "internal",
+    "cmd"
+  ],
   "nonBoundary": {
     "internal/version": "只含构建注入的版本常量，无输入、权限、文件或网络 I/O"
   },
-  "ignoreSuffixes": ["_test.go"],
-  "ignoreSegments": ["testdata"],
+  "ignoreSuffixes": [
+    "_test.go"
+  ],
+  "ignoreSegments": [
+    "testdata"
+  ],
   "scopedMaxAgeDays": 14,
   "fullMaxAgeDays": 30,
   "securityReview": {
-    "note": "PROJECT_RULES.md 5.4 自动参与范围：路径前缀，按所在目录分组；鉴权/会话、凭据与脱敏、跨节点、不可信导入、文件根约束、AI/MCP 工具和 Agent 特权入口",
+    "note": "PROJECT_RULES.md 5.4 自动参与范围：路径前缀，按所在目录分组。覆盖鉴权/会话、凭据与脱敏、跨节点与对端 Panel、不可信导入与远端内容、上传、文件根约束、主机 shell 输入、AI/MCP 工具和 Agent 特权入口。前端只列渲染不可信 HTML 的 v-html 入口与未鉴权分享页；其余界面改动不触发（XSS 汇点集中在这些文件）。internal/panel/server.go 含会话/CSRF/Origin 检查故保留，只增删路由注册时按 5.4 写 skipped。",
     "paths": [
       "cmd/kejilion-agent/",
       "cmd/kejilion-node/",
+      "cmd/kpanel-mcp/",
       "cmd/paneld/",
       "internal/agent/",
       "internal/agentclient/",
       "internal/ai/",
+      "internal/appmarket/",
       "internal/auth/",
       "internal/backup/",
       "internal/backupremote/",
+      "internal/bittorrent/",
       "internal/cluster/",
       "internal/contract/",
+      "internal/desktopwallpapers/",
       "internal/filemanager/",
       "internal/hostbackup/",
       "internal/hostpty/",
       "internal/httpstream/",
       "internal/mcpaccess/",
       "internal/mcpbridge/",
+      "internal/monitoring/",
       "internal/netpolicy/",
+      "internal/notification/",
+      "internal/offers/",
       "internal/redact/",
       "internal/remotedownload/",
       "internal/scenepacks/",
@@ -41,14 +61,23 @@
       "internal/panel/ai_",
       "internal/panel/backup_",
       "internal/panel/cluster",
+      "internal/panel/desktop_wallpapers.go",
       "internal/panel/file",
+      "internal/panel/job_terminal_input.go",
       "internal/panel/light_file.go",
+      "internal/panel/login_",
       "internal/panel/mcp",
+      "internal/panel/monitoring_federation.go",
+      "internal/panel/notification_channels.go",
       "internal/panel/panel_access.go",
       "internal/panel/passkey.go",
       "internal/panel/self_signed_tls.go",
       "internal/panel/server.go",
-      "internal/panel/totp.go"
+      "internal/panel/terminal",
+      "internal/panel/totp.go",
+      "internal/panel/tutorial_feed.go",
+      "web/src/components/ai/AiMarkdown.vue",
+      "web/src/views/ClusterShareView.vue"
     ]
   }
 }

@@ -42,8 +42,10 @@ test('trailer parsing requires a scope and finding counts, or a skip reason', ()
     { skipped: false, scope: ['internal/auth', 'internal/store'], valid: true });
   assert.equal(parseReviewTrailer('v1 scope=internal/auth').valid, false);
   assert.equal(parseReviewTrailer('v1 findings=H0/M0/L0').valid, false);
-  assert.deepEqual(parseReviewTrailer('skipped reason=rename-only'), { skipped: true, scope: [], valid: true });
-  assert.equal(parseReviewTrailer('skipped').valid, false);
+  assert.deepEqual(parseReviewTrailer('skipped scope=internal/auth reason=rename-only'),
+    { skipped: true, scope: ['internal/auth'], valid: true });
+  assert.equal(parseReviewTrailer('skipped reason=rename-only').valid, false);
+  assert.equal(parseReviewTrailer('skipped scope=internal/auth').valid, false);
 });
 
 test('only security-sensitive non-test paths create review groups', () => {
@@ -91,18 +93,68 @@ test('a covering trailer records a group until the group changes again', () => {
   }
 });
 
-test('a reasoned skip covers every group, while a malformed trailer covers nothing', () => {
+test('a skip covers only the groups it names, and a malformed trailer covers nothing', () => {
   const state = fixture();
   try {
+    state.write('internal/cluster/service.go');
+    state.commit('feat: cluster without review');
     state.write('internal/auth/service.go');
-    state.commit('feat: auth\n\nSecurity-Review: skipped');
+    state.commit('feat: auth\n\nSecurity-Review: skipped reason=comment-only');
     let result = reviewScopeState(state.root, state.base);
-    assert.equal(result.overall, 'missing');
+    assert.equal(summary(result), 'missing:internal/auth missing:internal/cluster');
     assert.equal(result.invalidTrailer, true);
 
-    state.commit('docs: skip\n\nSecurity-Review: skipped reason=comment-only');
+    state.commit('docs: skip auth\n\nSecurity-Review: skipped scope=internal/auth reason=comment-only');
     result = reviewScopeState(state.root, state.base);
-    assert.equal(result.overall, 'recorded');
+    assert.equal(summary(result), 'recorded:internal/auth missing:internal/cluster');
+  } finally {
+    state.cleanup();
+  }
+});
+
+test('a trailer on a sibling branch does not cover an unreviewed merged change', () => {
+  const state = fixture();
+  try {
+    state.git('checkout', '-q', '-b', 'unreviewed');
+    state.write('internal/auth/a.go');
+    state.commit('feat: unreviewed auth change');
+    state.git('checkout', '-q', 'main');
+    state.git('checkout', '-q', '-b', 'reviewed');
+    state.write('internal/auth/b.go');
+    state.commit('feat: reviewed auth change\n\nSecurity-Review: v1 scope=internal/auth reviewer=claude findings=H0/M0/L0');
+    state.git('checkout', '-q', 'main');
+    state.git('merge', '-q', '--no-ff', '-m', 'merge unreviewed', 'unreviewed');
+    state.git('merge', '-q', '--no-ff', '-m', 'merge reviewed', 'reviewed');
+    assert.equal(summary(reviewScopeState(state.root, state.base)), 'stale:internal/auth');
+  } finally {
+    state.cleanup();
+  }
+});
+
+test('a merge counts as a touch only for its own conflict resolution', () => {
+  const state = fixture();
+  const review = 'Security-Review: v1 scope=internal/auth reviewer=claude findings=H0/M0/L0';
+  try {
+    state.write('internal/auth/a.go', 'package auth\n// base\n');
+    state.commit('feat: auth base\n\n' + review);
+    const base = state.git('rev-parse', 'HEAD');
+    state.git('checkout', '-q', '-b', 'side');
+    state.write('internal/auth/a.go', 'package auth\n// side\n');
+    state.commit('feat: side\n\n' + review);
+    state.git('checkout', '-q', 'main');
+    state.write('internal/auth/b.go', 'package auth\n// main\n');
+    state.commit('feat: main\n\n' + review);
+    state.git('merge', '-q', '--no-ff', '-m', 'merge side cleanly', 'side');
+    assert.equal(reviewScopeState(state.root, base).overall, 'recorded');
+
+    state.git('checkout', '-q', '-b', 'other', base);
+    state.write('internal/auth/a.go', 'package auth\n// other\n');
+    state.commit('feat: other\n\n' + review);
+    state.git('checkout', '-q', 'main');
+    spawnSync('git', ['-C', state.root, 'merge', '-q', '--no-ff', 'other'], { encoding: 'utf8' });
+    state.write('internal/auth/a.go', 'package auth\n// resolved by hand\n');
+    state.commit('merge other with a hand resolution');
+    assert.equal(summary(reviewScopeState(state.root, base)), 'stale:internal/auth');
   } finally {
     state.cleanup();
   }

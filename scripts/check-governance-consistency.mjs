@@ -171,7 +171,7 @@ checkRepositoryHygiene();
 // push or in an ancestor already merged into the audit baseline. Machine floor:
 // the check flags ADDITIONS of sensitive audit artifacts whose fingerprints do
 // not appear in any fix commit on this branch or in main. The final human
-// judgment on the fix/artifact pairing stays with the push author per 5.4.
+// judgment on the fix/artifact pairing stays with the push author (5.4 disclosure boundary).
 function checkAuditArtifactDisclosure() {
   const sensitivePatterns = [
     /^\.governance\/security-audit\/run-[^/]+\/FINDINGS-DETAIL\.md$/i,
@@ -195,7 +195,7 @@ function checkAuditArtifactDisclosure() {
       .filter(Boolean);
   } catch {
     // No origin/main ref (e.g. fresh clone with minimal remotes): skip machine
-    // floor, the 5.4 push-ordering rule still binds the author.
+    // floor, the 5.4 disclosure boundary still binds the author.
     return;
   }
   const sensitiveAdds = diffNames.filter((name) => sensitivePatterns.some((pattern) => pattern.test(name)));
@@ -212,7 +212,7 @@ function checkAuditArtifactDisclosure() {
       }
     }
   }
-  // An empty findings array carries no attack detail (documented in 5.4).
+  // An empty findings array carries no attack detail.
   let carriesConfirmed = false;
   if (hasFindingsJson) {
     try {

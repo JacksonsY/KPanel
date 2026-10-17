@@ -59,6 +59,6 @@
     "hits": ["G1", "G4", "G5", "G7", "G8", "G9", "G12"],
     "misses": ["G2", "G3", "G6", "G10", "G11", "G13"],
     "cost": "5 reviewers in parallel, 68-243 s each (case-c 68 s after a resumed rate-limit stop), 121k-172k tokens each",
-    "sast": "CodeQL 2.27.1 go/javascript security-extended, Semgrep 1.178.0 (golang/typescript/javascript/owasp-top-ten), gosec 2.29.0 on the same parents: 0 of 13 hits; current main raised 105 / 33 / 211 alerts"
+    "sast": "CodeQL 2.27.1 go/javascript security-extended, Semgrep 1.178.0 (golang/typescript/javascript/owasp-top-ten), gosec 2.29.0 on the same parents: 0 of 13 hits; current main raised 107 (Go 105, JS 2) / 33 / 211 alerts. G1-G5 came from CF leads (run-1, run-2); the blind review hit 3 of them"
   }
 }

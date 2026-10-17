@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // PROJECT_RULES.md 5.4 security review scope: which security-sensitive package groups a range touched and
-// whether a later Security-Review trailer covers each one. Advisory only; it never blocks a candidate.
+// whether a Security-Review trailer covers each touch. Advisory only; it never blocks a candidate.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -33,58 +33,62 @@ export function reviewGroup(policy, path) {
   return dirname(path).replaceAll('\\', '/');
 }
 
-// "Security-Review: skipped reason=<why>" covers every group; otherwise scope=a,b lists package groups.
+// Both forms name the groups they cover with scope=a,b: a review adds raw finding counts,
+// "skipped" adds a reason. A skip never covers groups it does not name.
 export function parseReviewTrailer(value) {
   const text = value.trim();
-  if (/^skipped(?:\s|$)/.test(text)) return { skipped: true, scope: [], valid: /\sreason=\S/.test(text) };
+  const skipped = /^skipped(?:\s|$)/.test(text);
   const scope = text.match(/(?:^|\s)scope=(\S+)/)?.[1]?.split(',').filter(Boolean) ?? [];
-  const findings = /(?:^|\s)findings=H\d+\/M\d+\/L\d+(?:\s|$)/.test(text);
-  return { skipped: false, scope, valid: scope.length > 0 && findings };
+  const detail = skipped ? /(?:^|\s)reason=\S/.test(text) : /(?:^|\s)findings=H\d+\/M\d+\/L\d+(?:\s|$)/.test(text);
+  return { skipped, scope, valid: scope.length > 0 && detail };
 }
 
 function covers(trailer, group) {
-  return trailer.skipped || trailer.scope.some((entry) => group === entry || group.startsWith(entry + '/'));
+  return trailer.scope.some((entry) => group === entry || group.startsWith(entry + '/'));
 }
 
 export function reviewScopeState(root, baseRef, headRef = 'HEAD') {
   const policy = loadReviewPolicy(root);
-  const range = baseRef + '..' + headRef;
-  // Newest first; each commit carries its touched review groups and its Security-Review trailers.
-  const commits = [];
-  const log = git(root, ['log', '--topo-order', '--no-renames', '--name-only',
-    '--format=%x1e%H%x1f%(trailers:key=Security-Review,valueonly,separator=%x1d)%x1f', range]);
+  // --cc lists, for a merge, only paths that differ from every parent, so a merge counts as a touch
+  // only for its own conflict resolution; the merged commits carry their changes themselves.
+  const log = git(root, ['log', '--no-renames', '--cc', '--name-only',
+    '--format=%x1e%H%x1f%(trailers:key=Security-Review,valueonly,separator=%x1d)%x1f', baseRef + '..' + headRef]);
+  const touches = new Map();
+  const trailers = [];
   for (const record of log.split('\x1e').slice(1)) {
-    const [hash, trailers, files] = record.split('\x1f');
-    const groups = new Set();
+    const [hash, values, files] = record.split('\x1f');
     for (const path of (files ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)) {
       const group = reviewGroup(policy, path);
-      if (group) groups.add(group);
+      if (!group) continue;
+      if (!touches.has(group)) touches.set(group, new Set());
+      touches.get(group).add(hash);
     }
-    commits.push({
-      hash,
-      groups,
-      trailers: trailers.split('\x1d').map((value) => value.trim()).filter(Boolean).map(parseReviewTrailer),
-    });
+    for (const value of values.split('\x1d').map((entry) => entry.trim()).filter(Boolean)) {
+      trailers.push({ hash, ...parseReviewTrailer(value) });
+    }
   }
-  const groups = new Map();
-  commits.forEach((commit, index) => {
-    for (const group of commit.groups) if (!groups.has(group)) groups.set(group, index);
-  });
+  // A touch is covered only by a trailer on the touch itself or on a descendant of it, never by a trailer
+  // that merely sorts later on a sibling branch.
+  const reachable = new Map();
+  const ancestors = (hash) => {
+    if (!reachable.has(hash)) {
+      reachable.set(hash, new Set(git(root, ['rev-list', baseRef + '..' + hash]).split(/\r?\n/).filter(Boolean)));
+    }
+    return reachable.get(hash);
+  };
   const result = [];
-  for (const [group, newestTouch] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
-    let state = 'missing';
-    for (let index = 0; index < commits.length; index += 1) {
-      if (!commits[index].trailers.some((trailer) => trailer.valid && covers(trailer, group))) continue;
-      state = index <= newestTouch ? 'recorded' : 'stale';
-      break;
+  for (const [group, commits] of [...touches].sort(([a], [b]) => a.localeCompare(b))) {
+    const relevant = trailers.filter((trailer) => trailer.valid && covers(trailer, group));
+    let covered = 0;
+    for (const commit of commits) {
+      if (relevant.some((trailer) => ancestors(trailer.hash).has(commit))) covered += 1;
     }
-    result.push({ group, state });
+    result.push({ group, state: covered === commits.size ? 'recorded' : covered === 0 ? 'missing' : 'stale' });
   }
-  const invalid = commits.some((commit) => commit.trailers.some((trailer) => !trailer.valid));
   const overall = result.length === 0 ? 'not-applicable'
     : result.some((entry) => entry.state === 'missing') ? 'missing'
       : result.some((entry) => entry.state === 'stale') ? 'stale' : 'recorded';
-  return { overall, groups: result, invalidTrailer: invalid };
+  return { overall, groups: result, invalidTrailer: trailers.some((trailer) => !trailer.valid) };
 }
 
 export function formatState(state) {
@@ -111,7 +115,8 @@ function main(argv) {
     else if (flag === '--help') return process.stdout.write(usage() + '\n');
     else throw new Error('unknown argument ' + argv[index]);
   }
-  if (!options.base || !['text', 'json'].includes(options.format)) throw new Error('--base is required');
+  if (!options.base) throw new Error('--base is required');
+  if (!['text', 'json'].includes(options.format)) throw new Error('--format must be text or json');
   const root = git(options.repo, ['rev-parse', '--show-toplevel']).trim();
   const state = reviewScopeState(root, options.base, options.head);
   if (options.format === 'json') process.stdout.write(JSON.stringify(state, null, 2) + '\n');

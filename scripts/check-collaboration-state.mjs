@@ -5,7 +5,9 @@ import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 
 import { FALLBACK_REASONS, parseReviewTrailer } from './report-governance-health.mjs';
-import { formatState as formatSecurityReview, reviewScopeState } from './security-review-scope.mjs';
+
+// Loaded dynamically: a missing or broken PROJECT_RULES.md 5.4 module degrades to "unavailable", never a failure.
+const securityReviewScope = await import('./security-review-scope.mjs').catch(() => null);
 
 function usage() {
   return [
@@ -121,9 +123,10 @@ function ocrLineReviewState(root, baseRef) {
 // PROJECT_RULES.md 5.4 advisory: candidates touching security-sensitive package groups get a blind security review.
 // A broken policy or Git query is reported as unavailable instead of failing delivery.
 function securityReviewState(root, baseRef) {
+  if (!securityReviewScope) return 'unavailable';
   try {
-    const state = reviewScopeState(root, baseRef);
-    return state.overall === 'not-applicable' ? null : formatSecurityReview(state);
+    const state = securityReviewScope.reviewScopeState(root, baseRef);
+    return state.overall === 'not-applicable' ? null : securityReviewScope.formatState(state);
   } catch {
     return 'unavailable';
   }

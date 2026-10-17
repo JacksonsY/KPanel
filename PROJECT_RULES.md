@@ -431,23 +431,29 @@ L2，未知值或重复声明拒绝执行。L3 声明不代表 L3 已完成，�
 
 机器扫描（govulncheck、npm audit、Trivy）只覆盖已知依赖漏洞、密钥和配置。鉴权与限速、跨节点越权、不可信
 导入越界、凭据脱敏、AI/MCP 工具边界和资源无界这类逻辑漏洞，由本节的轻量模型盲审补齐。依据 2026-10-17
-回放基准（13 条已修复的真实漏洞，见 `.governance/security-audit/README.md`）：包级盲审命中 7 条，每组 1–4
-分钟；CodeQL、Semgrep、gosec 在同一修复前版本命中 0 条，主线告警分别为 105、33、211 条。此前 CF 二十余轮
-运行只有 run-1 一条 confirmed。因此不引入 SAST 门禁，CF 不再是执行入口。唯一执行入口为
+回放基准（13 条已修复的真实漏洞，见 `.governance/security-audit/README.md`）：盲审命中 7 条，每个 case
+一名复核者用时约 1–4 分钟；CodeQL、Semgrep、gosec 在同一修复前版本命中 0 条，主线告警分别为 107（Go 105、
+JS 2）、33、211 条，因此不引入 SAST 门禁。基准中 G1–G5 本身来自 CF 线索，CF 有效，但单轮成本高（run-41 为
+4349 秒、12 次调用）且需要专门编排，长期没有固定入口；盲审以低一个量级的成本获得候选内的固定入口，
+CF 不再是执行入口。唯一执行入口为
 [.codex-workflows/security-boundary-audit.workflow.yaml](.codex-workflows/security-boundary-audit.workflow.yaml)，本节不复制其命令。
 
 - **自动参与**：代码候选改动触及 `.governance/security-audit/boundary-policy.json` 的 `securityReview.paths`
   时，写任务在候选提交后、预览与最终核验前，不待提示执行 candidate 档（`session-collaboration` 第 4 步）。
   范围由 `scripts/security-review-scope.mjs` 按目录分组给出；纯文档、治理文本、测试和发布操作不适用。
-- **盲审**：每组由不含实现上下文的新会话或子代理审查整包（不只是 diff），使用仓库固定的
-  `.governance/security-audit/review-prompt.md`，不附实现说明或期望结论。不限定提供商和模型，记录实际配置。
-- **核实与处置**：实现者逐条追溯 file:line，标记 confirmed / rejected / needs-validation。confirmed 的
-  紧急/高按 `docs/development-quality-standard.md` 第 11 节阻止交付，必须在候选内修复并补回归测试；中级
-  本候选修复或设负责人、触发条件和期限；低级与 needs-validation 进入待办。复核者的分级只作参考。
+- **盲审**：每组由不含实现上下文的新会话或子代理审查，导出粒度与基准一致（工作流写明大目录只导出改动
+  文件及其直接依赖），使用仓库固定的 `.governance/security-audit/review-prompt.md`，不附实现说明或期望结论。
+  不限定提供商和模型，记录实际配置。
+- **核实与处置**：实现者核实落在本候选改动文件上的发现，以及新出现的紧急/高；既有代码上已记入仓库外
+  待办的线索不重复核实。逐条标记 confirmed / rejected / needs-validation，复核者的分级只作参考。
+  本候选引入或改动的缺陷若为 confirmed 紧急/高（`docs/development-quality-standard.md` 第 11 节），在候选内
+  修复并补回归测试后才能交付；中级本候选修复或设负责人、触发条件和期限；低级与 needs-validation 进入待办。
+  既有代码上的 confirmed 紧急/高不阻止本候选，按第 11 节另起紧急修复，并阻止下一次发布。
   未核实的线索不能写成漏洞，盲审完成也不能写成"已安全"。
-- **留痕与提醒**：候选写 `Security-Review:` trailer（范围、复核者、原始分级计数、核实结果），确实无需审查
-  写 `Security-Review: skipped reason=<理由>`。`check-collaboration-state.mjs --require-candidate` 对缺
-  trailer 或 trailer 后又改同组代码的候选输出 `security_review=missing|stale` 提醒，不失败。
+- **留痕与提醒**：候选写 `Security-Review:` trailer（范围、复核者、原始分级计数、核实结果）；确实无需审查
+  （只改注释、只增删路由注册等）写 `Security-Review: skipped scope=<包组> reason=<理由>`，skip 只覆盖所列包组。
+  覆盖按祖先关系计算：只有触及提交本身或其后代上的 trailer 才算覆盖。`check-collaboration-state.mjs
+  --require-candidate` 对仍有未覆盖触及的候选输出 `security_review=missing|stale` 提醒，不失败。
 - **稳定版前补漏**：`quality-audit-kpanel` 以上一稳定 tag 为基线运行 review 档，审查仍为 missing/stale 的
   包组，每次最多 6 组，余下记入验收记录。补漏不阻断发布；其中核实的紧急/高仍按第 11 节阻止发布。
 - **审计器回归**：修改提示、默认做法或复核方式前，在回放基准上盲跑，命中不得低于基线；新修复的真实漏洞
@@ -458,7 +464,8 @@ L2，未知值或重复声明拒绝执行。L3 声明不代表 L3 已完成，�
   每次候选人工核对的承受量时，再提出接入；接入走依赖策略和独立治理变更。
 - **CF 历史**：`.governance/security-audit/run-*` 历史产物、`scripts/check-security-audit-coverage.mjs`
   覆盖查询与固定 pin 只读保留，历史 verdict 不改写，未完成 run 不改写为通过。用户明确要求深度审计时
-  才可单独执行 CF，结果同样逐条核实。旧 14/30 天、稳定前补审、豁免与 `Security-Audit:` trailer 均不再适用。
+  才可单独执行 CF，结果同样逐条核实。旧 14/30 天、稳定前补审、豁免与 `Security-Audit:` trailer 均不再适用；
+  `check-governance-consistency.mjs` 对 run-* 攻击细节产物的披露检查继续有效。
 
 ### 5.5 行级评审辅助（open-code-review，试行）
 
