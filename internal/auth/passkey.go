@@ -189,30 +189,10 @@ func (p *PasskeyService) consume(id, purpose, binding string) (passkeyCeremony, 
 	return c, nil
 }
 
-// Management factors share a separate, persistent budget including failed
-// second factors: a correct password must not reset the TOTP guessing budget.
+// Management factors share one persistent budget with the TOTP management
+// endpoints, including failed second factors.
 func (p *PasskeyService) reauthenticate(userID, password, second string) (store.User, error) {
-	s := p.auth
-	now := s.now()
-	key := "passkey-reauth:" + userID
-	if !s.reserveAuthenticationAttempt(key, now.Add(-s.config.LoginWindow), s.config.MaxLoginFailures) {
-		return store.User{}, &RateLimitError{RetryAfter: s.config.LoginWindow}
-	}
-	defer s.releaseAuthenticationAttempt(key)
-	user, err := s.verifyCurrentPassword(userID, password)
-	if err == nil && user.TOTPSecret != "" {
-		err = s.verifyAndConsumeSecondFactor(user, second, now)
-		if err != nil && !errors.Is(err, ErrSecondFactorUnavailable) {
-			err = ErrInvalidSecondFactor
-		}
-	}
-	if recordErr := s.store.RecordLoginAttempt(store.LoginAttempt{Key: key, OccurredAt: now, Success: err == nil}, now.Add(-s.config.LoginWindow)); recordErr != nil {
-		return store.User{}, recordErr
-	}
-	if err != nil {
-		return store.User{}, err
-	}
-	return s.store.UserByID(userID)
+	return p.auth.verifyManagementFactors(userID, password, second)
 }
 
 // VerifyManagementFactors applies the same current-password and second-factor

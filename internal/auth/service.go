@@ -408,18 +408,12 @@ func (s *Service) ConfirmTOTPEnrollment(userID, enrollmentID, code string) ([]st
 func (s *Service) RegenerateRecoveryCodes(userID, currentPassword, secondFactor string) ([]string, error) {
 	s.credentialMu.Lock()
 	defer s.credentialMu.Unlock()
-	user, err := s.verifyCurrentPassword(userID, currentPassword)
+	user, err := s.verifyManagementFactors(userID, currentPassword, secondFactor)
 	if err != nil {
 		return nil, err
 	}
 	if user.TOTPSecret == "" {
 		return nil, ErrTOTPDisabled
-	}
-	if err := s.verifyAndConsumeSecondFactor(user, secondFactor, s.now()); err != nil {
-		if errors.Is(err, ErrSecondFactorUnavailable) {
-			return nil, err
-		}
-		return nil, ErrInvalidSecondFactor
 	}
 	codes, hashes, err := generateRecoveryCodes()
 	if err != nil {
@@ -434,18 +428,12 @@ func (s *Service) RegenerateRecoveryCodes(userID, currentPassword, secondFactor 
 func (s *Service) DisableTOTP(userID, currentPassword, secondFactor string) error {
 	s.credentialMu.Lock()
 	defer s.credentialMu.Unlock()
-	user, err := s.verifyCurrentPassword(userID, currentPassword)
+	user, err := s.verifyManagementFactors(userID, currentPassword, secondFactor)
 	if err != nil {
 		return err
 	}
 	if user.TOTPSecret == "" {
 		return ErrTOTPDisabled
-	}
-	if err := s.verifyAndConsumeSecondFactor(user, secondFactor, s.now()); err != nil {
-		if errors.Is(err, ErrSecondFactorUnavailable) {
-			return err
-		}
-		return ErrInvalidSecondFactor
 	}
 	if err := s.store.DisableUserTOTP(userID, s.now()); err != nil {
 		if errors.Is(err, store.ErrConflict) {
@@ -454,6 +442,37 @@ func (s *Service) DisableTOTP(userID, currentPassword, secondFactor string) erro
 		return err
 	}
 	return nil
+}
+
+// managementFactorKeyPrefix keys the budget shared by every check that needs
+// the current password and, when enabled, the second factor. The prefix keeps
+// its original passkey name so failures recorded before an upgrade still count.
+const managementFactorKeyPrefix = "passkey-reauth:"
+
+// verifyManagementFactors applies one persistent per-user budget to the
+// current password and second factor together. A failed second factor is
+// recorded on that budget, so a correct password never resets it.
+func (s *Service) verifyManagementFactors(userID, password, second string) (store.User, error) {
+	now := s.now()
+	key := managementFactorKeyPrefix + userID
+	if !s.reserveAuthenticationAttempt(key, now.Add(-s.config.LoginWindow), s.config.MaxLoginFailures) {
+		return store.User{}, &RateLimitError{RetryAfter: s.config.LoginWindow}
+	}
+	defer s.releaseAuthenticationAttempt(key)
+	user, err := s.verifyCurrentPassword(userID, password)
+	if err == nil && user.TOTPSecret != "" {
+		err = s.verifyAndConsumeSecondFactor(user, second, now)
+		if err != nil && !errors.Is(err, ErrSecondFactorUnavailable) {
+			err = ErrInvalidSecondFactor
+		}
+	}
+	if recordErr := s.store.RecordLoginAttempt(store.LoginAttempt{Key: key, OccurredAt: now, Success: err == nil}, now.Add(-s.config.LoginWindow)); recordErr != nil {
+		return store.User{}, recordErr
+	}
+	if err != nil {
+		return store.User{}, err
+	}
+	return s.store.UserByID(userID)
 }
 
 func (s *Service) verifyCurrentPassword(userID, currentPassword string) (store.User, error) {

@@ -220,3 +220,86 @@ func TestTOTPEnrollmentLoginRecoveryRotationAndDisable(t *testing.T) {
 		t.Fatalf("password login after disable failed: %#v err=%v", plainLogin.User, err)
 	}
 }
+
+func TestTOTPManagementSecondFactorFailuresConsumeTheBudget(t *testing.T) {
+	directory := t.TempDir()
+	storage, err := store.Open(filepath.Join(directory, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	service, err := NewService(storage, testHasher(t), Config{
+		BootstrapTokenPath: filepath.Join(directory, "bootstrap.token"),
+		TOTPKeyPath:        filepath.Join(directory, "totp.key"),
+		SessionTTL:         time.Hour,
+		LoginWindow:        time.Minute,
+		MaxLoginFailures:   3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_800_000_000, 0).UTC()
+	service.now = func() time.Time { return now }
+	if err := service.EnsureBootstrapToken(); err != nil {
+		t.Fatal(err)
+	}
+	token, err := os.ReadFile(filepath.Join(directory, "bootstrap.token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := service.Bootstrap(string(token), "admin", "a-strong-password-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID := initial.User.ID
+	enrollment, err := service.StartTOTPEnrollment(userID, "a-strong-password-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := totpAtStep(enrollment.Secret, now.Unix()/30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ConfirmTOTPEnrollment(userID, enrollment.ID, code); err != nil {
+		t.Fatal(err)
+	}
+	wrongCode := "000000"
+	for _, candidate := range []string{"000000", "111111", "222222"} {
+		if _, valid := matchTOTPStep(enrollment.Secret, candidate, now); !valid {
+			wrongCode = candidate
+			break
+		}
+	}
+
+	// Each guess carries the correct password, which must not reset the
+	// budget that the wrong second factor consumes. Both endpoints share it.
+	if err := service.DisableTOTP(userID, "a-strong-password-1", wrongCode); !errors.Is(err, ErrInvalidSecondFactor) {
+		t.Fatalf("first disable guess error = %v", err)
+	}
+	if _, err := service.RegenerateRecoveryCodes(userID, "a-strong-password-1", wrongCode); !errors.Is(err, ErrInvalidSecondFactor) {
+		t.Fatalf("regenerate guess error = %v", err)
+	}
+	if err := service.DisableTOTP(userID, "a-strong-password-1", wrongCode); !errors.Is(err, ErrInvalidSecondFactor) {
+		t.Fatalf("third guess error = %v", err)
+	}
+	nextCode, err := totpAtStep(enrollment.Secret, now.Unix()/30+1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rateLimited *RateLimitError
+	if err := service.DisableTOTP(userID, "a-strong-password-1", nextCode); !errors.As(err, &rateLimited) {
+		t.Fatalf("disable after exhausted budget error = %v, want RateLimitError", err)
+	}
+	if status, err := service.TOTPStatus(userID); err != nil || !status.Enabled {
+		t.Fatalf("TOTP status after refused disable = %#v, err=%v", status, err)
+	}
+
+	service.now = func() time.Time { return now.Add(2 * time.Minute) }
+	laterCode, err := totpAtStep(enrollment.Secret, now.Add(2*time.Minute).Unix()/30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DisableTOTP(userID, "a-strong-password-1", laterCode); err != nil {
+		t.Fatalf("disable after the window error = %v", err)
+	}
+}
