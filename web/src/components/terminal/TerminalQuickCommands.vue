@@ -235,7 +235,7 @@ async function remove(): Promise<void> {
           class="terminal-command-tab"
           :class="{ 'is-active': tab === item.id }"
           :aria-selected="tab === item.id"
-          :aria-controls="`terminal-command-panel-${item.id}`"
+          :aria-controls="tab === item.id ? `terminal-command-panel-${item.id}` : undefined"
           :tabindex="tab === item.id ? 0 : -1"
           @click="selectTab(item.id)"
         >

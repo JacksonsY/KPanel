@@ -64,12 +64,16 @@ function hostLabel(item: TerminalHistoryEntry): string {
   return props.hostNames?.[item.hostId] || t('terminal.historyOtherHost')
 }
 
+// One formatter pair per locale instead of one per row and render.
+const timeFormats = computed(() => ({
+  today: new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit' }),
+  earlier: new Intl.DateTimeFormat(locale.value, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+}))
+
 function timeLabel(at: number): string {
   const date = new Date(at)
   const sameDay = date.toDateString() === new Date().toDateString()
-  return new Intl.DateTimeFormat(locale.value, sameDay
-    ? { hour: '2-digit', minute: '2-digit' }
-    : { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date)
+  return (sameDay ? timeFormats.value.today : timeFormats.value.earlier).format(date)
 }
 
 function primaryTitle(item: TerminalHistoryEntry): string {

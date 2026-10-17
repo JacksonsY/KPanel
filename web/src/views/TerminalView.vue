@@ -347,9 +347,13 @@ function executeQuickCommand(command: string): void {
   terminalRefs.get(activeSessionId.value)?.executeCommand(command)
 }
 
+// The composer holds one line; a multi-line batch command can only be run.
 function fillHistoryCommand(command: string): void {
-  const handle = terminalRefs.get(activeSessionId.value)
-  if (handle && !handle.fillCommand(command)) toast.danger(t('terminal.historyFillUnavailable'))
+  if (command.includes('\n')) {
+    toast.danger(t('terminal.historyFillUnavailable'))
+    return
+  }
+  terminalRefs.get(activeSessionId.value)?.fillCommand(command)
 }
 
 function toggleConnections(): void {

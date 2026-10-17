@@ -44,6 +44,8 @@ describe('terminal command history', () => {
     const tabs = wrapper.findAll('[role="tab"]')
     expect(tabs.map((tab) => tab.text())).toEqual(['快捷命令1', '历史命令'])
     expect(tabs[0]!.attributes('aria-selected')).toBe('true')
+    expect(tabs[0]!.attributes('aria-controls')).toBe('terminal-command-panel-quick')
+    expect(tabs[1]!.attributes('aria-controls')).toBeUndefined()
     expect(wrapper.find('[aria-label="添加命令"]').exists()).toBe(true)
 
     await tabs[1]!.trigger('click')
