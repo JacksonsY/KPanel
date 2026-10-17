@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/kejilion/kejilion-panel/internal/store"
 )
@@ -79,6 +80,17 @@ func TestSuffixedFileTransferNamePreservesExtensionAndByteLimit(t *testing.T) {
 	got := suffixedFileTransferName(strings.Repeat("界", 100)+".txt", 999)
 	if len(got) > 255 || !strings.HasSuffix(got, " (999).txt") {
 		t.Fatalf("bounded unicode suffix bytes=%d value=%q", len(got), got)
+	}
+}
+
+func TestSuffixedFileTransferNameBoundsOversizedExtension(t *testing.T) {
+	for _, name := range []string{"a." + strings.Repeat("x", 253), "a." + strings.Repeat("界", 84), "a." + strings.Repeat("x", 1000)} {
+		for _, attempt := range []int{1, 999} {
+			got := suffixedFileTransferName(name, attempt)
+			if len(got) > 255 || !utf8.ValidString(got) || !strings.Contains(got, " (") || got == name {
+				t.Fatalf("invalid collision name: attempt=%d bytes=%d value=%q", attempt, len(got), got)
+			}
+		}
 	}
 }
 

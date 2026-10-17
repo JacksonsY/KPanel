@@ -759,6 +759,11 @@ func suffixedFileTransferName(name string, attempt int) string {
 		stem = name[:dot]
 	}
 	suffix := " (" + strconv.Itoa(attempt) + ")"
+	// An untrusted extension can consume the entire filename budget. Treat
+	// that name as a stem so truncation always terminates and keeps the suffix.
+	if len(extension)+len(suffix) >= 255 {
+		stem, extension = name, ""
+	}
 	limit := 255 - len(extension) - len(suffix)
 	for len(stem) > limit {
 		_, size := utf8.DecodeLastRuneInString(stem)
