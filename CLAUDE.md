@@ -45,9 +45,9 @@
 - 证据只对精确提交、环境、工具和参数有效；未变化时复用，变化时从受影响层重跑。
 - L2/L3 代码候选或代码改动 ≥30 行的 L1 候选，在预览与最终核验前自动执行 `PROJECT_RULES.md` 5.5 的 OCR 行级评审（共享入口
   `.codex-workflows/ocr-line-review.workflow.yaml`，不另建 Claude 平行命令），并写 `OCR-Review:` trailer。
-- CF 审计按 `PROJECT_RULES.md` 5.4 作为可选候选辅助；候选、集成与发布不要求运行、补审、豁免或
-  `Security-Audit:` trailer。需要执行时才调用 `security-boundary-audit`，采用该节预算与固定模型配置；
-  产出进入独立候选修复流程，未完成审计不阻断主线，已证实漏洞按正常风险规则处理。
+- 代码候选触及 `securityReview.paths` 安全敏感包时，在候选提交后、预览与最终核验前自动执行 `PROJECT_RULES.md`
+  5.4 安全盲审（共享入口 `.codex-workflows/security-boundary-audit.workflow.yaml`，用不含实现上下文的子代理审整包，
+  逐条核实），写 `Security-Review:` trailer；confirmed 紧急/高在候选内修复。
 - `.codex-workflows/` 是 Codex 执行适配层。Claude 可参考步骤，但共享规则仍以根规范和项目管理文档为准。
 - 发现 `HEAD`、分支、文件或所有权非预期变化时立即停止并按冲突恢复流程保留现场，不执行破坏性清理。
 

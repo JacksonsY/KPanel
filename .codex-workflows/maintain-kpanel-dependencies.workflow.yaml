@@ -39,8 +39,8 @@ node scripts/report-dependency-freshness.mjs --format markdown
 **Expected output:** 精确基线、检测时间、所有检测源状态和版本通道稳定候选明确；部分检测失败不被解释为“全部最新”。
 报告中的候选仅代表版本通道稳定；到期例外或 EOL 复核会产生失败信号，当前依赖图的安全通告由每日只读
 审计和依赖相关提交的主 CI 提供独立证据。
-完整性指必需产品检测源；CF 工具按 PROJECT_RULES.md 5.4 默认 not-requested，可选信号不进入本流程
-的采用期限或例外队列。显式选择该工具升级时做固定 pin 兼容检查，不自动启动产品 scoped/full。
+完整性指必需产品检测源；CF 工具按 PROJECT_RULES.md 5.4 已退为历史只读，默认 not-requested，可选信号不进入
+本流程的采用期限或例外队列。显式选择该工具升级时只做固定 pin 兼容检查，不启动产品审计。
 
 ### 2. 对候选做采用分类
 

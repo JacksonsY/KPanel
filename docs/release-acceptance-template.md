@@ -41,14 +41,14 @@
 
 ## 外部审计与修复交付
 
-CF 栏目仅在有相关辅助结果时填写，不是发布前置；已证实漏洞的处置仍按正常质量标准记录。
+安全盲审按 PROJECT_RULES.md 5.4 记录；已证实漏洞的处置仍按正常质量标准记录，盲审完成不代表安全通过。
 
-- 安全审计 run / 精确源码基线 / 范围与未覆盖项：
-- 覆盖检查（CF 可选；未运行可省略或写 not-run，查询失败写 unavailable；运行时记录真实 decision/范围，不要求补审或豁免，不代表安全通过）：
+- 安全盲审补漏（quality-audit review 档）：基线 tag / 已审包组 / 未审余下包组 / 发现 H/M/L / confirmed、fixed、deferred：
+- 本周期候选 `Security-Review:` trailer 计数（recorded / skipped / 提醒仍为 missing 的候选）：
 - finding fingerprint / 修复 commit / 独立复核与回归证据：
 - 修复交付状态：源码 / RC / 稳定版 / 部署分别记录；stable tag 包含修复与公开 Release 的证据：
 - OCR 观察区间 / 适用候选计数及口径 / 有效、skipped、unreported 数 / 经抽查成立的 constrained-only：
-- 按 PROJECT_RULES.md 5.4/5.5 记录本稳定周期的观察结果；不足三个周期不提前宣称工具有效或应退出。
+- 按 PROJECT_RULES.md 5.5 记录本稳定周期的 OCR 观察结果；不足三个周期不提前宣称工具有效或应退出。
 - 候选分支的原始 tip、归档位置和远端核验统一填写本模板既有候选处置字段，遵守 `docs/release-channels.md`。
 
 ## 跨仓库联动判定

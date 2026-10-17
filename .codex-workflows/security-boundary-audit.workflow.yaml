@@ -1,116 +1,101 @@
 ---
 name: security-boundary-audit
-description: "可选 CF 候选辅助：限时、聚焦、只读发现与独立验证，不阻断候选、集成或发布"
-version: "2.0"
-author: "Codex"
-tags: [security, audit, trust-boundary, governance]
-params: [project_dir, baseline_ref, ledger_dir, profile, scope_paths, skill_dir, governance_dir]
+description: "安全盲审：按改动触及的安全敏感包，由无实现上下文的复核者盲审整包，逐条核实后修复或分级记录"
+version: "3.0"
+author: "Claude"
+tags: [security, audit, trust-boundary, review]
+params: [project_dir, base_ref, profile, groups]
 created: "2026-09-18T00:00:00+08:00"
-updated: "2026-10-16T00:00:00+08:00"
+updated: "2026-10-17T00:00:00+08:00"
 ---
 
-# KPanel Optional Security Boundary Audit
+# KPanel Security Blind Review
 
 ## Purpose
 
-按 PROJECT_RULES.md 5.4 为独立候选分支提供有价值的安全线索。普通开发、集成、RC、稳定发布和补验
-不必调用本 workflow，不自动追赶历史审计积压，不要求 Security-Audit trailer 或限期豁免。
-产品 L0-L3、依赖漏洞扫描与已证实高风险漏洞响应继续按原标准执行。
+按 PROJECT_RULES.md 5.4 补齐 govulncheck / npm audit / Trivy 覆盖不到的逻辑漏洞：鉴权与限速、跨节点越权、
+不可信导入越界、凭据脱敏、AI/MCP 工具边界和资源无界。一个包组一名复核者，几分钟完成；只有经实现者
+逐条核实为紧急/高的漏洞按 docs/development-quality-standard.md 第 11 节阻止交付，其余分级记录。
 
 ## Prerequisites
 
-- 只在明确选择辅助任务时读取固定 pin 的 Cloudflare security-audit-skill/SKILL.md 与必要阶段说明。
-  上游更新只作候选，不自动升级 pin 或为维护工具启动产品审计。
-  上游全量编排、自动续跑或强制完整报告若与项目 5.4 的选定范围/预算/停止条件冲突，以项目规则为准；
-  因此省略必要步骤时只能标记 incomplete，不能宣称完成上游完整流程或覆盖。
-- guidance 仅回答、不写文件、不编排子代理；scoped 选定单个功能或相关不变量；full 仅接受用户明确
-  请求并在启动前确定预算。覆盖查询不是启动指令。
-- scoped 默认预算引用 PROJECT_RULES.md 5.4；记录最大时间、调用数（含负责人）、并发和停止条件。
-  没有独立资源直接 deferred，不能抢占产品发布资源或让发布等待。禁止自动续跑、补样本或扩大范围。
-- scoped/full 的专用负责人及每个侦察、hunter、coverage critic、独立验证和记录核验子代理均显式
-  使用 gpt-6-luna / max；不可用如实结束，不能静默替换。该配置不限制独立治理复核。
-- project_dir 是干净的专用源码 worktree，只读目标；ledger_dir 是仓库外新目录。无 OS 沙箱
-  （隔离网络、资源限额、scratch-only 写）禁止执行目标代码，动态能力不足保留 needs_validation。
+- project_dir 是精确候选提交的 clean worktree；base_ref 是任务精确基线（candidate）或上一稳定 tag（review）。
+- profile：candidate（写任务在候选提交后、预览与最终核验前自动执行）或 review（quality-audit 稳定版前补漏）。
+- 复核者必须是不含实现上下文的新会话或子代理，任何提供商、任何具备代码阅读能力的模型均可；记录实际
+  provider/model。实现者本人的上下文不能充当复核者。
+- 未修复线索的攻击细节只保存在仓库外；提交、trailer 与公开文档只写计数和修复描述。
 
 ## Steps
 
-### 1. 冻结选定范围与预算
-
-记录 source_ref/tree/clean、治理入口提交、上游 pin、选定路径/不变量、预期产物及停止条件。
-开始/结束使用同一入口绑定源码身份：
+### 1. 确定包组
 
 ```bash
-node "${{governance_dir}}/scripts/security-audit-baseline.mjs" "${{project_dir}}" "${{baseline_ref}}"
+node scripts/security-review-scope.mjs --base "${{base_ref}}"
 ```
 
-身份改变时停止并保存现场，禁止 reset/stash 他人内容。仅加载与本批有关的历史证据，不要求扫完所有 run。
-可选查询待审范围：
+输出的 missing/stale 包组即本次 groups；recorded 不重复审。candidate 档全部 pending 组都审；
+review 档每次最多 6 组，按鉴权/凭据 > 跨节点/导入 > 其他排序，余下写入验收记录待下次。
+脚本报 not-applicable 时本 workflow 不适用，不写 trailer。
+
+### 2. 导出盲审快照
+
+每组导出该目录整包（不只是 diff）与规范上下文，不含 Git 历史：
 
 ```bash
-node "${{governance_dir}}/scripts/check-security-audit-coverage.mjs" --target "${{baseline_ref}}" --format=json
+snapshot="$(mktemp -d)/<group-slug>"
+mkdir -p "$snapshot"
+git -C "${{project_dir}}" archive HEAD -- <group> PROJECT_RULES.md docs/development-quality-standard.md \
+  | tar -x -C "$snapshot"
 ```
 
-输出 participation=optional-candidate-only、blocking=false；scoped-recommended/full-recommended 和
-14/30 天只帮助排序。查询出错记 unavailable，不形成产品阻断或“已审通过”。
-任务范围由选定问题决定，不强制吞下 files/commits 全局积压。若声明提交覆盖，reviewed_commits 必须
-覆盖每个 SHA 的全部边界文件及直接调用链；只审几个路径时不计该提交覆盖。
+包组过小（单文件改动所在目录少于约 300 行）时，可把直接调用方所在目录一并导出，在记录里写明。
 
-### 2. 聚焦侦察与猎取
+### 3. 盲审
 
-按固定 skill 从当前源码建立范围内单元，相关旧账本仅作参考；范围外明确标记。
-在预算内安排只读侦察、hunter 与独立 coverage critic，父任务是账本唯一写入者。
-critic 发现的范围内缺口只在剩余预算内处理，超出则 deferred/incomplete；不能自动扩展到全仓。
-正式 complete 仍要求冻结范围全部完成并独立核对，未完成批次不计覆盖。
+把 `.governance/security-audit/review-prompt.md` 的「提示正文」原样交给复核者，只替换 `{{SNAPSHOT}}`。
+不得附带实现说明、diff 解释、已知问题或期望结论。并发不超过 3 名复核者；单名复核者不设固定时长，
+回放基准中每组 1–4 分钟。复核者中断时用同一会话续跑，不重新起一轮。
 
-### 3. 候选独立验证与报告
+### 4. 逐条核实与处置
 
-去重 fingerprint，优先验证能形成具体修复的已有线索。发现者与验证者必须不同；验证者尝试反驳，
-confirmed 必须有完整源码追溯和独立记录核验，needs_validation 写明能力缺口。
-无可验证线索可以结束；不能为形成分支制造漏洞、空提交或延长审计。
-正式 findings/ledger 运行固定 skill 验证器（Linux/WSL O_NOFOLLOW 支持），只证明结构有效：
+实现者对每条发现打开 file:line 追溯数据流，标记 confirmed / rejected（写一句理由）/ needs-validation：
 
-```bash
-node "${{skill_dir}}/validate-findings.cjs" "${{ledger_dir}}/findings.json"
-node "${{skill_dir}}/validate-coverage-ledger.cjs" "${{ledger_dir}}/coverage-ledger.json"
+- confirmed 紧急/高（第 11 节）：本候选内修复并补回归测试后才能交付；
+- confirmed 中：本候选修复，或记录负责人、触发条件和期限后作为独立修复任务；
+- confirmed 低与 needs-validation：进入待办，不阻断；
+- 发现指向本次范围外的既有代码：同样核实，成立者开独立修复任务，不混入本候选。
+
+复核者给出的严重度只作参考，最终级别以实现者核实后的影响为准，判断依据写进修复提交或任务。
+
+### 5. 留痕
+
+在候选最后一个提交（或单独空提交）写 trailer：
+
+```text
+Security-Review: v1 scope=<group>[,<group>...] reviewer=<provider>/<model> findings=H<n>/M<n>/L<n> confirmed=<n> fixed=<n> deferred=<n>
 ```
 
-预算耗尽时只保存已有证据、真实终态与缺口，不为完成三份报告或记录返工无限续跑。
-run-4 起沿用 scope_mode、run_status、精确 source_ref、source_dirty=false；scoped 含 comparison_base、
-scope_complete。reviewed_commits 列表仅在本批完整核验后计覆盖，scope_complete=false；不完整批次
-run_status=incomplete，不修改旧 verdict，不把停止、格式通过或发布完成当作覆盖通过。
-
-### 4. 候选交付
-
-保存真实起止、调用数、模型配置、范围和终态；tokens/金额未知写 null。不强制逐发布统计历史成本。
-有价值线索按 PROJECT_RULES.md 5.4 转入正常候选修复任务，由独立源码分支完成验证、修复和回归。
-记录 fingerprint、证据缺口、优先级、接手条件和后续修复身份；未验证线索不要求发布前补审或风险豁免。
-已独立证实的紧急/高风险漏洞仍按产品质量标准处置。审计任务自身只读源码，不直接合并或发布修复。
-
-共享入库是按需交付：先披露检查，再选择最小脱敏产物到 .governance/security-audit/run-<N>/。
-入库时显式运行治理入口的元数据检查：
-
-```bash
-node "${{governance_dir}}/scripts/check-security-audit-coverage.mjs" --validate
-```
-
-校验失败只阻止这些审计产物被宣称有效，不阻断无关产品任务。含可复用攻击细节的原件在对应修复
-公开前留在仓库外或不推送的本地分支。历史 run 与补审豁免保持原文，不承担现行门槛。
+findings 是复核者原始分级计数，confirmed/fixed/deferred 是核实后结果。确实无需审查时写
+`Security-Review: skipped reason=<理由>`（例如只改注释、只改测试辅助代码）。trailer 之后又改动同组代码
+时需重审该组。`check-collaboration-state.mjs --require-candidate` 只提醒 `security_review=missing|stale`，不失败。
 
 ## Parameters
 
-- project_dir / baseline_ref：精确干净源码 worktree 与提交。
-- ledger_dir：仓库外新运行目录，不能覆盖原件。
-- profile：guidance / scoped / full，选择与预算遵守 5.4。
-- scope_paths：本批明确选择的路径与直接调用链；覆盖查询仅辅助选择。
-- skill_dir：固定 pin 的上游 skills/security-audit 绝对路径。
-- governance_dir：提供已提交基线/覆盖工具的治理工作树，旧源码可独立指定。
+- project_dir：精确提交的 clean worktree。
+- base_ref：candidate 档用任务精确基线；review 档用上一稳定 tag。
+- profile：candidate 或 review。
+- groups：步骤 1 输出的待审包组；review 档最多 6 组。
 
 ## Verification
 
-核对源码身份、已声明范围、独立验证与真实终态；正式结构化产物执行上述验证器。
-验证器通过不证明安全，未完成 run 不计覆盖；不需要为满足产品发布而完成此 workflow。
+- 每个 pending 组都有一名独立复核者的原始输出，且自由报告先于任何实现者解释落盘；
+- 每条发现都有核实结论，confirmed 紧急/高已在候选内修复并有回归测试；
+- trailer 计数与核实记录一致，`security-review-scope.mjs` 对该范围输出 recorded。
 
 ## Notes
 
-不新增定时任务、常驻监控、全仓追赶或自动恢复。历史收益保持真实，缺数据不推断零成本/零风险。
-工具代码回归可在治理测试中执行；普通 CI 不运行审计，也不无条件检查整个历史 run 注册表。
+- 修改 review-prompt.md、默认做法或换用新的复核方式前，先按 `.governance/security-audit/README.md`
+  在回放基准上盲跑，命中数不得低于基线；基准随新修复的真实漏洞增补。
+- CF（cloudflare/security-audit-skill）不再是执行入口；历史 run、覆盖查询工具与固定 pin 保留只读，
+  用户明确要求深度审计时才按其历史方法单独执行，结果同样走第 4 步核实。
+- 不新增 CI 门禁、定时任务或全仓追赶；SAST 工具的评估结论与重评条件见 PROJECT_RULES.md 5.4。

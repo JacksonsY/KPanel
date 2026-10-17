@@ -77,9 +77,9 @@ git worktree list
 - L2/L3 代码候选或代码改动 ≥30 行的 L1 候选，在候选提交后、预览与最终核验前无需提示即按
   `PROJECT_RULES.md` 5.5 执行 `.codex-workflows/ocr-line-review.workflow.yaml`（`node scripts/ocr-delegate.mjs`
   入口，任何智能体框架通用），先自由臂后约束臂，并在提交消息写 `OCR-Review:` trailer；不适用时写明 skipped 理由。
-- CF 审计按 `PROJECT_RULES.md` 5.4 作为可选候选辅助；候选、集成与发布不要求运行、补审、豁免或
-  `Security-Audit:` trailer。需要执行时才调用 `security-boundary-audit`，采用该节预算与固定模型配置；
-  产出进入独立候选修复流程，未完成审计不阻断主线，已证实漏洞按正常风险规则处理。
+- 代码候选触及 `securityReview.paths` 安全敏感包时，在候选提交后、预览与最终核验前无需提示即按
+  `PROJECT_RULES.md` 5.4 执行 `.codex-workflows/security-boundary-audit.workflow.yaml` 安全盲审（新会话/子代理
+  审整包，逐条核实），写 `Security-Review:` trailer；confirmed 紧急/高在候选内修复，不适用时写明 skipped 理由。
 - 本地或远程长时间浏览器验收使用 `background-browser-validation` 工作流后台运行；先通过
   `environment-policy.json` 目标检查，再以持久化终态和证据交付，不占用前台会话等待。
 - L3 只使用 `scripts/run-release-l3.mjs --github-hosted`，由 `Release L3` 在 GitHub-hosted Actions 执行。

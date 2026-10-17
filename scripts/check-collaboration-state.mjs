@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 
 import { FALLBACK_REASONS, parseReviewTrailer } from './report-governance-health.mjs';
+import { formatState as formatSecurityReview, reviewScopeState } from './security-review-scope.mjs';
 
 function usage() {
   return [
@@ -117,6 +118,17 @@ function ocrLineReviewState(root, baseRef) {
   return (codeChanges(root, newest[0] + '..HEAD').paths > 0 ? 'stale' : 'recorded') + summary;
 }
 
+// PROJECT_RULES.md 5.4 advisory: candidates touching security-sensitive package groups get a blind security review.
+// A broken policy or Git query is reported as unavailable instead of failing delivery.
+function securityReviewState(root, baseRef) {
+  try {
+    const state = reviewScopeState(root, baseRef);
+    return state.overall === 'not-applicable' ? null : formatSecurityReview(state);
+  } catch {
+    return 'unavailable';
+  }
+}
+
 // docs/multi-agent-collaboration.md advisory: every Independent-Review trailer on the newest commit that carries
 // one must name providers and a result, and a same-provider review must give a fixed fallback reason. Only that
 // commit counts, so a later commit can correct it; no trailer is not flagged, because review follows the candidate.
@@ -154,6 +166,7 @@ function check(options) {
   const failures = [];
   let ocrLineReview = null;
   let independentReview = null;
+  let securityReview = null;
   const repo = realpathSync.native(resolve(options.repo));
   const root = realpathSync.native(git(repo, ['rev-parse', '--show-toplevel']));
   let branch = '(detached)';
@@ -223,6 +236,7 @@ function check(options) {
         // PROJECT_RULES.md 5.5 and 5.2.4: advisory only, never a failure.
         ocrLineReview = ocrLineReviewState(root, options.baseRef);
         independentReview = independentReviewState(root, options.baseRef);
+        securityReview = securityReviewState(root, options.baseRef);
       }
     }
   } else {
@@ -262,6 +276,13 @@ function check(options) {
         + ' or record "OCR-Review: skipped reason=<why>"'
       : '';
     process.stdout.write('ocr_line_review=' + ocrLineReview + hint + '\n');
+  }
+  if (securityReview) {
+    const hint = securityReview.startsWith('missing') || securityReview.startsWith('stale')
+      ? ' advisory: run .codex-workflows/security-boundary-audit.workflow.yaml (profile=candidate) and add a Security-Review'
+        + ' trailer, or record "Security-Review: skipped reason=<why>"'
+      : '';
+    process.stdout.write('security_review=' + securityReview + hint + '\n');
   }
   if (independentReview) {
     const hint = independentReview.startsWith('nonconforming')

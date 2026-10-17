@@ -312,6 +312,50 @@ test('candidate delivery never requires CF discovery or trailers, including brok
   }
 });
 
+test('security-sensitive candidates get a non-blocking Security-Review reminder', () => {
+  const state = fixture();
+  const check = () => run(state.writer, '--role', 'writer', '--base-ref', state.baseline, '--require-candidate');
+  const write = (path, text) => {
+    mkdirSync(join(state.writer, path, '..'), { recursive: true });
+    writeFileSync(join(state.writer, path), text);
+  };
+  try {
+    write('.governance/security-audit/boundary-policy.json', JSON.stringify({
+      schemaVersion: 1, ignoreSuffixes: ['_test.go'], ignoreSegments: ['testdata'],
+      securityReview: { paths: ['internal/auth/'] },
+    }));
+    write('internal/auth/service_test.go', 'package auth\n');
+    git(state.writer, 'add', '-A');
+    git(state.writer, 'commit', '-m', 'test: policy and test-only change');
+    let result = check();
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /security_review=/);
+
+    write('internal/auth/service.go', 'package auth\n');
+    git(state.writer, 'add', '-A');
+    git(state.writer, 'commit', '-m', 'feat: auth change');
+    result = check();
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout,
+      /security_review=missing groups=1 pending=internal\/auth advisory: run \.codex-workflows\/security-boundary-audit/);
+
+    git(state.writer, 'commit', '--allow-empty', '-m',
+      'review: auth\n\nSecurity-Review: v1 scope=internal/auth reviewer=claude findings=H0/M0/L1');
+    result = check();
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /security_review=recorded groups=1\n/);
+
+    write('.governance/security-audit/boundary-policy.json', '{not json');
+    git(state.writer, 'add', '-A');
+    git(state.writer, 'commit', '-m', 'test: broken policy');
+    result = check();
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /security_review=unavailable\n/);
+  } finally {
+    state.cleanup();
+  }
+});
+
 test('the newest Independent-Review trailer gets a non-blocking conformance reminder', () => {
   const state = fixture();
   const check = () => run(state.writer, '--role', 'writer', '--base-ref', state.baseline, '--require-candidate');

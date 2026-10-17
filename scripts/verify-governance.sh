@@ -33,10 +33,11 @@ node --test \
   scripts/tests/ocr-delegate.test.mjs \
   scripts/tests/security-audit-baseline.test.mjs \
   scripts/tests/check-security-audit-coverage.test.mjs \
+  scripts/tests/security-review-scope.test.mjs \
   scripts/tests/report-governance-health.test.mjs
 node scripts/report-governance-health.mjs --validate
 node scripts/report-dependency-freshness.mjs --validate-only
 node scripts/check-release-acceptance-coverage.mjs
-# CF registry validation is explicit in the optional audit workflow; historical gaps do not gate product work.
+# CF history validation stays explicit; the PROJECT_RULES 5.4 blind review is advisory, not a gate.
 
 echo "Governance verification passed."

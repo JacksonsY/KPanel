@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "purpose": "PROJECT_RULES.md 5.4 auditor regression set: already-fixed, already-public KPanel vulnerabilities. Each case is reviewed blind on the parent of its fix with only the listed paths exported (git archive, no history).",
+  "prompt": ".governance/security-audit/review-prompt.md",
+  "scoring": "A finding hits when it names the same function or data flow with the same failure mechanism; same file with a different mechanism does not count. A hit on another case's defect that also exists in the snapshot counts for that defect.",
+  "cases": [
+    {
+      "id": "case-a",
+      "fix": "e99e6b3d225425aa0b9afd14c55c8a33d75722f9",
+      "paths": ["internal/hostbackup", "internal/backup", "cmd/kejilion-agent", "internal/panel/backup_handlers.go"],
+      "defects": [
+        { "id": "G1", "class": "untrusted-archive-write", "summary": "imported payload data roots not bound to their module, so a restore can replace an arbitrary host directory" }
+      ]
+    },
+    {
+      "id": "case-b",
+      "fix": "7836ae8ef968a618bd950b8fd46f03bef29fa6a2",
+      "paths": ["internal/redact", "internal/auth", "internal/store", "internal/backup"],
+      "defects": [
+        { "id": "G2", "class": "credential-redaction", "summary": "bare credential form not redacted" },
+        { "id": "G3", "class": "unbounded-storage", "summary": "audit rows not retained by count after migration replay" },
+        { "id": "G4", "class": "rate-limit-bypass", "summary": "login history evicted under a full active window, resetting lockout counts" },
+        { "id": "G5", "class": "unbounded-input", "summary": "backup record roots bounded by an estimate instead of the encoded size" }
+      ]
+    },
+    {
+      "id": "case-c",
+      "fix": "f3899ad7f39d31fa9d71794544055225c01bc326",
+      "paths": ["internal/cluster", "internal/filemanager", "internal/auth", "internal/panel/cluster.go", "internal/panel/light_file.go", "internal/panel/ai_tools.go"],
+      "defects": [
+        { "id": "G6", "class": "cross-node-xss", "summary": "relayed node files forward the remote CSP and serve active types in the Panel origin" },
+        { "id": "G7", "class": "cross-boundary-authz", "summary": "v1 summary-only pairing reaches file management; relay signature does not cover the inner method/path/query" },
+        { "id": "G8", "class": "ai-output-privileged-write", "summary": "AI auto approval writes cron, shell profiles, service hooks, .env and certificates without confirmation" },
+        { "id": "G9", "class": "rate-limit-bypass", "summary": "password and username changes skip the shared re-authentication budget" },
+        { "id": "G10", "class": "lockout-abuse", "summary": "passkey login shares the account password lockout; TOTP after a valid assertion has no own budget" },
+        { "id": "G11", "class": "symlink-toctou", "summary": "file-manager chmod follows links and does not recheck the validated inode" }
+      ]
+    },
+    {
+      "id": "case-d",
+      "fix": "fb98023f844bd4fc40b6767a2dc3fcdf295e93b0",
+      "paths": ["internal/panel/ai_tools.go", "internal/panel/files.go", "internal/redact"],
+      "defects": [
+        { "id": "G12", "class": "credential-to-ai-context", "summary": "AI/MCP file read secret-name check ignores backup suffixes and misses credential dotfiles" }
+      ]
+    },
+    {
+      "id": "case-e",
+      "fix": "54650283ac66405f5bdb577665f2cfec535e1e7d",
+      "paths": ["internal/auth", "internal/store"],
+      "defects": [
+        { "id": "G13", "class": "credential-change-invalidation", "summary": "pending TOTP enrollment survives credential changes" }
+      ]
+    }
+  ],
+  "baseline": {
+    "date": "2026-10-17",
+    "reviewer": "claude-opus-5-5, one fresh subagent per case, prompt as committed",
+    "hits": ["G1", "G4", "G5", "G7", "G8", "G9", "G12"],
+    "misses": ["G2", "G3", "G6", "G10", "G11", "G13"],
+    "cost": "5 reviewers in parallel, 68-243 s each (case-c 68 s after a resumed rate-limit stop), 121k-172k tokens each",
+    "sast": "CodeQL 2.27.1 go/javascript security-extended, Semgrep 1.178.0 (golang/typescript/javascript/owasp-top-ten), gosec 2.29.0 on the same parents: 0 of 13 hits; current main raised 105 / 33 / 211 alerts"
+  }
+}

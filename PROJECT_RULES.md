@@ -427,73 +427,38 @@ L2，未知值或重复声明拒绝执行。L3 声明不代表 L3 已完成，�
 不同审查者对同一事实使用本节同一尺度；若要改变矩阵、严重度或停止条件，必须先说明新证据和范围变化，
 不得在修复后追加强度来维持 `FAIL`。
 
-### 5.4 信任边界安全审计（可选候选辅助）
+### 5.4 安全盲审（候选自动参与）
 
-CF（Cloudflare security-audit-skill）是按需发现候选修复线索的辅助项目。依据用户 2026-10-16 的明确
-降级要求，从候选、集成、RC、稳定版、发布后补验和 Definition of Ready/Done 的关键链路移除。
-不要求完成 CF、达到覆盖率、补审期限、豁免或 Security-Audit trailer 才能继续开发和发布；
-不因新包、时间到期、积压数量、历史 incomplete 或 needs_validation 自动启动、续跑或等待审计。
-本节替代旧 14/30 天到期阻断、稳定前补审、限期豁免和试用退出条件；历史记录按当时事实保留，
-其中的补审承诺仅转为可选待办，不再构成当前发布条件，也不改写为已完成或风险已接受。
+机器扫描（govulncheck、npm audit、Trivy）只覆盖已知依赖漏洞、密钥和配置。鉴权与限速、跨节点越权、不可信
+导入越界、凭据脱敏、AI/MCP 工具边界和资源无界这类逻辑漏洞，由本节的轻量模型盲审补齐。依据 2026-10-17
+回放基准（13 条已修复的真实漏洞，见 `.governance/security-audit/README.md`）：包级盲审命中 7 条，每组 1–4
+分钟；CodeQL、Semgrep、gosec 在同一修复前版本命中 0 条，主线告警分别为 105、33、211 条。此前 CF 二十余轮
+运行只有 run-1 一条 confirmed。因此不引入 SAST 门禁，CF 不再是执行入口。唯一执行入口为
+[.codex-workflows/security-boundary-audit.workflow.yaml](.codex-workflows/security-boundary-audit.workflow.yaml)，本节不复制其命令。
 
-**参与方式与唯一入口**：执行方法见
-[.codex-workflows/security-boundary-audit.workflow.yaml](.codex-workflows/security-boundary-audit.workflow.yaml)。
-
-| 档位 | 选择条件 | 产物与结束条件 |
-| --- | --- | --- |
-| guidance | 安全问答或单个改动的简短分析 | 不写文件、不编排子代理，不据此声称完成正式审计 |
-| scoped | 用户明确要求审计，或独立辅助任务明确选定一项有价值的边界问题 | 只处理选定功能/不变量；形成候选线索、反驳结果或真实 incomplete 后即可交付 |
-| full | 仅用户明确要求全量审计并确定预算 | 按冻结范围执行；预算到达即保存缺口，不自动追加全量轮次 |
-
-普通开发继续按第 3 节和 L0-L3 检查受影响的安全边界，不强制调用 CF。辅助任务不占用发布任务的
-执行槽或让发布等待；没有独立资源时直接 deferred，只有明确恢复请求才接续。候选检查不自动扫描
-CF 新边界包、不要求审计 trailer；发布流程不必运行覆盖检查或访问 CF 历史账本。
-
-**覆盖工具仅供查询**：scripts/check-security-audit-coverage.mjs 保留既有覆盖并集和精确身份算法，
-输出 participation=optional-candidate-only、blocking=false 和 ok / scoped-recommended / full-recommended。
-14/30 天与新包只为可选范围排序，不是时限或启动命令；旧 --require 兼容为提示参数，覆盖不足仍退出 0。
-参数、Git、策略或证据损坏仍返回诊断错误，不能伪装成功，但这些查询不进入产品发布链。
---validate 只在审计产物交付时显式运行，不在普通治理门禁中无条件加载全部 run。
-覆盖 ok 仅说明该算法没有建议，不代表安全、完成新审计或关闭风险。
-
-**预算与执行配置**：scoped 默认最多 900 秒、8 次代理调用、并发 2（调用数包含专用审计负责人）；
-这是初始资源上限，尚无证据证明最优。任务可在启动前显式约定其他预算，full 必须先约定。
-预算包含侦察、猎取、验证与记录，禁止自续预算、自动重试整轮或为凑观察样本追加运行。
-超时、中断、配置不可用或动态能力不足，保留已有证据与缺口，标记 incomplete/deferred 后结束。
-scoped/full 专用审计代理及侦察、hunter、coverage critic、独立验证、记录核验子代理均显式配置
-`gpt-6-luna` / `max`；不可用就报告，不静默换配置。guidance 不编排子代理；治理复核不受此配置限定。
-
-**证据和权限继续有效**：发现者与验证者必须不同；仅源码线索保留 lead/needs_validation，不能改写为
-confirmed。正式 confirmed 需要独立反驳、完整源码追溯与记录核验；动态确认缺少 OS 沙箱（隔离网络、
-资源限额、scratch-only 写）时禁止执行目标代码，明确记录能力缺口。两个 skill 结构验证器通过只证明
-格式，不能替代语义复核。固定上游 pin，开始/结束绑定精确 commit、tree 与 clean 源码，不扩大目标权限。
-
-账本声明仍只按真实完成范围计算：完整 full、完整 scoped 区间或经独立核对的 reviewed_commits 列表。
-列表只计该批完整审查的提交，scope_complete=false；未完成批次不计覆盖，历史 dirty 局限保留。
-不删除历史 findings 或改写 verdict，不把封存、预算到期、格式通过、发布完成写成审计通过。
-边界定义继续由 .governance/security-audit/boundary-policy.json 提供，不为降低工作量隐去边界。
-CF 工具上游更新检测也默认不运行，report-dependency-freshness.mjs 的 --include-optional-audit-tool
-才显式查询；该源不可用不阻断产品维护，工具候选不套产品依赖采用期限，采用只做固定版本兼容检查。
-
-**线索到候选分支**：审计只读源码，输出先保留仓库外。有具体价值的线索转入正常开发任务，在独立
-本地候选分支验证、修复和回归；不为原始线索自动生成空分支或自动合并产品。记录 fingerprint、发现
-run/source、证据缺口、优先级与接手条件；复用 remediation-status.md，不新建强制全局台账。
-未验证线索没有一律 14 天的补审时限，不要求发布任务逐条为全部历史线索作风险接受。
-若独立证据证实当前版本存在紧急/高风险漏洞，仍按 docs/development-quality-standard.md 第 11 节
-进行响应和发布决策；其依据是漏洞本身，CF 的降级不豁免产品缺陷。未验证不等于无风险。
-修复 commit、独立复核、回归与 RC/稳定版/部署分别记录，历史审计 verdict 保持不变。
-
-**交付与成本**：每次实际启动记录精确源码、范围、pin、预算、真实开始/结束、调用数和终态，
-token/金额不可取得时写 null；不为可选辅助任务引入持续监控或逐发布全量统计。
-只在后续真实运行中观察每批耗时和独立验证成立的修复收益；无运行不补样本，不声称降级已提高检出率。
-需要保存共享状态时选择性提交最小脱敏产物，按既有结构验证和披露规则复核；无需为了结束辅助任务
-补齐全仓报告、历史统计或入库所有原始记录。旧报告与豁免作为历史事实保留，当前行为由本节决定。
-
-**审计产物披露边界**：含攻击链、绕过细节或可复现 payload 的 findings、FINDINGS-DETAIL 和复盘报告，
-在对应修复公开前只保留仓库外或不推送的本地候选；不得先期推送公开远端或合入 main。
-与修复同批的拒绝用例可公开；无攻击细节的汇总、账本和元数据仍需披露检查。提交、推送、集成、
-发布和部署遵循现有授权边界，CF 辅助任务不获得额外权限。上游新版本仅作候选，采用仍需独立治理
-变更、固定 pin 与受影响兼容验证，不要求为升级工具自动开展全量产品审计。
+- **自动参与**：代码候选改动触及 `.governance/security-audit/boundary-policy.json` 的 `securityReview.paths`
+  时，写任务在候选提交后、预览与最终核验前，不待提示执行 candidate 档（`session-collaboration` 第 4 步）。
+  范围由 `scripts/security-review-scope.mjs` 按目录分组给出；纯文档、治理文本、测试和发布操作不适用。
+- **盲审**：每组由不含实现上下文的新会话或子代理审查整包（不只是 diff），使用仓库固定的
+  `.governance/security-audit/review-prompt.md`，不附实现说明或期望结论。不限定提供商和模型，记录实际配置。
+- **核实与处置**：实现者逐条追溯 file:line，标记 confirmed / rejected / needs-validation。confirmed 的
+  紧急/高按 `docs/development-quality-standard.md` 第 11 节阻止交付，必须在候选内修复并补回归测试；中级
+  本候选修复或设负责人、触发条件和期限；低级与 needs-validation 进入待办。复核者的分级只作参考。
+  未核实的线索不能写成漏洞，盲审完成也不能写成"已安全"。
+- **留痕与提醒**：候选写 `Security-Review:` trailer（范围、复核者、原始分级计数、核实结果），确实无需审查
+  写 `Security-Review: skipped reason=<理由>`。`check-collaboration-state.mjs --require-candidate` 对缺
+  trailer 或 trailer 后又改同组代码的候选输出 `security_review=missing|stale` 提醒，不失败。
+- **稳定版前补漏**：`quality-audit-kpanel` 以上一稳定 tag 为基线运行 review 档，审查仍为 missing/stale 的
+  包组，每次最多 6 组，余下记入验收记录。补漏不阻断发布；其中核实的紧急/高仍按第 11 节阻止发布。
+- **审计器回归**：修改提示、默认做法或复核方式前，在回放基准上盲跑，命中不得低于基线；新修复的真实漏洞
+  按 README 补入基准。提示和基准的修改按 5.2 独立复核。
+- **披露边界**：未修复线索的攻击细节、payload 与复现步骤只存仓库外或不推送的本地候选；提交、trailer 与
+  公开文档只写计数和修复描述，修复公开后可随回归用例公开。
+- **SAST 重评条件**：出现基准中 SAST 可检出的漏洞类别，或某工具在基准上命中且主线告警经调优可低于
+  每次候选人工核对的承受量时，再提出接入；接入走依赖策略和独立治理变更。
+- **CF 历史**：`.governance/security-audit/run-*` 历史产物、`scripts/check-security-audit-coverage.mjs`
+  覆盖查询与固定 pin 只读保留，历史 verdict 不改写，未完成 run 不改写为通过。用户明确要求深度审计时
+  才可单独执行 CF，结果同样逐条核实。旧 14/30 天、稳定前补审、豁免与 `Security-Audit:` trailer 均不再适用。
 
 ### 5.5 行级评审辅助（open-code-review，试行）
 

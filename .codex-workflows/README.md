@@ -27,9 +27,9 @@
   发布门禁健康审计。
 - 界面与视觉变更统一参考 [`docs/ui-visual-language.md`](../docs/ui-visual-language.md)；本目录只提供执行适配，
   不复制字号、颜色或可访问性规则。
-- `security-boundary-audit.workflow.yaml`：按 `PROJECT_RULES.md` 5.4 执行跨信任边界的逻辑不变量安全审计
-  （guidance / scoped / full 三档），仅按需形成候选修复线索；不作为候选、集成或任何发布门禁。
-  不自动启动或追赶历史积压，按需保存最小脱敏产物到 `.governance/security-audit/`。
+- `security-boundary-audit.workflow.yaml`：按 `PROJECT_RULES.md` 5.4 对触及安全敏感包的代码候选做安全盲审
+  （candidate 档自动参与，review 档用于稳定版前补漏）；无上下文复核者审整包，实现者逐条核实，
+  confirmed 紧急/高在候选内修复，其余分级记录，留 `Security-Review:` trailer。
 - `ocr-line-review.workflow.yaml`：按 `PROJECT_RULES.md` 5.5 以 open-code-review 委托模式为候选差异提供
   固定版本的文件圈选与逐文件覆盖清单，约束臂与自由臂双跑；代码候选交付前与质量审计中默认自动参与，不是门禁或独立复核。
 - `evolve-kpanel.workflow.yaml`：从可复核证据形成改进假设，经独立复核、最小试行、指标对比和观察窗口

@@ -123,7 +123,12 @@ bash scripts/security-scan.sh image "${{candidate_image}}"
 Unix Socket 鉴权和最终容器限制。记录 Docker、containerd、runc、内核版本，并只依据
 官方公告核对当前 High/Critical 风险。扫描告警必须按调用可达性人工复核，不得无证据 suppress。
 
-**Expected output:** 无可达 High/Critical；不可达项有版本、调用路径和复核日期证据。
+稳定版前按 PROJECT_RULES.md 5.4 补漏：以上一稳定 tag 为 `base_ref` 运行
+`security-boundary-audit`（`profile=review`），审查 `node scripts/security-review-scope.mjs --base <上一稳定 tag>`
+仍为 missing/stale 的包组，每次最多 6 组，余下组名记入验收记录。
+
+**Expected output:** 无可达 High/Critical；不可达项有版本、调用路径和复核日期证据；盲审 confirmed 紧急/高已修复，
+其余发现有核实结论。
 
 ### 7. 复核发布节奏与证据质量
 
