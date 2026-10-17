@@ -546,6 +546,7 @@ export const enUSMessages = {
   'terminal.historyUnavailableMessage': 'The panel history file cannot be read. Clear it to start recording again.',
   'terminal.historyRecover': 'Clear and recover',
   'terminal.historyEmptyTitle': 'No command history yet',
+  "terminal.historyPrivacy": "Command history is saved on this panel and may contain passwords or tokens. Start sensitive commands with a space, or delete or clear them.",
   'terminal.historyEmptyDescription': 'Commands run at a terminal prompt appear here, shared by all hosts. Commands that start with a space are not recorded.',
   'terminal.historyNoMatch': 'No matching commands',
   'terminal.historySyncFailed': 'Some commands could not be saved to the panel.',

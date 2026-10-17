@@ -134,6 +134,7 @@ async function clearHistory(): Promise<void> {
         <Trash2 :size="16" />
       </button>
     </div>
+    <p class="terminal-command-history__notice">{{ t('terminal.historyPrivacy') }}</p>
     <p v-if="historyStore.syncFailed.value && snapshot.available" class="terminal-command-history__notice" role="status">
       {{ t('terminal.historySyncFailed') }}
     </p>

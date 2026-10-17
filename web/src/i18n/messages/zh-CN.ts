@@ -545,6 +545,7 @@ export const zhCNMessages = {
   'terminal.historyUnavailableMessage': '面板端历史文件无法读取。清空后会重新开始记录。',
   'terminal.historyRecover': '清空并恢复',
   'terminal.historyEmptyTitle': '还没有历史命令',
+  'terminal.historyPrivacy': '命令历史保存在面板本机，可能包含密码或 Token。敏感命令请以空格开头，或使用删除、清空。',
   'terminal.historyEmptyDescription': '在终端提示符下执行的命令会自动记录在这里，所有主机共用一份；以空格开头的命令不记录。',
   'terminal.historyNoMatch': '没有匹配的历史命令',
   'terminal.historySyncFailed': '部分命令未能保存到面板。',

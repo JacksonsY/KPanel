@@ -489,6 +489,7 @@ export const zhTWMessages = {
   "terminal.historyUnavailableMessage": "面板端歷史檔案無法讀取。清空後會重新開始記錄。",
   "terminal.historyRecover": "清空並恢復",
   "terminal.historyEmptyTitle": "還沒有歷史命令",
+  "terminal.historyPrivacy": "命令歷史儲存在面板本機，可能包含密碼或 Token。敏感命令請以空格開頭，或使用刪除、清空。",
   "terminal.historyEmptyDescription": "在終端提示符下執行的命令會自動記錄在這裡，所有主機共用一份；以空格開頭的命令不記錄。",
   "terminal.historyNoMatch": "沒有符合的歷史命令",
   "terminal.historySyncFailed": "部分命令未能儲存到面板。",
