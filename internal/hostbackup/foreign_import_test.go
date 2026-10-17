@@ -450,6 +450,23 @@ func TestServiceForeignImportConfirmation(t *testing.T) {
 				body, _ := json.Marshal(Request{Action: "restore", SourceID: job.ID, Modules: []string{"apps"}, Revision: previewed.TargetRevision, ConfirmForeign: confirm})
 				return serve(t, s, "POST", "/v1/backups", body)
 			}
+			// A legacy import must be inspected again even when a caller
+			// supplies confirmation without configuration details.
+			reviewPath := filepath.Join(s.Jobs.Root, job.ID, reviewFile)
+			savedReview, err := os.ReadFile(reviewPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(reviewPath); err != nil {
+				t.Fatal(err)
+			}
+			response = restore(true)
+			if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "backup_review_unavailable") {
+				t.Fatal("legacy import accepted without review:", response.Code, response.Body.String())
+			}
+			if err := os.WriteFile(reviewPath, savedReview, 0600); err != nil {
+				t.Fatal(err)
+			}
 			response = restore(false)
 			if foreign {
 				if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "foreign_confirmation_required") {

@@ -5,7 +5,7 @@ import ModalDialog from '@/components/common/ModalDialog.vue'
 import BackupStorageDialog from './BackupStorageDialog.vue'
 import BackupScheduleDialog from './BackupScheduleDialog.vue'
 import BackupImportReview from './BackupImportReview.vue'
-import { foreignModules, type BackupReviewResult } from '@/lib/backup'
+import { completeBackupReview, foreignModules, type BackupReviewResult } from '@/lib/backup'
 import { backups, backupMessage, type BackupInventory, type BackupModule, type BackupRecord, type BackupSettings, type RemoteBackupFile } from '@/lib/backup'
 import { formatBytes, formatDateTime } from '@/lib/format'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
@@ -54,7 +54,7 @@ const estimate = computed(() => selected.value.reduce((total, module) => total +
 const validPassword = computed(() => new TextEncoder().encode(password.value).length >= 10 && new TextEncoder().encode(password.value).length <= 256)
 const missingDependencies = computed(() => dialog.value !== 'export' ? [] : inventory.value?.host?.modules.filter(m => selected.value.includes(m.id)).flatMap(m => m.requires).filter(m => !selected.value.includes(m)) || [])
 const selectedRoots = computed(() => dialog.value === 'restore' ? (source.value?.roots || []).filter(root => selected.value.includes(root.module)) : [])
-const canSubmit = computed(() => !busy.value && !loading.value && !filesLoading.value && (dialog.value === 'upload' ? !!storageId.value : dialog.value === 'delete' || dialog.value === 'recover' || (dialog.value === 'import' ? (storageId.value ? !!remoteKey.value : !!file.value) && validPassword.value : selected.value.length > 0 && missingDependencies.value.length === 0 && ((dialog.value === 'restore' && previewReady.value) || (dialog.value === 'export' && !!inventory.value && validPassword.value && password.value === confirmation.value)))))
+const canSubmit = computed(() => (dialog.value !== 'restore' || completeBackupReview(importReview.value, selected.value)) && !busy.value && !loading.value && !filesLoading.value && (dialog.value === 'upload' ? !!storageId.value : dialog.value === 'delete' || dialog.value === 'recover' || (dialog.value === 'import' ? (storageId.value ? !!remoteKey.value : !!file.value) && validPassword.value : selected.value.length > 0 && missingDependencies.value.length === 0 && ((dialog.value === 'restore' && previewReady.value) || (dialog.value === 'export' && !!inventory.value && validPassword.value && password.value === confirmation.value)))))
 const name = (id: BackupModule) => phrase(choices.find(c => c.id === id)?.name || id)
 function unavailable(id: BackupModule) { return dialog.value === 'export' && id !== 'panel' && (!inventory.value?.hostAvailable || !!inventory.value.host?.modules.find(m => m.id === id)?.issue) }
 function unavailableReason(id: BackupModule) {

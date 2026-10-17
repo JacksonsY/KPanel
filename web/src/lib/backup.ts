@@ -100,6 +100,10 @@ export interface BackupModuleReview {
 }
 export interface BackupReviewResult { available: boolean; review: { version: number; revision: string; modules: BackupModuleReview[] } | null }
 
+export function completeBackupReview(result: BackupReviewResult | undefined, modules: BackupModule[]): boolean {
+  return modules.filter(module => module !== 'panel').every(module => result?.available && result.review?.modules.some(m => m.module === module && !m.unreviewed && (m.origin === 'local' || m.origin === 'foreign')))
+}
+
 // Host modules that need the one confirmation before restore. A module the
 // review does not list as local is treated as foreign, as the backend does.
 export function foreignModules(result: BackupReviewResult | undefined, modules: BackupModule[]): BackupModule[] {

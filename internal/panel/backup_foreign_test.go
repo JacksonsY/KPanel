@@ -64,6 +64,7 @@ func TestBackupRestoreConfirmsForeignHostConfiguration(t *testing.T) {
 		{"foreign", foreign, true, true},
 		{"local", local, false, false},
 		{"agent without reviews", nil, true, false},
+		{"legacy import without details", &hostbackup.ImportReview{Version: 1, Modules: []hostbackup.ModuleReview{{Module: "apps", Origin: hostbackup.OriginForeign, Unreviewed: true}}}, true, false},
 	} {
 		t.Run(item.name, func(t *testing.T) {
 			s, token := newTestServer(t)
@@ -110,6 +111,18 @@ func TestBackupRestoreConfirmsForeignHostConfiguration(t *testing.T) {
 			restore := func(confirm bool) *httptest.ResponseRecorder {
 				body, _ := json.Marshal(backupRequest{Modules: []string{"apps"}, Revision: "host-only", ConfirmForeign: confirm})
 				return call("POST", "/api/v1/backups/"+source.ID+"/restore", body)
+			}
+			if item.review == nil || !item.review.Complete([]string{"apps"}) {
+				for _, confirm := range []bool{false, true} {
+					w = restore(confirm)
+					if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "backup_review_unavailable") {
+						t.Fatal("missing review accepted:", w.Code, w.Body.String())
+					}
+				}
+				if len(agent.restoreBodies()) != 0 {
+					t.Fatal("restore without configuration details reached the Agent")
+				}
+				return
 			}
 			if item.needsConfirm {
 				w = restore(false)

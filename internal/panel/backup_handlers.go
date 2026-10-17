@@ -47,6 +47,9 @@ func (s *Server) backupError(w http.ResponseWriter, r *http.Request, err error) 
 	if errors.Is(err, hostbackup.ErrForeignUnconfirmed) {
 		status, code, title = http.StatusConflict, "backup_foreign_confirmation_required", "该备份不是本机导出，请查看并确认将重建的宿主机配置"
 	}
+	if errors.Is(err, hostbackup.ErrReviewUnavailable) {
+		status, code, title = http.StatusConflict, "backup_review_unavailable", "无法取得完整备份配置，请更新 Agent 并重新导入备份"
+	}
 	s.writeProblem(w, r, status, code, title, "")
 }
 func (s *Server) decodeBackupRequest(r *http.Request) (backupRequest, error) {
@@ -605,12 +608,15 @@ func (s *Server) backupRestore(w http.ResponseWriter, r *http.Request, source ba
 	}
 	// The Agent enforces the same confirmation; checking here first returns
 	// it synchronously instead of as a failed job. A review the Agent cannot
-	// provide is treated as foreign, and an Agent without reviews is not sent
-	// a field it would reject.
+	// provide cannot be replaced by confirmation of unknown configuration.
 	forwardConfirm := false
 	if host := hostBackupModules(modules); len(host) > 0 && source.AgentID != "" {
 		review := s.backupReview(r.Context(), source)
-		if (!review.Available || review.Review.Foreign(host)) && !input.ConfirmForeign {
+		if !review.Available || review.Review == nil || !review.Review.Complete(host) {
+			s.backupError(w, r, hostbackup.ErrReviewUnavailable)
+			return
+		}
+		if review.Review.Foreign(host) && !input.ConfirmForeign {
 			s.backupError(w, r, hostbackup.ErrForeignUnconfirmed)
 			return
 		}

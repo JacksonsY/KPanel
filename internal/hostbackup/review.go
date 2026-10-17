@@ -17,6 +17,10 @@ import (
 // until the administrator has seen its host configuration and confirmed once.
 var ErrForeignUnconfirmed = errors.New("restoring a foreign backup needs confirmation of its host configuration")
 
+// ErrReviewUnavailable means the current Agent/import cannot enumerate the
+// configuration to be restored. Confirmation cannot supply missing details.
+var ErrReviewUnavailable = errors.New("update the Agent and reimport the backup to review its complete configuration")
+
 const (
 	OriginLocal   = "local"
 	OriginForeign = "foreign"
@@ -90,6 +94,21 @@ type NetworkReview struct {
 	Subnets  []string        `json:"subnets,omitempty"`
 	Options  []string        `json:"options,omitempty"`
 	Config   json.RawMessage `json:"config"`
+}
+
+func (r ImportReview) Complete(modules []string) bool {
+	for _, module := range modules {
+		found := false
+		for _, m := range r.Modules {
+			if m.Module == module && !m.Unreviewed && (m.Origin == OriginLocal || m.Origin == OriginForeign) {
+				found = true
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func (r ImportReview) Foreign(modules []string) bool {

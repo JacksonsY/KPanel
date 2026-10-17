@@ -11,7 +11,7 @@ const reviews = computed(() => props.result?.review?.modules.filter(m => props.m
   <section class="import-review" aria-labelledby="import-review-title">
     <h4 id="import-review-title">{{ phrase('外来备份的宿主机配置') }}</h4>
     <p>{{ phrase('无法验证为本机导出的备份。确认恢复即同意下面的目录覆盖、容器权限和网络配置；文件属主与特殊权限也会原样恢复。') }}</p>
-    <p v-if="!result?.available || reviews.some(m => m.unreviewed)">{{ phrase('当前 Agent 或旧导入记录无法提供完整配置，请更新 Agent 并重新导入后核对；继续恢复表示你信任该备份的全部配置。') }}</p>
+    <p v-if="!result?.available || reviews.some(m => m.unreviewed)">{{ phrase('无法取得完整备份配置，请更新 Agent 并重新导入备份') }}</p>
     <article v-for="review in reviews" :key="review.module">
       <h5>{{ review.module }}</h5>
       <p>{{ phrase('含 set-id 权限的文件：') }} {{ review.setIdFiles || 0 }}</p>

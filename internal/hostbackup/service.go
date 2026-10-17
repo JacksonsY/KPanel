@@ -102,6 +102,10 @@ func backupProblem(w http.ResponseWriter, err error) {
 		backupJSON(w, status, map[string]string{"code": "foreign_confirmation_required", "title": "Confirm the host configuration of this foreign backup"})
 		return
 	}
+	if errors.Is(err, ErrReviewUnavailable) {
+		backupJSON(w, http.StatusConflict, map[string]string{"code": "backup_review_unavailable", "title": "Update the Agent and reimport the backup to review its complete configuration"})
+		return
+	}
 	backupJSON(w, status, map[string]string{"code": "backup_unavailable", "title": "Backup operation failed"})
 }
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -375,6 +379,10 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		review, err := loadReview(filepath.Join(s.Jobs.Root, source.ID), source.Modules)
 		if err != nil {
 			backupProblem(w, err)
+			return
+		}
+		if !review.Complete(modules) {
+			backupProblem(w, ErrReviewUnavailable)
 			return
 		}
 		if review.Foreign(modules) && !input.ConfirmForeign {

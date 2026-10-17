@@ -21,6 +21,20 @@ beforeEach(() => {
 afterEach(() => wrapper?.unmount())
 
 describe('backup center user flow', () => {
+  it.each([false, true])('requires complete host details before restore (legacy=%s)', async legacy => {
+    const imported = { ...record, modules: ['docker'] as ['docker'] }
+    vi.mocked(backups.list).mockResolvedValue({ items: [imported], maxBytes: 1000 })
+    vi.mocked(backups.preview).mockResolvedValue(imported)
+    vi.mocked(backups.review).mockResolvedValue(legacy
+      ? { available: true, review: { version: 1, revision: 'host', modules: [{ module: 'docker', origin: 'foreign', unreviewed: true }] } }
+      : { available: false, review: null })
+    render(); await flushPromises()
+    await wrapper.get('.backup-record-status button').trigger('click'); await flushPromises()
+    expect(submit().attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('请更新 Agent 并重新导入备份')
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(backups.restore).not.toHaveBeenCalled()
+  })
   it('shows foreign host configuration before the single restore confirmation', async () => {
     const imported = { ...record, modules: ['docker'] as ['docker'] }
     vi.mocked(backups.list).mockResolvedValue({ items: [imported], maxBytes: 1000 })

@@ -3,7 +3,7 @@ import type { PhraseCatalog } from '@/i18n/phrase'
 export default [
   ['外来备份的宿主机配置', 'Host configuration from an external backup'],
   ['无法验证为本机导出的备份。确认恢复即同意下面的目录覆盖、容器权限和网络配置；文件属主与特殊权限也会原样恢复。', 'This backup cannot be verified as exported by this host. Confirming restore accepts the directory replacements, container permissions and network configuration below. File owners and special permissions are also restored.'],
-  ['当前 Agent 或旧导入记录无法提供完整配置，请更新 Agent 并重新导入后核对；继续恢复表示你信任该备份的全部配置。', 'The Agent or older import record cannot provide full details. Update the Agent and import again to review them; continuing means you trust all configuration in this backup.'],
+  ["无法取得完整备份配置，请更新 Agent 并重新导入备份", "Complete backup configuration is unavailable. Update the Agent and import the backup again."],
   ['含 set-id 权限的文件：', 'Files with set-id permissions:'],
   ['覆盖目录：', 'Replace directory:'],
   ['系统路径', 'System path'],
