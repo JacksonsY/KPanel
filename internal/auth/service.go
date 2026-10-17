@@ -533,8 +533,26 @@ func (s *Service) reserveAuthenticationAttempt(key string, since time.Time, limi
 	if s.store.FailedLoginCount(key, since)+s.pending[key] >= limit {
 		return false
 	}
+	if !store.UserScopedLoginAttempt(key) && !s.hasAttemptRoomLocked(1, since) {
+		return false
+	}
 	s.pending[key]++
 	return true
+}
+
+// hasAttemptRoomLocked reports whether the shared unauthenticated attempt
+// table can still record every in-flight attempt plus records more. Checking
+// before any password work keeps a full table closed: an attempt whose
+// failure could not be recorded must not be evaluated at all, or it would be
+// an uncounted guess whose outcome is still observable.
+func (s *Service) hasAttemptRoomLocked(records int, since time.Time) bool {
+	inFlight := 0
+	for key, count := range s.pending {
+		if !store.UserScopedLoginAttempt(key) {
+			inFlight += count
+		}
+	}
+	return s.store.UnauthenticatedLoginAttemptRoom(since) >= inFlight+records
 }
 
 func (s *Service) releaseAuthenticationAttempt(key string) {
@@ -574,6 +592,9 @@ func (s *Service) reserveLogin(ipKey, accountKey string, since time.Time) bool {
 	}
 	accountLimit := s.config.MaxLoginFailures * accountFailureLimitMultiplier
 	if s.store.FailedLoginCount(accountKey, since)+s.pending[accountKey] >= accountLimit {
+		return false
+	}
+	if !s.hasAttemptRoomLocked(2, since) {
 		return false
 	}
 	s.pending[ipKey]++

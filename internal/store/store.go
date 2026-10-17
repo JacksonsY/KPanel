@@ -785,7 +785,9 @@ const (
 
 var userScopedLoginAttemptPrefixes = []string{"reauth:", "passkey-reauth:", "passkey-second-factor:"}
 
-func userScopedLoginAttempt(key string) bool {
+// UserScopedLoginAttempt reports whether key uses the separate user-scoped
+// capacity instead of the shared unauthenticated one.
+func UserScopedLoginAttempt(key string) bool {
 	for _, prefix := range userScopedLoginAttemptPrefixes {
 		if strings.HasPrefix(key, prefix) {
 			return true
@@ -805,7 +807,7 @@ func (s *Store) RecordLoginAttempts(attempts []LoginAttempt, retainSince time.Ti
 	filtered := make([]LoginAttempt, 0, len(s.data.LoginAttempts)+len(attempts))
 	userScoped, unauthenticated := 0, 0
 	count := func(item LoginAttempt) {
-		if userScopedLoginAttempt(item.Key) {
+		if UserScopedLoginAttempt(item.Key) {
 			userScoped++
 		} else {
 			unauthenticated++
@@ -833,6 +835,20 @@ func (s *Store) RecordLoginAttempts(attempts []LoginAttempt, retainSince time.Ti
 		return err
 	}
 	return nil
+}
+
+// UnauthenticatedLoginAttemptRoom reports how many more unauthenticated
+// attempts the table accepts once records not after retainSince expire.
+func (s *Store) UnauthenticatedLoginAttemptRoom(retainSince time.Time) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	used := 0
+	for _, item := range s.data.LoginAttempts {
+		if item.OccurredAt.After(retainSince) && !UserScopedLoginAttempt(item.Key) {
+			used++
+		}
+	}
+	return maxLoginAttempts - used
 }
 
 func (s *Store) FailedLoginCount(key string, since time.Time) int {
