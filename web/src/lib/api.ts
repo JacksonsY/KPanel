@@ -1274,11 +1274,11 @@ function normalizeJob(raw: RawJob): Job {
 // job. An older request must finish before a reopened window applies its size.
 const appTerminalResizeQueues = new Map<string, Promise<{ accepted: boolean }>>()
 
-async function resizeAppTerminal(id: string, rows: number, columns: number, signal?: AbortSignal): Promise<{ accepted: boolean }> {
+async function resizeAppTerminal(id: string, rows: number, columns: number): Promise<{ accepted: boolean }> {
   const previous = appTerminalResizeQueues.get(id)
   const pending = (previous?.catch(() => undefined) ?? Promise.resolve()).then(() =>
     request<{ accepted: boolean }>(`/app-jobs/${encodeURIComponent(id)}/resize`, {
-      method: 'POST', body: { rows, columns }, signal,
+      method: 'POST', body: { rows, columns },
     }),
   )
   appTerminalResizeQueues.set(id, pending)
@@ -1986,9 +1986,9 @@ export const api = {
       request<{ accepted: boolean }>(`/terminal-sessions/${encodeURIComponent(sessionId)}/input`, {
         method: 'POST', body: { data },
       }),
-    resize: (sessionId: string, rows: number, columns: number, signal?: AbortSignal): Promise<{ accepted: boolean }> =>
+    resize: (sessionId: string, rows: number, columns: number): Promise<{ accepted: boolean }> =>
       request<{ accepted: boolean }>(`/terminal-sessions/${encodeURIComponent(sessionId)}/resize`, {
-        method: 'POST', body: { rows, columns }, signal,
+        method: 'POST', body: { rows, columns },
       }),
     close: (sessionId: string): Promise<{ closed: boolean }> =>
       request<{ closed: boolean }>(`/terminal-sessions/${encodeURIComponent(sessionId)}/close`, {

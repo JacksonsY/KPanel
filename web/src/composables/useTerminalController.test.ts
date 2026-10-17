@@ -79,18 +79,6 @@ describe.each(['session', 'task'] as const)('shared %s terminal controller', mod
     await vi.advanceTimersByTimeAsync(1)
     expect(f.read).toHaveBeenCalledTimes(2)
   })
-  it('recovers resize after an adapter hangs without accepting the old acknowledgment', async () => {
-    const f = fixture(mode)
-    let finish!: () => void
-    f.resize.mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve }))
-    await vi.advanceTimersByTimeAsync(100)
-    await vi.advanceTimersByTimeAsync(5000)
-    await vi.advanceTimersByTimeAsync(500)
-    expect(f.resize).toHaveBeenCalledTimes(2)
-    finish(); await flushPromises()
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(f.resize).toHaveBeenCalledTimes(2)
-  })
   it('discards old poll data after switching target and aborts the old read', async () => {
     const f = fixture(mode)
     let finish!: (value: TerminalChunk) => void

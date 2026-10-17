@@ -27,7 +27,7 @@ export interface TerminalAdapter {
   input: Omit<TerminalDuplexOptions, 'error' | 'recovered'>
   read: (offset: number, inputOpen: boolean, signal: AbortSignal) => Promise<TerminalChunk>
   subscribe: (offset: number, inputOpen: boolean, handlers: TerminalOutputHandlers) => TerminalStreamSubscription | null
-  resize?: (rows: number, columns: number, signal: AbortSignal) => Promise<void>
+  resize?: (rows: number, columns: number) => Promise<void>
   missing: (code: string) => boolean
 }
 
@@ -55,8 +55,8 @@ export function hostTerminalAdapter(sessionId: string): TerminalAdapter {
       output: chunk => handlers.chunk(hostChunk(chunk)), connected: handlers.connected,
       error: handlers.error, unavailable: handlers.unavailable,
     }),
-    resize: async (rows, columns, signal) => {
-      const result = await api.terminals.resize(sessionId, rows, columns, signal)
+    resize: async (rows, columns) => {
+      const result = await api.terminals.resize(sessionId, rows, columns)
       if (!result.accepted) throw new Error('Terminal resize was not accepted')
     },
     missing: code => code === 'terminal_not_found',
@@ -78,8 +78,8 @@ export function jobTerminalAdapter(kind: JobTerminalKind, jobId: string): Termin
       job: chunk => handlers.chunk(jobChunk(chunk)), connected: handlers.connected,
       error: handlers.error, unavailable: handlers.unavailable,
     }),
-    resize: kind === 'app' ? async (rows, columns, signal) => {
-      const result = await api.apps.terminalResize(jobId, rows, columns, signal)
+    resize: kind === 'app' ? async (rows, columns) => {
+      const result = await api.apps.terminalResize(jobId, rows, columns)
       if (!result.accepted) throw new Error('Task terminal resize was not accepted')
     } : undefined,
     missing: code => ({ app: ['app_job_not_found', 'app_terminal_not_found'], site: ['site_terminal_not_found'], diagnostic: ['diagnostic_job_not_found', 'diagnostic_terminal_not_found'], environment: ['environment_terminal_not_found'] }[kind]).includes(code),

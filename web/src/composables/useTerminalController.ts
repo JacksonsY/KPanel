@@ -74,7 +74,6 @@ export function useTerminalController(options: Options) {
   let resizeTimer: number | undefined
   let resizeGeneration = 0
   let resizeSending = false
-  let resizeController: AbortController | undefined
   let resizeDirty = false
   let resizeFailures = 0
   let syncedRows = 0
@@ -132,7 +131,8 @@ export function useTerminalController(options: Options) {
       ...adapter.input,
       error: kind => {
         if (disposed || generation !== targetGeneration || duplexInput !== input) return
-        const key = kind === 'capacity' ? 'terminal.inputCapacity' : kind === 'retry' ? 'terminal.inputFailed' : mode === 'task' ? 'terminal.taskInputFailed' : 'terminal.inputUncertain'
+        const keys = { capacity: 'terminal.inputCapacity', retry: 'terminal.inputFailed', fatal: mode === 'task' ? 'terminal.taskInputFailed' : 'terminal.inputUncertain' }
+        const key = keys[kind]
         writeTerminalOutput(`\r\n\x1b[31m[KPanel] ${t(key)}\x1b[0m\r\n`)
         if (kind === 'fatal') {
           if (mode === 'task') dropInput()
@@ -361,10 +361,8 @@ export function useTerminalController(options: Options) {
     resizeSending = true
     resizeDirty = false
     let retry = false
-    const controller = new AbortController()
-    resizeController = controller
     try {
-      await terminalRequest(controller, signal => target.resize!(rows, columns, signal))
+      await target.resize!(rows, columns)
       if (disposed || generation !== resizeGeneration || target.key !== adapter.key || !ownsSize()) return
       syncedRows = rows; syncedColumns = columns; resizeFailures = 0
       options.sizeSynced?.({ rows, columns })
@@ -375,7 +373,6 @@ export function useTerminalController(options: Options) {
       if (resizeFailures === 1) writeTerminalOutput(`\r\n\x1b[33m[KPanel] ${t('terminal.resizeFailed')}\x1b[0m\r\n`)
       retry = resizeFailures <= 3
     } finally {
-      if (resizeController === controller) resizeController = undefined
       resizeSending = false
       if (!disposed) {
         if (generation !== resizeGeneration || resizeDirty) queueResize(100)
@@ -444,7 +441,6 @@ export function useTerminalController(options: Options) {
     disposed = true
     mounted = false
     targetGeneration++; resizeGeneration++
-    resizeController?.abort()
     stopOutput(); dropInput(); finishPresentation()
     if (resizeTimer) window.clearTimeout(resizeTimer)
     observer?.disconnect(); disposeScrollbar?.(); cursorReport?.dispose(); terminal.value?.dispose()
