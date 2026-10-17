@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { LoaderCircle, Pencil, Play, Plus, RefreshCw, Trash2, X } from '@lucide/vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
+import TerminalCommandHistory from '@/components/terminal/TerminalCommandHistory.vue'
 import { ApiError } from '@/lib/api'
 import { useI18n } from '@/i18n'
 import { useTerminalCommands } from '@/stores/terminalCommands'
+import { useTerminalHistory } from '@/stores/terminalHistory'
 import { useToast } from '@/stores/toast'
 import type { TerminalQuickCommand } from '@/types/api'
 
@@ -12,16 +14,23 @@ const props = defineProps<{
   open: boolean
   disabled?: boolean
   mode?: 'interactive' | 'batch'
+  /** Host names by ID, for labelling where a history command last ran. */
+  hostNames?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
   close: []
   execute: [command: string]
+  fill: [command: string]
 }>()
 
 const { t } = useI18n()
 const toast = useToast()
 const commandStore = useTerminalCommands()
+const historyStore = useTerminalHistory()
+type CommandTab = 'quick' | 'history'
+const tabStorageKey = 'kpanel:terminal:command-panel-tab'
+const tab = ref<CommandTab>(readStoredTab())
 // In batch mode clicking a name fills the command box instead of executing,
 // so run/empty guidance must say "fill", not "run".
 const actionPhraseKey = computed(() => props.mode === 'batch' ? 'terminal.quickCommandsFill' : 'terminal.quickCommandsRun')
@@ -41,6 +50,36 @@ const readOnly = computed(() => !snapshot.value.available)
 const modalTitle = computed(() => editingCommand.value
   ? t('terminal.quickCommandsEditTitle')
   : t('terminal.quickCommandsAddTitle'))
+const tabs = computed(() => [
+  { id: 'quick' as const, label: t('terminal.commandTabQuick'), count: items.value.length },
+  {
+    id: 'history' as const,
+    label: t('terminal.commandTabHistory'),
+    count: historyStore.loaded.value ? historyStore.history.value.items.length : undefined,
+  },
+])
+
+function readStoredTab(): CommandTab {
+  try {
+    return window.localStorage.getItem(tabStorageKey) === 'history' ? 'history' : 'quick'
+  } catch {
+    return 'quick'
+  }
+}
+
+function selectTab(value: CommandTab, focus = false): void {
+  tab.value = value
+  try {
+    window.localStorage.setItem(tabStorageKey, value)
+  } catch {
+    // Storage can be unavailable in privacy modes; the tab still switches for this visit.
+  }
+  if (focus) document.getElementById(`terminal-command-tab-${value}`)?.focus()
+}
+
+function switchTab(): void {
+  selectTab(tab.value === 'quick' ? 'history' : 'quick', true)
+}
 
 async function reload(): Promise<void> {
   loadController?.abort()
@@ -177,15 +216,36 @@ async function remove(): Promise<void> {
     v-if="open"
     id="terminal-quick-commands"
     class="terminal-quick-commands"
-    :aria-label="t('terminal.quickCommandsTitle')"
+    :aria-label="t('terminal.commandPanelTitle')"
   >
     <header class="terminal-quick-commands__header">
-      <div>
-        <strong>{{ t('terminal.quickCommandsTitle') }}</strong>
-        <small>{{ t('terminal.quickCommandsCount', { count: items.length }) }}</small>
+      <div
+        class="terminal-command-tabs"
+        role="tablist"
+        :aria-label="t('terminal.commandPanelTitle')"
+        @keydown.left.prevent="switchTab"
+        @keydown.right.prevent="switchTab"
+      >
+        <button
+          v-for="item in tabs"
+          :id="`terminal-command-tab-${item.id}`"
+          :key="item.id"
+          type="button"
+          role="tab"
+          class="terminal-command-tab"
+          :class="{ 'is-active': tab === item.id }"
+          :aria-selected="tab === item.id"
+          :aria-controls="`terminal-command-panel-${item.id}`"
+          :tabindex="tab === item.id ? 0 : -1"
+          @click="selectTab(item.id)"
+        >
+          <span>{{ item.label }}</span>
+          <small v-if="item.count !== undefined">{{ item.count }}</small>
+        </button>
       </div>
       <div class="terminal-quick-commands__actions">
         <button
+          v-if="tab === 'quick'"
           type="button"
           :title="t('terminal.quickCommandsAdd')"
           :aria-label="t('terminal.quickCommandsAdd')"
@@ -205,62 +265,83 @@ async function remove(): Promise<void> {
       </div>
     </header>
 
-    <div v-if="commandStore.loading.value && !commandStore.loaded.value" class="terminal-quick-commands__state">
-      <LoaderCircle class="spin" :size="20" />
-      <span>{{ t('terminal.quickCommandsLoading') }}</span>
-    </div>
-    <div v-else-if="loadError" class="terminal-quick-commands__state" role="alert">
-      <span>{{ loadError }}</span>
-      <button type="button" class="terminal-quick-commands__retry" @click="reload">
-        <RefreshCw :size="15" />{{ t('terminal.quickCommandsRetry') }}
-      </button>
-    </div>
-    <div v-else-if="readOnly" class="terminal-quick-commands__state" role="alert">
-      <strong>{{ t('terminal.quickCommandsUnavailableTitle') }}</strong>
-      <span>{{ t('terminal.quickCommandsUnavailableMessage') }}</span>
-    </div>
-    <div v-else-if="!items.length" class="terminal-quick-commands__state terminal-quick-commands__state--empty">
-      <span class="terminal-quick-commands__empty-icon"><Play :size="20" /></span>
-      <strong>{{ t('terminal.quickCommandsEmptyTitle') }}</strong>
-      <span>{{ t(emptyDescriptionKey) }}</span>
-      <button type="button" class="terminal-quick-commands__add-first" @click="beginAdd">
-        <Plus :size="15" />{{ t('terminal.quickCommandsAdd') }}
-      </button>
-    </div>
-    <div v-else class="terminal-quick-commands__list">
-      <article v-for="item in items" :key="item.id" class="terminal-quick-command">
-        <button
-          type="button"
-          class="terminal-quick-command__run"
-          :disabled="disabled"
-          :title="t(actionPhraseKey, { name: item.name })"
-          @click="emit('execute', item.command)"
-        >
-          <Play :size="14" fill="currentColor" />
-          <span>{{ item.name }}</span>
+    <div
+      v-if="tab === 'quick'"
+      id="terminal-command-panel-quick"
+      class="terminal-quick-commands__panel"
+      role="tabpanel"
+      aria-labelledby="terminal-command-tab-quick"
+    >
+      <div v-if="commandStore.loading.value && !commandStore.loaded.value" class="terminal-quick-commands__state">
+        <LoaderCircle class="spin" :size="20" />
+        <span>{{ t('terminal.quickCommandsLoading') }}</span>
+      </div>
+      <div v-else-if="loadError" class="terminal-quick-commands__state" role="alert">
+        <span>{{ loadError }}</span>
+        <button type="button" class="terminal-quick-commands__retry" @click="reload">
+          <RefreshCw :size="15" />{{ t('terminal.quickCommandsRetry') }}
         </button>
-        <div class="terminal-quick-command__actions">
+      </div>
+      <div v-else-if="readOnly" class="terminal-quick-commands__state" role="alert">
+        <strong>{{ t('terminal.quickCommandsUnavailableTitle') }}</strong>
+        <span>{{ t('terminal.quickCommandsUnavailableMessage') }}</span>
+      </div>
+      <div v-else-if="!items.length" class="terminal-quick-commands__state terminal-quick-commands__state--empty">
+        <span class="terminal-quick-commands__empty-icon"><Play :size="20" /></span>
+        <strong>{{ t('terminal.quickCommandsEmptyTitle') }}</strong>
+        <span>{{ t(emptyDescriptionKey) }}</span>
+        <button type="button" class="terminal-quick-commands__add-first" @click="beginAdd">
+          <Plus :size="15" />{{ t('terminal.quickCommandsAdd') }}
+        </button>
+      </div>
+      <div v-else class="terminal-quick-commands__list">
+        <article v-for="item in items" :key="item.id" class="terminal-quick-command">
           <button
             type="button"
-            :title="t('terminal.quickCommandsEdit')"
-            :aria-label="t('terminal.quickCommandsEditNamed', { name: item.name })"
-            :disabled="commandStore.saving.value"
-            @click="beginEdit(item)"
+            class="terminal-quick-command__run"
+            :disabled="disabled"
+            :title="t(actionPhraseKey, { name: item.name })"
+            @click="emit('execute', item.command)"
           >
-            <Pencil :size="14" />
+            <Play :size="14" fill="currentColor" />
+            <span>{{ item.name }}</span>
           </button>
-          <button
-            type="button"
-            :title="t('terminal.quickCommandsDelete')"
-            :aria-label="t('terminal.quickCommandsDeleteNamed', { name: item.name })"
-            :disabled="commandStore.saving.value"
-            @click="confirmDelete(item)"
-          >
-            <Trash2 :size="14" />
-          </button>
-        </div>
-      </article>
+          <div class="terminal-quick-command__actions">
+            <button
+              type="button"
+              :title="t('terminal.quickCommandsEdit')"
+              :aria-label="t('terminal.quickCommandsEditNamed', { name: item.name })"
+              :disabled="commandStore.saving.value"
+              @click="beginEdit(item)"
+            >
+              <Pencil :size="14" />
+            </button>
+            <button
+              type="button"
+              :title="t('terminal.quickCommandsDelete')"
+              :aria-label="t('terminal.quickCommandsDeleteNamed', { name: item.name })"
+              :disabled="commandStore.saving.value"
+              @click="confirmDelete(item)"
+            >
+              <Trash2 :size="14" />
+            </button>
+          </div>
+        </article>
+      </div>
     </div>
+    <TerminalCommandHistory
+      v-else
+      id="terminal-command-panel-history"
+      class="terminal-quick-commands__panel"
+      role="tabpanel"
+      aria-labelledby="terminal-command-tab-history"
+      :active="open && tab === 'history'"
+      :disabled="disabled"
+      :mode="mode"
+      :host-names="hostNames"
+      @execute="emit('execute', $event)"
+      @fill="emit('fill', $event)"
+    />
 
     <ModalDialog
       :open="formOpen"
@@ -332,10 +413,15 @@ async function remove(): Promise<void> {
 
 <style scoped>
 .terminal-quick-commands { display:grid; min-width:0; min-height:0; grid-template-rows:auto minmax(0,1fr); overflow:hidden; border-left:1px solid var(--terminal-shell-border,#29383a); color:var(--terminal-shell-text,#d8dddc); background:var(--terminal-shell-panel,#111a1d); }
-.terminal-quick-commands__header { display:flex; min-height:51px; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px 8px 13px; border-bottom:1px solid var(--terminal-shell-border,#29383a); }
-.terminal-quick-commands__header>div:first-child { display:grid; min-width:0; gap:2px; }
-.terminal-quick-commands__header strong { overflow:hidden; font-size:14px; text-overflow:ellipsis; white-space:nowrap; }
-.terminal-quick-commands__header small { color:var(--terminal-shell-muted,#8a9695); font-size:12px; }
+.terminal-quick-commands__header { display:flex; min-height:51px; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px 8px 8px; border-bottom:1px solid var(--terminal-shell-border,#29383a); }
+.terminal-command-tabs { display:flex; min-width:0; gap:2px; border:1px solid var(--terminal-shell-border,#29383a); border-radius:var(--radius-sm); padding:2px; background:var(--terminal-shell-background,#0b1214); }
+.terminal-command-tab { display:flex; min-width:0; align-items:center; gap:5px; border:0; border-radius:calc(var(--radius-sm) - 2px); padding:5px 9px; color:var(--terminal-shell-muted,#8a9695); background:transparent; font:inherit; font-size:14px; line-height:1.35; white-space:nowrap; cursor:pointer; }
+.terminal-command-tab span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.terminal-command-tab small { flex:0 0 auto; color:var(--terminal-shell-muted,#8a9695); font-size:12px; font-variant-numeric:tabular-nums; }
+.terminal-command-tab.is-active { color:var(--terminal-shell-text,#d8dddc); background:color-mix(in srgb,var(--brand) 16%,var(--terminal-shell-panel,#111a1d)); font-weight:600; }
+.terminal-quick-commands .terminal-command-tab:focus-visible { box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 45%,transparent); outline:none; }
+.terminal-quick-commands__panel { display:flex; min-width:0; min-height:0; flex-direction:column; }
+.terminal-quick-commands__panel>.terminal-quick-commands__list,.terminal-quick-commands__panel>.terminal-quick-commands__state { flex:1; }
 .terminal-quick-commands__actions,.terminal-quick-command__actions { display:flex; flex:0 0 auto; gap:5px; }
 .terminal-quick-commands__actions button,.terminal-quick-command__actions button { display:grid; width:30px; height:30px; place-items:center; border:1px solid var(--terminal-shell-border,#29383a); border-radius:var(--radius-sm); color:var(--terminal-shell-muted,#8a9695); background:var(--terminal-shell-background,#0b1214); cursor:pointer; }
 .terminal-quick-commands button:hover:not(:disabled),.terminal-quick-commands button:focus-visible { border-color:var(--brand); color:var(--terminal-shell-text,#d8dddc); outline:none; }

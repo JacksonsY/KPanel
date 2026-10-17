@@ -38,6 +38,7 @@ interface Options {
   ownerSize?: () => TerminalSize | undefined
   sizeSynced?: (size: TerminalSize) => void
   activity?: ReturnType<typeof useTerminalActivity>
+  acceptedInput?: (data: string, initialCommand: boolean) => void
 }
 
 // A single viewer owns rendering, transport orchestration and bounded queues.
@@ -168,6 +169,7 @@ export function useTerminalController(options: Options) {
     if (disposed || !inputOpen.value || inputBlocked.value || state.value === 'finished' || state.value === 'error' || presentingCommand.value && !initialCommand) return false
     const text = adapter.mode === 'task' ? data.replaceAll('\0', '') : data
     if (!text || !ensureInput().append(text)) return false
+    options.acceptedInput?.(text, initialCommand)
     if (terminalInputShouldFlushImmediately(text) || (duplexInput?.byteLength ?? 0) >= 2048) flushInput()
     else if (!inputTimer) inputTimer = window.setTimeout(flushInput, terminalInputFlushInterval)
     return true

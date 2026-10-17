@@ -41,6 +41,7 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/scenepacks"
 	"github.com/kejilion/kejilion-panel/internal/store"
 	"github.com/kejilion/kejilion-panel/internal/terminalcommands"
+	"github.com/kejilion/kejilion-panel/internal/terminalhistory"
 	"github.com/kejilion/kejilion-panel/internal/version"
 )
 
@@ -135,6 +136,7 @@ type Server struct {
 	scenePackStreams        chan struct{}
 	scenePackStreamQueue    chan struct{}
 	terminalCommands        *terminalcommands.Store
+	terminalHistory         *terminalhistory.Store
 	mcp                     *mcpService
 	selfTLS                 *selfSignedTLS
 	domainCheckClient       *http.Client
@@ -215,6 +217,10 @@ func NewServer(config Config, authService *auth.Service, storage *store.Store, a
 	if err != nil {
 		return nil, fmt.Errorf("initialize terminal commands: %w", err)
 	}
+	terminalHistory, err := terminalhistory.Open(filepath.Join(config.DataDir, "terminal-history"))
+	if err != nil {
+		return nil, fmt.Errorf("initialize terminal history: %w", err)
+	}
 	remoteDownloadJobs, err := remotedownload.OpenTransferJobStore(filepath.Join(config.DataDir, "file-transfers"), filepath.Join(config.DataDir, "remote-downloads"))
 	if err != nil {
 		return nil, fmt.Errorf("initialize remote download jobs: %w", err)
@@ -271,6 +277,7 @@ func NewServer(config Config, authService *auth.Service, storage *store.Store, a
 		scenePackStreams:        make(chan struct{}, 4),
 		scenePackStreamQueue:    make(chan struct{}, maxScenePackStreamQueue),
 		terminalCommands:        terminalCommands,
+		terminalHistory:         terminalHistory,
 		fileShareStreamGate:     make(chan struct{}, maxPublicFileShareStreams),
 		fileShareMetadataGate:   make(chan struct{}, maxFileShareMetadataReads),
 		remoteDownloadGate:      make(chan struct{}, maxPanelRemoteDownloads),
@@ -509,6 +516,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleTerminalStream(w, r)
 	case r.URL.Path == "/api/v1/terminal-commands":
 		s.handleTerminalCommands(w, r)
+	case r.URL.Path == terminalHistoryPath || r.URL.Path == terminalHistoryRemovePath:
+		s.handleTerminalHistory(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/jobs":
 		s.handleJobs(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/jobs/"):

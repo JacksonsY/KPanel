@@ -176,7 +176,7 @@ describe('terminal batch mode', () => {
     // Open the batch drawer via its toolbar toggle.
     const batchStage = wrapper.findAll('.terminal-stage--batch')[0]
     const toolbarButtons = batchStage?.findAll('.terminal-toolbar button') ?? []
-    const expandButton = toolbarButtons.find((button) => button.attributes('aria-label') === '展开快捷命令')
+    const expandButton = toolbarButtons.find((button) => button.attributes('aria-label') === '展开快捷命令和历史命令')
     await expandButton?.trigger('click')
     await flushPromises()
 

@@ -10,6 +10,7 @@ import { batchExitCode, createBatchMarker, stripBatchWrapper, wrapBatchCommand }
 import { drainTerminalInputQueue, TerminalInputQueue } from '@/lib/terminalInput'
 import { createTerminalOutputReader, type TerminalOutputReader } from '@/lib/terminalOutputReader'
 import { closeTerminalsOnPageHide } from '@/lib/terminalPageHide'
+import { useTerminalHistory } from '@/stores/terminalHistory'
 import type { ClusterHost } from '@/types/api'
 
 function phrase(value: string): string {
@@ -60,6 +61,7 @@ const promptPattern = /(?:^|\r?\n|\r)[^\r\n]{0,64}@[^\r\n]{0,64}:[^\r\n]{0,80}[$
 const encoder = new TextEncoder()
 
 const command = ref('')
+const terminalHistory = useTerminalHistory()
 const results = ref<BatchExecutionResult[]>([])
 const executing = ref(false)
 const expandedHosts = ref<Set<string>>(new Set())
@@ -361,6 +363,8 @@ async function execute(): Promise<void> {
   if (!canExecute.value) return
   const targets = [...props.hosts]
   const submittedCommand = command.value
+  // Batch runs join the shared history without a host; the run itself is unaffected.
+  terminalHistory.record(submittedCommand, '')
   const identity = ++runIdentity
   runController?.abort()
   const current = new AbortController()

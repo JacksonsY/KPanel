@@ -261,7 +261,9 @@ describe('multi-host terminal workspace layout', () => {
   it('focuses the shell cursor by default and leaves the composer user-activated', () => {
     expect(hostTerminalSource).toContain('useTerminalController(')
     expect(controllerSource).toContain('window.requestAnimationFrame(focusTerminal)')
-    expect(hostTerminalSource).not.toContain('composerInput')
+    // Explicit history fill alone focuses the composer; touch keeps the keyboard closed.
+    expect(hostTerminalSource).toContain('if (focus && !isTouchPrimary()) input.focus()')
+    expect(hostTerminalSource.match(/^\s+moveComposerCaretToEnd\(true\)$/gm)).toHaveLength(1)
     expect(terminalSource).toContain('focusActiveTerminal()')
   })
 

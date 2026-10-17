@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import BatchTerminalPanel from './BatchTerminalPanel.vue'
+import { resetTerminalHistoryForTest } from '@/stores/terminalHistory'
 import type { ClusterHost } from '@/types/api'
 
 const mocks = vi.hoisted(() => ({
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   input: vi.fn(),
   output: vi.fn(),
   close: vi.fn(),
+  appendHistory: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -67,6 +69,8 @@ describe('BatchTerminalPanel', () => {
     mocks.input.mockReset().mockResolvedValue({ accepted: true })
     mocks.output.mockReset()
     mocks.close.mockReset().mockResolvedValue({ closed: true })
+    mocks.appendHistory.mockReset().mockResolvedValue({ schemaVersion: 1, available: true, items: [] })
+    resetTerminalHistoryForTest()
   })
 
   it('sends the same custom command as terminal input and reports each host result', async () => {
@@ -89,6 +93,8 @@ describe('BatchTerminalPanel', () => {
 
     expect(mocks.open).toHaveBeenCalledTimes(2)
     expect(mocks.input).toHaveBeenCalledTimes(2)
+    // The run joins the shared history once, without a host.
+    expect(mocks.appendHistory).toHaveBeenCalledExactlyOnceWith({ items: [{ command: 'uname -a', hostId: '' }] })
     const sent = mocks.input.mock.calls.map((call) => decodeInput(call[1]))
     for (const payload of sent) {
       expect(payload).toMatch(/^\{ uname -a\n\}; printf '\\n__KPANEL_DONE_[0-9a-f]{32}_%s__\\n' "\$\?"\r$/)

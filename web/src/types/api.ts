@@ -487,6 +487,26 @@ export interface TerminalQuickCommandsUpdate {
   items: TerminalQuickCommand[]
 }
 
+export interface TerminalHistoryEntry {
+  command: string
+  /** Host the command last ran on; empty for a multi-host batch command. */
+  hostId: string
+  /** Unix milliseconds of the last run. */
+  at: number
+}
+
+export interface TerminalHistory {
+  schemaVersion: 1
+  /** False means the stored history is unreadable until it is cleared. */
+  available: boolean
+  warning?: string
+  items: TerminalHistoryEntry[]
+}
+
+export interface TerminalHistoryAppend {
+  items: Array<Pick<TerminalHistoryEntry, 'command' | 'hostId'>>
+}
+
 export interface ClusterLightEnrollment {
   id: string
   command: string

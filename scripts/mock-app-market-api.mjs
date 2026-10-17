@@ -1001,6 +1001,25 @@ function mockTerminalCommandSnapshot() {
   }
 }
 
+// One shared terminal history, newest first, mirroring the panel store limits.
+const mockHistoryStart = Date.now()
+let mockTerminalHistory = [
+  { command: 'docker compose logs -f --tail=200 web', hostId: 'e'.repeat(32), at: mockHistoryStart - 2 * 60 * 1000 },
+  { command: 'systemctl status nginx --no-pager', hostId: 'b'.repeat(32), at: mockHistoryStart - 25 * 60 * 1000 },
+  { command: 'apt update && apt list --upgradable', hostId: '', at: mockHistoryStart - 3 * 60 * 60 * 1000 },
+  { command: 'find /var/log -name "*.gz" -mtime +30 -print -delete', hostId: 'e'.repeat(32), at: mockHistoryStart - 26 * 60 * 60 * 1000 },
+  { command: 'df -h', hostId: 'c'.repeat(32), at: mockHistoryStart - 3 * 24 * 60 * 60 * 1000 },
+]
+
+function mockTerminalHistorySnapshot() {
+  return { schemaVersion: 1, available: true, items: mockTerminalHistory }
+}
+
+function validMockHistoryCommand(command) {
+  return typeof command === 'string' && command !== '' && command.trim() === command &&
+    new TextEncoder().encode(command).byteLength <= 8192 && !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(command)
+}
+
 function visualClusterPublicSnapshot() {
   const generatedAt = new Date().toISOString()
   const items = visualClusterHosts.map((host) => {
@@ -3139,6 +3158,39 @@ createServer(async (request, response) => {
     mockTerminalCommands = input.items.map(({ id, name, command }) => ({ id, name, command }))
     mockTerminalCommandRevision += 1
     send(response, 200, mockTerminalCommandSnapshot())
+    return
+  }
+  if (url.pathname === '/api/v1/terminal-history' && request.method === 'GET') {
+    send(response, 200, mockTerminalHistorySnapshot())
+    return
+  }
+  if (url.pathname === '/api/v1/terminal-history' && request.method === 'POST') {
+    const input = (await readJSON(request)) ?? {}
+    const items = Array.isArray(input.items) ? input.items : []
+    if (!items.length || items.length > 32 || !items.every((item) => validMockHistoryCommand(item?.command) && typeof item.hostId === 'string')) {
+      send(response, 422, { title: '历史命令格式无效', code: 'validation_failed' })
+      return
+    }
+    const at = Date.now()
+    for (const { command, hostId } of items) {
+      mockTerminalHistory = [{ command, hostId, at }, ...mockTerminalHistory.filter((entry) => entry.command !== command)].slice(0, 200)
+    }
+    send(response, 200, mockTerminalHistorySnapshot())
+    return
+  }
+  if (url.pathname === '/api/v1/terminal-history' && request.method === 'DELETE') {
+    mockTerminalHistory = []
+    send(response, 200, mockTerminalHistorySnapshot())
+    return
+  }
+  if (url.pathname === '/api/v1/terminal-history/remove' && request.method === 'POST') {
+    const input = (await readJSON(request)) ?? {}
+    if (!validMockHistoryCommand(input.command)) {
+      send(response, 422, { title: '历史命令格式无效', code: 'validation_failed' })
+      return
+    }
+    mockTerminalHistory = mockTerminalHistory.filter((entry) => entry.command !== input.command)
+    send(response, 200, mockTerminalHistorySnapshot())
     return
   }
   if (request.method === 'POST' && url.pathname === '/api/v1/cluster/light-enrollments') {

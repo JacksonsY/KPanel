@@ -24,12 +24,14 @@ import { withoutUnsupportedLightNodes } from '@/lib/nodeFeatureHosts'
 import type { ClusterHost, ClusterHostList } from '@/types/api'
 import { usePhraseCatalog } from '@/i18n/phrase'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/stores/toast'
 import { desktopCloseGuardCoordinator, desktopWindowCloseGuardKey } from '@/lib/desktopRouteKeys'
 
 usePhraseCatalog((locale) => locale === 'en-US'
   ? import('@/i18n/pages/TerminalView/en-US').then((module) => module.default)
   : import('@/i18n/pages/TerminalView/zh-TW').then((module) => module.default))
 const { locale, t } = useI18n()
+const toast = useToast()
 const desktopWindowCloseGuards = inject(desktopWindowCloseGuardKey, undefined)
 let unregisterWindowCloseGuard: (() => void) | undefined
 
@@ -52,6 +54,7 @@ interface OpenTerminal {
 interface HostTerminalHandle {
   focusTerminal: () => void
   executeCommand: (command: string) => boolean
+  fillCommand: (command: string) => boolean
   scheduleResize: () => void
   closeSession: () => Promise<void>
 }
@@ -115,6 +118,7 @@ const hosts = computed(() => {
 })
 
 const activeSession = computed(() => sessions.value.find((item) => item.id === activeSessionId.value))
+const hostNames = computed(() => Object.fromEntries((inventory.value?.items || []).map((host) => [host.id, host.name])))
 const selectedBatchHosts = computed(() => orderedHosts.value.filter((host) => selectedBatchHostIDs.value.has(host.id)))
 const selectableBatchHosts = computed(() => hosts.value.filter((host) => host.terminalAvailable))
 watch(hosts, () => { batchSelectionAnchor.value = '' })
@@ -341,6 +345,11 @@ function executeQuickCommand(command: string): void {
     return
   }
   terminalRefs.get(activeSessionId.value)?.executeCommand(command)
+}
+
+function fillHistoryCommand(command: string): void {
+  const handle = terminalRefs.get(activeSessionId.value)
+  if (handle && !handle.fillCommand(command)) toast.danger(t('terminal.historyFillUnavailable'))
 }
 
 function toggleConnections(): void {
@@ -757,15 +766,17 @@ onBeforeUnmount(() => {
           @choose-host="connectionsCollapsed = false; mobileConnectionsOpen = true">
           <template #default="{ item, visible }">
             <HostTerminal :ref="(instance) => setTerminalRef(item.id, instance)" :session-id="item.id"
-              :retained="item.retained" :host-name="item.label" :initial-offset="item.offset" :visible="visible && terminalMode === 'interactive'" :auto-focus="false"
+              :retained="item.retained" :host-name="item.label" :history-host-id="item.hostId" :initial-offset="item.offset" :visible="visible && terminalMode === 'interactive'" :auto-focus="false"
               @state-change="updateWorkspaceSessionState(item.id, $event)" />
           </template>
         </TerminalWorkspace>
         <TerminalQuickCommands
           :open="quickCommandsOpen && terminalMode === 'interactive'"
           :disabled="!activeSession || activeSession.state === 'finished'"
+          :host-names="hostNames"
           @close="closeQuickCommands"
           @execute="executeQuickCommand"
+          @fill="fillHistoryCommand"
         />
       </main>
       <main v-show="terminalMode === 'batch'" class="terminal-stage terminal-stage--batch" :class="{ 'is-fullscreen': workspaceFullscreen, 'is-quick-commands-open': quickCommandsOpen }">
@@ -799,6 +810,7 @@ onBeforeUnmount(() => {
           mode="batch"
           :open="quickCommandsOpen && terminalMode === 'batch'"
           :disabled="batchRunning"
+          :host-names="hostNames"
           @close="closeQuickCommands"
           @execute="executeQuickCommand"
         />

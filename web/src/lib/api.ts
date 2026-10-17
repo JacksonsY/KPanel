@@ -148,6 +148,8 @@ import type {
   TutorialVideoFeed,
   TerminalOutput,
   TerminalQuickCommands,
+  TerminalHistory,
+  TerminalHistoryAppend,
   TerminalQuickCommandsUpdate,
   TerminalSession,
   WebEnvironmentActionInput,
@@ -1958,6 +1960,14 @@ export const api = {
       request<TerminalQuickCommands>('/terminal-commands', { signal }),
     updateCommands: (body: TerminalQuickCommandsUpdate): Promise<TerminalQuickCommands> =>
       request<TerminalQuickCommands>('/terminal-commands', { method: 'PUT', body }),
+    history: (signal?: AbortSignal): Promise<TerminalHistory> =>
+      request<TerminalHistory>('/terminal-history', { signal }),
+    appendHistory: (body: TerminalHistoryAppend): Promise<TerminalHistory> =>
+      request<TerminalHistory>('/terminal-history', { method: 'POST', body }),
+    removeHistory: (command: string): Promise<TerminalHistory> =>
+      request<TerminalHistory>('/terminal-history/remove', { method: 'POST', body: { command } }),
+    clearHistory: (): Promise<TerminalHistory> =>
+      request<TerminalHistory>('/terminal-history', { method: 'DELETE' }),
     prepareShortcut: (hostId: string, shortcutId: string): Promise<{ launchId: string; expiresAt: string }> =>
       request('/terminal-sessions', { method: 'POST', body: { hostId, shortcutId, rows: 30, columns: 120, prepareOnly: true } }),
     preparePurpose: (purpose: 'site-management'): Promise<{ launchId: string; expiresAt: string }> =>

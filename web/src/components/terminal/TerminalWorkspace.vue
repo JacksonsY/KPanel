@@ -14,6 +14,7 @@ interface WorkspaceSession {
   stateLabel: string
   closing?: boolean
   retained?: boolean
+  hostId?: string
 }
 const props = defineProps<{ sessions: WorkspaceSession[]; activeId: string }>()
 const emit = defineEmits<{ activate: [id: string]; close: [id: string]; chooseHost: []; resize: [] }>()

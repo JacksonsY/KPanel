@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TerminalContextMenu from '@/components/terminal/TerminalContextMenu.vue'
 import { api, ApiError } from '@/lib/api'
 import { closeTerminalsOnPageHide } from '@/lib/terminalPageHide'
 import { hostTerminalAdapter } from '@/lib/terminalAdapters'
 import { useTerminalController } from '@/composables/useTerminalController'
 import { useI18n } from '@/i18n'
+import { isTouchPrimary } from '@/lib/touchFocus'
+import { createTerminalCommandCapture, type TerminalCommandCapture } from '@/lib/terminalCommandCapture'
+import { useTerminalHistory } from '@/stores/terminalHistory'
 
 const props = withDefaults(defineProps<{
   sessionId: string
@@ -14,11 +17,17 @@ const props = withDefaults(defineProps<{
   visible?: boolean
   autoFocus?: boolean
   retained?: boolean
-}>(), { visible: true, autoFocus: true, retained: false })
+  historyHostId?: string
+}>(), { visible: true, autoFocus: true, retained: false, historyHostId: '' })
 const emit = defineEmits<{ stateChange: [state: 'connecting' | 'connected' | 'reconnecting' | 'finished'] }>()
 const { t } = useI18n()
 const host = ref<HTMLElement>()
 const clipboardMenu = ref<InstanceType<typeof TerminalContextMenu>>()
+const composerInput = ref<HTMLInputElement>()
+const terminalHistory = useTerminalHistory()
+let commandCapture: TerminalCommandCapture | undefined
+let historyIndex = -1
+let historyDraft = ''
 const adapter = computed(() => hostTerminalAdapter(props.sessionId))
 const {
   terminal, state, pendingLine, canInput,
@@ -26,9 +35,53 @@ const {
   containTerminalWheel, terminalTouchScroll, submitPendingLine, handlePendingLineEnter,
 } = useTerminalController({
   adapter: () => adapter.value, host, clipboardMenu,
+  acceptedInput: (data, initialCommand) => {
+    if (initialCommand) commandCapture?.reset()
+    else commandCapture?.input(data)
+    historyIndex = -1
+  },
   initialOffset: () => props.initialOffset, inputOpen: () => true,
   visible: () => props.visible, autoFocus: () => props.autoFocus,
 })
+function bindCommandCapture(): void {
+  commandCapture?.dispose()
+  commandCapture = undefined
+  const screen = terminal.value
+  const hostId = props.historyHostId
+  if (screen && hostId) {
+    commandCapture = createTerminalCommandCapture(screen, command => terminalHistory.record(command, hostId))
+    void terminalHistory.ensureLoaded()
+  }
+}
+watch([terminal, () => props.sessionId, () => props.historyHostId], bindCommandCapture, { flush: 'sync' })
+function moveComposerCaretToEnd(focus: boolean): void {
+  void nextTick(() => {
+    const input = composerInput.value
+    if (!input) return
+    if (focus && !isTouchPrimary()) input.focus()
+    if (document.activeElement === input) input.setSelectionRange(input.value.length, input.value.length)
+  })
+}
+function fillCommand(command: string): boolean {
+  if (!command.trim() || command.includes('\n') || !canInput.value) return false
+  pendingLine.value = command
+  historyIndex = -1
+  moveComposerCaretToEnd(true)
+  return true
+}
+function browseHistory(event: KeyboardEvent, step: 1 | -1): void {
+  if (!props.historyHostId || event.isComposing || event.keyCode === 229 || !canInput.value) return
+  const commands = terminalHistory.history.value.items.map(item => item.command).filter(command => !command.includes('\n'))
+  if (historyIndex === -1 && step < 0) return
+  const next = historyIndex + step
+  if (next >= commands.length) return
+  event.preventDefault()
+  if (historyIndex === -1) historyDraft = pendingLine.value
+  historyIndex = next
+  pendingLine.value = next === -1 ? historyDraft : commands[next]!
+  moveComposerCaretToEnd(false)
+}
+function editComposer(): void { historyIndex = -1 }
 let closeRequest: Promise<void> | undefined
 let closeConfirmed = false
 let stopPageHideClose: (() => void) | undefined
@@ -66,9 +119,10 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   stopPageHideClose?.()
+  commandCapture?.dispose()
   if (!props.retained) void closeSession().catch(() => undefined)
 })
-defineExpose({ focusTerminal, executeCommand, executePresentedCommand, scheduleResize, closeSession })
+defineExpose({ focusTerminal, executeCommand, executePresentedCommand, fillCommand, scheduleResize, closeSession })
 </script>
 
 <template>
@@ -89,6 +143,7 @@ defineExpose({ focusTerminal, executeCommand, executePresentedCommand, scheduleR
     </div>
     <form class="host-terminal__composer" @submit.prevent="submitPendingLine">
       <input
+        ref="composerInput"
         v-model="pendingLine"
         type="text"
         autocomplete="off"
@@ -98,6 +153,9 @@ defineExpose({ focusTerminal, executeCommand, executePresentedCommand, scheduleR
         :placeholder="t('terminal.inputPlaceholder')"
         :disabled="!canInput"
         @keydown.enter="handlePendingLineEnter"
+        @keydown.up="browseHistory($event, 1)"
+        @keydown.down="browseHistory($event, -1)"
+        @input="editComposer"
       />
       <button type="submit" :disabled="!canInput">{{ t('terminal.send') }}</button>
     </form>
