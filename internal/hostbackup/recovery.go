@@ -58,15 +58,16 @@ func (e *Engine) Recover(ctx context.Context, id, directory string) error {
 	default:
 		return backup.ErrInvalid
 	}
-	for _, r := range j.Roots {
+	defer j.closeParents()
+	for n := range j.Roots {
+		r := &j.Roots[n]
 		relative, err := filepath.Rel(e.Root, r.Target)
 		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) || e.excluded("/"+filepath.ToSlash(relative)) || r.Previous != r.Target+".kpanel-restore-"+id || r.Next != r.Target+".kpanel-next-"+id {
 			return backup.ErrInvalid
 		}
-		if err := backup.NoLinkParents(r.Target); err != nil {
-			return err
-		}
-		if err := backup.NoLinkParents(r.Previous); err != nil {
+		// Missing identity (an interrupted older release) or a replaced parent
+		// needs operator recovery; never guess which directory owns its data.
+		if err := r.bindParent(true); err != nil {
 			return err
 		}
 	}

@@ -489,6 +489,10 @@ func TestBackupHostInterruptedJournalRecovery(t *testing.T) {
 	}
 	_ = os.WriteFile(filepath.Join(target, "data"), []byte("uncommitted"), 0600)
 	j := restoreJournal{ID: id, Phase: "applying", Roots: []restoreRoot{{Target: target, Previous: previous, Next: next, HadPrevious: true, Applied: true}}}
+	if err := j.Roots[0].bindParent(false); err != nil {
+		t.Fatal(err)
+	}
+	j.closeParents() // simulate losing the descriptor across a process restart
 	if err := backup.WriteJSON(filepath.Join(dir, "restore-journal.json"), j); err != nil {
 		t.Fatal(err)
 	}

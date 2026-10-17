@@ -5,8 +5,24 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
+
+// Resolve only the pinned parent descriptor for the mount-table check. Actual
+// deletion still goes through Root, so a later pathname swap cannot redirect it.
+func restoreNoNestedMounts(parent *os.Root, name string) error {
+	f, err := parent.Open(".")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	path, err := os.Readlink("/proc/self/fd/" + strconv.FormatUint(uint64(f.Fd()), 10))
+	if err != nil {
+		return err
+	}
+	return noNestedMounts(filepath.Join(path, name))
+}
 
 // Directory swaps cannot safely cross a mounted filesystem. A separate
 // filesystem needs its own snapshot adapter before it can participate.

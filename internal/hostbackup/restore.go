@@ -24,11 +24,13 @@ var containerName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
 func validContainerName(name string) bool { return containerName.MatchString(name) }
 
 type restoreRoot struct {
-	Target      string `json:"target"`
-	Previous    string `json:"previous"`
-	Next        string `json:"next"`
-	HadPrevious bool   `json:"hadPrevious"`
-	Applied     bool   `json:"applied"`
+	Target         string `json:"target"`
+	Previous       string `json:"previous"`
+	Next           string `json:"next"`
+	HadPrevious    bool   `json:"hadPrevious"`
+	Applied        bool   `json:"applied"`
+	ParentIdentity string `json:"parentIdentity,omitempty"`
+	parent         *os.Root
 }
 type restoreContainer struct {
 	Name       string `json:"name"`
@@ -225,6 +227,7 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		}
 	}
 	j := restoreJournal{ID: id, Phase: "prepared", Roots: []restoreRoot{}, Containers: []restoreContainer{}, Networks: []string{}}
+	defer j.closeParents()
 	for _, r := range all.Roots {
 		target := e.host(r.Path)
 		if err := noNestedMounts(target); err != nil {
@@ -233,19 +236,25 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		if err := noLinkParents(target); err != nil {
 			return err
 		}
+		entry := restoreRoot{Target: target, Previous: target + ".kpanel-restore-" + id, Next: target + ".kpanel-next-" + id}
+		if err := entry.bindParent(false); err != nil {
+			return err
+		}
+		j.Roots = append(j.Roots, entry)
+		parent := entry.parent
 		previous := target + ".kpanel-restore-" + id
 		next := target + ".kpanel-next-" + id
-		if _, err := os.Lstat(previous); !errors.Is(err, os.ErrNotExist) {
+		if _, err := parent.Lstat(filepath.Base(previous)); !errors.Is(err, os.ErrNotExist) {
 			return errors.New("recovery path already exists")
 		}
-		if _, err := os.Lstat(next); !errors.Is(err, os.ErrNotExist) {
+		if _, err := parent.Lstat(filepath.Base(next)); !errors.Is(err, os.ErrNotExist) {
 			return errors.New("staging path already exists")
 		}
-		_, statErr := os.Lstat(target)
+		_, statErr := parent.Lstat(filepath.Base(target))
 		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
 			return statErr
 		}
-		j.Roots = append(j.Roots, restoreRoot{Target: target, Previous: previous, Next: next, HadPrevious: statErr == nil})
+		j.Roots[len(j.Roots)-1].HadPrevious = statErr == nil
 	}
 	for _, c := range all.Containers {
 		var listed []struct {
@@ -322,18 +331,19 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 	}
 	for index, r := range all.Roots {
 		entry := &j.Roots[index]
-		if err := backup.NoLinkParents(filepath.Dir(entry.Next)); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Dir(entry.Next), 0700); err != nil {
-			return err
-		}
-		staged, err := copyTree(ctx, filepath.Join(directory, "unpack-"+r.Module, "data", r.ID), entry.Next)
+		parent, target, previous, next, err := entry.names()
 		if err != nil {
 			return err
 		}
+		staged, err := copyTreeIn(ctx, filepath.Join(directory, "unpack-"+r.Module, "data", r.ID), parent, next)
+		if err != nil {
+			return err
+		}
+		if err := j.checkParentPaths(); err != nil {
+			return err
+		}
 		if entry.HadPrevious {
-			if err := os.Rename(entry.Target, entry.Previous); err != nil {
+			if err := parent.Rename(target, previous); err != nil {
 				return err
 			}
 		}
@@ -341,11 +351,11 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		if err := backup.WriteJSON(journalPath, j); err != nil {
 			return err
 		}
-		if err := publishStaged(entry.Next, entry.Target, staged); err != nil {
+		if err := publishStagedIn(parent, next, target, staged); err != nil {
 			return err
 		}
 		entry.Applied = true
-		if err := backup.SyncDir(filepath.Dir(entry.Target)); err != nil {
+		if err := syncRestoreParent(parent); err != nil {
 			return err
 		}
 		if err := backup.WriteJSON(journalPath, j); err != nil {
@@ -401,6 +411,9 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		}
 	}
 	for index, c := range all.Containers {
+		if err := j.checkParentPaths(); err != nil {
+			return err
+		}
 		input := map[string]json.RawMessage{}
 		for key, value := range c.Config {
 			input[key] = value
@@ -576,16 +589,21 @@ func (e *Engine) rollback(ctx context.Context, j *restoreJournal) error {
 	} // Never touch data while a new writer survives.
 	for n := len(j.Roots) - 1; n >= 0; n-- {
 		r := j.Roots[n]
-		if _, err := os.Lstat(r.Previous); err == nil {
-			if removeErr := removeDataTree(r.Target); removeErr != nil {
+		parent, target, previous, next, err := r.names()
+		if err != nil {
+			result = errors.Join(result, err)
+			continue
+		}
+		if _, err := parent.Lstat(previous); err == nil {
+			if removeErr := removeRestoreTree(parent, target); removeErr != nil {
 				result = errors.Join(result, removeErr)
 				continue
 			}
-			result = errors.Join(result, os.Rename(r.Previous, r.Target))
+			result = errors.Join(result, parent.Rename(previous, target))
 		} else if r.Applied && !r.HadPrevious {
-			result = errors.Join(result, removeDataTree(r.Target))
+			result = errors.Join(result, removeRestoreTree(parent, target))
 		}
-		result = errors.Join(result, removeDataTree(r.Next))
+		result = errors.Join(result, removeRestoreTree(parent, next))
 	}
 	if result != nil {
 		return result
@@ -652,13 +670,13 @@ func noLinkParents(path string) error {
 	return nil
 }
 
-// copyTree stages source at target and returns the staged object's identity.
+// copyTreeIn stages source at target and returns the staged object's identity.
 // target sits beside the restore root, whose parent can belong to another
 // local user who may rename entries there at any time. After creation nothing
 // is resolved by name: content, ownership and modes go through an os.Root or
-// an open descriptor, and publishStaged checks the identity before and after
+// an open descriptor, and publishStagedIn checks the identity before and after
 // the rename.
-func copyTree(ctx context.Context, source, target string) (os.FileInfo, error) {
+func copyTreeIn(ctx context.Context, source string, parent *os.Root, target string) (os.FileInfo, error) {
 	info, err := os.Lstat(source)
 	if err != nil {
 		return nil, err
@@ -668,7 +686,7 @@ func copyTree(ctx context.Context, source, target string) (os.FileInfo, error) {
 			return nil, backup.ErrInvalid
 		}
 		// O_EXCL with O_CREATE never follows a symbolic link at target.
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		out, err := parent.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err != nil {
 			return nil, err
 		}
@@ -678,10 +696,10 @@ func copyTree(ctx context.Context, source, target string) (os.FileInfo, error) {
 		}
 		return staged, nil
 	}
-	if err := os.Mkdir(target, 0700); err != nil {
+	if err := parent.Mkdir(target, 0700); err != nil {
 		return nil, err
 	}
-	stage, err := os.OpenRoot(target)
+	stage, err := parent.OpenRoot(target)
 	if err != nil {
 		return nil, err
 	}
@@ -690,7 +708,7 @@ func copyTree(ctx context.Context, source, target string) (os.FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	if stagedAt(target, staged) != nil || !ownedByProcess(staged) {
+	if stagedAtIn(parent, target, staged) != nil || !ownedByProcess(staged) {
 		return nil, backup.ErrInvalid
 	}
 	directories := map[string]os.FileInfo{}
@@ -804,9 +822,8 @@ func stagedParentsAreDirectories(stage *os.Root, name string) error {
 	return nil
 }
 
-// stagedAt reports whether name still refers to the staged object itself.
-func stagedAt(name string, staged os.FileInfo) error {
-	current, err := os.Lstat(name)
+func stagedAtIn(parent *os.Root, name string, staged os.FileInfo) error {
+	current, err := parent.Lstat(name)
 	if err != nil {
 		return err
 	}
@@ -816,16 +833,16 @@ func stagedAt(name string, staged os.FileInfo) error {
 	return nil
 }
 
-// publishStaged renames the staged object into place only while next still
-// names it, and fails the restore if target does not name it afterwards.
-func publishStaged(next, target string, staged os.FileInfo) error {
-	if err := stagedAt(next, staged); err != nil {
+// publishStagedIn checks the staged identity before and after a rename in the
+// pinned parent. None of the three operations re-resolves an ancestor pathname.
+func publishStagedIn(parent *os.Root, next, target string, staged os.FileInfo) error {
+	if err := stagedAtIn(parent, next, staged); err != nil {
 		return err
 	}
-	if err := os.Rename(next, target); err != nil {
+	if err := parent.Rename(next, target); err != nil {
 		return err
 	}
-	return stagedAt(target, staged)
+	return stagedAtIn(parent, target, staged)
 }
 
 func containerDependencies(c Container) []string {
@@ -892,13 +909,14 @@ func (e *Engine) cleanupRecovery(ctx context.Context, j *restoreJournal) error {
 		}
 	}
 	for _, r := range j.Roots {
-		if err := backup.NoLinkParents(r.Previous); err != nil {
+		parent, _, previous, next, err := r.names()
+		if err != nil {
 			return err
 		}
-		if err := removeDataTree(r.Previous); err != nil {
+		if err := removeRestoreTree(parent, previous); err != nil {
 			return err
 		}
-		if err := removeDataTree(r.Next); err != nil {
+		if err := removeRestoreTree(parent, next); err != nil {
 			return err
 		}
 	}

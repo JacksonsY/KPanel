@@ -30,6 +30,11 @@ func TestCopyTreeIgnoresStagingPathSwappedForLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent := t.TempDir()
+	parentRoot, err := openRestoreParent(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parentRoot.Close()
 	next := filepath.Join(parent, "data.kpanel-next-test")
 	ctx := &swapContext{Context: context.Background(), swap: func() error {
 		if _, err := os.Lstat(next); err == nil {
@@ -39,7 +44,7 @@ func TestCopyTreeIgnoresStagingPathSwappedForLink(t *testing.T) {
 		}
 		return os.Symlink(outside, next)
 	}}
-	staged, err := copyTree(ctx, source, next)
+	staged, err := copyTreeIn(ctx, source, parentRoot, filepath.Base(next))
 	if ctx.err != nil {
 		t.Fatal(ctx.err)
 	}
@@ -51,7 +56,7 @@ func TestCopyTreeIgnoresStagingPathSwappedForLink(t *testing.T) {
 	}
 	if err == nil {
 		target := filepath.Join(parent, "data")
-		if err := publishStaged(next, target, staged); err == nil {
+		if err := publishStagedIn(parentRoot, filepath.Base(next), filepath.Base(target), staged); err == nil {
 			t.Fatal("published a swapped staging path")
 		}
 		if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
