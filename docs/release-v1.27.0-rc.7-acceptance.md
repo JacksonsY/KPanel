@@ -67,6 +67,8 @@ B8 clean模拟数据预览9项通过、pageErrors0；覆盖浅深主题、390移
 
 四阶段真实浏览器报告全部passed/mocked=false/errors=[]，合计146项（published:45、upgrade:31、initial:44、restart:26），10张PNG逐张查看，3份cleanup仅清理测试自有容器/网络。真实PTY、刷新续接、关闭后404、命令历史持久化/删除/清空、更新预览加入/退出及窄屏弹窗按原报告核验。实际无systemd的503为预期失败注入，验证失败闭合与恢复，不冒作宿主安装成功。测试配方绑定B8/3D，recipeSHA256 8e07c6dda1815cf80973a4311cdb60eeb037bb7d6ebbc03c8da499801c93e77f，受控Docker库存与测试CA为明确fixtures；测试Panel/Agent不挂宿主Docker/systemd socket。
 
+升级场景实际使用RC6旧后端配RC7 Web，验证发现新预览、摘要与弹窗、预期503后恢复；不证明宿主安装成功，也不覆盖所有混合旧节点。窄屏失败截图仍为弹窗态，最终升级截图显示systemd错误及稳定通道恢复；桌面恢复截图已有文件列表，但服务概览仍在同步，不作为完整业务负载结论。
+
 发布前snapshot身份绑定原root/attempt/controller/product，stable-before SHA256 83e8cb3570930ee5ed9b0a076562d05b5ea32ca2d0f319b8a88c60da9d991c3c，与publication/public字节一致；原snapshot上传早于镜像推送与公开。GitHub Latest仍v1.26.0，Dockerlatest仍sha256:e0fc7776d1b55754e597d73aab25c519a70c8ef0402752e1e70896397f1e96f9，原快照回读未变化。上一预览1.27.0-rc.6/sha256:eb9ee91fd9df911dd1b0dd0163507efbdc5a543909c59593f7d059135296b24d保留回滚输入；未执行回滚或生产部署，本轮没有重复dispatch、只读恢复或版本覆盖。
 
 ## 六维质量与收尾
