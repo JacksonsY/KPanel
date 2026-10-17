@@ -4,6 +4,8 @@ import { Archive, Download, Upload, RefreshCw, Clock, Cloud } from '@lucide/vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import BackupStorageDialog from './BackupStorageDialog.vue'
 import BackupScheduleDialog from './BackupScheduleDialog.vue'
+import BackupImportReview from './BackupImportReview.vue'
+import { foreignModules, type BackupReviewResult } from '@/lib/backup'
 import { backups, backupMessage, type BackupInventory, type BackupModule, type BackupRecord, type BackupSettings, type RemoteBackupFile } from '@/lib/backup'
 import { formatBytes, formatDateTime } from '@/lib/format'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
@@ -33,6 +35,9 @@ const file = ref<File>()
 const source = ref<BackupRecord>()
 const loading = ref(false)
 const previewReady = ref(false)
+const importReview = ref<BackupReviewResult>()
+const foreign = computed(() => foreignModules(importReview.value, selected.value))
+let restoreRequest = 0
 let refreshing = false
 const busy = ref(false)
 const error = ref('')
@@ -110,8 +115,16 @@ async function openExport() {
 function openImport() { dialog.value = 'import'; error.value = ''; file.value = undefined; storageId.value = ''; remoteKey.value = '' }
 function chooseFile(event: Event) { file.value = (event.target as HTMLInputElement).files?.[0] }
 async function openRestore(record: BackupRecord) {
+  const request = ++restoreRequest
+  importReview.value = undefined
   source.value = record; selected.value = [...record.modules]; dialog.value = 'restore'; error.value = ''; loading.value = true; previewReady.value = false
-  try { source.value = await backups.preview(record.id); previewReady.value = true } catch (reason) { error.value = backupMessage(reason) } finally { loading.value = false }
+  try {
+    const preview = await backups.preview(record.id)
+    const review = preview.modules.some(m => m !== 'panel') ? await backups.review(record.id) : { available: true, review: null }
+    if (request !== restoreRequest || dialog.value !== 'restore' || source.value?.id !== record.id) return
+    source.value = preview; importReview.value = review; previewReady.value = true
+  } catch (reason) { if (request === restoreRequest) error.value = backupMessage(reason) }
+  finally { if (request === restoreRequest) loading.value = false }
 }
 function openDelete(record: BackupRecord) { source.value = record; dialog.value = 'delete'; error.value = '' }
 async function submit() {
@@ -122,7 +135,10 @@ async function submit() {
     if (dialog.value === 'import' && storageId.value) await backups.remoteImport(storageId.value, remoteKey.value, password.value)
     if (dialog.value === 'import' && !storageId.value && file.value) await backups.import(file.value, password.value)
     if (dialog.value === 'upload' && source.value) await backups.upload(source.value.id, storageId.value)
-    if (dialog.value === 'restore' && source.value) await backups.restore(source.value, selected.value)
+    if (dialog.value === 'restore' && source.value) {
+      if (foreign.value.length) await backups.restore(source.value, selected.value, true)
+      else await backups.restore(source.value, selected.value)
+    }
     if (dialog.value === 'delete' && source.value) await backups.delete(source.value.id)
     if (dialog.value === 'recover' && source.value) await backups.recover(source.value.id)
     notice.value = dialog.value === 'delete' ? '备份记录已删除。' : '任务已受理，可在下方查看进度。'
@@ -207,6 +223,7 @@ onBeforeUnmount(() => { disposed = true; clearTimeout(timer) })
           <p class="backup-note">{{ phrase('密码至少 10 字节，建议使用 10 个以上英文字符；忘记密码将无法恢复备份。') }}</p>
         </template>
         <template v-if="dialog === 'restore'">
+          <BackupImportReview v-if="previewReady && foreign.length" :result="importReview" :modules="selected" />
           <p class="backup-impact">{{ phrase('恢复会覆盖所选数据。恢复面板数据后，需要使用备份中的账户重新登录。') }}</p>
           <p v-if="selectedRoots.length" class="backup-note">{{ phrase('将被替换的主机目录：') }}<code v-for="root in selectedRoots" :key="root.path">{{ root.path }}</code></p>
           <p class="backup-note">{{ phrase('完整恢复面板身份和配对密钥，且域名、协议、端口不变时，可保留集群配对。迁移切换时请停止旧面板。') }}</p>

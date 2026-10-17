@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -134,13 +135,19 @@ func (e *Engine) Create(ctx context.Context, directory string, modules []string,
 }
 
 func (e *Engine) writePayload(ctx context.Context, path string, p Payload) (err error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	key, err := e.originKey(true)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	gz := gzip.NewWriter(f)
-	tw := tar.NewWriter(gz)
+	gz.Extra = originPlaceholder()
+	stream := sha256.New()
+	tw := tar.NewWriter(io.MultiWriter(gz, stream))
 	body, err := json.Marshal(p)
 	if err != nil {
 		return err
@@ -235,6 +242,9 @@ func (e *Engine) writePayload(ctx context.Context, path string, p Payload) (err 
 	if err := gz.Close(); err != nil {
 		return err
 	}
+	if err := writeOriginTag(f, key, stream.Sum(nil)); err != nil {
+		return err
+	}
 	if err := f.Sync(); err != nil {
 		return err
 	}
@@ -244,8 +254,30 @@ func (e *Engine) writePayload(ctx context.Context, path string, p Payload) (err 
 // requireSpace is replaced in tests that cannot exhaust a real filesystem.
 var requireSpace = backup.RequireSpace
 
+// payloadFacts are derived while unpacking and never read from the archive's
+// own declarations.
+type payloadFacts struct {
+	Local      bool
+	SetIDFiles int
+}
+
 func (e *Engine) ReadPayload(ctx context.Context, path, directory string) (Payload, error) {
+	p, _, err := e.readPayload(ctx, path, directory)
+	return p, err
+}
+
+func (e *Engine) readPayload(ctx context.Context, path, directory string) (Payload, payloadFacts, error) {
+	var facts payloadFacts
+	p, err := e.unpackPayload(ctx, path, directory, &facts)
+	return p, facts, err
+}
+
+func (e *Engine) unpackPayload(ctx context.Context, path, directory string, facts *payloadFacts) (Payload, error) {
 	var p Payload
+	key, err := e.originKey(false)
+	if err != nil {
+		return p, err
+	}
 	input, err := backup.OpenRegular(path, backup.MaxBytes)
 	if err != nil {
 		return p, err
@@ -258,7 +290,9 @@ func (e *Engine) ReadPayload(ctx context.Context, path, directory string) (Paylo
 	}
 	defer gz.Close()
 	gz.Multistream(false)
-	bounded := &io.LimitedReader{R: contextReader{ctx, gz}, N: backup.MaxBytes + (128 << 20)}
+	tag := originTag(gz.Header.Extra)
+	stream := sha256.New()
+	bounded := &io.LimitedReader{R: contextReader{ctx, io.TeeReader(gz, stream)}, N: backup.MaxBytes + (128 << 20)}
 	tr := tar.NewReader(bounded)
 	h, err := tr.Next()
 	if err != nil || h.Name != "manifest.json" || h.Typeflag != tar.TypeReg || h.Size > 4<<20 {
@@ -372,6 +406,9 @@ func (e *Engine) ReadPayload(ctx context.Context, path, directory string) (Paylo
 		if h.Typeflag == tar.TypeDir {
 			continue
 		}
+		if h.Mode&06000 != 0 {
+			facts.SetIDFiles++
+		}
 		if err := restoreOwnership(target, h.Uid, h.Gid); err != nil {
 			return p, err
 		}
@@ -406,6 +443,8 @@ func (e *Engine) ReadPayload(ctx context.Context, path, directory string) (Paylo
 	if _, err := compressed.Peek(1); err != io.EOF {
 		return p, backup.ErrInvalid
 	}
+	// The whole decompressed stream has now passed through the digest.
+	facts.Local = originLocal(key, tag, stream.Sum(nil))
 	symlinkNames := make([]string, 0, len(symlinks))
 	for name := range symlinks {
 		symlinkNames = append(symlinkNames, name)
@@ -570,6 +609,14 @@ func (e *Engine) validatePayload(p Payload) error {
 	}
 	for _, c := range p.Containers {
 		if !imageIDPattern.MatchString(c.ImageID) {
+			return backup.ErrInvalid
+		}
+		// Restore sends Config at the top of the create body and adds its own
+		// HostConfig, image and labels; none may be shadowed by the archive.
+		if !canonicalKeys(c.Config, "Image", "Labels", "Env", "Entrypoint", "Cmd", "Hostname", "Domainname", "ExposedPorts", "Healthcheck", "HostConfig", "NetworkingConfig") || c.Config["HostConfig"] != nil || c.Config["NetworkingConfig"] != nil {
+			return backup.ErrInvalid
+		}
+		if !canonicalKeys(c.HostConfig, "Binds", "Mounts", "VolumesFrom", "NetworkMode", "PidMode", "IpcMode", "Links", "AutoRemove") {
 			return backup.ErrInvalid
 		}
 		if _, err := nativeMountConfig(c); err != nil {

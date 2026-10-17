@@ -90,6 +90,28 @@ func canonicalContainerReferences(c *Container, all []Container) {
 	}
 }
 
+// canonicalKeys keeps Docker's view of a body equal to ours. The Engine decodes
+// with encoding/json, which matches field names case-insensitively and lets
+// a later spelling win, so a field this package reads must have exactly one,
+// canonical spelling or Docker could act on a value no check has seen.
+func canonicalKeys(m map[string]json.RawMessage, interpreted ...string) bool {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		for _, other := range keys {
+			if strings.EqualFold(key, other) {
+				return false
+			}
+		}
+		for _, name := range interpreted {
+			if strings.EqualFold(key, name) && key != name {
+				return false
+			}
+		}
+		keys = append(keys, key)
+	}
+	return true
+}
+
 // nativeMountConfig validates the actual Docker mount inputs against inspect's
 // resolved mounts. It pins anonymous volumes by name and resolves VolumesFrom
 // into explicit mounts so no stale container IDs can redirect restored data.
@@ -156,6 +178,9 @@ func nativeMountConfig(c Container) (map[string]json.RawMessage, error) {
 		}
 	}
 	for _, m := range mounts {
+		if !canonicalKeys(m, "Type", "Source", "Target", "ReadOnly") {
+			return nil, backup.ErrInvalid
+		}
 		var kind, source, target string
 		_ = json.Unmarshal(m["Type"], &kind)
 		_ = json.Unmarshal(m["Source"], &source)

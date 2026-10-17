@@ -127,3 +127,24 @@ func TestBackupCLIWorkspaceBelowLinkedStateAncestor(t *testing.T) {
 		t.Fatal(dir, err)
 	}
 }
+
+func TestBackupCLIForeignReviewListsHostConfigurationSafely(t *testing.T) {
+	var out bytes.Buffer
+	printForeignReview(&out, hostbackup.ImportReview{Version: 1, Modules: []hostbackup.ModuleReview{
+		{Module: "apps", Origin: hostbackup.OriginLocal},
+		{Module: "docker", Origin: hostbackup.OriginForeign, SetIDFiles: 2,
+			Roots:      []hostbackup.RootReview{{Path: "/lib/modules", SystemPath: true, Existing: true, UsedBy: []hostbackup.RootUser{{Container: "node-exporter", ReadOnly: true}}}},
+			Containers: []hostbackup.ContainerReview{{Name: "app", Image: "example/app\x1b[2J\u202e", Replaces: true, Privileged: true, HostNamespaces: []string{"pid"}, CapAdd: []string{"SYS_ADMIN"}, Devices: []string{"/dev/sda:/dev/sda:rwm"}, Binds: []hostbackup.BindReview{{Source: "/", Destination: "/host", Live: true}}}},
+			Networks:   []hostbackup.NetworkReview{{Name: "lan", Driver: "macvlan", Subnets: []string{"192.168.1.0/24"}}},
+		},
+	}})
+	text := out.String()
+	for _, want := range []string{"/lib/modules（系统路径）", "node-exporter 只读挂载", "替换同名容器", "Privileged", "pid", "SYS_ADMIN", "/dev/sda:/dev/sda:rwm", "/ -> /host 读写（宿主机现有目录", "macvlan", "2 个 setuid/setgid"} {
+		if !bytes.Contains([]byte(text), []byte(want)) {
+			t.Fatalf("review output lacks %q:\n%s", want, text)
+		}
+	}
+	if bytes.ContainsAny([]byte(text), "\x1b\u202e") || bytes.Contains([]byte(text), []byte("类别 apps")) {
+		t.Fatalf("review output leaks terminal controls or local modules:\n%q", text)
+	}
+}

@@ -66,7 +66,7 @@ func addManagedBackups(result map[string]managedOperation, add func(string, stri
 			return managedRequest{Method: item.Method, Path: "/api/v1/backups/" + input.BackupID + item.Suffix, Body: []byte(`{}`)}, nil
 		})
 	}
-	register("host_backup_restore", "Restore selected modules from an imported backup using the fresh preview revisions. Always requires approval. Restoring Panel data may restart the service and revoke MCP credentials; verify the restore in Panel and reauthorize before reconnecting.", false, managedSchema[managedBackupRestore](), func(raw json.RawMessage, _ *mcpaccess.Policy) (managedRequest, error) {
+	register("host_backup_restore", "Restore selected modules from an imported backup using the fresh preview revisions. Always requires approval. Restoring Panel data may restart the service and revoke MCP credentials; verify the restore in Panel and reauthorize before reconnecting. A package this host did not export must be reviewed and confirmed on the Panel backup page.", false, managedSchema[managedBackupRestore](), func(raw json.RawMessage, _ *mcpaccess.Policy) (managedRequest, error) {
 		var input managedBackupRestore
 		if decodeStrictToolArguments(raw, &input) != nil || !backup.ValidID(input.BackupID) || input.Revision == "" || len(input.Revision) > 128 || len(input.AgentRevision) > 128 {
 			return managedRequest{}, errors.New("invalid_backup_restore")

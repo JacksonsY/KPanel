@@ -35,7 +35,7 @@ func runBackupCLI(args []string, input io.Reader, output io.Writer) error {
 	method, path := http.MethodGet, "/v1/backups"
 	binary := false
 	if len(args) == 0 {
-		return errors.New("backup-center: protocol | inventory | jobs | export | import | status ID | inspect ID | preview ID | restore ID | recover ID | delete ID | download ID MODULE | upload ID MODULE")
+		return errors.New("backup-center: protocol | inventory | jobs | export | import | status ID | inspect ID | preview ID | review ID | restore ID | recover ID | delete ID | download ID MODULE | upload ID MODULE")
 	}
 	switch args[0] {
 	case "inventory":
@@ -52,12 +52,14 @@ func runBackupCLI(args []string, input io.Reader, output io.Writer) error {
 			return backup.ErrInvalid
 		}
 		method = "POST"
-	case "status", "inspect", "preview", "restore", "delete", "recover", "abort":
+	case "status", "inspect", "preview", "review", "restore", "delete", "recover", "abort":
 		if len(args) != 2 || !backup.ValidID(args[1]) {
 			return backup.ErrInvalid
 		}
 		path += "/" + args[1]
 		switch args[0] {
+		case "review":
+			path += "/review"
 		case "delete":
 			method = "DELETE"
 		case "inspect", "preview", "recover", "abort":
@@ -132,9 +134,15 @@ func runBackupCLI(args []string, input io.Reader, output io.Writer) error {
 		if json.Unmarshal(body, &problem) == nil && (problem.Code == "backup_host_busy" || problem.Code == "backup_busy") {
 			return errors.New("请关闭宿主机终端，并等待已有主机任务完成后重试")
 		}
+		if json.Unmarshal(body, &problem) == nil && problem.Code == "foreign_confirmation_required" {
+			return errors.New("该备份不是本机导出：请先用 review ID 查看将重建的宿主机配置，确认后在 restore 的 JSON 中加入 \"confirmForeign\": true")
+		}
 		return fmt.Errorf("backup Agent returned HTTP %d", response.StatusCode)
 	}
 	limit := int64(1 << 20)
+	if args[0] == "review" {
+		limit = 8 << 20
+	}
 	if binary {
 		limit = backup.MaxBytes
 	}

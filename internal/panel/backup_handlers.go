@@ -26,6 +26,7 @@ type backupRequest struct {
 	Modules          []string `json:"modules"`
 	Revision         string   `json:"revision"`
 	AgentRevision    string   `json:"agentRevision"`
+	ConfirmForeign   bool     `json:"confirmForeign,omitempty"`
 	scheduleRevision string
 }
 type backupStreamer interface {
@@ -42,6 +43,9 @@ func (s *Server) backupError(w http.ResponseWriter, r *http.Request, err error) 
 	}
 	if errors.Is(err, backup.ErrNotFound) {
 		status, code, title = 404, "backup_not_found", "备份记录不存在"
+	}
+	if errors.Is(err, hostbackup.ErrForeignUnconfirmed) {
+		status, code, title = http.StatusConflict, "backup_foreign_confirmation_required", "该备份不是本机导出，请查看并确认将重建的宿主机配置"
 	}
 	s.writeProblem(w, r, status, code, title, "")
 }
@@ -167,6 +171,10 @@ func (s *Server) serveBackupOperation(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 3 && parts[2] == "restore" && r.Method == "POST" {
 		s.backupRestore(w, r, record)
+		return
+	}
+	if len(parts) == 3 && parts[2] == "review" && r.Method == "GET" && record.Action == "import" {
+		s.writeJSON(w, 200, s.backupReview(r.Context(), record))
 		return
 	}
 	if len(parts) == 3 && parts[2] == "preview" && r.Method == "POST" && record.Status == "ready" {
@@ -595,6 +603,19 @@ func (s *Server) backupRestore(w http.ResponseWriter, r *http.Request, source ba
 			return
 		}
 	}
+	// The Agent enforces the same confirmation; checking here first returns
+	// it synchronously instead of as a failed job. A review the Agent cannot
+	// provide is treated as foreign, and an Agent without reviews is not sent
+	// a field it would reject.
+	forwardConfirm := false
+	if host := hostBackupModules(modules); len(host) > 0 && source.AgentID != "" {
+		review := s.backupReview(r.Context(), source)
+		if (!review.Available || review.Review.Foreign(host)) && !input.ConfirmForeign {
+			s.backupError(w, r, hostbackup.ErrForeignUnconfirmed)
+			return
+		}
+		forwardConfirm = review.Available && input.ConfirmForeign
+	}
 	record, pinned, err := s.backups.ReserveFrom(source.ID, modules)
 	if err != nil {
 		s.backupError(w, r, err)
@@ -639,7 +660,7 @@ func (s *Server) backupRestore(w http.ResponseWriter, r *http.Request, source ba
 		}
 		if host := hostBackupModules(modules); len(host) > 0 {
 			var job backup.Record
-			if err := s.backupAgentJSON(ctx, "POST", "/v1/backups", hostbackup.Request{Action: "restore", Modules: host, SourceID: source.AgentID, Revision: source.AgentRevision}, &job); err != nil {
+			if err := s.backupAgentJSON(ctx, "POST", "/v1/backups", hostbackup.Request{Action: "restore", Modules: host, SourceID: source.AgentID, Revision: source.AgentRevision, ConfirmForeign: forwardConfirm}, &job); err != nil {
 				return err
 			}
 			if err := s.backups.Update(id, func(r *backup.Record) { r.AgentID = job.ID }); err != nil {
@@ -680,6 +701,25 @@ func (s *Server) backupRestore(w http.ResponseWriter, r *http.Request, source ba
 		return
 	}
 	s.writeJSON(w, 202, record)
+}
+
+// backupReviewResult reports the host configuration a restore would rebuild.
+// Available is false only when the Agent cannot return a review, such as an
+// Agent from before reviews existed; the restore then needs confirmation.
+type backupReviewResult struct {
+	Available bool                     `json:"available"`
+	Review    *hostbackup.ImportReview `json:"review"`
+}
+
+func (s *Server) backupReview(ctx context.Context, record backup.Record) backupReviewResult {
+	if record.AgentID == "" {
+		return backupReviewResult{Available: true, Review: &hostbackup.ImportReview{Version: 1, Modules: []hostbackup.ModuleReview{}}}
+	}
+	var review hostbackup.ImportReview
+	if err := s.backupAgentJSON(ctx, "GET", "/v1/backups/"+record.AgentID+"/review", nil, &review); err != nil {
+		return backupReviewResult{}
+	}
+	return backupReviewResult{Available: true, Review: &review}
 }
 
 func (s *Server) backupRecover(w http.ResponseWriter, r *http.Request, original backup.Record) {

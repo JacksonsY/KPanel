@@ -45,7 +45,7 @@ type restoreJournal struct {
 	Networks   []string           `json:"networks"`
 }
 
-func (e *Engine) Restore(ctx context.Context, id, directory string, modules []string) (err error) {
+func (e *Engine) Restore(ctx context.Context, id, directory string, modules []string, foreignConfirmed bool) (err error) {
 	if !backup.ValidID(id) {
 		return backup.ErrInvalid
 	}
@@ -60,12 +60,21 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		if module == "panel" {
 			continue
 		}
-		p, err := e.ReadPayload(ctx, filepath.Join(directory, module+".payload"), filepath.Join(directory, "unpack-"+module))
+		p, facts, err := e.readPayload(ctx, filepath.Join(directory, module+".payload"), filepath.Join(directory, "unpack-"+module))
 		if err != nil {
 			return err
 		}
 		if p.Module != module {
 			return backup.ErrInvalid
+		}
+		// Re-derived from the payload itself, before any image, volume or
+		// host change, so a stale or missing review cannot skip it.
+		if !facts.Local && !foreignConfirmed {
+			var cleanupErr error
+			for _, unpacked := range modules {
+				cleanupErr = errors.Join(cleanupErr, os.RemoveAll(filepath.Join(directory, "unpack-"+unpacked)))
+			}
+			return &backup.Failure{Code: "foreign_confirmation_required", Err: errors.Join(ErrForeignUnconfirmed, cleanupErr)}
 		}
 		for _, r := range p.Roots {
 			for path := range paths {
@@ -369,16 +378,9 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 			}
 			continue
 		}
-		var old map[string]json.RawMessage
-		if json.Unmarshal(raw, &old) != nil {
-			return backup.ErrInvalid
-		}
-		input := map[string]json.RawMessage{}
-		input["Name"], _ = json.Marshal(name)
-		for _, key := range []string{"Driver", "Internal", "Attachable", "Ingress", "EnableIPv4", "EnableIPv6", "IPAM", "Options", "Labels"} {
-			if value, ok := old[key]; ok {
-				input[key] = value
-			}
+		input, err := networkCreateBody(name, raw)
+		if err != nil {
+			return err
 		}
 		var labels map[string]string
 		_ = json.Unmarshal(input["Labels"], &labels)
@@ -476,6 +478,23 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 	}
 	j.Phase = "completed"
 	return backup.WriteJSON(journalPath, j)
+}
+
+// networkCreateBody is the native configuration Restore sends to create a
+// missing network; the import review describes the same body.
+func networkCreateBody(name string, raw json.RawMessage) (map[string]json.RawMessage, error) {
+	var old map[string]json.RawMessage
+	if json.Unmarshal(raw, &old) != nil {
+		return nil, backup.ErrInvalid
+	}
+	input := map[string]json.RawMessage{}
+	input["Name"], _ = json.Marshal(name)
+	for _, key := range []string{"Driver", "Internal", "Attachable", "Ingress", "EnableIPv4", "EnableIPv6", "IPAM", "Options", "Labels"} {
+		if value, ok := old[key]; ok {
+			input[key] = value
+		}
+	}
+	return input, nil
 }
 
 func (e *Engine) healthy(ctx context.Context, id string, c Container) error {

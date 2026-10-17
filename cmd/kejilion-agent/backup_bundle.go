@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/kejilion/kejilion-panel/internal/backup"
 	"github.com/kejilion/kejilion-panel/internal/hostbackup"
@@ -343,7 +344,21 @@ func runBackupMenu(args []string, input io.Reader, output io.Writer) error {
 			fmt.Fprintln(output, "  ", root.Path)
 		}
 	}
-	yes, err := ask("确认恢复？[y/N]: ")
+	// Refresh first so the review describes the revision being confirmed.
+	if err := backupRPC(runBackupCLI, []string{"preview", record.ID}, nil, &record); err != nil {
+		return err
+	}
+	var review hostbackup.ImportReview
+	if err := backupRPC(runBackupCLI, []string{"review", record.ID}, nil, &review); err != nil {
+		return err
+	}
+	foreign := review.Foreign(record.Modules)
+	prompt := "确认恢复？[y/N]: "
+	if foreign {
+		printForeignReview(output, review)
+		prompt = "已了解以上宿主机配置，确认恢复？[y/N]: "
+	}
+	yes, err := ask(prompt)
 	if err != nil {
 		return err
 	}
@@ -351,11 +366,8 @@ func runBackupMenu(args []string, input io.Reader, output io.Writer) error {
 		fmt.Fprintln(output, "尚未恢复，导入记录：", record.ID)
 		return nil
 	}
-	if err := backupRPC(runBackupCLI, []string{"preview", record.ID}, nil, &record); err != nil {
-		return err
-	}
 	var restored backup.Record
-	if err := backupRPC(runBackupCLI, []string{"restore", record.ID}, hostbackup.Request{Modules: record.Modules, Revision: record.TargetRevision}, &restored); err != nil {
+	if err := backupRPC(runBackupCLI, []string{"restore", record.ID}, hostbackup.Request{Modules: record.Modules, Revision: record.TargetRevision, ConfirmForeign: foreign}, &restored); err != nil {
 		return err
 	}
 	if _, err := waitBackupCLI(runBackupCLI, restored.ID); err != nil {
@@ -363,4 +375,79 @@ func runBackupMenu(args []string, input io.Reader, output io.Writer) error {
 	}
 	fmt.Fprintln(output, "所选数据已恢复。")
 	return nil
+}
+
+// printForeignReview lists what restoring a package this host did not export
+// would run, so the single confirmation covers the host configuration.
+func printForeignReview(output io.Writer, review hostbackup.ImportReview) {
+	// Names, paths and options come from the package: drop terminal controls.
+	say := func(parts ...any) {
+		fmt.Fprint(output, strings.Map(func(r rune) rune {
+			if r != '\n' && (unicode.IsControl(r) || unicode.Is(unicode.Cf, r)) {
+				return '?'
+			}
+			return r
+		}, fmt.Sprintln(parts...)))
+	}
+	say("注意：该备份不是本机导出，恢复会按包内配置重建以下宿主机资源：")
+	for _, m := range review.Modules {
+		if m.Origin != hostbackup.OriginForeign {
+			continue
+		}
+		say("类别", m.Module+"：")
+		if m.Unreviewed {
+			say("  旧版本检查的导入无法列出明细；如需查看请重新导入。")
+			continue
+		}
+		for _, r := range m.Roots {
+			line := "  替换目录 " + r.Path
+			if r.SystemPath {
+				line += "（系统路径）"
+			}
+			for _, user := range r.UsedBy {
+				line += "；现被容器 " + user.Container + map[bool]string{true: " 只读挂载", false: " 挂载"}[user.ReadOnly]
+			}
+			say(line)
+		}
+		for _, c := range m.Containers {
+			line := "  容器 " + c.Name + " 镜像 " + c.Image
+			line += " ImageID=" + c.ImageID + " ImageRef=" + c.ImageRef
+			if c.Replaces {
+				line += "（替换同名容器）"
+			}
+			say(line)
+			say("    HostConfig:", string(c.HostConfig))
+			if c.Privileged {
+				say("    特权模式 Privileged")
+			}
+			if len(c.HostNamespaces) > 0 {
+				say("    共享宿主机命名空间:", strings.Join(c.HostNamespaces, ", "))
+			}
+			if len(c.CapAdd) > 0 {
+				say("    CapAdd:", strings.Join(c.CapAdd, ", "))
+			}
+			if len(c.Devices) > 0 {
+				say("    Devices:", strings.Join(c.Devices, ", "))
+			}
+			if len(c.SecurityOpt) > 0 {
+				say("    SecurityOpt:", strings.Join(c.SecurityOpt, ", "))
+			}
+			for _, b := range c.Binds {
+				line := "    宿主机目录 " + b.Source + " -> " + b.Destination + map[bool]string{true: " 只读", false: " 读写"}[b.ReadOnly]
+				if b.Live {
+					line += "（宿主机现有目录，不随备份恢复）"
+				}
+				say(line)
+			}
+			if c.MoreItems > 0 {
+				say("    另有", c.MoreItems, "项未列出")
+			}
+		}
+		for _, n := range m.Networks {
+			say("  网络", n.Name, "Driver", n.Driver, strings.Join(n.Subnets, ", "), strings.Join(n.Options, ", "))
+		}
+		if m.SetIDFiles > 0 {
+			say("  包含", m.SetIDFiles, "个 setuid/setgid 文件，将按包内属主与权限恢复")
+		}
+	}
 }

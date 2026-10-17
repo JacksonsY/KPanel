@@ -31,6 +31,9 @@ type Request struct {
 	Modules  []string `json:"modules"`
 	Revision string   `json:"revision"`
 	SourceID string   `json:"sourceId"`
+	// ConfirmForeign is the administrator's one confirmation of the host
+	// configuration listed by a foreign import's review.
+	ConfirmForeign bool `json:"confirmForeign,omitempty"`
 }
 type Preview struct {
 	Version  int      `json:"version"`
@@ -94,6 +97,10 @@ func backupProblem(w http.ResponseWriter, err error) {
 	}
 	if errors.Is(err, backup.ErrNotFound) {
 		status = http.StatusNotFound
+	}
+	if errors.Is(err, ErrForeignUnconfirmed) {
+		backupJSON(w, status, map[string]string{"code": "foreign_confirmation_required", "title": "Confirm the host configuration of this foreign backup"})
+		return
 	}
 	backupJSON(w, status, map[string]string{"code": "backup_unavailable", "title": "Backup operation failed"})
 }
@@ -205,6 +212,16 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			backupProblem(w, err)
 			return
 		}
+		// The review describes the destination at the restore revision.
+		review, err := loadReview(dir, record.Modules)
+		if err == nil {
+			s.Engine.annotateReview(&review, i)
+			err = saveReview(dir, review)
+		}
+		if err != nil {
+			backupProblem(w, err)
+			return
+		}
 		if err := s.Jobs.Update(id, func(r *backup.Record) { r.TargetRevision = i.Revision }); err != nil {
 			backupProblem(w, err)
 			return
@@ -216,9 +233,12 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if name == "inspect" && r.Method == "POST" && record.Action == "import" && record.Status == "queued" {
 		err := s.Jobs.Run(id, func(ctx context.Context, id string) error {
 			roots := []backup.RootRef{}
+			payloads := []Payload{}
+			facts := []payloadFacts{}
+			restored := []string{}
 			for _, module := range record.Modules {
 				destination := filepath.Join(dir, "check-"+module)
-				p, err := s.Engine.ReadPayload(ctx, filepath.Join(dir, module+".payload"), destination)
+				p, f, err := s.Engine.readPayload(ctx, filepath.Join(dir, module+".payload"), destination)
 				cleanupErr := os.RemoveAll(destination)
 				if err != nil {
 					return err
@@ -231,10 +251,21 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				for _, root := range p.Roots {
 					roots = append(roots, backup.RootRef{Path: root.Path, Module: root.Module})
+					restored = append(restored, root.Path)
 				}
+				payloads = append(payloads, p)
+				facts = append(facts, f)
 			}
 			i, err := s.Engine.Inventory(ctx)
 			if err != nil {
+				return err
+			}
+			review := ImportReview{}
+			for n, p := range payloads {
+				review.Modules = append(review.Modules, moduleReview(p, facts[n], restored))
+			}
+			s.Engine.annotateReview(&review, i)
+			if err := saveReview(dir, review); err != nil {
 				return err
 			}
 			return s.Jobs.Update(id, func(r *backup.Record) {
@@ -247,6 +278,15 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		backupJSON(w, 202, record)
+		return
+	}
+	if name == "review" && r.Method == "GET" && record.Action == "import" {
+		review, err := loadReview(dir, record.Modules)
+		if err != nil {
+			backupProblem(w, err)
+			return
+		}
+		backupJSON(w, 200, review)
 		return
 	}
 	if !slices.Contains(record.Modules, name) || !slices.Contains([]string{"apps", "web", "docker"}, name) {
@@ -332,6 +372,15 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		review, err := loadReview(filepath.Join(s.Jobs.Root, source.ID), source.Modules)
+		if err != nil {
+			backupProblem(w, err)
+			return
+		}
+		if review.Foreign(modules) && !input.ConfirmForeign {
+			backupProblem(w, ErrForeignUnconfirmed)
+			return
+		}
 	}
 	for _, r := range s.Jobs.List() {
 		if recoveryPending(filepath.Join(s.Jobs.Root, r.ID)) {
@@ -373,7 +422,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 					return err
 				}
 			}
-			err = s.Engine.Restore(ctx, id, dir, modules)
+			err = s.Engine.Restore(ctx, id, dir, modules, input.ConfirmForeign)
 			if err == nil || backup.FailureCode(err) == "cleanup_pending" {
 				if saveErr := s.Jobs.Update(id, func(r *backup.Record) { r.CompletedModules = modules }); saveErr != nil {
 					return errors.Join(err, saveErr)

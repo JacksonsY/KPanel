@@ -82,10 +82,12 @@ export async function mockBackups(request, response, url, send, readJSON) {
       if (!record) fail(404, '备份记录不存在。')
       else if (request.method === 'GET' && !action) send(response, 200, record)
       else if (request.method === 'POST' && action === 'preview') send(response, 200, record)
+      else if (request.method === 'GET' && action === 'review') send(response, 200, { available: true, review: { version: 1, revision: record.targetRevision, modules: record.modules.filter(m => m !== 'panel').map(module => ({ module, origin: 'foreign', setIdFiles: 1, roots: [{ path: '/home/demo-data', existing: true }], containers: [{ name: 'external-demo', image: 'demo:1', imageId: `sha256:${'a'.repeat(64)}`, imageRef: 'registry.example/demo@sha256:mock', privileged: true, hostNamespaces: ['network'], binds: [{ source: '/', destination: '/host', live: true }], hostConfig: { Privileged: true, NetworkMode: 'host', Binds: ['/:/host:rw'] } }], networks: [] })) } })
       else if (request.method === 'POST' && action === 'upload') { const input = await readJSON(request); remote(record, input.storageId); send(response, 202, advance(record, 'completed')) }
       else if (request.method === 'POST' && action === 'restore') {
         const input = await readJSON(request)
-        if (record.status !== 'ready' || input.revision !== record.targetRevision || !input.modules?.length || input.modules.some(m => !record.modules.includes(m))) fail(409, '请重新检查所选内容。')
+        if (input.modules?.some(m => m !== 'panel') && !input.confirmForeign) fail(409, '该备份不是本机导出，请查看并确认将重建的宿主机配置')
+        else if (record.status !== 'ready' || input.revision !== record.targetRevision || !input.modules?.length || input.modules.some(m => !record.modules.includes(m))) fail(409, '请重新检查所选内容。')
         else send(response, 202, advance(create('restore', input.modules), 'completed'))
       } else if (request.method === 'POST' && action === 'recover') {
         Object.assign(record, { status: 'completed', stage: 'completed', errorCode: '' })

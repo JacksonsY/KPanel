@@ -171,7 +171,7 @@ func TestBackupHostRestoreAndRollback(t *testing.T) {
 			}
 			_ = os.WriteFile(e.host("/home/app/data"), []byte("old!"), 0640)
 			d.failCreate = fail
-			err := e.Restore(context.Background(), backup.NewID(), directory, []string{"apps"})
+			err := e.Restore(context.Background(), backup.NewID(), directory, []string{"apps"}, true)
 			if (err != nil) != fail {
 				t.Fatal(err)
 			}
@@ -252,7 +252,7 @@ func TestBackupHostInternalSymlinkRoundTrip(t *testing.T) {
 	if err := os.WriteFile(e.host("/home/app/data"), []byte("new!"), 0640); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.Restore(context.Background(), backup.NewID(), directory, []string{"apps"}); err != nil {
+	if err := e.Restore(context.Background(), backup.NewID(), directory, []string{"apps"}, true); err != nil {
 		t.Fatal("restore with an in-root symlink failed:", err)
 	}
 	if target, err := os.Readlink(link); err != nil || target != "data" {
@@ -394,7 +394,7 @@ func TestBackupRestoreRejectsRootOutsideDestinationData(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = os.RemoveAll(e.host("/home/other"))
-	err := e.Restore(context.Background(), backup.NewID(), directory, []string{"apps"})
+	err := e.Restore(context.Background(), backup.NewID(), directory, []string{"apps"}, true)
 	if err == nil || !strings.Contains(err.Error(), "not part of the destination data") {
 		t.Fatal("restore of inventory-external root accepted:", err)
 	}

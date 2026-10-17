@@ -80,7 +80,7 @@ func TestExportLocalVolumesRoundTrip(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := e.Restore(context.Background(), backup.NewID(), restore, []string{module}); err != nil {
+			if err := e.Restore(context.Background(), backup.NewID(), restore, []string{module}, true); err != nil {
 				t.Fatal(err)
 			}
 			for _, v := range docker.volumes {

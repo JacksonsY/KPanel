@@ -6,6 +6,7 @@ export function backupMessage(reason: unknown): string {
     invalid_backup_settings: '请检查远程存储、时间和备份密码',
     backup_remote_limit: '远程存储或文件数量超过限制，请使用独立的备份目录',
     backup_remote_unavailable: '远程连接失败，请检查地址、凭据和读写权限',
+    backup_foreign_confirmation_required: '该备份不是本机导出，请查看并确认将重建的宿主机配置',
   }
   const code = reason && typeof reason === 'object' && 'code' in reason ? String(reason.code) : ''
   return codes[code] || (reason instanceof Error ? reason.message : '操作未完成，请刷新后重试。')
@@ -60,7 +61,8 @@ export const backups = {
     body.append('file', file)
     return apiRequest<BackupRecord>('/backups/import', { method: 'POST', body })
   },
-  restore: (source: BackupRecord, modules: BackupModule[]) => apiRequest<BackupRecord>(`/backups/${source.id}/restore`, { method: 'POST', body: { modules, revision: source.targetRevision } }),
+  review: (id: string) => apiRequest<BackupReviewResult>(`/backups/${id}/review`),
+  restore: (source: BackupRecord, modules: BackupModule[], confirmForeign = false) => apiRequest<BackupRecord>(`/backups/${source.id}/restore`, { method: 'POST', body: { modules, revision: source.targetRevision, ...(confirmForeign ? { confirmForeign: true } : {}) } }),
   recover: (id: string) => apiRequest<BackupRecord>(`/backups/${id}/recover`, { method: 'POST', body: {} }),
   delete: (id: string) => apiRequest<void>(`/backups/${id}`, { method: 'DELETE' }),
   download: (id: string) => `/api/v1/backups/${id}/download`,
@@ -81,3 +83,27 @@ export interface BackupScheduleHealth {
 }
 export interface BackupSettings { revision: string; storages: BackupStorage[]; schedule: BackupSchedule; health?: BackupScheduleHealth }
 export interface RemoteBackupFile { key: string; size: number; modified: string }
+
+// Host configuration a restore rebuilds from a package this host did not
+// export. `available: false` means the Agent cannot list it (an older Agent).
+export interface BackupBindReview { source: string; destination: string; readOnly?: boolean; live?: boolean }
+export interface BackupContainerReview {
+  imageId?: string; imageRef?: string; hostConfig?: Record<string, unknown>
+  name: string; image: string; replaces?: boolean; privileged?: boolean; capAdd?: string[]; devices?: string[]
+  hostNamespaces?: string[]; securityOpt?: string[]; binds?: BackupBindReview[]; moreItems?: number
+}
+export interface BackupRootReview { path: string; systemPath?: boolean; existing?: boolean; usedBy?: Array<{ container: string; readOnly?: boolean }> }
+export interface BackupNetworkReview { name: string; driver: string; internal?: boolean; subnets?: string[]; options?: string[] }
+export interface BackupModuleReview {
+  module: BackupModule; origin: 'local' | 'foreign'; unreviewed?: boolean; setIdFiles?: number
+  roots?: BackupRootReview[]; containers?: BackupContainerReview[]; networks?: BackupNetworkReview[]
+}
+export interface BackupReviewResult { available: boolean; review: { version: number; revision: string; modules: BackupModuleReview[] } | null }
+
+// Host modules that need the one confirmation before restore. A module the
+// review does not list as local is treated as foreign, as the backend does.
+export function foreignModules(result: BackupReviewResult | undefined, modules: BackupModule[]): BackupModule[] {
+  const host = modules.filter(module => module !== 'panel')
+  if (!result) return host
+  return host.filter(module => !result.available || !result.review?.modules.some(m => m.module === module && m.origin === 'local' && !m.unreviewed))
+}

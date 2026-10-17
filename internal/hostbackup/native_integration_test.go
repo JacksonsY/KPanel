@@ -377,7 +377,7 @@ func TestNativeIntegration(t *testing.T) {
 		for _, p := range paths {
 			niWrite(t, p, "target-old")
 		}
-		if err := e.Restore(context.Background(), filepath.Base(dst), dst, []string{"apps"}); err != nil {
+		if err := e.Restore(context.Background(), filepath.Base(dst), dst, []string{"apps"}, true); err != nil {
 			t.Fatal(err)
 		}
 		restored := niInspect(t, e, "native-roundtrip")
@@ -441,7 +441,7 @@ func TestNativeIntegration(t *testing.T) {
 				})
 			}
 			niWrite(t, file, "target-before-failure")
-			err := e.Restore(context.Background(), filepath.Base(dst), dst, []string{"apps"})
+			err := e.Restore(context.Background(), filepath.Base(dst), dst, []string{"apps"}, true)
 			if err == nil {
 				t.Fatal("expected restore failure")
 			}
@@ -486,7 +486,7 @@ func TestNativeIntegration(t *testing.T) {
 			}
 		}
 		dst := niEncryptDecode(t, exp, modules)
-		if err := e.Restore(context.Background(), filepath.Base(dst), dst, modules); err != nil {
+		if err := e.Restore(context.Background(), filepath.Base(dst), dst, modules, true); err != nil {
 			t.Fatal(err)
 		}
 		for _, name := range []string{"native-donor", "native-sidecar", "native-linked", "native-networkid"} {
@@ -652,7 +652,7 @@ func TestNativeDataRootMigration(t *testing.T) {
 	for _, p := range oldPaths {
 		niWrite(t, p, "source-volume-unchanged")
 	}
-	if err := target.Restore(context.Background(), filepath.Base(dst), dst, []string{"apps"}); err != nil {
+	if err := target.Restore(context.Background(), filepath.Base(dst), dst, []string{"apps"}, true); err != nil {
 		t.Fatal(err)
 	}
 	c := niInspect(t, target, "native-migrate")
@@ -780,7 +780,7 @@ func TestNativeProtection(t *testing.T) {
 		runtimeID := niCreate(t, e, name, map[string]any{"Binds": []string{runtimePath + ":/var/lib/kejilion-panel:rw"}})
 		watch := &niWatchStops{base: e.Client.Transport, watched: map[string]bool{runtimeID: true}, stopped: map[string]bool{}}
 		e.Client.Transport = watch
-		err := e.Restore(context.Background(), filepath.Base(dst), dst, []string{"apps"})
+		err := e.Restore(context.Background(), filepath.Base(dst), dst, []string{"apps"}, true)
 		if err == nil {
 			t.Fatal("runtime same-name replacement accepted")
 		}
@@ -806,7 +806,7 @@ func TestNativeProtection(t *testing.T) {
 				p.Containers[n].Config["Env"] = niRaw([]string{"KEJILION_PANEL_DATA_DIR=/data"})
 			}
 		})
-		err := e.Restore(context.Background(), filepath.Base(dst), dst, []string{"apps"})
+		err := e.Restore(context.Background(), filepath.Base(dst), dst, []string{"apps"}, true)
 		if err == nil {
 			t.Fatal("Panel-marked payload accepted")
 		}

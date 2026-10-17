@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import BackupCenter from './BackupCenter.vue'
 import { backups } from '@/lib/backup'
 
-vi.mock('@/lib/backup', () => ({ backupMessage: (reason: unknown) => reason instanceof Error ? reason.message : '操作未完成，请刷新后重试。', backups: { settings: vi.fn(), files: vi.fn(), remoteImport: vi.fn(), upload: vi.fn(), list: vi.fn(), inventory: vi.fn(), export: vi.fn(), import: vi.fn(), preview: vi.fn(), restore: vi.fn(), recover: vi.fn(), delete: vi.fn(), download: (id: string) => `/api/v1/backups/${id}/download` } }))
+vi.mock('@/lib/backup', async importOriginal => ({ ...await importOriginal<typeof import('@/lib/backup')>(), backupMessage: (reason: unknown) => reason instanceof Error ? reason.message : '操作未完成，请刷新后重试。', backups: { settings: vi.fn(), files: vi.fn(), remoteImport: vi.fn(), upload: vi.fn(), list: vi.fn(), inventory: vi.fn(), export: vi.fn(), import: vi.fn(), preview: vi.fn(), review: vi.fn(), restore: vi.fn(), recover: vi.fn(), delete: vi.fn(), download: (id: string) => `/api/v1/backups/${id}/download` } }))
 const record = { id: 'a'.repeat(32), action: 'import' as const, status: 'ready', stage: 'ready', modules: ['panel'] as ['panel'], createdAt: '2026-09-12T01:00:00Z', size: 123, targetRevision: 'initial' }
 let wrapper: ReturnType<typeof mount>
 function render() {
@@ -13,6 +13,7 @@ function render() {
 const submit = () => wrapper.get('button[type="submit"]')
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(backups.review).mockResolvedValue({ available: true, review: { version: 1, revision: 'host', modules: [{ module: 'docker', origin: 'local' }] } })
   vi.mocked(backups.settings).mockResolvedValue({ revision: 'r', storages: [{ id: 'storage', name: 'NAS', kind: 'webdav', endpoint: 'https://nas.example', prefix: 'backup' }], schedule: { enabled: false, modules: ['panel'], storageId: '', frequency: 'daily', hour: 3, minute: 0, weekday: 0, day: 1, timezone: 'UTC', keep: 7 } })
   vi.mocked(backups.list).mockResolvedValue({ items: [], maxBytes: 50 * 2 ** 30 })
   vi.mocked(backups.inventory).mockResolvedValue({ revision: 'x', panelBytes: 128, maxBytes: 50 * 2 ** 30, hostAvailable: true, host: { revision: 'host', modules: [{ id: 'apps', bytes: 200, containers: 1, requires: ['docker'] }, { id: 'web', bytes: 300, containers: 1, requires: [] }, { id: 'docker', bytes: 400, containers: 1, requires: [] }] } })
@@ -20,6 +21,33 @@ beforeEach(() => {
 afterEach(() => wrapper?.unmount())
 
 describe('backup center user flow', () => {
+  it('shows foreign host configuration before the single restore confirmation', async () => {
+    const imported = { ...record, modules: ['docker'] as ['docker'] }
+    vi.mocked(backups.list).mockResolvedValue({ items: [imported], maxBytes: 1000 })
+    vi.mocked(backups.preview).mockResolvedValue(imported)
+    vi.mocked(backups.review).mockResolvedValue({ available: true, review: { version: 1, revision: 'host', modules: [{ module: 'docker', origin: 'foreign', roots: [{ path: '/usr/share/data', systemPath: true }], containers: [{ name: 'foreign-container', image: 'example:1', privileged: true, binds: [{ source: '/', destination: '/host', live: true }] }] }] } })
+    render(); await flushPromises()
+    await wrapper.get('.backup-record-status button').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('外来备份的宿主机配置')
+    expect(wrapper.text()).toContain('privileged=true')
+    expect(wrapper.text()).toContain('/usr/share/data')
+    expect(wrapper.text()).toContain('/host')
+    expect(backups.restore).not.toHaveBeenCalled()
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(backups.restore).toHaveBeenCalledWith(imported, ['docker'], true)
+  })
+
+  it('does not restore when the host configuration request fails', async () => {
+    const imported = { ...record, modules: ['docker'] as ['docker'] }
+    vi.mocked(backups.list).mockResolvedValue({ items: [imported], maxBytes: 1000 })
+    vi.mocked(backups.preview).mockResolvedValue(imported)
+    vi.mocked(backups.review).mockRejectedValue(new Error('review unavailable'))
+    render(); await flushPromises()
+    await wrapper.get('.backup-record-status button').trigger('click'); await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    expect(backups.restore).not.toHaveBeenCalled()
+    expect(submit().attributes('disabled')).toBeDefined()
+  })
   it('shows a missed window while retaining the last successful receipt', async () => {
     const value = await backups.settings()
     vi.mocked(backups.settings).mockResolvedValue({ ...value, schedule: { ...value.schedule, enabled: true, nextRun: '2026-10-09T03:00:00Z' }, health: { state: 'missed', lastSuccessAt: '2026-10-07T03:02:00Z', errorCode: 'schedule_missed' } })
