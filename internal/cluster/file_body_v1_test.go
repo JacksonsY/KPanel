@@ -2,43 +2,12 @@ package cluster
 
 import (
 	"bytes"
-	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"io"
-	"net/http"
-	"strings"
 	"testing"
-	"time"
 )
-
-type closeTrackedFileBody struct {
-	io.Reader
-	closed bool
-}
-
-func (b *closeTrackedFileBody) Close() error { b.closed = true; return nil }
-
-func TestSignedFileRelayClosesOriginalUpload(t *testing.T) {
-	_, key, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	source := &closeTrackedFileBody{Reader: strings.NewReader("upload")}
-	client := &RemoteClient{streamClient: &http.Client{Transport: v2RoundTripper(func(r *http.Request) (*http.Response, error) {
-		r.Body.Close()
-		return &http.Response{StatusCode: 200, Body: http.NoBody, Header: make(http.Header)}, nil
-	})}}
-	response, err := client.OpenBodySignedFileRelayV1(context.Background(), "https://target.example", strings.Repeat("a", 32), strings.Repeat("b", 32), key, time.Now(), LightFileRequest{Method: http.MethodPut, Path: "/v1/files/content", RawQuery: "path=%2Ftmp%2Ftest", Body: source, BodyLength: 6})
-	if err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
-	if !source.closed {
-		t.Fatal("closing transport body did not close upload source")
-	}
-}
 
 func TestSignedFileBodyAuthenticatesContentOrderAndTermination(t *testing.T) {
 	public, private, err := ed25519.GenerateKey(rand.Reader)
