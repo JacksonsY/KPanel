@@ -511,7 +511,7 @@ EOF
 	fi
 	grep -F "image: docker.io/kjlion/kejilion-panel:latest" \
 		/home/docker/kpanel/docker-compose.yml >/dev/null
-	grep -F -- '- "0.0.0.0:18080:8080"' /home/docker/kpanel/docker-compose.yml >/dev/null
+	grep -F -- '- "18080:8080"' /home/docker/kpanel/docker-compose.yml >/dev/null
 	grep -Fx 'KPANEL_PUBLIC_URL=http://198.51.100.25:18080' \
 		/home/docker/kpanel/.env >/dev/null
 	grep -Fx 'KPANEL_SECURE_COOKIE=false' \
@@ -663,7 +663,7 @@ EOF
 	docker_app_update
 	test "$(/home/docker/kpanel/bin/kejilion-agent version)" = "$RELEASE_VERSION v1alpha1"
 	grep -Fx 'permission_granted="true"' /home/docker/kpanel/bin/kejilion.sh >/dev/null
-	grep -F -- '- "0.0.0.0:18080:8080"' /home/docker/kpanel/docker-compose.yml >/dev/null
+	grep -F -- '- "18080:8080"' /home/docker/kpanel/docker-compose.yml >/dev/null
 	grep -Fx 'KPANEL_SECURE_COOKIE=false' \
 		/home/docker/kpanel/.env >/dev/null
 	grep -Fx 'KPANEL_TRUSTED_PROXY_CIDRS=127.0.0.0/8,::1/128,172.30.0.0/16,172.31.0.1/32' \
@@ -688,7 +688,7 @@ EOF
 	grep -Fx \
 		'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|docker.io/kjlion/kejilion-panel:latest' \
 		"$MOCK_STATE/image-tag" >/dev/null
-	grep -F -- '- "0.0.0.0:18080:8080"' /home/docker/kpanel/docker-compose.yml >/dev/null
+	grep -F -- '- "18080:8080"' /home/docker/kpanel/docker-compose.yml >/dev/null
 	test "$(/home/docker/kpanel/bin/kejilion-agent version)" = "$RELEASE_VERSION v1alpha1"
 	cmp -s "$TEST_DIR/https-env" /home/docker/kpanel/.env
 	grep -Fx 'KPANEL_SECURE_COOKIE=true' /home/docker/kpanel/.env >/dev/null
@@ -951,18 +951,6 @@ run_partial_uninstall() (
 	test ! -e /home/docker/kpanel
 )
 
-run_direct_public_host() (
-	# The published port is IPv4 only, so an IPv6-only host must not get an
-	# unreachable IPv6 direct URL.
-	unset -f ip_address
-	unset ipv4_address
-	ipv6_address="2001:db8::25"
-	test "$(kpanel_direct_public_host)" = "127.0.0.1"
-	ipv4_address="198.51.100.25"
-	test "$(kpanel_direct_public_host)" = "198.51.100.25"
-	printf '%s\n' "app_conf_direct_public_host=pass"
-)
-
 run_release_contract_guards() {
 	local candidate_agent="$TEST_DIR/release-contract-agent"
 	local candidate_script="$TEST_DIR/release-contract-script"
@@ -1044,7 +1032,6 @@ run_missing_bootstrap_token
 run_unmanaged_guard
 run_partial_uninstall
 run_release_contract_guards
-run_direct_public_host
 printf '%s\n' "app_conf_lifecycle=pass"
 # Run the failure matrix under the same disposable-rootfs gate in CI and releases.
 if [ -L /home/docker ] && [ "$(readlink /home/docker)" = "$TEST_DIR/physical-docker-root" ]; then
