@@ -32,7 +32,9 @@ let mutationSequence = 0
 
 /** Returns the stored form of a command, or undefined when it cannot be kept. */
 export function normalizeHistoryCommand(value: string): string | undefined {
-  const command = value.replace(/\r\n?/g, '\n').trim()
+  // Preserve the shell's ignorespace privacy convention for every recording path.
+  if (/^\s/.test(value)) return undefined
+  const command = value.replace(/\r\n?/g, '\n').trimEnd()
   if (!command || encoder.encode(command).byteLength > MAX_COMMAND_BYTES) return undefined
   if (/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(command)) return undefined
   return command

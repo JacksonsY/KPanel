@@ -24,11 +24,22 @@ describe('terminal history store', () => {
   afterEach(() => resetTerminalHistoryForTest())
 
   it('normalizes commands and refuses ones the panel cannot store', () => {
-    expect(normalizeHistoryCommand('  docker ps \r\n')).toBe('docker ps')
+    expect(normalizeHistoryCommand('  docker ps \r\n')).toBeUndefined()
+    expect(normalizeHistoryCommand('docker ps \r\n')).toBe('docker ps')
     expect(normalizeHistoryCommand('for i in 1 2\r\ndo\techo $i\r\ndone')).toBe('for i in 1 2\ndo\techo $i\ndone')
     expect(normalizeHistoryCommand('   ')).toBeUndefined()
     expect(normalizeHistoryCommand('echo \x1b[2J')).toBeUndefined()
     expect(normalizeHistoryCommand('x'.repeat(8193))).toBeUndefined()
+  })
+
+  it('never persists space-prefixed batch or direct commands', async () => {
+    const append = vi.spyOn(api.terminals, 'appendHistory')
+    const store = useTerminalHistory()
+    store.record(' secret --token private', '')
+    store.record('\tsecret --token private', 'local')
+    await flush()
+    expect(append).not.toHaveBeenCalled()
+    expect(store.history.value.items).toEqual([])
   })
 
   it('shows a command at once and coalesces commands recorded while a write is in flight', async () => {
