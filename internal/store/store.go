@@ -774,7 +774,25 @@ func (s *Store) ListAudit(limit int, cursor string) ([]AuditEvent, string, error
 	return s.audit.list(limit, cursor)
 }
 
-const maxLoginAttempts = 4096
+const (
+	maxLoginAttempts = 4096
+	// Re-authentication budgets are keyed by the user ID of a session or of a
+	// verified passkey, so unauthenticated requests cannot create them. They
+	// keep separate capacity: a flood of unauthenticated source and account
+	// failures must not also fail signed-in management checks closed.
+	maxUserScopedLoginAttempts = 1024
+)
+
+var userScopedLoginAttemptPrefixes = []string{"reauth:", "passkey-reauth:", "passkey-second-factor:"}
+
+func userScopedLoginAttempt(key string) bool {
+	for _, prefix := range userScopedLoginAttemptPrefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
+}
 
 func (s *Store) RecordLoginAttempt(attempt LoginAttempt, retainSince time.Time) error {
 	return s.RecordLoginAttempts([]LoginAttempt{attempt}, retainSince)
@@ -785,15 +803,27 @@ func (s *Store) RecordLoginAttempts(attempts []LoginAttempt, retainSince time.Ti
 	defer s.mu.Unlock()
 	previous := cloneDiskState(s.data)
 	filtered := make([]LoginAttempt, 0, len(s.data.LoginAttempts)+len(attempts))
+	userScoped, unauthenticated := 0, 0
+	count := func(item LoginAttempt) {
+		if userScopedLoginAttempt(item.Key) {
+			userScoped++
+		} else {
+			unauthenticated++
+		}
+	}
 	for _, item := range s.data.LoginAttempts {
 		if item.OccurredAt.After(retainSince) {
 			filtered = append(filtered, item)
+			count(item)
 		}
+	}
+	for _, item := range attempts {
+		count(item)
 	}
 	// Never evict an active key's history to admit unrelated failures. Once
 	// the bounded window is full, fail closed until entries expire instead of
 	// silently weakening an existing IP or account lockout.
-	if len(filtered)+len(attempts) > maxLoginAttempts {
+	if userScoped > maxUserScopedLoginAttempts || unauthenticated > maxLoginAttempts {
 		return ErrLimitReached
 	}
 	filtered = append(filtered, attempts...)

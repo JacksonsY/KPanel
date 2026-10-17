@@ -1491,6 +1491,43 @@ func TestPutSessionKeepsOnlyTheNewestSessions(t *testing.T) {
 	}
 }
 
+func TestUnauthenticatedLoginFloodLeavesUserScopedBudgetsWritable(t *testing.T) {
+	storage, err := Open(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	now := time.Now().UTC()
+	flood := make([]LoginAttempt, maxLoginAttempts)
+	for index := range flood {
+		flood[index] = LoginAttempt{Key: fmt.Sprintf("ip:flood-%d", index), OccurredAt: now}
+	}
+	if err := storage.RecordLoginAttempts(flood, now.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.RecordLoginAttempt(LoginAttempt{Key: "account:overflow", OccurredAt: now}, now.Add(-time.Hour)); !errors.Is(err, ErrLimitReached) {
+		t.Fatalf("unauthenticated overflow error = %v, want ErrLimitReached", err)
+	}
+	for _, key := range []string{"reauth:user-1", "passkey-reauth:user-1", "passkey-second-factor:user-1"} {
+		if err := storage.RecordLoginAttempt(LoginAttempt{Key: key, OccurredAt: now}, now.Add(-time.Hour)); err != nil {
+			t.Fatalf("user-scoped attempt %s error = %v", key, err)
+		}
+		if got := storage.FailedLoginCount(key, now.Add(-time.Hour)); got != 1 {
+			t.Fatalf("%s failures = %d, want 1", key, got)
+		}
+	}
+	scoped := make([]LoginAttempt, maxUserScopedLoginAttempts-3)
+	for index := range scoped {
+		scoped[index] = LoginAttempt{Key: fmt.Sprintf("reauth:user-%d", index+2), OccurredAt: now}
+	}
+	if err := storage.RecordLoginAttempts(scoped, now.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.RecordLoginAttempt(LoginAttempt{Key: "reauth:user-1", OccurredAt: now}, now.Add(-time.Hour)); !errors.Is(err, ErrLimitReached) {
+		t.Fatalf("user-scoped overflow error = %v, want ErrLimitReached", err)
+	}
+}
+
 func TestUsernameLookupIgnoresOnlyASCIICase(t *testing.T) {
 	for _, test := range []struct {
 		left, right string
