@@ -317,7 +317,11 @@ func (c *RemoteClient) openFileRelayV1(
 			request.Header.Set(fileRelayV1BodyHeader, "frames-v1")
 			canonical := fileRelayV1Canonical(controllerID, targetID, request.Header.Get(headerTimestamp), nonce, input) + fileBodyBinding(request)
 			request.Header.Set(FileRelayV1SignatureHeader, base64.RawStdEncoding.EncodeToString(ed25519.Sign(privateKey, []byte(canonical))))
-			request.Body = newSignedFileBody(io.NopCloser(body), nil, privateKey, request.Header.Get(FileRelayV1SignatureHeader))
+			closer, ok := body.(io.ReadCloser)
+			if !ok {
+				closer = io.NopCloser(body)
+			}
+			request.Body = newSignedFileBody(closer, nil, privateKey, request.Header.Get(FileRelayV1SignatureHeader))
 			request.ContentLength = -1
 		}
 	}
