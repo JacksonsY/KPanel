@@ -86,6 +86,7 @@ type runtimeState struct {
 	nextFilePeerSyncAt      time.Time
 	fileManagementAvailable bool
 	fileRelayV1Signed       bool
+	fileRelayV1BodySigned   bool
 
 	securityEntrancePath string
 }
@@ -920,7 +921,7 @@ func (s *Service) SignedSummary(ctx context.Context, request *http.Request) (Fed
 	capabilities := ""
 	if record, err := s.store.Controller(controllerID); err == nil &&
 		s.fileRelayV1Grants.Granted(controllerID, record.Fingerprint) {
-		capabilities = FileRelayV1SignedCapability
+		capabilities = FileRelayV1SignedCapability + "," + FileRelayV1BodyCapability
 	}
 	telemetry = telemetryForFederation(
 		telemetry,
@@ -1137,6 +1138,7 @@ func (s *Service) poll(ctx context.Context, id string) {
 	// grants this controller file access. An older target still advertises the
 	// unsigned hint for every v1 controller and keeps its earlier behavior.
 	current.fileRelayV1Signed = hasFederationCapability(capabilities, FileRelayV1SignedCapability)
+	current.fileRelayV1BodySigned = hasFederationCapability(capabilities, FileRelayV1BodyCapability)
 	current.fileManagementAvailable = current.fileRelayV1Signed ||
 		hasFederationCapability(capabilities, FileRelayV1Capability)
 	current.securityEntrancePath = summary.SecurityEntrancePath

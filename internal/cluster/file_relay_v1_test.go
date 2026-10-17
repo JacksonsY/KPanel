@@ -87,7 +87,7 @@ func TestAuthorizeFileRelayV1RequiresTargetGrantAndBoundSignature(t *testing.T) 
 		request := httptest.NewRequest(
 			http.MethodPost,
 			"https://target.example"+FileRelayV1Path,
-			bytes.NewReader([]byte(`{"path":"/"}`)),
+			nil,
 		)
 		input := LightFileRequest{Method: method, Path: path, RawQuery: query}
 		request.Header.Set(FileRelayV1MethodHeader, method)
@@ -150,6 +150,38 @@ func TestAuthorizeFileRelayV1RequiresTargetGrantAndBoundSignature(t *testing.T) 
 	}
 	if _, err := service.AuthorizeFileRelayV1("198.51.100.10", request); !errors.Is(err, ErrReplay) {
 		t.Fatalf("replayed file relay error = %v, want ErrReplay", err)
+	}
+	// Exercise the real sender and receiver with an unknown-length upload.
+	for _, tamper := range []bool{false, true} {
+		client := &RemoteClient{streamClient: &http.Client{Transport: v2RoundTripper(func(r *http.Request) (*http.Response, error) {
+			if tamper {
+				wire, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wire[4] ^= 1
+				r.Body = io.NopCloser(bytes.NewReader(wire))
+			}
+			input, err := service.AuthorizeFileRelayV1("198.51.100.10", r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer input.Body.(io.Closer).Close()
+			data, err := io.ReadAll(input.Body)
+			if tamper {
+				if err == nil || len(data) != 0 {
+					t.Fatal("modified body reached Agent")
+				}
+			} else if err != nil || string(data) != "authenticated upload" {
+				t.Fatalf("upload: %q %v", data, err)
+			}
+			return &http.Response{StatusCode: 200, Body: http.NoBody, Header: make(http.Header)}, nil
+		})}}
+		response, err := client.OpenBodySignedFileRelayV1(context.Background(), "https://target.example", controllerID, service.NodeID(), controllerPrivate, now, LightFileRequest{Method: http.MethodPut, Path: "/v1/files/content", RawQuery: "path=%2Ftmp%2Fexample", Body: strings.NewReader("authenticated upload"), BodyLength: -1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
 	}
 
 	withdrawn, err := service.SetControllerFileRelay(controllerID, false)

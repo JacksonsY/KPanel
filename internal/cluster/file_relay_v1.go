@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,8 @@ const (
 	// earlier unconditional file-relay-v1 hint, which older targets still send.
 	FileRelayV1SignedCapability = "file-relay-v1-signed"
 	FileRelayV1SignatureHeader  = "X-KPanel-File-Signature"
+	FileRelayV1BodyCapability   = "file-relay-v1-body-signed"
+	fileRelayV1BodyHeader       = "X-KPanel-File-Body"
 )
 
 // fileRelayV1Canonical binds the inner file operation to the outer v1 request
@@ -43,6 +46,9 @@ func signFileRelayV1(request *http.Request, privateKey ed25519.PrivateKey, input
 }
 
 func verifyFileRelayV1Binding(request *http.Request, publicKey ed25519.PublicKey, input LightFileRequest) error {
+	if values := request.Header.Values(fileRelayV1BodyHeader); len(values) > 1 || len(values) == 1 && values[0] != "frames-v1" {
+		return ErrAuthentication
+	}
 	values := request.Header.Values(FileRelayV1SignatureHeader)
 	if len(values) != 1 || len(values[0]) > 128 || len(publicKey) != ed25519.PublicKeySize {
 		return ErrAuthentication
@@ -55,6 +61,9 @@ func verifyFileRelayV1Binding(request *http.Request, publicKey ed25519.PublicKey
 		strings.TrimSpace(request.Header.Get(headerControllerID)), strings.TrimSpace(request.Header.Get(headerTargetID)),
 		strings.TrimSpace(request.Header.Get(headerTimestamp)), strings.TrimSpace(request.Header.Get(headerNonce)), input,
 	)
+	if request.Header.Get(fileRelayV1BodyHeader) != "" {
+		canonical += fileBodyBinding(request)
+	}
 	if !ed25519.Verify(publicKey, []byte(canonical), signature) {
 		return ErrAuthentication
 	}
@@ -149,6 +158,13 @@ func (s *Service) AuthorizeFileRelayV1(
 	if err := s.replays.Accept("file:v1:"+controllerID, nonce, now); err != nil {
 		return LightFileRequest{}, err
 	}
+	if input.BodyLength != 0 || request.Header.Get(fileRelayV1BodyHeader) != "" {
+		if request.Header.Get(fileRelayV1BodyHeader) != "frames-v1" {
+			return LightFileRequest{}, ErrProtocolMismatch
+		}
+		input.Body = newSignedFileBody(request.Body, publicKey, nil, request.Header.Get(FileRelayV1SignatureHeader))
+		input.BodyLength = -1
+	}
 	s.store.TouchController(controllerID, now)
 	return input, nil
 }
@@ -188,6 +204,7 @@ func (s *Service) OpenRemotePanelFileV1(
 	s.mu.RLock()
 	available := s.runtime[hostID].fileManagementAvailable
 	signed := s.runtime[hostID].fileRelayV1Signed
+	bodySigned := s.runtime[hostID].fileRelayV1BodySigned
 	s.mu.RUnlock()
 	if !available {
 		return nil, ErrFileRelayUnavailable
@@ -197,6 +214,14 @@ func (s *Service) OpenRemotePanelFileV1(
 		return nil, ErrFileRelayUnavailable
 	}
 	if signed {
+		if bodySigned {
+			if remote, ok := s.remote.(interface {
+				OpenBodySignedFileRelayV1(context.Context, string, string, string, ed25519.PrivateKey, time.Time, LightFileRequest) (*http.Response, error)
+			}); ok {
+				return remote.OpenBodySignedFileRelayV1(ctx, record.Origin, record.ControllerID, record.RemoteNodeID, privateKey, s.now().UTC(), input)
+			}
+			return nil, ErrProtocolMismatch
+		}
 		remote, ok := s.remote.(remoteV1SignedPanelFileAPI)
 		if !ok {
 			return nil, ErrProtocolMismatch
@@ -287,6 +312,13 @@ func (c *RemoteClient) openFileRelayV1(
 	if signed {
 		if err := signFileRelayV1(request, privateKey, input); err != nil {
 			return nil, err
+		}
+		if bodySigned, _ := ctx.Value(fileBodyContextKey{}).(bool); bodySigned && body != http.NoBody {
+			request.Header.Set(fileRelayV1BodyHeader, "frames-v1")
+			canonical := fileRelayV1Canonical(controllerID, targetID, request.Header.Get(headerTimestamp), nonce, input) + fileBodyBinding(request)
+			request.Header.Set(FileRelayV1SignatureHeader, base64.RawStdEncoding.EncodeToString(ed25519.Sign(privateKey, []byte(canonical))))
+			request.Body = newSignedFileBody(io.NopCloser(body), nil, privateKey, request.Header.Get(FileRelayV1SignatureHeader))
+			request.ContentLength = -1
 		}
 	}
 	response, err := c.streamClient.Do(request)
