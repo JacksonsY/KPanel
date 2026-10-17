@@ -20,6 +20,19 @@ const check=(n,v)=>{assert(v,n);report.checks.push(n)};const unwrap=x=>x&&typeof
   const retained=await api('/terminal-sessions');check('same real session survives page reload',retained.items.some(x=>x.sessionId===id&&x.retained));
   await api('/terminal-sessions/'+id+'/resize','POST',{rows:30,columns:100});
   check('one restored terminal tab',await terminalPage.locator('.terminal-tab__close').count()===1);
+  // Run through the real composer and shell echo, then read the real Panel store.
+  await api('/terminal-sessions/'+id+'/input','POST',{data:Buffer.from('stty echo\r').toString('base64').replace(/=+$/,'')});
+  const composer=terminalPage.locator('.host-terminal__composer input').first();await composer.waitFor();
+  const historyCommand='printf RC6_HISTORY_UI';
+  const appended=terminalPage.waitForResponse(r=>r.url()===base+'/api/v1/terminal-history'&&r.request().method()==='POST');
+  await composer.fill(historyCommand);await composer.press('Enter');check('real composer command captured',(await appended).status()===200);
+  check('real history API contains executed command',(await api('/terminal-history')).items.some(x=>x.command===historyCommand&&x.hostId==='local'));
+  await terminalPage.locator('[aria-controls="terminal-quick-commands"]').click();await terminalPage.getByRole('tab',{name:/历史命令/}).click();
+  await terminalPage.locator('.terminal-history-entry__fill').filter({hasText:historyCommand}).waitFor();
+  check('history privacy notice visible',(await terminalPage.locator('.terminal-command-history__notice').innerText()).includes('Token'));
+  await terminalPage.locator('.terminal-history-entry__fill').filter({hasText:historyCommand}).click();check('history fills composer without execution',await composer.inputValue()===historyCommand);
+  await terminalPage.screenshot({path:out+'/terminal-history-real.png',fullPage:true});report.screenshots.push('terminal-history-real.png');
+  await api('/terminal-history','DELETE');check('history clear API readback',(await api('/terminal-history')).items.length===0);
   await terminalPage.screenshot({path:out+'/terminal-restored.png',fullPage:true});report.screenshots.push('terminal-restored.png');
   const closeReply=terminalPage.waitForResponse(r=>r.url()===base+'/api/v1/terminal-sessions/'+id+'/close'&&r.request().method()==='POST');
   await terminalPage.getByRole('button',{name:'关闭终端',exact:true}).click();const closedResponse=await closeReply;const closed=unwrap(await closedResponse.json());check('real PTY termination confirmed through UI',closedResponse.status()===200&&closed.closed===true);
