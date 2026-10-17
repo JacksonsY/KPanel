@@ -887,3 +887,59 @@ func TestLoginMatchesUsernamesOnlyUnderTheirRateLimitKey(t *testing.T) {
 		t.Fatalf("account key = %q", accountKey)
 	}
 }
+
+func TestLoginSourceKeysGroupIPv6ByPrefix(t *testing.T) {
+	for input, want := range map[string]string{
+		"192.0.2.7":                "192.0.2.7",
+		"::ffff:192.0.2.7":         "192.0.2.7",
+		"2001:DB8:1:2:aaaa::1":     "2001:db8:1:2::/64",
+		"2001:db8:1:2:ffff:ffff::": "2001:db8:1:2::/64",
+		"2001:db8:1:3::1":          "2001:db8:1:3::/64",
+		"fe80::1%eth0":             "fe80::/64",
+		" not-an-address ":         "not-an-address",
+	} {
+		if got := loginSource(input); got != want {
+			t.Errorf("loginSource(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestIPv6AddressesInOnePrefixShareTheSourceBudget(t *testing.T) {
+	directory := t.TempDir()
+	storage, err := store.Open(filepath.Join(directory, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	service, err := NewService(storage, testHasher(t), Config{
+		BootstrapTokenPath: filepath.Join(directory, "bootstrap.token"),
+		SessionTTL:         time.Hour,
+		LoginWindow:        time.Minute,
+		MaxLoginFailures:   3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.EnsureBootstrapToken(); err != nil {
+		t.Fatal(err)
+	}
+	token, err := os.ReadFile(filepath.Join(directory, "bootstrap.token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Bootstrap(string(token), "admin", "a-strong-password-1"); err != nil {
+		t.Fatal(err)
+	}
+	for index := 1; index <= 3; index++ {
+		if _, err := service.Login(fmt.Sprintf("2001:db8:5:6::%x", index), "admin", "wrong-password-1", ""); !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("failure %d error = %v", index, err)
+		}
+	}
+	var rateLimited *RateLimitError
+	if _, err := service.Login("2001:db8:5:6:abcd::99", "admin", "a-strong-password-1", ""); !errors.As(err, &rateLimited) {
+		t.Fatalf("another address in the same /64 error = %v, want RateLimitError", err)
+	}
+	if _, err := service.Login("2001:db8:5:7::1", "admin", "a-strong-password-1", ""); err != nil {
+		t.Fatalf("a different /64 error = %v", err)
+	}
+}

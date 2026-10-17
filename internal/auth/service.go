@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -865,11 +866,26 @@ func validatePassword(password string) error {
 	return nil
 }
 
-func loginKeys(ip, username string) (string, string) {
+// loginSource is the rate-limit identity of a client address. An IPv6
+// client normally holds a whole /64, so IPv6 addresses share one budget per
+// /64 prefix; IPv4 and IPv4-mapped addresses keep one budget per address.
+func loginSource(ip string) string {
 	ip = strings.TrimSpace(strings.ToLower(ip))
+	if address, err := netip.ParseAddr(ip); err == nil {
+		address = address.Unmap().WithZone("")
+		if address.Is6() {
+			return netip.PrefixFrom(address, 64).Masked().String()
+		}
+		return address.String()
+	}
 	if len(ip) > 128 {
 		ip = ip[:128]
 	}
+	return ip
+}
+
+func loginKeys(ip, username string) (string, string) {
+	ip = loginSource(ip)
 	username = strings.TrimSpace(strings.ToLower(username))
 	if len(username) > 64 {
 		username = username[:64]

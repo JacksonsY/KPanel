@@ -318,7 +318,7 @@ func (p *PasskeyService) BeginLogin(ip, username, binding string) (PasskeyOption
 	}
 	s := p.auth
 	now := s.now()
-	key := "passkey-begin:" + ip
+	key := "passkey-begin:" + loginSource(ip)
 	if !s.reserveAuthenticationAttempt(key, now.Add(-s.config.LoginWindow), s.config.MaxLoginFailures*2) {
 		return PasskeyOptions{}, &RateLimitError{RetryAfter: s.config.LoginWindow}
 	}
