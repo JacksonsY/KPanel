@@ -1644,6 +1644,10 @@ function wait(milliseconds) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds))
 }
 
+function mockTerminalPrompt(host) {
+  return `root@${host.lastSnapshot?.telemetry?.hostname || host.name}:~# `
+}
+
 function mockTerminalCommandResult(host, command) {
   const lines = command.split('\n').map((line) => line.trim()).filter(Boolean)
   const failed = lines.some((line) => line === 'false' || /^exit\s+[1-9]\d*$/.test(line) || line.includes('mock-fail'))
@@ -2995,7 +2999,12 @@ createServer(async (request, response) => {
     mockTerminalSessions.set(sessionId, {
       metadata,
       host,
+<<<<<<< HEAD
       data: Buffer.from(`root@${host.lastSnapshot?.telemetry?.hostname || host.name}:~# ${launchCommand ? `${launchCommand}\r\n[Mock: command started once]\r\n` : ''}`),
+=======
+      data: Buffer.from(`${mockTerminalPrompt(host)}${shortcut ? `${shortcut.command}\r\n[Mock: command started once]\r\n` : ''}`),
+      atPrompt: !shortcut,
+>>>>>>> b40fc842 (fix(terminal): reopen drawers on the last tab and redraw mock prompts on resize)
       exitedAt: '',
       exitError: '',
     })
@@ -3033,7 +3042,7 @@ createServer(async (request, response) => {
     if (request.method === 'POST' && action === 'input') {
       const input = await readJSON(request)
       const decoded = Buffer.from(String(input.data || ''), 'base64').toString('utf8')
-      const prompt = `root@${session.host.lastSnapshot?.telemetry?.hostname || session.host.name}:~# `
+      const prompt = mockTerminalPrompt(session.host)
       const echoed = []
       session.line ??= ''
       // Behave like a cooked TTY: echo typed text, edit on Backspace, run the line on Enter
@@ -3056,8 +3065,10 @@ createServer(async (request, response) => {
           }
           if (exitIndex >= 0) session.exitedAt = new Date().toISOString()
           else echoed.push(prompt)
+          session.atPrompt = exitIndex < 0
         } else if (token === '\x03') {
           session.line = ''
+          session.atPrompt = true
           echoed.push(`^C\r\n${prompt}`)
         } else if (token === '\x7f' || token === '\x08') {
           if (session.line) {
@@ -3081,6 +3092,10 @@ createServer(async (request, response) => {
     }
     if (request.method === 'POST' && action === 'resize') {
       await readJSON(request)
+      // Like readline after SIGWINCH: clear the row and redraw the prompt with any pending input.
+      if (session.atPrompt && !session.exitedAt) {
+        session.data = Buffer.concat([session.data, Buffer.from(`\r\x1b[K${mockTerminalPrompt(session.host)}${session.line ?? ''}`)])
+      }
       send(response, 200, { accepted: true })
       return
     }

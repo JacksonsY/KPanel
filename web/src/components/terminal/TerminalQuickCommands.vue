@@ -94,8 +94,11 @@ async function reload(): Promise<void> {
 }
 
 watch(() => props.open, (open) => {
-  if (open) void reload()
-  else {
+  if (open) {
+    // Interactive and batch drawers are separate instances; both reopen on the last tab used.
+    tab.value = readStoredTab()
+    void reload()
+  } else {
     loadController?.abort()
     formOpen.value = false
     editingCommand.value = undefined

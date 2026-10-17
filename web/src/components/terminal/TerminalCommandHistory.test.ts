@@ -56,6 +56,13 @@ describe('terminal command history', () => {
     expect(wrapper.get('#terminal-command-panel-history').attributes('aria-labelledby')).toBe('terminal-command-tab-history')
     expect(window.localStorage.getItem('kpanel:terminal:command-panel-tab')).toBe('history')
 
+    // The batch drawer is a separate instance mounted closed; it reopens on the tab used last.
+    const batchDrawer = mount(TerminalQuickCommands, { props: { open: false, mode: 'batch', hostNames } })
+    await batchDrawer.setProps({ open: true })
+    await flushPromises()
+    expect(batchDrawer.get('#terminal-command-tab-history').attributes('aria-selected')).toBe('true')
+    batchDrawer.unmount()
+
     await wrapper.get('[role="tablist"]').trigger('keydown', { key: 'ArrowLeft' })
     expect(wrapper.findAll('[role="tab"]')[0]!.attributes('aria-selected')).toBe('true')
     wrapper.unmount()
