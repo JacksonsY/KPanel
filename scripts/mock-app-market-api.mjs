@@ -2999,12 +2999,8 @@ createServer(async (request, response) => {
     mockTerminalSessions.set(sessionId, {
       metadata,
       host,
-<<<<<<< HEAD
-      data: Buffer.from(`root@${host.lastSnapshot?.telemetry?.hostname || host.name}:~# ${launchCommand ? `${launchCommand}\r\n[Mock: command started once]\r\n` : ''}`),
-=======
-      data: Buffer.from(`${mockTerminalPrompt(host)}${shortcut ? `${shortcut.command}\r\n[Mock: command started once]\r\n` : ''}`),
-      atPrompt: !shortcut,
->>>>>>> b40fc842 (fix(terminal): reopen drawers on the last tab and redraw mock prompts on resize)
+      data: Buffer.from(`${mockTerminalPrompt(host)}${launchCommand ? `${launchCommand}\r\n[Mock: command started once]\r\n` : ''}`),
+      atPrompt: !launchCommand,
       exitedAt: '',
       exitError: '',
     })
