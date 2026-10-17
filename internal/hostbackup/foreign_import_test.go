@@ -345,14 +345,22 @@ func TestForeignReviewShowsReplacedReadOnlySystemBind(t *testing.T) {
 func TestForeignReviewCountsSetIDFiles(t *testing.T) {
 	e, _, p := hostFixture(t)
 	root := p.Roots[0]
+	info, err := os.Stat(e.host(root.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := tar.FileInfoHeader(info, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	var out bytes.Buffer
 	gz := gzip.NewWriter(&out)
 	tw := tar.NewWriter(gz)
 	manifest, _ := json.Marshal(p)
 	_ = tw.WriteHeader(&tar.Header{Name: "manifest.json", Typeflag: tar.TypeReg, Mode: 0600, Size: int64(len(manifest))})
 	_, _ = tw.Write(manifest)
-	_ = tw.WriteHeader(&tar.Header{Name: "data/" + root.ID, Typeflag: tar.TypeDir, Mode: 0755})
-	_ = tw.WriteHeader(&tar.Header{Name: "data/" + root.ID + "/tool", Typeflag: tar.TypeReg, Mode: 04755, Size: 2})
+	_ = tw.WriteHeader(&tar.Header{Name: "data/" + root.ID, Typeflag: tar.TypeDir, Mode: 0755, Uid: owner.Uid, Gid: owner.Gid})
+	_ = tw.WriteHeader(&tar.Header{Name: "data/" + root.ID + "/tool", Typeflag: tar.TypeReg, Mode: 04755, Size: 2, Uid: owner.Uid, Gid: owner.Gid})
 	_, _ = tw.Write([]byte("#!"))
 	_ = tw.Close()
 	_ = gz.Close()
