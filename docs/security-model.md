@@ -92,5 +92,4 @@ TOTP 的注册、密钥保护、恢复和防绕过要求见
 
 `k fd` 可以把域名反代到 KPanel 直连端口。只有立即来源位于配置的可信代理 CIDR，且
 `X-Forwarded-Proto` 为单一 `https` 时，Panel 才接受代理传入的 HTTPS Host/Origin、设置 Secure
-Cookie 并解析真实客户端地址。公网客户端伪造转发头不会改变信任边界。应用市场直连端口安装默认只信任
-回环地址，不把 Docker 网络网关视为代理（见 `deployment.md`）。
+Cookie 并解析真实客户端地址。公网客户端伪造转发头不会改变信任边界。

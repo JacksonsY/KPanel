@@ -225,14 +225,18 @@ IP Host 完全同源，普通域名也仍受 `KEJILION_PANEL_PUBLIC_URL` 限制�
 Secure Cookie，仅建议用于受控环境。覆盖文件会把入口网络改为可发布端口的普通
 bridge；独立 egress 网络仍只承担受限出站访问。正式公网环境仍建议使用 HTTPS。
 
-应用市场直连端口安装的可信代理范围只包含回环地址（`127.0.0.0/8`、`::1/128`），不包含 Docker
-网络网关或内部网段。直连端口安装和更新会据此改写 `KPANEL_TRUSTED_PROXY_CIDRS`，旧版本写入的网段与
-网关单地址在更新后移除。面板不采信这类直连端口上来源不可信的 `X-Real-IP`、`X-Forwarded-For` 或
-`X-Forwarded-Proto`，客户端地址与 Host/Origin 判定都以直连 TCP 对端为准。
+直接端口部署完成后，可以使用 `kejilion.sh` 的标准反代入口：
 
-因此在应用市场直连端口安装上，经回环转发的域名入口（如 `k fd panel.example.com 127.0.0.1 8080`）
-不会被面板识别为可信 HTTPS 入口。域名访问、下文「访问地址与 HTTPS」中的域名切换以及 Passkey 域名绑定
-在这类安装上不可用，需要改用安装器部署的内部网络入口。
+```sh
+k fd panel.example.com 127.0.0.1 8080
+```
+
+来自显式可信代理 CIDR 的请求可以使用代理传递的 HTTPS `Host` 和
+`X-Forwarded-Proto`，无需把 `KEJILION_PANEL_PUBLIC_URL` 从直连地址改成域名。
+应用市场安装和更新会自动信任 KPanel 内部网络以及出口网络的宿主机网关单地址
+（IPv4 `/32`、IPv6 `/128`），从而支持宿主机 Nginx 转发，但不会信任整个出口网段。
+该路径会自动启用 Secure Cookie，并从 `X-Real-IP` 或安全解析后的
+`X-Forwarded-For` 恢复客户端地址；非可信来源不能利用这些请求头绕过 Host/Origin 校验。
 Passkey 设置页会把当前可信 HTTPS 域名作为候选入口显示；管理员确认密码后即可保存固定的
 `passkeyOrigin`，无需为直连 IP 安装额外编辑配置文件。若入口不是有效 HTTPS 域名，Passkey 仍保持禁用。
 

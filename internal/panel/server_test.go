@@ -781,30 +781,6 @@ func TestRemoteIPTrustsOnlyConfiguredProxies(t *testing.T) {
 	}
 }
 
-func TestRemoteIPIgnoresForgedHeadersForDockerGatewayPeers(t *testing.T) {
-	// Docker network gateways are not configured reverse proxies, so forwarding headers arriving
-	// from such a peer must not choose the client identity used for rate limiting.
-	server, _ := newTestServer(t)
-	for _, peer := range []struct {
-		remoteAddr string
-		want       string
-	}{
-		{remoteAddr: "172.25.0.1:40000", want: "172.25.0.1"},
-		{remoteAddr: "[fd00:db8:b7::1]:40000", want: "fd00:db8:b7::1"},
-	} {
-		request := httptest.NewRequest(http.MethodGet, "/", nil)
-		request.RemoteAddr = peer.remoteAddr
-		request.Header.Set("X-Real-IP", "198.51.100.25")
-		request.Header.Set("X-Forwarded-For", "198.51.100.26, 198.51.100.27")
-		if got := server.remoteIP(request); got != peer.want {
-			t.Fatalf("gateway peer %s trusted client-supplied forwarding headers: %q", peer.remoteAddr, got)
-		}
-		if server.isTrustedProxyPeer(request) {
-			t.Fatalf("gateway peer %s is a trusted proxy by default", peer.remoteAddr)
-		}
-	}
-}
-
 func TestDockerActionFailsClosedWhenIntentAuditCannotPersist(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("cannot remove an open lock file on Windows")
