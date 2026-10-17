@@ -353,11 +353,33 @@ func (s *Store) UserByUsername(username string) (User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, user := range s.data.Users {
-		if strings.EqualFold(user.Username, username) {
+		if usernameEqual(user.Username, username) {
 			return cloneUser(user), nil
 		}
 	}
 	return User{}, ErrNotFound
+}
+
+// usernameEqual ignores ASCII case only. Usernames are ASCII by validation,
+// and the login rate-limit key folds the same way, so every spelling that
+// reaches an account shares that account's key.
+func usernameEqual(left, right string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := 0; index < len(left); index++ {
+		a, b := left[index], right[index]
+		if 'A' <= a && a <= 'Z' {
+			a += 'a' - 'A'
+		}
+		if 'A' <= b && b <= 'Z' {
+			b += 'a' - 'A'
+		}
+		if a != b {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Store) UserByID(id string) (User, error) {

@@ -1490,3 +1490,20 @@ func TestPutSessionKeepsOnlyTheNewestSessions(t *testing.T) {
 		t.Fatalf("newest session was dropped: %v", err)
 	}
 }
+
+func TestUsernameLookupIgnoresOnlyASCIICase(t *testing.T) {
+	for _, test := range []struct {
+		left, right string
+		want        bool
+	}{
+		{"admin", "ADMIN", true},
+		{"sysadmin", "SysAdmin", true},
+		{"sysadmin", "\u017fysadmin", false},
+		{"kadmin", "\u212aadmin", false},
+		{"admin", "admin2", false},
+	} {
+		if got := usernameEqual(test.left, test.right); got != test.want {
+			t.Errorf("usernameEqual(%q, %q) = %v, want %v", test.left, test.right, got, test.want)
+		}
+	}
+}

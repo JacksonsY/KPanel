@@ -845,3 +845,45 @@ func TestCredentialChangesShareTheReauthenticationBudget(t *testing.T) {
 		t.Fatalf("password change after the window error = %v", err)
 	}
 }
+
+func TestLoginMatchesUsernamesOnlyUnderTheirRateLimitKey(t *testing.T) {
+	directory := t.TempDir()
+	storage, err := store.Open(filepath.Join(directory, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	service, err := NewService(storage, testHasher(t), Config{
+		BootstrapTokenPath: filepath.Join(directory, "bootstrap.token"),
+		SessionTTL:         time.Hour,
+		LoginWindow:        time.Minute,
+		MaxLoginFailures:   3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.EnsureBootstrapToken(); err != nil {
+		t.Fatal(err)
+	}
+	token, err := os.ReadFile(filepath.Join(directory, "bootstrap.token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Bootstrap(string(token), "sysadmin", "a-strong-password-1"); err != nil {
+		t.Fatal(err)
+	}
+	// Only ASCII case variants reach the account, so every accepted spelling
+	// shares the account's rate-limit key.
+	for index, username := range []string{"\u017fysadmin", "sy\u017fadmin", "\u017fy\u017fadmin"} {
+		ip := fmt.Sprintf("192.0.2.%d", index+1)
+		if _, err := service.Login(ip, username, "a-strong-password-1", ""); !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("login as %q error = %v, want ErrInvalidCredentials", username, err)
+		}
+	}
+	if _, err := service.Login("192.0.2.50", "SysAdmin", "a-strong-password-1", ""); err != nil {
+		t.Fatalf("ASCII case-insensitive login error = %v", err)
+	}
+	if _, accountKey := loginKeys("192.0.2.50", "SysAdmin"); accountKey != "account:sysadmin" {
+		t.Fatalf("account key = %q", accountKey)
+	}
+}
