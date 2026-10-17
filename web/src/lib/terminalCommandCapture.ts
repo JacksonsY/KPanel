@@ -11,7 +11,7 @@ import type { IBuffer, IDisposable, IMarker, Terminal } from '@xterm/xterm'
 // be mistaken for the command.
 const promptEnding = /[#$%❯➜»]\s*$/u
 // psql's default superuser prompts also end in #, but are program input.
-const psqlPrompt = /(?:^|\s)\S+[=\-\(\'\"$][*!?]?#\s*$/u
+const psqlPrompt = /(?:^|\s)\S+[=('"$-][*!?]?#\s*$/u
 function isShellPrompt(text: string): boolean {
   return text.length <= maxPromptLength && promptEnding.test(text) && !psqlPrompt.test(text)
 }
