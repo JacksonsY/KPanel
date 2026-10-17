@@ -28,6 +28,10 @@ MCP 是 KPanel 的可选外部 AI 接口，复用现有 Panel、Agent 和集群�
 
 ## 常用旅程
 
+备份恢复先调用 `host_backup_preview` 刷新版本，再通过只读 `host_backup_review` 展示外来包的宿主机绑定、实际镜像、特权与网络配置。管理员确认这些配置后，`host_backup_restore` 可携带 `confirmForeign: true`，仍须经过现有人工审批，不要求切换到 Web 页面才能完成恢复。新增工具不会自动扩大既有凭据权限；旧凭据需要重新授权备份恢复操作才能使用更新后的参数 Schema。
+
+配置读取沿用 MCP 的 128 KiB 响应预算；超过该预算会明确返回 `backup_response_too_large`，不会截掉危险条目后当作完整配置。此时可先在 Web 或 CLI 查看完整清单，再通过已审批的 MCP 恢复工具确认；后端没有将恢复能力绑定到 Web。大清单的 MCP 分页读取尚未实现，不声称所有 6 MiB 合法清单都能在单次 MCP 响应中展示。
+
 先调用 `kpanel_info`、`hosts_list`，再对具体主机调用 `host_capabilities`。工具发现会根据当前授权过滤。客户端可以用自然语言提出请求，例如「查看授权主机的运行状态」或「重启这台主机上的 nginx 应用」。实际执行仍由结构化工具参数和服务端授权决定。
 
 写操作应先读取资源的当前版本，再调用对应工具并提供唯一 `requestKey`。返回 `pending` 后在 KPanel 审阅具体主机、动作和参数，点击「批准并执行」。连接中断时复用原 `requestKey`，查询 `operation_status`，不要重新创建一个不同请求。

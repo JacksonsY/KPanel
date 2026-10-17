@@ -20,10 +20,11 @@ type managedBackupID struct {
 	BackupID string `json:"backupId"`
 }
 type managedBackupRestore struct {
-	BackupID      string   `json:"backupId"`
-	Modules       []string `json:"modules"`
-	Revision      string   `json:"revision"`
-	AgentRevision string   `json:"agentRevision,omitempty"`
+	BackupID       string   `json:"backupId"`
+	Modules        []string `json:"modules"`
+	Revision       string   `json:"revision"`
+	AgentRevision  string   `json:"agentRevision,omitempty"`
+	ConfirmForeign bool     `json:"confirmForeign,omitempty"`
 }
 
 func addManagedBackups(result map[string]managedOperation, add func(string, string, bool, []byte)) {
@@ -55,6 +56,7 @@ func addManagedBackups(result map[string]managedOperation, add func(string, stri
 	for _, item := range []struct{ Name, Method, Suffix, Description string }{
 		{"host_backup_job", http.MethodGet, "", "Read a backup or restore job by backupId. After restoring Panel credentials, reauthorize in Panel before reconnecting."},
 		{"host_backup_preview", http.MethodPost, "/preview", "Refresh restore preflight for an already uploaded and validated package. Requires approval; returns targetRevision and agentRevision needed for restoration."},
+		{"host_backup_review", http.MethodGet, "/review", "Read the imported backup's host bindings, image identity, privileges and network configuration before confirming a foreign restore. The existing MCP response budget is 128 KiB; if exceeded, review the full configuration in Panel or CLI, then confirm through the approved restore tool."},
 		{"host_backup_recover", http.MethodPost, "/recover", "Ask the existing backup service to recover a failed host restore. Requires approval; inspect its real job result."},
 		{"host_backup_delete", http.MethodDelete, "", "Delete an existing backup record and package. Requires approval."},
 	} {
@@ -66,7 +68,7 @@ func addManagedBackups(result map[string]managedOperation, add func(string, stri
 			return managedRequest{Method: item.Method, Path: "/api/v1/backups/" + input.BackupID + item.Suffix, Body: []byte(`{}`)}, nil
 		})
 	}
-	register("host_backup_restore", "Restore selected modules from an imported backup using the fresh preview revisions. Always requires approval. Restoring Panel data may restart the service and revoke MCP credentials; verify the restore in Panel and reauthorize before reconnecting. A package this host did not export must be reviewed and confirmed on the Panel backup page.", false, managedSchema[managedBackupRestore](), func(raw json.RawMessage, _ *mcpaccess.Policy) (managedRequest, error) {
+	register("host_backup_restore", "Restore selected modules from an imported backup using fresh preview revisions. Always requires approval. For a foreign package, first show host_backup_review to the administrator and set confirmForeign only after their confirmation. Restoring Panel data may restart the service and revoke MCP credentials; reauthorize before reconnecting.", false, managedSchema[managedBackupRestore](), func(raw json.RawMessage, _ *mcpaccess.Policy) (managedRequest, error) {
 		var input managedBackupRestore
 		if decodeStrictToolArguments(raw, &input) != nil || !backup.ValidID(input.BackupID) || input.Revision == "" || len(input.Revision) > 128 || len(input.AgentRevision) > 128 {
 			return managedRequest{}, errors.New("invalid_backup_restore")
@@ -74,7 +76,7 @@ func addManagedBackups(result map[string]managedOperation, add func(string, stri
 		if _, err := backup.Selection(input.Modules); err != nil {
 			return managedRequest{}, errors.New("invalid_backup_modules")
 		}
-		body, _ := json.Marshal(backupRequest{Modules: input.Modules, Revision: input.Revision, AgentRevision: input.AgentRevision})
+		body, _ := json.Marshal(backupRequest{Modules: input.Modules, Revision: input.Revision, AgentRevision: input.AgentRevision, ConfirmForeign: input.ConfirmForeign})
 		return managedRequest{Method: http.MethodPost, Path: "/api/v1/backups/" + input.BackupID + "/restore", Body: body}, nil
 	})
 }
