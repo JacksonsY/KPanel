@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -376,17 +376,12 @@ test('nested packages count as new boundary packages; nested non-boundary paths 
   assert.deepEqual(report.newPackages, ['internal/agent/sshlogin']);
 });
 
-test('every invocation written in the workflows parses', () => {
+// PROJECT_RULES 5.4: CF coverage is read-only history, so no workflow step invokes the CLI any more.
+test('no workflow invokes the historical coverage CLI', () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-  const invocations = ['release-kpanel', 'security-boundary-audit'].flatMap((name) =>
-    readFileSync(join(root, '.codex-workflows', name + '.workflow.yaml'), 'utf8')
-      .split('\n')
-      .filter((line) => line.includes('check-security-audit-coverage.mjs') && line.trim().startsWith('node')));
-  assert.equal(invocations.length, 2);
-  for (const line of invocations) {
-    const args = line.split('check-security-audit-coverage.mjs"')[1] ?? line.split('check-security-audit-coverage.mjs')[1];
-    const argv = args.trim().split(/\s+/).map((part) => part.replace(/"\$\{\{[a-z_]+\}\}"/, 'HEAD'));
-    assert.ok(parseArguments(argv), line);
+  for (const name of readdirSync(join(root, '.codex-workflows')).filter((file) => file.endsWith('.workflow.yaml'))) {
+    const source = readFileSync(join(root, '.codex-workflows', name), 'utf8');
+    assert.doesNotMatch(source, /^\s*node .*check-security-audit-coverage\.mjs/m, name);
   }
 });
 

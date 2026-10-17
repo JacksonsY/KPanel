@@ -102,7 +102,7 @@ function fixture() {
   git(management, 'init', '--initial-branch=main');
   git(management, 'config', 'user.name', 'KPanel Test');
   git(management, 'config', 'user.email', 'kpanel@example.invalid');
-  for (const name of ['check-collaboration-state.mjs', 'check-security-audit-coverage.mjs', 'report-governance-health.mjs']) cpSync(join(repoRoot, 'scripts', name), join(management, 'scripts', name));
+  for (const name of ['check-collaboration-state.mjs', 'check-security-audit-coverage.mjs', 'report-governance-health.mjs', 'security-review-scope.mjs']) cpSync(join(repoRoot, 'scripts', name), join(management, 'scripts', name));
   cpSync(join(repoRoot, 'dependency-policy.json'), join(management, 'dependency-policy.json'));
   writeFileSync(join(management, 'notes.md'), 'baseline\n');
   git(management, 'add', '.'); git(management, 'commit', '-m', 'test: baseline');
