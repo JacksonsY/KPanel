@@ -736,14 +736,16 @@ func aiFileReadable(raw string) bool {
 	if !ok || hasPathPrefix(clean, "/proc") || hasPathPrefix(clean, "/sys") || hasPathPrefix(clean, "/dev") ||
 		hasPathPrefix(clean, "/etc/ssl/private") || hasPathPrefix(clean, "/etc/letsencrypt") ||
 		hasPathPrefix(clean, "/etc/wireguard") || hasPathPrefix(clean, "/var/lib/docker/swarm") ||
-		hasPathPrefix(clean, "/home/docker/kpanel") || strings.Contains(clean, "/.ssh/") || strings.HasSuffix(clean, "/.ssh") {
+		hasPathPrefix(clean, "/home/docker/kpanel") || hasPathPrefix(clean, "/var/lib/kejilion-panel") ||
+		hasPathPrefix(clean, "/etc/kejilion-panel") || strings.Contains(clean, "/.ssh/") || strings.HasSuffix(clean, "/.ssh") {
 		return false
 	}
-	// Backup copies such as privkey.pem.bak or id_rsa.old~ hold the same secret.
-	// Every stripped suffix shortens the name, so the loop always terminates.
+	// Backup copies such as privkey.pem.bak, id_rsa.old~ or the shadow- file
+	// written by shadow-utils hold the same secret. Every stripped suffix
+	// shortens the name, so the loop always terminates.
 	base := strings.ToLower(pathpkg.Base(clean))
 	for {
-		base = strings.TrimRight(base, "~")
+		base = strings.TrimRight(base, "~-")
 		if aiSecretFileName(base) {
 			return false
 		}
