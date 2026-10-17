@@ -353,11 +353,33 @@ func (s *Store) UserByUsername(username string) (User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, user := range s.data.Users {
-		if strings.EqualFold(user.Username, username) {
+		if usernameEqual(user.Username, username) {
 			return cloneUser(user), nil
 		}
 	}
 	return User{}, ErrNotFound
+}
+
+// usernameEqual ignores ASCII case only. Usernames are ASCII by validation,
+// and the login rate-limit key folds the same way, so every spelling that
+// reaches an account shares that account's key.
+func usernameEqual(left, right string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := 0; index < len(left); index++ {
+		a, b := left[index], right[index]
+		if 'A' <= a && a <= 'Z' {
+			a += 'a' - 'A'
+		}
+		if 'A' <= b && b <= 'Z' {
+			b += 'a' - 'A'
+		}
+		if a != b {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Store) UserByID(id string) (User, error) {
@@ -752,7 +774,27 @@ func (s *Store) ListAudit(limit int, cursor string) ([]AuditEvent, string, error
 	return s.audit.list(limit, cursor)
 }
 
-const maxLoginAttempts = 4096
+const (
+	maxLoginAttempts = 4096
+	// Re-authentication budgets are keyed by the user ID of a session or of a
+	// verified passkey, so unauthenticated requests cannot create them. They
+	// keep separate capacity: a flood of unauthenticated source and account
+	// failures must not also fail signed-in management checks closed.
+	maxUserScopedLoginAttempts = 1024
+)
+
+var userScopedLoginAttemptPrefixes = []string{"reauth:", "passkey-reauth:", "passkey-second-factor:"}
+
+// UserScopedLoginAttempt reports whether key uses the separate user-scoped
+// capacity instead of the shared unauthenticated one.
+func UserScopedLoginAttempt(key string) bool {
+	for _, prefix := range userScopedLoginAttemptPrefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
+}
 
 func (s *Store) RecordLoginAttempt(attempt LoginAttempt, retainSince time.Time) error {
 	return s.RecordLoginAttempts([]LoginAttempt{attempt}, retainSince)
@@ -763,15 +805,27 @@ func (s *Store) RecordLoginAttempts(attempts []LoginAttempt, retainSince time.Ti
 	defer s.mu.Unlock()
 	previous := cloneDiskState(s.data)
 	filtered := make([]LoginAttempt, 0, len(s.data.LoginAttempts)+len(attempts))
+	userScoped, unauthenticated := 0, 0
+	count := func(item LoginAttempt) {
+		if UserScopedLoginAttempt(item.Key) {
+			userScoped++
+		} else {
+			unauthenticated++
+		}
+	}
 	for _, item := range s.data.LoginAttempts {
 		if item.OccurredAt.After(retainSince) {
 			filtered = append(filtered, item)
+			count(item)
 		}
+	}
+	for _, item := range attempts {
+		count(item)
 	}
 	// Never evict an active key's history to admit unrelated failures. Once
 	// the bounded window is full, fail closed until entries expire instead of
 	// silently weakening an existing IP or account lockout.
-	if len(filtered)+len(attempts) > maxLoginAttempts {
+	if userScoped > maxUserScopedLoginAttempts || unauthenticated > maxLoginAttempts {
 		return ErrLimitReached
 	}
 	filtered = append(filtered, attempts...)
@@ -781,6 +835,20 @@ func (s *Store) RecordLoginAttempts(attempts []LoginAttempt, retainSince time.Ti
 		return err
 	}
 	return nil
+}
+
+// UnauthenticatedLoginAttemptRoom reports how many more unauthenticated
+// attempts the table accepts once records not after retainSince expire.
+func (s *Store) UnauthenticatedLoginAttemptRoom(retainSince time.Time) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	used := 0
+	for _, item := range s.data.LoginAttempts {
+		if item.OccurredAt.After(retainSince) && !UserScopedLoginAttempt(item.Key) {
+			used++
+		}
+	}
+	return maxLoginAttempts - used
 }
 
 func (s *Store) FailedLoginCount(key string, since time.Time) int {

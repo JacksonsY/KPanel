@@ -21,8 +21,8 @@ var (
 	openAISecret         = regexp.MustCompile(`(?i)\bsk-[A-Za-z0-9._~+/=-]{4,}`)
 	urlCredentials       = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s@]+@`)
 	urlSensitiveQuery    = regexp.MustCompile(`(?i)([?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|secret|signature|sig|password|passwd|pwd|credential|x-amz-(?:signature|credential|security-token))=)[^&#\s]*`)
-	privateKeyBegin      = regexp.MustCompile(`(?i)-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----`)
-	privateKeyEnd        = regexp.MustCompile(`(?i)-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----`)
+	privateKeyBegin      = regexp.MustCompile(`(?i)-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
+	privateKeyEnd        = regexp.MustCompile(`(?i)-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
 )
 
 func Text(value string) string {

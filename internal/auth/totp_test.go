@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -218,5 +219,170 @@ func TestTOTPEnrollmentLoginRecoveryRotationAndDisable(t *testing.T) {
 	plainLogin, err := service.Login("192.0.2.6", "admin", "a-strong-password-1", "")
 	if err != nil || plainLogin.User.TOTPEnabled {
 		t.Fatalf("password login after disable failed: %#v err=%v", plainLogin.User, err)
+	}
+}
+
+func TestTOTPManagementSecondFactorFailuresConsumeTheBudget(t *testing.T) {
+	directory := t.TempDir()
+	storage, err := store.Open(filepath.Join(directory, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	service, err := NewService(storage, testHasher(t), Config{
+		BootstrapTokenPath: filepath.Join(directory, "bootstrap.token"),
+		TOTPKeyPath:        filepath.Join(directory, "totp.key"),
+		SessionTTL:         time.Hour,
+		LoginWindow:        time.Minute,
+		MaxLoginFailures:   3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_800_000_000, 0).UTC()
+	service.now = func() time.Time { return now }
+	if err := service.EnsureBootstrapToken(); err != nil {
+		t.Fatal(err)
+	}
+	token, err := os.ReadFile(filepath.Join(directory, "bootstrap.token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := service.Bootstrap(string(token), "admin", "a-strong-password-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID := initial.User.ID
+	enrollment, err := service.StartTOTPEnrollment(userID, "a-strong-password-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := totpAtStep(enrollment.Secret, now.Unix()/30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ConfirmTOTPEnrollment(userID, enrollment.ID, code); err != nil {
+		t.Fatal(err)
+	}
+	wrongCode := "000000"
+	for _, candidate := range []string{"000000", "111111", "222222"} {
+		if _, valid := matchTOTPStep(enrollment.Secret, candidate, now); !valid {
+			wrongCode = candidate
+			break
+		}
+	}
+
+	// Each guess carries the correct password, which must not reset the
+	// budget that the wrong second factor consumes. Both endpoints share it.
+	if err := service.DisableTOTP(userID, "a-strong-password-1", wrongCode); !errors.Is(err, ErrInvalidSecondFactor) {
+		t.Fatalf("first disable guess error = %v", err)
+	}
+	if _, err := service.RegenerateRecoveryCodes(userID, "a-strong-password-1", wrongCode); !errors.Is(err, ErrInvalidSecondFactor) {
+		t.Fatalf("regenerate guess error = %v", err)
+	}
+	if err := service.DisableTOTP(userID, "a-strong-password-1", wrongCode); !errors.Is(err, ErrInvalidSecondFactor) {
+		t.Fatalf("third guess error = %v", err)
+	}
+	nextCode, err := totpAtStep(enrollment.Secret, now.Unix()/30+1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rateLimited *RateLimitError
+	if err := service.DisableTOTP(userID, "a-strong-password-1", nextCode); !errors.As(err, &rateLimited) {
+		t.Fatalf("disable after exhausted budget error = %v, want RateLimitError", err)
+	}
+	if status, err := service.TOTPStatus(userID); err != nil || !status.Enabled {
+		t.Fatalf("TOTP status after refused disable = %#v, err=%v", status, err)
+	}
+
+	service.now = func() time.Time { return now.Add(2 * time.Minute) }
+	laterCode, err := totpAtStep(enrollment.Secret, now.Add(2*time.Minute).Unix()/30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DisableTOTP(userID, "a-strong-password-1", laterCode); err != nil {
+		t.Fatalf("disable after the window error = %v", err)
+	}
+}
+
+type countingHasher struct {
+	PasswordHasher
+	verifications int
+}
+
+func (h *countingHasher) Verify(password, encoded string) (bool, error) {
+	h.verifications++
+	return h.PasswordHasher.Verify(password, encoded)
+}
+
+func TestFullAttemptTableRefusesLoginsBeforePasswordCheck(t *testing.T) {
+	directory := t.TempDir()
+	storage, err := store.Open(filepath.Join(directory, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	hasher := &countingHasher{PasswordHasher: testHasher(t)}
+	service, err := NewService(storage, hasher, Config{
+		BootstrapTokenPath: filepath.Join(directory, "bootstrap.token"),
+		TOTPKeyPath:        filepath.Join(directory, "totp.key"),
+		SessionTTL:         time.Hour,
+		LoginWindow:        time.Minute,
+		MaxLoginFailures:   5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_800_000_000, 0).UTC()
+	service.now = func() time.Time { return now }
+	if err := service.EnsureBootstrapToken(); err != nil {
+		t.Fatal(err)
+	}
+	token, err := os.ReadFile(filepath.Join(directory, "bootstrap.token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := service.Bootstrap(string(token), "admin", "a-strong-password-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	enrollment, err := service.StartTOTPEnrollment(initial.User.ID, "a-strong-password-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := totpAtStep(enrollment.Secret, now.Unix()/30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ConfirmTOTPEnrollment(initial.User.ID, enrollment.ID, code); err != nil {
+		t.Fatal(err)
+	}
+
+	room := storage.UnauthenticatedLoginAttemptRoom(now.Add(-time.Minute))
+	flood := make([]store.LoginAttempt, room-1)
+	for index := range flood {
+		flood[index] = store.LoginAttempt{Key: fmt.Sprintf("ip:flood-%d", index), OccurredAt: now}
+	}
+	if err := storage.RecordLoginAttempts(flood, now.Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	// One free record cannot hold both records of a failed login, so every
+	// login is refused alike, before the password is checked.
+	before := hasher.verifications
+	var rateLimited *RateLimitError
+	for index, attempt := range []struct{ username, password string }{
+		{"admin", "wrong-password-1"},
+		{"admin", "a-strong-password-1"},
+		{"missing-user", "a-strong-password-1"},
+	} {
+		if _, err := service.Login(fmt.Sprintf("192.0.2.%d", index+1), attempt.username, attempt.password, ""); !errors.As(err, &rateLimited) {
+			t.Fatalf("login %d on a full table error = %v, want RateLimitError", index+1, err)
+		}
+	}
+	if hasher.verifications != before {
+		t.Fatalf("full table still ran %d password checks", hasher.verifications-before)
+	}
+	if got := storage.FailedLoginCount("ip:192.0.2.1", now.Add(-time.Minute)); got != 0 {
+		t.Fatalf("refused attempt left %d records", got)
 	}
 }

@@ -242,7 +242,7 @@ func TestRecoverableAgentToolStatusBoundary(t *testing.T) {
 func TestAIFileBoundarySeparatesOperationsFromSecretsAndCore(t *testing.T) {
 	for _, path := range []string{
 		"/home/web/log/nginx/error.log", "/home/web/conf.d/example.conf", "/tmp/cleanup.log",
-		"/home/web/nginx.conf.bak", "/home/app/.gitignore", "/etc/mysql/my.cnf",
+		"/home/web/nginx.conf.bak", "/home/app/.gitignore", "/etc/mysql/my.cnf", "/var/log/nginx/access.log-",
 	} {
 		if !aiFileReadable(path) || !aiFileMutable(path) {
 			t.Fatalf("ordinary operations path was blocked: %s", path)
@@ -252,7 +252,8 @@ func TestAIFileBoundarySeparatesOperationsFromSecretsAndCore(t *testing.T) {
 		"/home/web/certs/privkey.pem.bak", "/srv/app/server.key.orig", "/root/id_rsa~", "/root/.git-credentials",
 		"/root/.netrc", "/var/lib/postgresql/.pgpass", "/home/app/.npmrc", "/root/.my.cnf", "/root/.bash_history",
 		"/home/web/.htpasswd",
-		"/root/privkey.pem.bak.old.orig.save", "/root/site.key~.bak"} {
+		"/root/privkey.pem.bak.old.orig.save", "/root/site.key~.bak", "/etc/shadow-", "/etc/gshadow-",
+		"/var/lib/kejilion-panel/panel/state.json", "/etc/kejilion-panel/agent.token"} {
 		if aiFileReadable(path) {
 			t.Fatalf("sensitive content was readable by AI: %s", path)
 		}

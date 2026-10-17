@@ -405,3 +405,29 @@ func TestPasswordLockoutDoesNotBlockPasskeyLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPasskeyLoginCeremoniesAreLimitedPerSourceAndKeepRegistrationSlots(t *testing.T) {
+	p, _, session := setupPasskeys(t)
+	var rateLimited *RateLimitError
+	for index := 1; index <= maxPasskeyLoginCeremoniesPerSource; index++ {
+		if _, err := p.BeginLogin(fmt.Sprintf("2001:db8:9:9::%x", index), "admin", fmt.Sprintf("browser-%d", index)); err != nil {
+			t.Fatalf("login ceremony %d error = %v", index, err)
+		}
+	}
+	if _, err := p.BeginLogin("2001:db8:9:9:ffff::1", "admin", "browser-extra"); !errors.As(err, &rateLimited) {
+		t.Fatalf("extra ceremony from the same /64 error = %v, want RateLimitError", err)
+	}
+	for source := 1; len(p.pending) < maxPasskeyLoginCeremonies; source++ {
+		for index := 0; index < maxPasskeyLoginCeremoniesPerSource && len(p.pending) < maxPasskeyLoginCeremonies; index++ {
+			if _, err := p.BeginLogin(fmt.Sprintf("192.0.2.%d", source), "admin", fmt.Sprintf("fill-%d-%d", source, index)); err != nil {
+				t.Fatalf("fill ceremony %d/%d error = %v", source, index, err)
+			}
+		}
+	}
+	if _, err := p.BeginLogin("198.51.100.1", "admin", "fresh-source"); !errors.As(err, &rateLimited) {
+		t.Fatalf("login ceremony beyond the login share error = %v, want RateLimitError", err)
+	}
+	if _, err := p.BeginRegistration(session, passkeyPassword, "", "Laptop"); err != nil {
+		t.Fatalf("registration with login ceremonies full error = %v", err)
+	}
+}

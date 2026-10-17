@@ -23,6 +23,13 @@ import (
 const passkeyTTL = 3 * time.Minute
 const maxPasskeyCeremonies = 64
 
+// Unauthenticated login ceremonies cannot take the slots kept for signed-in
+// registration, and one client source holds only a few of them at a time.
+const (
+	maxPasskeyLoginCeremonies          = 48
+	maxPasskeyLoginCeremoniesPerSource = 4
+)
+
 var ErrPasskeyInvalid = errors.New("passkey verification failed; start again")
 var ErrPasskeyUnavailable = errors.New("passkeys require a configured HTTPS domain")
 var ErrPasskeyName = errors.New("passkey name must contain 1-64 characters without control characters")
@@ -78,6 +85,7 @@ type PasskeyService struct {
 type passkeyCeremony struct {
 	data                                     webauthn.SessionData
 	userID, username, purpose, binding, name string
+	source                                   string
 	version                                  uint64
 	expires                                  time.Time
 }
@@ -166,6 +174,20 @@ func (p *PasskeyService) save(c passkeyCeremony, options any) (PasskeyOptions, e
 	if len(p.pending) >= maxPasskeyCeremonies {
 		return PasskeyOptions{}, &RateLimitError{RetryAfter: passkeyTTL}
 	}
+	if c.purpose == "login" {
+		logins, fromSource := 0, 0
+		for _, old := range p.pending {
+			if old.purpose == "login" {
+				logins++
+				if old.source == c.source {
+					fromSource++
+				}
+			}
+		}
+		if logins >= maxPasskeyLoginCeremonies || fromSource >= maxPasskeyLoginCeremoniesPerSource {
+			return PasskeyOptions{}, &RateLimitError{RetryAfter: passkeyTTL}
+		}
+	}
 	id, err := randomToken(32)
 	if err != nil {
 		return PasskeyOptions{}, err
@@ -189,30 +211,10 @@ func (p *PasskeyService) consume(id, purpose, binding string) (passkeyCeremony, 
 	return c, nil
 }
 
-// Management factors share a separate, persistent budget including failed
-// second factors: a correct password must not reset the TOTP guessing budget.
+// Management factors share one persistent budget with the TOTP management
+// endpoints, including failed second factors.
 func (p *PasskeyService) reauthenticate(userID, password, second string) (store.User, error) {
-	s := p.auth
-	now := s.now()
-	key := "passkey-reauth:" + userID
-	if !s.reserveAuthenticationAttempt(key, now.Add(-s.config.LoginWindow), s.config.MaxLoginFailures) {
-		return store.User{}, &RateLimitError{RetryAfter: s.config.LoginWindow}
-	}
-	defer s.releaseAuthenticationAttempt(key)
-	user, err := s.verifyCurrentPassword(userID, password)
-	if err == nil && user.TOTPSecret != "" {
-		err = s.verifyAndConsumeSecondFactor(user, second, now)
-		if err != nil && !errors.Is(err, ErrSecondFactorUnavailable) {
-			err = ErrInvalidSecondFactor
-		}
-	}
-	if recordErr := s.store.RecordLoginAttempt(store.LoginAttempt{Key: key, OccurredAt: now, Success: err == nil}, now.Add(-s.config.LoginWindow)); recordErr != nil {
-		return store.User{}, recordErr
-	}
-	if err != nil {
-		return store.User{}, err
-	}
-	return s.store.UserByID(userID)
+	return p.auth.verifyManagementFactors(userID, password, second)
 }
 
 // VerifyManagementFactors applies the same current-password and second-factor
@@ -338,7 +340,8 @@ func (p *PasskeyService) BeginLogin(ip, username, binding string) (PasskeyOption
 	}
 	s := p.auth
 	now := s.now()
-	key := "passkey-begin:" + ip
+	source := loginSource(ip)
+	key := "passkey-begin:" + source
 	if !s.reserveAuthenticationAttempt(key, now.Add(-s.config.LoginWindow), s.config.MaxLoginFailures*2) {
 		return PasskeyOptions{}, &RateLimitError{RetryAfter: s.config.LoginWindow}
 	}
@@ -353,7 +356,7 @@ func (p *PasskeyService) BeginLogin(ip, username, binding string) (PasskeyOption
 		return PasskeyOptions{}, err
 	}
 	user, _ := s.store.UserByUsername(username)
-	return p.save(passkeyCeremony{data: *data, userID: user.ID, username: username, version: user.CredentialVersion, purpose: "login", binding: binding}, dataOptions.Response)
+	return p.save(passkeyCeremony{data: *data, userID: user.ID, username: username, version: user.CredentialVersion, purpose: "login", binding: binding, source: source}, dataOptions.Response)
 }
 
 func (p *PasskeyService) FinishLogin(ip, binding, id string, response []byte, second string) (Credentials, error) {
