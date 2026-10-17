@@ -469,6 +469,9 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 	}
 	for n, c := range all.Containers {
 		if c.Running {
+			if err := j.checkParentPaths(); err != nil {
+				return err
+			}
 			if err := e.docker(ctx, "POST", "/containers/"+j.Containers[n].NewID+"/start", nil, nil); err != nil {
 				return err
 			}
@@ -625,6 +628,9 @@ func (e *Engine) rollback(ctx context.Context, j *restoreJournal) error {
 				continue
 			}
 			if r.OldRunning {
+				if err := j.checkParentPaths(); err != nil {
+					return errors.Join(result, err)
+				}
 				result = errors.Join(result, e.docker(ctx, "POST", "/containers/"+r.OldID+"/start", nil, nil))
 			}
 		}

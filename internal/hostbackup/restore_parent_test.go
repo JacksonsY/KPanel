@@ -2,6 +2,7 @@ package hostbackup
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -175,6 +176,8 @@ func TestRestoreParentRecoveryRejectsReplacementAndLegacyIdentity(t *testing.T) 
 
 func TestRestoreParentSwapDuringRealRestoreDoesNotTouchOutside(t *testing.T) {
 	e, d, payload := hostFixture(t)
+	payload.Containers[0].Running = true
+	d.containers[payload.Containers[0].ID].State.Running = true
 	directory := t.TempDir()
 	if err := os.WriteFile(e.host("/home/app/data"), []byte("new!"), 0600); err != nil {
 		t.Fatal(err)
@@ -210,6 +213,19 @@ func TestRestoreParentSwapDuringRealRestoreDoesNotTouchOutside(t *testing.T) {
 	if !swapped || err == nil {
 		t.Fatalf("swap=%t restore=%v", swapped, err)
 	}
+	if backup.FailureCode(err) != "recovery_required" {
+		t.Fatalf("writer restart refusal lost recovery state: %v", err)
+	}
+	var journal restoreJournal
+	journalData, readErr := os.ReadFile(filepath.Join(directory, "restore-journal.json"))
+	if readErr != nil || json.Unmarshal(journalData, &journal) != nil || journal.Phase != "needs_attention" {
+		t.Fatalf("recovery journal = %s, %v", journalData, readErr)
+	}
+	for _, call := range d.calls {
+		if strings.HasSuffix(call, "/start") {
+			t.Fatalf("started writer after parent replacement: %s", call)
+		}
+	}
 	if data, err := os.ReadFile(filepath.Join(outside, "app", "data")); err != nil || string(data) != "sentinel" {
 		t.Fatalf("outside data changed %q %v", data, err)
 	}
@@ -221,5 +237,56 @@ func TestRestoreParentSwapDuringRealRestoreDoesNotTouchOutside(t *testing.T) {
 	}
 	if entries, err := os.ReadDir(e.host("/moved-home")); err != nil || len(entries) != 1 {
 		t.Fatalf("pinned staging cleanup failed %v %v", entries, err)
+	}
+}
+
+func TestRestoreParentUnchangedRollbackRestartsOldWriter(t *testing.T) {
+	e, d, payload := hostFixture(t)
+	id := backup.NewID()
+	target := e.host("/home/app")
+	entry := restoreRoot{Target: target, Previous: target + ".kpanel-restore-" + id, Next: target + ".kpanel-next-" + id, HadPrevious: true}
+	if err := entry.bindParent(false); err != nil {
+		t.Fatal(err)
+	}
+	j := restoreJournal{ID: id, Roots: []restoreRoot{entry}, Containers: []restoreContainer{{Name: payload.Containers[0].Name, OldID: payload.Containers[0].ID, OldRunning: true}}}
+	defer j.closeParents()
+	if err := e.rollback(context.Background(), &j); err != nil {
+		t.Fatal(err)
+	}
+	if !d.containers[payload.Containers[0].ID].State.Running {
+		t.Fatal("normal rollback did not restart old writer")
+	}
+}
+
+func TestRestoreParentSwapAfterCreateDoesNotStartNewWriter(t *testing.T) {
+	e, d, payload := hostFixture(t)
+	payload.Containers[0].Running = true
+	directory := t.TempDir()
+	if err := e.writePayload(context.Background(), filepath.Join(directory, "apps.payload"), payload); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	swapped := false
+	e.Client.Transport = fixtureTransport(func(r *http.Request) (*http.Response, error) {
+		response, err := d.request(r)
+		if !swapped && r.Method == "POST" && r.URL.Path == "/containers/create" {
+			swapped = true
+			if err := os.Rename(e.host("/home"), e.host("/moved-home")); err != nil {
+				t.Fatal(err)
+			}
+			requireParentSymlink(t, outside, e.host("/home"))
+		}
+		return response, err
+	})
+	if err := e.Restore(context.Background(), backup.NewID(), directory, []string{"apps"}, false); !swapped || err == nil {
+		t.Fatalf("swap=%t restore=%v", swapped, err)
+	}
+	for _, call := range d.calls {
+		if strings.HasSuffix(call, "/start") {
+			t.Fatalf("started writer after create-time parent replacement: %s", call)
+		}
+	}
+	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 0 {
+		t.Fatalf("outside changed: %v %v", entries, err)
 	}
 }
