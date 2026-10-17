@@ -819,8 +819,9 @@ func TestClusterControllerFileRelayGrantIsTargetControlled(t *testing.T) {
 	if view.ID != controllerID || view.Scope != cluster.SummaryFilesScope || !view.FileRelayConfigurable {
 		t.Fatalf("granted controller view = %#v", view)
 	}
-	if got := summaryCapabilities(strings.Repeat("2", 32)); got != cluster.FileRelayV1SignedCapability {
-		t.Fatalf("granted controller capabilities = %q, want %q", got, cluster.FileRelayV1SignedCapability)
+	wantCapabilities := cluster.FileRelayV1SignedCapability + "," + cluster.FileRelayV1BodyCapability
+	if got := summaryCapabilities(strings.Repeat("2", 32)); got != wantCapabilities {
+		t.Fatalf("granted controller capabilities = %q, want %q", got, wantCapabilities)
 	}
 	events, _, err := server.store.ListAudit(50, "")
 	if err != nil {
