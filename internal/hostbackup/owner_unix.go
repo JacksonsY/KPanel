@@ -10,17 +10,35 @@ import (
 
 func restoreOwnership(path string, uid, gid int) error        { return os.Chown(path, uid, gid) }
 func restoreSymlinkOwnership(path string, uid, gid int) error { return os.Lchown(path, uid, gid) }
-func copyOwnership(path string, info os.FileInfo) error {
+func fileOwnership(info os.FileInfo) (int, int, error) {
 	st, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return errors.New("file ownership unavailable")
+		return 0, 0, errors.New("file ownership unavailable")
 	}
-	return os.Chown(path, int(st.Uid), int(st.Gid))
+	return int(st.Uid), int(st.Gid), nil
 }
-func copySymlinkOwnership(path string, info os.FileInfo) error {
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return errors.New("symbolic link ownership unavailable")
+func copyFileOwnership(f *os.File, info os.FileInfo) error {
+	uid, gid, err := fileOwnership(info)
+	if err != nil {
+		return err
 	}
-	return os.Lchown(path, int(st.Uid), int(st.Gid))
+	return f.Chown(uid, gid)
+}
+func copyOwnershipIn(root *os.Root, name string, info os.FileInfo) error {
+	uid, gid, err := fileOwnership(info)
+	if err != nil {
+		return err
+	}
+	return root.Chown(name, uid, gid)
+}
+func copySymlinkOwnershipIn(root *os.Root, name string, info os.FileInfo) error {
+	uid, gid, err := fileOwnership(info)
+	if err != nil {
+		return err
+	}
+	return root.Lchown(name, uid, gid)
+}
+func ownedByProcess(info os.FileInfo) bool {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	return ok && int(st.Uid) == os.Geteuid()
 }

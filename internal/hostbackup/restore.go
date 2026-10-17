@@ -319,7 +319,8 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		if err := os.MkdirAll(filepath.Dir(entry.Next), 0700); err != nil {
 			return err
 		}
-		if err := copyTree(ctx, filepath.Join(directory, "unpack-"+r.Module, "data", r.ID), entry.Next); err != nil {
+		staged, err := copyTree(ctx, filepath.Join(directory, "unpack-"+r.Module, "data", r.ID), entry.Next)
+		if err != nil {
 			return err
 		}
 		if entry.HadPrevious {
@@ -331,7 +332,7 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		if err := backup.WriteJSON(journalPath, j); err != nil {
 			return err
 		}
-		if err := os.Rename(entry.Next, entry.Target); err != nil {
+		if err := publishStaged(entry.Next, entry.Target, staged); err != nil {
 			return err
 		}
 		entry.Applied = true
@@ -631,9 +632,50 @@ func noLinkParents(path string) error {
 	}
 	return nil
 }
-func copyTree(ctx context.Context, source, target string) error {
+
+// copyTree stages source at target and returns the staged object's identity.
+// target sits beside the restore root, whose parent can belong to another
+// local user who may rename entries there at any time. After creation nothing
+// is resolved by name: content, ownership and modes go through an os.Root or
+// an open descriptor, and publishStaged checks the identity before and after
+// the rename.
+func copyTree(ctx context.Context, source, target string) (os.FileInfo, error) {
+	info, err := os.Lstat(source)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		if !info.Mode().IsRegular() {
+			return nil, backup.ErrInvalid
+		}
+		// O_EXCL with O_CREATE never follows a symbolic link at target.
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err != nil {
+			return nil, err
+		}
+		staged, err := writeStagedFile(ctx, source, out, info)
+		if err = errors.Join(err, out.Close()); err != nil {
+			return nil, err
+		}
+		return staged, nil
+	}
+	if err := os.Mkdir(target, 0700); err != nil {
+		return nil, err
+	}
+	stage, err := os.OpenRoot(target)
+	if err != nil {
+		return nil, err
+	}
+	defer stage.Close()
+	staged, err := stage.Stat(".")
+	if err != nil {
+		return nil, err
+	}
+	if stagedAt(target, staged) != nil || !ownedByProcess(staged) {
+		return nil, backup.ErrInvalid
+	}
 	directories := map[string]os.FileInfo{}
-	err := filepath.WalkDir(source, func(path string, entry os.DirEntry, err error) error {
+	err = filepath.WalkDir(source, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -648,80 +690,123 @@ func copyTree(ctx context.Context, source, target string) error {
 		if err != nil {
 			return err
 		}
-		destination := target
-		if relative != "." {
-			destination = filepath.Join(target, relative)
-		}
 		if info.IsDir() {
-			directories[destination] = info
-			return os.MkdirAll(destination, 0700)
+			directories[relative] = info
+			if relative == "." {
+				return nil
+			}
+			return stage.Mkdir(relative, 0700)
+		}
+		if err := stagedParentsAreDirectories(stage, relative); err != nil {
+			return err
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			linkTarget, err := os.Readlink(path)
 			if err != nil || filepath.IsAbs(linkTarget) || strings.Contains(linkTarget, "\\") {
 				return backup.ErrInvalid
 			}
-			relative, err := filepath.Rel(source, path)
-			if err != nil || validateArchiveSymlinkTarget("/backup-root", filepath.ToSlash(relative), filepath.ToSlash(linkTarget)) != nil || validateStagedSymlink(source, path) != nil {
+			if validateArchiveSymlinkTarget("/backup-root", filepath.ToSlash(relative), filepath.ToSlash(linkTarget)) != nil || validateStagedSymlink(source, path) != nil {
 				return backup.ErrInvalid
 			}
-			if err := ensureArchiveParents(target, destination); err != nil {
+			if err := stage.Symlink(filepath.FromSlash(linkTarget), relative); err != nil {
 				return err
 			}
-			if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
-				return err
-			}
-			if err := os.Symlink(filepath.FromSlash(linkTarget), destination); err != nil {
-				return err
-			}
-			return copySymlinkOwnership(destination, info)
+			return copySymlinkOwnershipIn(stage, relative, info)
 		}
 		if !info.Mode().IsRegular() {
 			return backup.ErrInvalid
 		}
-		if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
-			return err
-		}
-		in, err := backup.OpenRegular(path, 10<<30)
+		out, err := stage.OpenFile(relative, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err != nil {
 			return err
 		}
-		defer in.Close()
-		out, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
-		if err != nil {
-			return err
-		}
-		_, err = io.Copy(out, contextReader{ctx, in})
-		if err == nil {
-			err = out.Sync()
-		}
-		closeErr := out.Close()
-		if err = errors.Join(err, closeErr); err != nil {
-			return err
-		}
-		if err := copyOwnership(destination, info); err != nil {
-			return err
-		}
-		return os.Chmod(destination, info.Mode())
+		_, err = writeStagedFile(ctx, path, out, info)
+		return errors.Join(err, out.Close())
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	paths := []string{}
-	for path := range directories {
-		paths = append(paths, path)
-	}
-	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
-	for _, path := range paths {
-		info := directories[path]
-		if err := copyOwnership(path, info); err != nil {
-			return err
+	names := []string{}
+	for name := range directories {
+		if name != "." {
+			names = append(names, name)
 		}
-		if err := os.Chmod(path, info.Mode()); err != nil {
-			return err
+	}
+	// Children before parents; the staged root itself goes last.
+	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	for _, name := range append(names, ".") {
+		info := directories[name]
+		if err := copyOwnershipIn(stage, name, info); err != nil {
+			return nil, err
+		}
+		if err := stage.Chmod(name, info.Mode()); err != nil {
+			return nil, err
+		}
+	}
+	return staged, nil
+}
+
+// writeStagedFile copies source into out and sets ownership before the mode,
+// since chown clears set-id bits. Both act on the descriptor, not a path.
+func writeStagedFile(ctx context.Context, source string, out *os.File, info os.FileInfo) (os.FileInfo, error) {
+	in, err := backup.OpenRegular(source, 10<<30)
+	if err != nil {
+		return nil, err
+	}
+	defer in.Close()
+	if _, err := io.Copy(out, contextReader{ctx, in}); err != nil {
+		return nil, err
+	}
+	if err := out.Sync(); err != nil {
+		return nil, err
+	}
+	if err := copyFileOwnership(out, info); err != nil {
+		return nil, err
+	}
+	if err := out.Chmod(info.Mode()); err != nil {
+		return nil, err
+	}
+	return out.Stat()
+}
+
+func stagedParentsAreDirectories(stage *os.Root, name string) error {
+	parent := filepath.Dir(name)
+	if parent == "." {
+		return nil
+	}
+	current := ""
+	for _, part := range strings.Split(parent, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		info, err := stage.Lstat(current)
+		if err != nil || !info.IsDir() {
+			return backup.ErrInvalid
 		}
 	}
 	return nil
+}
+
+// stagedAt reports whether name still refers to the staged object itself.
+func stagedAt(name string, staged os.FileInfo) error {
+	current, err := os.Lstat(name)
+	if err != nil {
+		return err
+	}
+	if current.Mode()&os.ModeSymlink != 0 || !os.SameFile(current, staged) {
+		return backup.ErrInvalid
+	}
+	return nil
+}
+
+// publishStaged renames the staged object into place only while next still
+// names it, and fails the restore if target does not name it afterwards.
+func publishStaged(next, target string, staged os.FileInfo) error {
+	if err := stagedAt(next, staged); err != nil {
+		return err
+	}
+	if err := os.Rename(next, target); err != nil {
+		return err
+	}
+	return stagedAt(target, staged)
 }
 
 func containerDependencies(c Container) []string {
