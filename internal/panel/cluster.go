@@ -625,18 +625,10 @@ func (s *Server) handleFederationFileRelayV1(w http.ResponseWriter, r *http.Requ
 	target.Method = input.Method
 	target.URL = &url.URL{Path: input.Path, RawQuery: input.RawQuery}
 	target.RequestURI = ""
-	target.Body = nil
-	if input.Body != nil {
-		if closer, ok := input.Body.(io.ReadCloser); ok {
-			target.Body = closer
-		} else {
-			target.Body = io.NopCloser(input.Body)
-		}
-	}
+	target.Body = r.Body
 	if target.Body == nil {
 		target.Body = http.NoBody
 	}
-	defer target.Body.Close()
 	target.ContentLength = input.BodyLength
 	target.Header = make(http.Header, len(input.Headers)+1)
 	for key, value := range input.Headers {
