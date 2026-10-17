@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { type BackupModule, type BackupReviewResult } from '@/lib/backup'
+import { completeBackupReview, type BackupModule, type BackupReviewResult } from '@/lib/backup'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 const props = defineProps<{ result?: BackupReviewResult; modules: BackupModule[] }>()
 function phrase(text: string) { phraseCatalogVersion.value; return translatePhrase(text) }
@@ -11,7 +11,7 @@ const reviews = computed(() => props.result?.review?.modules.filter(m => props.m
   <section class="import-review" aria-labelledby="import-review-title">
     <h4 id="import-review-title">{{ phrase('外来备份的宿主机配置') }}</h4>
     <p>{{ phrase('无法验证为本机导出的备份。确认恢复即同意下面的目录覆盖、容器权限和网络配置；文件属主与特殊权限也会原样恢复。') }}</p>
-    <p v-if="!result?.available || reviews.some(m => m.unreviewed)">{{ phrase('无法取得完整备份配置，请更新 Agent 并重新导入备份') }}</p>
+    <p v-if="!completeBackupReview(result, modules)">{{ phrase('无法取得完整备份配置，请更新 Agent 并重新导入备份') }}</p>
     <article v-for="review in reviews" :key="review.module">
       <h5>{{ review.module }}</h5>
       <p>{{ phrase('含 set-id 权限的文件：') }} {{ review.setIdFiles || 0 }}</p>
