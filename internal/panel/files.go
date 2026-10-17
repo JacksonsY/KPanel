@@ -468,6 +468,15 @@ func (s *Server) handleFileTransfer(w http.ResponseWriter, r *http.Request) {
 		s.writeProblem(w, r, http.StatusBadRequest, "file_host_invalid", "目标文件主机无效", "")
 		return
 	}
+	if !s.checkOrigin(w, r) {
+		return
+	}
+	_, session, ok := s.requireSession(w, r)
+	if !ok || !s.checkCSRF(w, r, session) {
+		return
+	}
+	// Look up the target only after authentication, so unauthenticated
+	// callers cannot tell host identifiers apart.
 	if targetHostID != "" {
 		host, hostErr := s.cluster.Host(r.Context(), targetHostID)
 		if hostErr != nil || host.IsLocal || !host.FileManagementAvailable ||
@@ -476,13 +485,6 @@ func (s *Server) handleFileTransfer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		targetHostKind = host.Kind
-	}
-	if !s.checkOrigin(w, r) {
-		return
-	}
-	_, session, ok := s.requireSession(w, r)
-	if !ok || !s.checkCSRF(w, r, session) {
-		return
 	}
 	var input contract.FileTransferRequest
 	if err := s.decodeJSON(w, r, &input); err != nil {

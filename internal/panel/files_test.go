@@ -432,6 +432,24 @@ func TestRemovedFileDownloadTicketRoutesDoNotReachAgent(t *testing.T) {
 	}
 }
 
+// Target hosts are looked up only after authentication, so an unauthenticated
+// request gets the same answer whatever host identifier it names.
+func TestFileTransferAuthenticatesBeforeLookingUpTargetHost(t *testing.T) {
+	server, tokenPath := newTestServer(t)
+	path := "/api/v1/files/transfers?hostId=" + strings.Repeat("a", 32)
+	for _, headers := range []map[string]string{nil, {"Origin": "http://panel.test"}} {
+		if response := performRequest(server, http.MethodPost, path, nil, headers); response.Code != http.StatusUnauthorized && response.Code != http.StatusForbidden {
+			t.Fatalf("unauthenticated transfer = %d %s", response.Code, response.Body.String())
+		}
+	}
+	sessionCookie, csrfCookie := bootstrapCookies(t, server, tokenPath)
+	response := authenticatedRequest(server, http.MethodPost, path, nil, sessionCookie, csrfCookie,
+		map[string]string{"Origin": "http://panel.test", "X-CSRF-Token": csrfCookie.Value})
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "file_host_unavailable") {
+		t.Fatalf("authenticated transfer to an unknown host = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestFileThumbnailQueryIsAuthenticatedAndForwarded(t *testing.T) {
 	server, tokenPath := newTestServer(t)
 	sessionCookie, csrfCookie := bootstrapCookies(t, server, tokenPath)
