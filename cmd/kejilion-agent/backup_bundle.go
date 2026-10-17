@@ -445,6 +445,7 @@ func printForeignReview(output io.Writer, review hostbackup.ImportReview) {
 		}
 		for _, n := range m.Networks {
 			say("  网络", n.Name, "Driver", n.Driver, strings.Join(n.Subnets, ", "), strings.Join(n.Options, ", "))
+			say("    NetworkConfig:", string(n.Config))
 		}
 		if m.SetIDFiles > 0 {
 			say("  包含", m.SetIDFiles, "个 setuid/setgid 文件，将按包内属主与权限恢复")

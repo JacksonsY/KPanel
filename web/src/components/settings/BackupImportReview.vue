@@ -45,6 +45,7 @@ const reviews = computed(() => props.result?.review?.modules.filter(m => props.m
         <p>Internal={{ !!network.internal }}</p>
         <p v-for="subnet in network.subnets" :key="subnet"><code>{{ subnet }}</code></p>
         <p v-for="option in network.options" :key="option"><code>{{ option }}</code></p>
+        <details v-if="network.config"><summary>NetworkConfig</summary><pre data-i18n-ignore>{{ JSON.stringify(network.config, null, 2) }}</pre></details>
       </details>
     </article>
   </section>

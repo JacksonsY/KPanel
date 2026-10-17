@@ -93,7 +93,7 @@ export interface BackupContainerReview {
   hostNamespaces?: string[]; securityOpt?: string[]; binds?: BackupBindReview[]; moreItems?: number
 }
 export interface BackupRootReview { path: string; systemPath?: boolean; existing?: boolean; usedBy?: Array<{ container: string; readOnly?: boolean }> }
-export interface BackupNetworkReview { name: string; driver: string; internal?: boolean; subnets?: string[]; options?: string[] }
+export interface BackupNetworkReview { name: string; driver: string; internal?: boolean; subnets?: string[]; options?: string[]; config?: Record<string, unknown> }
 export interface BackupModuleReview {
   module: BackupModule; origin: 'local' | 'foreign'; unreviewed?: boolean; setIdFiles?: number
   roots?: BackupRootReview[]; containers?: BackupContainerReview[]; networks?: BackupNetworkReview[]

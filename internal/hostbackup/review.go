@@ -84,11 +84,12 @@ type BindReview struct {
 	Live        bool   `json:"live,omitempty"`
 }
 type NetworkReview struct {
-	Name     string   `json:"name"`
-	Driver   string   `json:"driver"`
-	Internal bool     `json:"internal,omitempty"`
-	Subnets  []string `json:"subnets,omitempty"`
-	Options  []string `json:"options,omitempty"`
+	Name     string          `json:"name"`
+	Driver   string          `json:"driver"`
+	Internal bool            `json:"internal,omitempty"`
+	Subnets  []string        `json:"subnets,omitempty"`
+	Options  []string        `json:"options,omitempty"`
+	Config   json.RawMessage `json:"config"`
 }
 
 func (r ImportReview) Foreign(modules []string) bool {
@@ -208,6 +209,7 @@ func networkReview(name string, raw json.RawMessage) NetworkReview {
 		return out
 	}
 	body, _ := json.Marshal(input)
+	out.Config = body
 	_ = json.Unmarshal(body, &config)
 	out.Driver, out.Internal = config.Driver, config.Internal
 	more := 0

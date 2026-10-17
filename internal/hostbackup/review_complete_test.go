@@ -3,8 +3,16 @@ package hostbackup
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 )
+
+func TestForeignReviewShowsEffectiveNetworkConfiguration(t *testing.T) {
+	r := networkReview("external", json.RawMessage(`{"Driver":"bridge","IPAM":{"Driver":"custom-ipam","Options":{"custom":"value"}},"Attachable":true}`))
+	if !strings.Contains(string(r.Config), "custom-ipam") || !strings.Contains(string(r.Config), "Attachable") {
+		t.Fatalf("effective network config omitted: %s", r.Config)
+	}
+}
 
 func TestForeignReviewShowsActualImageAndAllHostBinds(t *testing.T) {
 	binds := []string{}
