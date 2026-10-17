@@ -21,14 +21,14 @@ const check=(n,v)=>{assert(v,n);report.checks.push(n)};const unwrap=x=>x&&typeof
   await api('/terminal-sessions/'+id+'/resize','POST',{rows:30,columns:100});
   check('one restored terminal tab',await terminalPage.locator('.terminal-tab__close').count()===1);
   // Run through the real composer and shell echo, then read the real Panel store.
-  await terminalPage.locator('.terminal-tab small').filter({hasText:'已连接'}).first().waitFor();
+  await terminalPage.locator('.terminal-tab__status.is-connected').first().waitFor({state:'attached'});
   await terminalPage.screenshot({path:out+'/terminal-before-history.png',fullPage:true});report.screenshots.push('terminal-before-history.png');
   const composer=terminalPage.locator('.host-terminal__composer input').first();await composer.waitFor();
   const historyCommand='printf RC6_HISTORY_UI';
   const appended=terminalPage.waitForResponse(r=>r.url()===base+'/api/v1/terminal-history'&&r.request().method()==='POST');
   await composer.fill(historyCommand);await composer.press('Enter');check('real composer command captured',(await appended).status()===200);
   check('real history API contains executed command',(await api('/terminal-history')).items.some(x=>x.command===historyCommand&&x.hostId==='local'));
-  await terminalPage.locator('[aria-controls="terminal-quick-commands"]').click();await terminalPage.getByRole('tab',{name:/历史命令/}).click();
+  await terminalPage.locator('[aria-controls="terminal-quick-commands"]:visible').click();await terminalPage.getByRole('tab',{name:/历史命令/}).click();
   await terminalPage.locator('.terminal-history-entry__fill').filter({hasText:historyCommand}).waitFor();
   check('history privacy notice visible',(await terminalPage.locator('.terminal-command-history__notice').innerText()).includes('Token'));
   await terminalPage.locator('.terminal-history-entry__fill').filter({hasText:historyCommand}).click();check('history fills composer without execution',await composer.inputValue()===historyCommand);
