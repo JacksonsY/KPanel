@@ -19,6 +19,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
     },
     system: { publicNetwork: vi.fn(), portUsage: vi.fn() },
     terminals: {
+      list: vi.fn(),
       open: vi.fn(),
       input: vi.fn(),
       close: vi.fn(),
@@ -81,11 +82,13 @@ interface SitesBindings {
   deletingSite: Ref<Site | undefined>
   deleteOpen: Ref<boolean>
   webTerminalOpen: Ref<boolean>
-  webTerminalSession: Ref<{ sessionId: string } | undefined>
+  restoreWebTerminal: () => Promise<void>
+  restoredWebTerminal: Ref<{ sessionId: string } | undefined>
   capabilitiesLoaded: Ref<boolean>
   canUseCustomCertificate: ComputedRef<boolean>
   customCertificateFormReason: ComputedRef<string>
   loading: Ref<boolean>
+  load: (silent?: boolean) => Promise<void>
   showSiteWriteUnavailable: ComputedRef<boolean>
   featuredServiceOptions: ComputedRef<Array<{ type: string }>>
   standardServiceOptions: ComputedRef<Array<{ type: string }>>
@@ -96,7 +99,7 @@ interface SitesBindings {
   revealCreatedSite: (domain: string) => Promise<void>
   stopInstallationMonitor: () => void
   openWebTerminal: () => Promise<void>
-  closeWebTerminal: () => void
+  closeWebTerminal: () => Promise<void>
   openDelete: (site: Site) => void
   deleteSite: () => Promise<void>
 }
@@ -149,6 +152,27 @@ afterEach(() => {
 
 describe('SitesView creation experience', () => {
   const runningJob: SiteInstallationProgress = { id: 'recovery-job', status: 'running', stage: 'installing', progress: 88, message: 'installing' }
+
+  it.each(['wordpress', 'php', 'static', 'discuz'])('restores the original %s task after refresh and keeps it running when hidden', async recipe => {
+    const job = { ...runningJob, recipe, interactive: true, inputOpen: true }
+    vi.mocked(api.sites.list).mockResolvedValue({ items: [], total: 0 })
+    vi.mocked(api.sites.installations).mockResolvedValue([job])
+    vi.mocked(api.sites.installation).mockResolvedValue(job)
+    vi.mocked(api.agent.capabilities).mockResolvedValue([])
+    vi.mocked(api.system.publicNetwork).mockResolvedValue(undefined as never)
+    const view = setupView()
+    await view.load()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(view.installProgress.value).toMatchObject({ id: runningJob.id, recipe, status: 'running' })
+    view.editorOpen.value = true
+    view.closeEditor()
+    expect(view.editorOpen.value).toBe(false)
+    expect(view.installProgress.value?.id).toBe(runningJob.id)
+    expect(api.sites.create).not.toHaveBeenCalled()
+    expect(api.terminals.open).not.toHaveBeenCalled()
+    expect(api.terminals.close).not.toHaveBeenCalled()
+    view.stopInstallationMonitor()
+  })
 
   it.each(['succeeded', 'failed'] as const)('recovers CDN polling errors and accepts backend %s', async (status) => {
     vi.mocked(api.sites.installation)
@@ -445,48 +469,48 @@ describe('SitesView creation experience', () => {
     expect(view.customCertificateFormReason.value).toContain('自定义证书')
   })
 
-  it('opens the local interactive terminal with the fixed k web command', async () => {
-    vi.mocked(api.terminals.open).mockResolvedValue({
-      sessionId: 'web-terminal-1',
-      hostId: 'local',
-      offset: 0,
-      createdAt: '2026-08-10T00:00:00Z',
-    })
-    vi.mocked(api.terminals.input).mockResolvedValue({ accepted: true })
+  it('opens the server-owned website terminal without sending a browser command', async () => {
     const view = setupView()
-
     await view.openWebTerminal()
-
-    expect(api.terminals.open).toHaveBeenCalledWith('local', 30, 120)
-    expect(api.terminals.input).toHaveBeenCalledTimes(1)
-    const encoded = vi.mocked(api.terminals.input).mock.calls[0]?.[1] || ''
-    expect(Buffer.from(encoded, 'base64').toString('utf8')).toBe('k web\r')
     expect(view.webTerminalOpen.value).toBe(true)
-    expect(view.webTerminalSession.value?.sessionId).toBe('web-terminal-1')
-  })
-
-  it('closes a terminal that finishes opening after its dialog was dismissed', async () => {
-    const pending = deferred<Awaited<ReturnType<typeof api.terminals.open>>>()
-    vi.mocked(api.terminals.open).mockReturnValue(pending.promise)
-    vi.mocked(api.terminals.close).mockResolvedValue({ closed: true })
-    const view = setupView()
-
-    const opening = view.openWebTerminal()
-    view.closeWebTerminal()
-    pending.resolve({
-      sessionId: 'web-terminal-late',
-      hostId: 'local',
-      offset: 0,
-      createdAt: '2026-08-10T00:00:00Z',
-    })
-    await opening
-
+    expect(view.restoredWebTerminal.value).toBeUndefined()
+    expect(api.terminals.open).not.toHaveBeenCalled()
     expect(api.terminals.input).not.toHaveBeenCalled()
-    expect(api.terminals.close).toHaveBeenCalledWith('web-terminal-late')
+    await view.closeWebTerminal()
     expect(view.webTerminalOpen.value).toBe(false)
-    expect(view.webTerminalSession.value).toBeUndefined()
   })
 
+  it('restores the website dialog only for its retained local purpose', async () => {
+    const view = setupView()
+    vi.mocked(api.terminals.list).mockResolvedValue({ items: [{ sessionId: 'original', hostId: 'local', offset: 0, createdAt: '', retained: true, purpose: 'site-management' }] })
+    await view.restoreWebTerminal()
+    expect(view.webTerminalOpen.value).toBe(true)
+    expect(view.restoredWebTerminal.value?.sessionId).toBe('original')
+    expect(api.terminals.open).not.toHaveBeenCalled()
+    expect(api.terminals.input).not.toHaveBeenCalled()
+  })
+
+  it('does not open another terminal after a failed restoration list', async () => {
+    const view = setupView()
+    vi.mocked(api.terminals.list).mockRejectedValueOnce(new Error('offline'))
+    await view.restoreWebTerminal()
+    expect(view.webTerminalOpen.value).toBe(false)
+    expect(api.terminals.open).not.toHaveBeenCalled()
+  })
+
+  it('ignores a late restoration list after the user closes the website terminal', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof api.terminals.list>>>()
+    vi.mocked(api.terminals.list).mockReturnValueOnce(pending.promise)
+    const view = setupView()
+    const restoring = view.restoreWebTerminal()
+    await view.openWebTerminal()
+    await view.closeWebTerminal()
+    pending.resolve({ items: [{ sessionId: 'old', hostId: 'local', offset: 0, createdAt: '', retained: true, purpose: 'site-management' }] })
+    await restoring
+    expect(view.webTerminalOpen.value).toBe(false)
+    expect(view.restoredWebTerminal.value).toBeUndefined()
+    expect(api.terminals.open).not.toHaveBeenCalled()
+  })
   it('links only safe local site directories into File Manager', () => {
     const view = setupView()
     const local = { ...site('local.example.com'), rootPath: '/home/web/html/local.example.com' }

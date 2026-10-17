@@ -446,6 +446,7 @@ export interface ClusterPairingCode {
 
 export interface TerminalSession {
   retained?: boolean
+  purpose?: 'site-management'
   shortcutId?: string
   title?: string
   closeRequested?: boolean

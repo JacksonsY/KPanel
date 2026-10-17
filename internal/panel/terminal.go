@@ -47,6 +47,7 @@ type panelTerminalSession struct {
 	InputConnection  *terminalInputConnection
 	Retained         bool
 	ShortcutID       string
+	Purpose          string
 	Title            string
 	LaunchUncertain  bool
 }
@@ -57,6 +58,7 @@ type terminalOpenRequest struct {
 	LaunchID        string `json:"launchId,omitempty"`
 	Retained        bool   `json:"retained,omitempty"`
 	ShortcutID      string `json:"shortcutId,omitempty"`
+	Purpose         string `json:"purpose,omitempty"`
 	ShortcutVersion string `json:"shortcutVersion,omitempty"`
 	HostID          string `json:"hostId"`
 	Rows            uint16 `json:"rows"`
@@ -69,12 +71,18 @@ type terminalOpenRequest struct {
 // delayed opens without retaining cancellation tombstones indefinitely.
 type panelTerminalLaunchIntent struct {
 	UserID, ShortcutID, HostID string
+	Purpose                    string
 	ExpiresAt                  time.Time
+}
+
+func (intent panelTerminalLaunchIntent) matches(userID string, input terminalOpenRequest) bool {
+	return intent.UserID == userID && intent.ShortcutID == input.ShortcutID && intent.Purpose == input.Purpose && intent.HostID == input.HostID
 }
 
 type terminalOpenResponse struct {
 	Retained        bool       `json:"retained,omitempty"`
 	ShortcutID      string     `json:"shortcutId,omitempty"`
+	Purpose         string     `json:"purpose,omitempty"`
 	Title           string     `json:"title,omitempty"`
 	CloseRequested  bool       `json:"closeRequested,omitempty"`
 	LaunchUncertain bool       `json:"launchUncertain,omitempty"`
@@ -300,12 +308,17 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		s.writeValidationProblem(w, r, "containerId", "a full container identity and resource version are required together")
 		return
 	}
-	if input.Retained && input.ContainerID != "" || input.ShortcutID != "" && (input.ContainerID != "" || !desktopworkspace.ValidShortcutID(input.ShortcutID)) || input.ShortcutID == "" && (input.ShortcutVersion != "" || input.LookupOnly || input.PrepareOnly || input.LaunchID != "") || input.LookupOnly && input.PrepareOnly || input.LaunchID != "" && !validTerminalLaunchID(input.LaunchID) {
+	if input.Purpose != "" && (input.Purpose != "site-management" || input.HostID != cluster.LocalHostID || input.ContainerID != "" || input.ShortcutID != "" || input.ShortcutVersion != "") {
+		s.writeValidationProblem(w, r, "purpose", "a supported local terminal purpose is required")
+		return
+	}
+	namedLaunch := input.ShortcutID != "" || input.Purpose != ""
+	if input.Retained && input.ContainerID != "" || input.ShortcutID != "" && (input.ContainerID != "" || !desktopworkspace.ValidShortcutID(input.ShortcutID)) || !namedLaunch && (input.ShortcutVersion != "" || input.LookupOnly || input.PrepareOnly || input.LaunchID != "") || input.LookupOnly && input.PrepareOnly || input.LaunchID != "" && !validTerminalLaunchID(input.LaunchID) || input.Purpose != "" && !input.PrepareOnly && !input.LookupOnly && input.LaunchID == "" {
 		s.writeValidationProblem(w, r, "retained", "shortcuts require a valid shortcut ID and cannot target containers")
 		return
 	}
 	var launchCommand, launchTitle string
-	if input.ShortcutID != "" {
+	if namedLaunch {
 		// Serialize shortcut resolution, spawn, registration and initial input. A lost
 		// HTTP response must never cause a second execution on the next launch.
 		s.terminalLaunchMu.Lock()
@@ -315,12 +328,12 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 			return
 		}
 		if input.LookupOnly && input.LaunchID != "" {
-			if intent, ok := s.terminalLaunchIntents[input.LaunchID]; ok && intent.UserID == userID && intent.ShortcutID == input.ShortcutID && intent.HostID == input.HostID {
+			if intent, ok := s.terminalLaunchIntents[input.LaunchID]; ok && intent.matches(userID, input) {
 				delete(s.terminalLaunchIntents, input.LaunchID)
 			}
 		}
 		if s.resumeShortcut(w, r, userID, input) {
-			if intent, ok := s.terminalLaunchIntents[input.LaunchID]; ok && intent.UserID == userID && intent.ShortcutID == input.ShortcutID && intent.HostID == input.HostID {
+			if intent, ok := s.terminalLaunchIntents[input.LaunchID]; ok && intent.matches(userID, input) {
 				delete(s.terminalLaunchIntents, input.LaunchID)
 			}
 			return
@@ -333,41 +346,46 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		}
 		if input.LaunchID != "" {
 			intent, ok := s.terminalLaunchIntents[input.LaunchID]
-			if !ok || intent.UserID != userID || intent.ShortcutID != input.ShortcutID || intent.HostID != input.HostID || !time.Now().Before(intent.ExpiresAt) {
+			if !ok || !intent.matches(userID, input) || !time.Now().Before(intent.ExpiresAt) {
 				s.writeProblem(w, r, 409, "terminal_launch_intent_invalid", "Terminal launch expired or was cancelled", "")
 				return
 			}
 		}
-		if s.desktopWorkspace == nil {
-			s.writeProblem(w, r, 503, "desktop_workspace_unavailable", "Desktop workspace unavailable", "")
-			return
-		}
-		workspace := s.desktopWorkspace.Workspace()
-		if !workspace.Available {
-			s.writeProblem(w, r, 503, "desktop_workspace_unavailable", "Desktop workspace unavailable", "")
-			return
-		}
-		if input.ShortcutVersion == "" || input.ShortcutVersion != workspace.ResourceVersion {
-			s.writeProblem(w, r, 409, "desktop_workspace_changed", "Desktop shortcut changed", "Reload the shortcut before starting it")
-			return
-		}
-		for _, shortcut := range workspace.Shortcuts {
-			if shortcut.ID != input.ShortcutID || !desktopworkspace.IsCommandTargetType(shortcut.TargetType) {
-				continue
+		if input.Purpose != "" {
+			// Only this fixed script entry may be launched by a purpose. No browser command is accepted.
+			launchCommand, launchTitle = "k web", "k web"
+		} else {
+			if s.desktopWorkspace == nil {
+				s.writeProblem(w, r, 503, "desktop_workspace_unavailable", "Desktop workspace unavailable", "")
+				return
 			}
-			hostID := shortcut.HostID
-			if hostID == "" {
-				hostID = cluster.LocalHostID
+			workspace := s.desktopWorkspace.Workspace()
+			if !workspace.Available {
+				s.writeProblem(w, r, 503, "desktop_workspace_unavailable", "Desktop workspace unavailable", "")
+				return
 			}
-			if hostID != input.HostID {
+			if input.ShortcutVersion == "" || input.ShortcutVersion != workspace.ResourceVersion {
+				s.writeProblem(w, r, 409, "desktop_workspace_changed", "Desktop shortcut changed", "Reload the shortcut before starting it")
+				return
+			}
+			for _, shortcut := range workspace.Shortcuts {
+				if shortcut.ID != input.ShortcutID || !desktopworkspace.IsCommandTargetType(shortcut.TargetType) {
+					continue
+				}
+				hostID := shortcut.HostID
+				if hostID == "" {
+					hostID = cluster.LocalHostID
+				}
+				if hostID != input.HostID {
+					break
+				}
+				launchCommand, launchTitle = shortcut.Command, shortcut.Name
 				break
 			}
-			launchCommand, launchTitle = shortcut.Command, shortcut.Name
-			break
-		}
-		if launchCommand == "" {
-			s.writeProblem(w, r, 404, "terminal_shortcut_not_found", "Command shortcut not found", "")
-			return
+			if launchCommand == "" {
+				s.writeProblem(w, r, 404, "terminal_shortcut_not_found", "Command shortcut not found", "")
+				return
+			}
 		}
 	}
 	// Local terminal capability is fixed; collecting host telemetry here adds
@@ -452,7 +470,7 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		return
 	}
 	now := time.Now().UTC()
-	item := panelTerminalSession{ID: publicID, BackendSessionID: opened.SessionID, HostID: host.ID, UserID: userID, Owner: owner, CreatedAt: now, UpdatedAt: now, Retained: input.Retained, ShortcutID: input.ShortcutID, Title: launchTitle, LaunchUncertain: launchCommand != ""}
+	item := panelTerminalSession{ID: publicID, BackendSessionID: opened.SessionID, HostID: host.ID, UserID: userID, Owner: owner, CreatedAt: now, UpdatedAt: now, Retained: input.Retained, ShortcutID: input.ShortcutID, Purpose: input.Purpose, Title: launchTitle, LaunchUncertain: launchCommand != ""}
 	if host.IsLocal {
 		item.ReliableInput = (clusterTerminalSource{agent: s.agent}).SupportsSequencedInput(r.Context())
 	} else {
@@ -506,7 +524,7 @@ func (s *Server) prepareTerminalLaunch(w http.ResponseWriter, r *http.Request, u
 		s.terminalLaunchIntents = make(map[string]panelTerminalLaunchIntent)
 	}
 	expires := now.Add(panelTerminalLaunchTTL)
-	s.terminalLaunchIntents[id] = panelTerminalLaunchIntent{UserID: userID, ShortcutID: input.ShortcutID, HostID: input.HostID, ExpiresAt: expires}
+	s.terminalLaunchIntents[id] = panelTerminalLaunchIntent{UserID: userID, ShortcutID: input.ShortcutID, HostID: input.HostID, Purpose: input.Purpose, ExpiresAt: expires}
 	s.writeJSON(w, 201, map[string]any{"launchId": id, "expiresAt": expires})
 }
 
@@ -828,7 +846,7 @@ func randomTerminalSessionID() (string, error) {
 // Lists metadata only. A network failure is not evidence that the process ended.
 // Neither listing nor reattaching extends the target's fixed lifetime.
 func terminalSessionResponse(item panelTerminalSession) terminalOpenResponse {
-	result := terminalOpenResponse{SessionID: item.ID, HostID: item.HostID, Offset: 0, CreatedAt: item.CreatedAt, Retained: item.Retained, ShortcutID: item.ShortcutID, Title: item.Title, CloseRequested: item.CloseRequested, LaunchUncertain: item.LaunchUncertain}
+	result := terminalOpenResponse{SessionID: item.ID, HostID: item.HostID, Offset: 0, CreatedAt: item.CreatedAt, Retained: item.Retained, ShortcutID: item.ShortcutID, Purpose: item.Purpose, Title: item.Title, CloseRequested: item.CloseRequested, LaunchUncertain: item.LaunchUncertain}
 	if item.Retained {
 		expiry := item.CreatedAt.Add(terminal.DefaultLifetime)
 		result.ExpiresAt = &expiry
@@ -855,7 +873,7 @@ func (s *Server) resumeShortcut(w http.ResponseWriter, r *http.Request, userID s
 	s.terminalMu.Lock()
 	var item panelTerminalSession
 	for _, existing := range s.terminalSessions {
-		if existing.UserID == userID && existing.ShortcutID == input.ShortcutID {
+		if existing.UserID == userID && existing.ShortcutID == input.ShortcutID && existing.Purpose == input.Purpose {
 			item = existing
 			break
 		}

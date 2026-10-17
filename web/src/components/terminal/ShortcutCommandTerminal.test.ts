@@ -7,10 +7,10 @@ import ShortcutCommandTerminal from './ShortcutCommandTerminal.vue'
 import type { TerminalSession } from '@/types/api'
 import { ApiError } from '@/lib/api'
 
-const mocks = vi.hoisted(() => ({ open: vi.fn(), prepareShortcut: vi.fn(), resolveShortcut: vi.fn(), close: vi.fn(), closeOnUnload: vi.fn(), execute: vi.fn(), childClose: vi.fn() }))
+const mocks = vi.hoisted(() => ({ open: vi.fn(), prepareShortcut: vi.fn(), resolveShortcut: vi.fn(), preparePurpose: vi.fn(), resolvePurpose: vi.fn(), close: vi.fn(), closeOnUnload: vi.fn(), execute: vi.fn(), childClose: vi.fn() }))
 vi.mock('@/lib/api', () => ({
   ApiError: class extends Error { code = '' },
-  api: { terminals: { open: mocks.open, prepareShortcut: mocks.prepareShortcut, resolveShortcut: mocks.resolveShortcut, close: mocks.close, closeOnUnload: mocks.closeOnUnload } },
+  api: { terminals: { open: mocks.open, prepareShortcut: mocks.prepareShortcut, resolveShortcut: mocks.resolveShortcut, preparePurpose: mocks.preparePurpose, resolvePurpose: mocks.resolvePurpose, close: mocks.close, closeOnUnload: mocks.closeOnUnload } },
 }))
 const HostTerminal = defineComponent({
   name: 'HostTerminal', props: ['sessionId', 'hostName', 'initialOffset', 'retained'], emits: ['stateChange'],
@@ -19,7 +19,7 @@ const HostTerminal = defineComponent({
 const opened: TerminalSession = { sessionId: 'session-1', hostId: 'remote-1', offset: 0, createdAt: '' }
 const wrappers: VueWrapper[] = []
 let closeGuard: () => boolean | Promise<boolean>
-function create(hostId?: string, hostName = 'Local server', retainedProps: { shortcutId?: string; shortcutVersion?: string; existingSession?: TerminalSession } = {}) {
+function create(hostId?: string, hostName = 'Local server', retainedProps: { shortcutId?: string; shortcutVersion?: string; purpose?: 'site-management'; existingSession?: TerminalSession } = {}) {
   const wrapper = mount(ShortcutCommandTerminal, {
     props: { name: 'Load', command: 'uptime\ndf -h', hostName, hostId, ...retainedProps },
     global: { provide: { [desktopWindowCloseGuardKey as symbol]: { register: (guard: () => boolean | Promise<boolean>) => { closeGuard = guard; return () => undefined } } }, stubs: { HostTerminal, ModalDialog: { name: 'ModalDialog', props: ['closeDisabled'], emits: ['close'], template: '<div><slot /></div>' } } },
@@ -31,6 +31,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.open.mockResolvedValue(opened)
   mocks.prepareShortcut.mockResolvedValue({ launchId: 'b'.repeat(64), expiresAt: '' })
+  mocks.preparePurpose.mockResolvedValue({ launchId: 'b'.repeat(64), expiresAt: '' })
+  mocks.resolvePurpose.mockRejectedValue(Object.assign(new ApiError('absent', 404, 'terminal_shortcut_session_not_found'), { code: 'terminal_shortcut_session_not_found' }))
   mocks.resolveShortcut.mockRejectedValue(Object.assign(new ApiError('absent', 404, 'terminal_shortcut_session_not_found'), { code: 'terminal_shortcut_session_not_found' }))
   mocks.close.mockResolvedValue({ closed: true })
   mocks.execute.mockReturnValue(true)
@@ -39,6 +41,55 @@ beforeEach(() => {
 afterEach(() => { for (const wrapper of wrappers.splice(0)) wrapper.unmount() })
 
 describe('shortcut command terminal lifecycle', () => {
+  it.each([false, true])('uses the fixed website entry without client command submission (legacy=%s)', async legacy => {
+    if (legacy) mocks.open.mockRejectedValueOnce(Object.assign(new ApiError('unsupported', 409, 'terminal_retention_unavailable'), { code: 'terminal_retention_unavailable' }))
+    mocks.open.mockResolvedValueOnce({ ...opened, hostId: 'local', retained: !legacy, purpose: 'site-management' })
+    const wrapper = create('local', 'Local', { purpose: 'site-management' })
+    await flushPromises()
+    expect(mocks.preparePurpose).toHaveBeenCalledWith('site-management')
+    expect(mocks.prepareShortcut).not.toHaveBeenCalled()
+    expect(mocks.open).toHaveBeenCalledTimes(legacy ? 2 : 1)
+    expect(mocks.open).toHaveBeenLastCalledWith('local', 30, 120, expect.objectContaining({ purpose: 'site-management', retained: !legacy, launchId: 'b'.repeat(64) }))
+    wrapper.findComponent(HostTerminal).vm.$emit('stateChange', 'connected')
+    await flushPromises()
+    expect(mocks.execute).not.toHaveBeenCalled()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(await closeGuard()).toBe(true)
+    expect(mocks.childClose).toHaveBeenCalledTimes(1)
+  })
+  it('recovers a lost website launch identity when closing, without creating another command', async () => {
+    mocks.open.mockRejectedValueOnce(new Error('lost response'))
+    mocks.resolvePurpose.mockResolvedValueOnce({ ...opened, retained: true, purpose: 'site-management' })
+    const wrapper = create('local', 'Local', { purpose: 'site-management' })
+    await flushPromises()
+    expect(await closeGuard()).toBe(true)
+    expect(mocks.resolvePurpose).toHaveBeenCalledWith('site-management', 'b'.repeat(64))
+    expect(mocks.close).toHaveBeenCalledWith(opened.sessionId)
+    expect(mocks.open).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+  it('cancels website preparation when explicitly closing before the intent response', async () => {
+    let resolve!: (value: unknown) => void
+    mocks.preparePurpose.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    create('local', 'Local', { purpose: 'site-management' })
+    await flushPromises()
+    const closing = closeGuard()
+    resolve({ launchId: 'b'.repeat(64) })
+    expect(await closing).toBe(true)
+    expect(mocks.open).not.toHaveBeenCalled()
+    expect(mocks.resolvePurpose).toHaveBeenCalledTimes(1)
+  })
+  it('preserves a retained website session after unmount during open', async () => {
+    let resolve!: (value: TerminalSession) => void
+    mocks.open.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    const wrapper = create('local', 'Local', { purpose: 'site-management' })
+    await flushPromises()
+    wrapper.unmount()
+    resolve({ ...opened, retained: true, purpose: 'site-management' })
+    await flushPromises()
+    expect(mocks.close).not.toHaveBeenCalled()
+    expect(mocks.execute).not.toHaveBeenCalled()
+  })
   it('cancels a prepared intent without launching when close was requested during preparation', async () => {
     let resolve!: (value: unknown) => void
     mocks.prepareShortcut.mockReturnValueOnce(new Promise(done => { resolve = done }))

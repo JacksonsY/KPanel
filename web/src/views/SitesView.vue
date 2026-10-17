@@ -41,7 +41,7 @@ import LoadingState from '@/components/feedback/LoadingState.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import DnsResolutionGuide from '@/components/common/DnsResolutionGuide.vue'
 import AppInteractiveTerminal from '@/components/apps/AppInteractiveTerminal.vue'
-import HostTerminal from '@/components/terminal/HostTerminal.vue'
+import ShortcutCommandTerminal from '@/components/terminal/ShortcutCommandTerminal.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusBadge from '@/components/feedback/StatusBadge.vue'
 import SitesSectionTabs from '@/components/sites/SitesSectionTabs.vue'
@@ -87,9 +87,9 @@ const deletingSite = ref<Site>()
 const deleteError = ref('')
 const deleting = ref(false)
 const webTerminalOpen = ref(false)
-const webTerminalOpening = ref(false)
-const webTerminalSession = ref<TerminalSession>()
-const webTerminalError = ref('')
+const webTerminal = ref<InstanceType<typeof ShortcutCommandTerminal>>()
+const webTerminalClosing = ref(false)
+const restoredWebTerminal = ref<TerminalSession>()
 const panel = usePanelState()
 const toast = useToast()
 let controller: AbortController | undefined
@@ -101,51 +101,43 @@ let focusedInstallationID = ''
 let disposed = false
 let webTerminalGeneration = 0
 
-function encodeTerminalInput(value: string): string {
-  const bytes = new TextEncoder().encode(value)
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return globalThis.btoa(binary).replace(/=+$/, '')
+async function openWebTerminal(): Promise<void> {
+  if (webTerminalOpen.value) return
+  webTerminalGeneration++
+  restoredWebTerminal.value = undefined
+  webTerminalOpen.value = true
 }
 
-async function openWebTerminal(): Promise<void> {
-  webTerminalOpen.value = true
-  if (webTerminalOpening.value || webTerminalSession.value) return
+function webTerminalClosed(): void {
+  webTerminalGeneration++
+  webTerminalOpen.value = false
+  restoredWebTerminal.value = undefined
+}
 
-  const generation = ++webTerminalGeneration
-  webTerminalOpening.value = true
-  webTerminalError.value = ''
-  let opened: TerminalSession | undefined
+async function closeWebTerminal(): Promise<void> {
+  if (webTerminalClosing.value) return
+  webTerminalGeneration++
+  webTerminalClosing.value = true
   try {
-    opened = await api.terminals.open('local', 30, 120)
-    if (generation !== webTerminalGeneration || !webTerminalOpen.value) {
-      await api.terminals.close(opened.sessionId).catch(() => undefined)
-      return
-    }
-    await api.terminals.input(opened.sessionId, encodeTerminalInput('k web\r'))
-    if (generation !== webTerminalGeneration || !webTerminalOpen.value) {
-      await api.terminals.close(opened.sessionId).catch(() => undefined)
-      return
-    }
-    webTerminalSession.value = opened
-  } catch (reason) {
-    if (opened) await api.terminals.close(opened.sessionId).catch(() => undefined)
-    if (generation === webTerminalGeneration && webTerminalOpen.value) {
-      webTerminalError.value = reason instanceof ApiError && reason.code === 'terminal_limit'
-        ? '已达到终端会话上限，请先关闭不用的终端。'
-        : '网站管理终端启动失败，请检查 Agent 与终端服务状态。'
-    }
+    if (!webTerminal.value || await webTerminal.value.close()) webTerminalClosed()
   } finally {
-    if (generation === webTerminalGeneration) webTerminalOpening.value = false
+    webTerminalClosing.value = false
   }
 }
 
-function closeWebTerminal(): void {
-  webTerminalGeneration += 1
-  webTerminalOpen.value = false
-  webTerminalOpening.value = false
-  webTerminalSession.value = undefined
-  webTerminalError.value = ''
+async function restoreWebTerminal(): Promise<void> {
+  const generation = webTerminalGeneration
+  try {
+    const retained = await api.terminals.list()
+    const original = retained.items.find(item => item.retained && item.hostId === 'local' && item.purpose === 'site-management')
+    if (!disposed && generation === webTerminalGeneration && !webTerminalOpen.value && original) {
+      // Attach this exact listed identity. If another tab closed it, never launch a replacement.
+      restoredWebTerminal.value = original
+      webTerminalOpen.value = true
+    }
+  } catch {
+    // Failed listing never creates a replacement; the explicit entry still resolves the server identity.
+  }
 }
 
 const installStageLabels: Record<string, string> = {
@@ -1094,10 +1086,9 @@ watch(editorOpen, (open) => {
   }
 })
 
-onMounted(() => void load())
+onMounted(() => { void load(); void restoreWebTerminal() })
 onBeforeUnmount(() => {
   disposed = true
-  closeWebTerminal()
   controller?.abort()
   stopInstallationMonitor()
   if (recentCreatedTimer) clearTimeout(recentCreatedTimer)
@@ -1339,21 +1330,11 @@ onBeforeUnmount(() => {
       :title="phrase('网站终端管理')"
       variant="workspace"
       allow-fullscreen
+      :close-disabled="webTerminalClosing"
       @close="closeWebTerminal"
     >
       <div class="site-management-terminal">
-        <div v-if="webTerminalOpening" class="site-management-terminal__state" role="status">
-          <LoaderCircle class="spin" :size="22" /> {{ phrase('正在启动 k web…') }}
-        </div>
-        <div v-else-if="webTerminalError" class="inline-alert inline-alert--danger" role="alert">
-          {{ phrase(webTerminalError) }}
-        </div>
-        <HostTerminal
-          v-else-if="webTerminalSession"
-          :session-id="webTerminalSession.sessionId"
-          :host-name="phrase('本机网站管理')"
-          :initial-offset="webTerminalSession.offset"
-        />
+        <ShortcutCommandTerminal v-if="webTerminalOpen" ref="webTerminal" :name="phrase('网站终端管理')" command="" :host-name="phrase('本机网站管理')" purpose="site-management" :existing-session="restoredWebTerminal" @close="webTerminalClosed" />
       </div>
     </ModalDialog>
 

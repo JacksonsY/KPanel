@@ -2929,12 +2929,13 @@ createServer(async (request, response) => {
   }
   if (request.method === 'POST' && url.pathname === '/api/v1/terminal-sessions') {
     const input = await readJSON(request)
-    if (input.prepareOnly && input.shortcutId) {
+    const siteManagement = input.purpose === 'site-management' && input.hostId === 'local'
+    if (input.prepareOnly && (input.shortcutId || siteManagement)) {
       send(response, 201, { launchId: randomBytes(32).toString('hex'), expiresAt: new Date(Date.now() + 300_000).toISOString() })
       return
     }
-    if (input.lookupOnly && input.shortcutId) {
-      const existing = [...mockTerminalSessions.values()].find(session => session.metadata?.shortcutId === input.shortcutId && session.metadata?.hostId === input.hostId && !session.exitedAt)
+    if (input.lookupOnly && (input.shortcutId || siteManagement)) {
+      const existing = [...mockTerminalSessions.values()].find(session => session.metadata?.shortcutId === input.shortcutId && session.metadata?.purpose === input.purpose && session.metadata?.hostId === input.hostId && !session.exitedAt)
       if (existing) send(response, 200, existing.metadata)
       else send(response, 404, { title: 'Shortcut session not found', code: 'terminal_shortcut_session_not_found' })
       return
@@ -2951,6 +2952,10 @@ createServer(async (request, response) => {
       return
     }
     const shortcut = input.shortcutId && desktopWorkspace.shortcuts.find(item => item.id === input.shortcutId && item.command && (item.hostId || 'local') === input.hostId)
+    if (siteManagement) {
+      const existing = [...mockTerminalSessions.values()].find(session => session.metadata?.purpose === input.purpose && !session.exitedAt)
+      if (existing) { send(response, 200, existing.metadata); return }
+    }
     if (input.shortcutId) {
       const existing = [...mockTerminalSessions.values()].find(session => session.metadata?.shortcutId === input.shortcutId && session.metadata?.hostId === input.hostId && !session.exitedAt)
       if (existing) { send(response, 200, existing.metadata); return }
@@ -2966,11 +2971,12 @@ createServer(async (request, response) => {
     mockTerminalSessionCounter += 1
     const sessionId = `visual-terminal-${mockTerminalSessionCounter}`
     const createdAt = new Date().toISOString()
-    const metadata = { sessionId, hostId: input.hostId, offset: 0, createdAt, retained: input.retained === true, ...(shortcut ? { shortcutId: shortcut.id, title: shortcut.name } : {}) }
+    const metadata = { sessionId, hostId: input.hostId, offset: 0, createdAt, retained: input.retained === true, ...(shortcut ? { shortcutId: shortcut.id, title: shortcut.name } : {}), ...(siteManagement ? { purpose: input.purpose, title: 'k web' } : {}) }
+    const launchCommand = shortcut?.command || (siteManagement ? 'k web' : '')
     mockTerminalSessions.set(sessionId, {
       metadata,
       host,
-      data: Buffer.from(`root@${host.lastSnapshot?.telemetry?.hostname || host.name}:~# ${shortcut ? `${shortcut.command}\r\n[Mock: command started once]\r\n` : ''}`),
+      data: Buffer.from(`root@${host.lastSnapshot?.telemetry?.hostname || host.name}:~# ${launchCommand ? `${launchCommand}\r\n[Mock: command started once]\r\n` : ''}`),
       exitedAt: '',
       exitError: '',
     })

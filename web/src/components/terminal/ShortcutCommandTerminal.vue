@@ -8,7 +8,7 @@ import { useI18n } from '@/i18n'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import type { TerminalSession } from '@/types/api'
 
-const props = defineProps<{ name: string; command: string; hostName: string; hostId?: string; shortcutId?: string; shortcutVersion?: string; existingSession?: TerminalSession }>()
+const props = defineProps<{ name: string; command: string; hostName: string; hostId?: string; shortcutId?: string; shortcutVersion?: string; purpose?: 'site-management'; existingSession?: TerminalSession }>()
 const { t } = useI18n()
 const emit = defineEmits<{ close: [] }>()
 const closeGuards = inject(desktopWindowCloseGuardKey, undefined)
@@ -23,9 +23,18 @@ const error = ref('')
 const command = props.command
 const hostName = props.hostName
 const hostId = props.hostId || 'local'
+// Saved shortcuts and fixed built-in entries share server-side launch fencing.
+const launchTarget = { shortcutId: props.shortcutId, shortcutVersion: props.shortcutVersion, purpose: props.purpose }
+const namedLaunch = Boolean(launchTarget.shortcutId || launchTarget.purpose)
 let disposed = false
 let submitted = false
 let launchId: string | undefined
+
+function resolveLaunch(): Promise<TerminalSession> {
+  return launchTarget.purpose
+    ? api.terminals.resolvePurpose(launchTarget.purpose, launchId)
+    : api.terminals.resolveShortcut(hostId, launchTarget.shortcutId!, launchId)
+}
 
 function phrase(value: string): string {
   phraseCatalogVersion.value
@@ -41,20 +50,20 @@ async function open(): Promise<void> {
   opening.value = true
   error.value = ''
   try {
-    if (props.shortcutId && !props.existingSession && !launchId) {
-      launchId = (await api.terminals.prepareShortcut(hostId, props.shortcutId)).launchId
+    if (namedLaunch && !props.existingSession && !launchId) {
+      launchId = (await (launchTarget.purpose ? api.terminals.preparePurpose(launchTarget.purpose) : api.terminals.prepareShortcut(hostId, launchTarget.shortcutId!))).launchId
       if (!launchId) throw new Error('Terminal launch identity is missing')
       if (disposed) {
-        void api.terminals.resolveShortcut(hostId, props.shortcutId, launchId).catch(() => undefined)
+        void resolveLaunch().catch(() => undefined)
         return
       }
       if (closing.value) return
     }
-    const opened = props.existingSession || await (props.shortcutId
-      ? api.terminals.open(hostId, 30, 120, { retained: true, shortcutId: props.shortcutId, shortcutVersion: props.shortcutVersion, launchId }).catch(reason => {
+    const opened = props.existingSession || await (namedLaunch
+      ? api.terminals.open(hostId, 30, 120, { ...launchTarget, retained: true, launchId }).catch(reason => {
         if (disposed || closing.value || !(reason instanceof ApiError) || reason.code !== 'terminal_retention_unavailable') throw reason
         // The server rejected retention before launching the command. Reuse its identity; never retry an uncertain launch.
-        return api.terminals.open(hostId, 30, 120, { retained: false, shortcutId: props.shortcutId, shortcutVersion: props.shortcutVersion, launchId })
+        return api.terminals.open(hostId, 30, 120, { ...launchTarget, retained: false, launchId })
       })
       : api.terminals.open(hostId, 30, 120))
     if (disposed) {
@@ -73,7 +82,7 @@ async function open(): Promise<void> {
 }
 
 async function onStateChange(state: string): Promise<void> {
-  if (props.shortcutId || state !== 'connected' || submitted || disposed || closing.value || !command) return
+  if (namedLaunch || state !== 'connected' || submitted || disposed || closing.value || !command) return
   // A reconnect must never repeat a command. Mark before awaiting Vue's ref update.
   submitted = true
   await nextTick()
@@ -88,8 +97,8 @@ async function close(): Promise<boolean> {
   try {
     await openingRequest
     let target = session.value
-    if (!target && props.shortcutId) {
-      try { target = await api.terminals.resolveShortcut(hostId, props.shortcutId, launchId) }
+    if (!target && namedLaunch) {
+      try { target = await resolveLaunch() }
       catch (reason) {
         if (!(reason instanceof ApiError && reason.code === 'terminal_shortcut_session_not_found')) throw reason
       }
@@ -114,6 +123,8 @@ async function close(): Promise<boolean> {
     closing.value = false
   }
 }
+
+defineExpose({ close })
 
 onMounted(() => {
   unregisterCloseGuard = closeGuards?.register(close)
