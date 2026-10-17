@@ -160,6 +160,32 @@ test('a merge counts as a touch only for its own conflict resolution', () => {
   }
 });
 
+test('file-level directories need the file named, so a later candidate cannot cover an earlier one', () => {
+  const state = fixture();
+  try {
+    state.write('.governance/security-audit/boundary-policy.json', JSON.stringify({
+      ...POLICY, securityReview: { paths: ['internal/panel/'], fileLevelDirs: ['internal/panel'] },
+    }));
+    state.commit('test: file-level policy');
+    const base = state.git('rev-parse', 'HEAD');
+    state.write('internal/panel/files.go');
+    state.commit('feat: candidate A, never reviewed');
+    state.write('internal/panel/passkey.go');
+    state.commit('feat: candidate B\n\nSecurity-Review: v1 scope=internal/panel reviewer=claude findings=H0/M0/L0');
+    assert.equal(summary(reviewScopeState(state.root, base)),
+      'missing:internal/panel/files.go missing:internal/panel/passkey.go');
+
+    state.commit('review: B\n\nSecurity-Review: v1 scope=internal/panel/passkey.go reviewer=claude findings=H0/M1/L0');
+    assert.equal(summary(reviewScopeState(state.root, base)),
+      'missing:internal/panel/files.go recorded:internal/panel/passkey.go');
+
+    state.commit('docs: skip A\n\nSecurity-Review: skipped scope=internal/panel/files.go reason=route-registration-only');
+    assert.equal(reviewScopeState(state.root, base).overall, 'recorded');
+  } finally {
+    state.cleanup();
+  }
+});
+
 test('the CLI reports groups and fails closed only on unusable input', () => {
   const state = fixture();
   try {

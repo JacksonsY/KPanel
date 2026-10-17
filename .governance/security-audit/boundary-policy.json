@@ -23,7 +23,11 @@
   "scopedMaxAgeDays": 14,
   "fullMaxAgeDays": 30,
   "securityReview": {
-    "note": "PROJECT_RULES.md 5.4 自动参与范围：路径前缀，按所在目录分组。覆盖鉴权/会话、凭据与脱敏、跨节点与对端 Panel、不可信导入与远端内容、上传、文件根约束、主机 shell 输入、AI/MCP 工具和 Agent 特权入口。前端只列渲染不可信 HTML 的 v-html 入口与未鉴权分享页；其余界面改动不触发（XSS 汇点集中在这些文件）。internal/panel/server.go 含会话/CSRF/Origin 检查故保留，只增删路由注册时按 5.4 写 skipped。",
+    "note": "PROJECT_RULES.md 5.4 自动参与范围：路径前缀，按所在目录分组。覆盖鉴权/会话、凭据与脱敏、跨节点与对端 Panel、不可信导入与远端内容、上传、文件根约束、主机 shell 输入、AI/MCP 工具和 Agent 特权入口。前端只列渲染不可信 HTML 的 v-html 入口与未鉴权分享页；其余界面改动不触发（XSS 汇点集中在这些文件）。internal/panel/server.go 含会话/CSRF/Origin 检查故保留，只增删路由注册时按 5.4 写 skipped。 fileLevelDirs 为超过约 8000 行的目录（internal/panel 约 2.6 万行、internal/cluster 约 1.9 万行），按单个文件分组与导出，trailer 的 scope 须写文件路径。",
+    "fileLevelDirs": [
+      "internal/cluster",
+      "internal/panel"
+    ],
     "paths": [
       "cmd/kejilion-agent/",
       "cmd/kejilion-node/",

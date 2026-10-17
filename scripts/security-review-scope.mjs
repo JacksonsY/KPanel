@@ -19,18 +19,29 @@ export function loadReviewPolicy(root) {
     || review.paths.some((entry) => typeof entry !== 'string' || entry === '' || entry.startsWith('/'))) {
     throw new Error(POLICY_PATH + ': securityReview.paths must be a non-empty list of repository path prefixes');
   }
+  const fileLevelDirs = review.fileLevelDirs ?? [];
+  if (!Array.isArray(fileLevelDirs) || fileLevelDirs.some((entry) => typeof entry !== 'string' || entry === '')) {
+    throw new Error(POLICY_PATH + ': securityReview.fileLevelDirs must be a list of directories');
+  }
   return {
     paths: review.paths,
+    fileLevelDirs,
     ignoreSuffixes: policy.ignoreSuffixes ?? [],
     ignoreSegments: policy.ignoreSegments ?? [],
   };
 }
 
+function fileLevel(policy, directory) {
+  return policy.fileLevelDirs.some((entry) => directory === entry || directory.startsWith(entry + '/'));
+}
+
+// Large directories are reviewed file by file, so each file is its own group there; elsewhere the directory is.
 export function reviewGroup(policy, path) {
   if (!policy.paths.some((prefix) => path.startsWith(prefix))) return null;
   if (policy.ignoreSuffixes.some((suffix) => path.endsWith(suffix))) return null;
   if (path.split('/').some((segment) => policy.ignoreSegments.includes(segment))) return null;
-  return dirname(path).replaceAll('\\', '/');
+  const directory = dirname(path).replaceAll('\\', '/');
+  return fileLevel(policy, directory) ? path : directory;
 }
 
 // Both forms name the groups they cover with scope=a,b: a review adds raw finding counts,
@@ -43,7 +54,9 @@ export function parseReviewTrailer(value) {
   return { skipped, scope, valid: scope.length > 0 && detail };
 }
 
-function covers(trailer, group) {
+// A file-level group is covered only by naming the file: a directory scope there would claim files nobody exported.
+function covers(policy, trailer, group) {
+  if (fileLevel(policy, dirname(group))) return trailer.scope.includes(group);
   return trailer.scope.some((entry) => group === entry || group.startsWith(entry + '/'));
 }
 
@@ -78,7 +91,7 @@ export function reviewScopeState(root, baseRef, headRef = 'HEAD') {
   };
   const result = [];
   for (const [group, commits] of [...touches].sort(([a], [b]) => a.localeCompare(b))) {
-    const relevant = trailers.filter((trailer) => trailer.valid && covers(trailer, group));
+    const relevant = trailers.filter((trailer) => trailer.valid && covers(policy, trailer, group));
     let covered = 0;
     for (const commit of commits) {
       if (relevant.some((trailer) => ancestors(trailer.hash).has(commit))) covered += 1;

@@ -27,26 +27,29 @@ updated: "2026-10-17T00:00:00+08:00"
 
 ## Steps
 
-### 1. 确定包组
+### 1. 确定包组与审查单元
 
 ```bash
 node scripts/security-review-scope.mjs --base "${{base_ref}}"
 ```
 
-输出的 missing/stale 包组即本次 groups；recorded 不重复审。candidate 档全部 pending 组都审；
-review 档每次最多 6 组，按鉴权/凭据 > 跨节点/导入 > 其他排序，余下写入验收记录待下次。
-脚本报 not-applicable 时本 workflow 不适用，不写 trailer。
+输出的 missing/stale 包组即本次 groups；recorded 不重复审。普通目录一个包组是一个审查单元；
+`securityReview.fileLevelDirs` 中的大目录（`internal/panel`、`internal/cluster`）按文件分组，同一大目录下的
+待审文件合成一个审查单元。candidate 档全部单元都审；review 档每次最多 6 个单元，按鉴权/凭据 >
+跨节点/导入 > 其他排序，余下写入验收记录待下次。脚本报 not-applicable 时本 workflow 不适用，不写 trailer。
 
 ### 2. 导出盲审快照
 
-导出粒度与回放基准一致，不含 Git 历史：
+不含 Git 历史：
 
-- 目录不超过约 8000 行非测试代码：导出整个目录（不只是 diff）；
-- 更大的目录（如 `internal/panel`、`internal/cluster`）：只导出本次改动的文件，加上它们直接调用的同目录文件；
-- 目录少于约 300 行时，可把直接调用方所在目录一并导出。导出了哪些文件写进核实记录。
+- 普通目录：导出整个目录（不只是 diff）；目录少于约 300 行时，可把直接调用方所在目录一并导出；
+- 大目录：只导出本单元的待审文件，加上它们直接调用的同目录文件。`internal/panel` 与回放基准的导出方式
+  一致；`internal/cluster` 比基准 case-c（整目录导出）窄，这一差异尚未经基准验证。
+
+导出了哪些文件写进核实记录。
 
 ```bash
-snapshot="$(mktemp -d)/<group-slug>"
+snapshot="$(mktemp -d)/<unit-slug>"
 mkdir -p "$snapshot"
 git -C "${{project_dir}}" archive HEAD -- <路径...> PROJECT_RULES.md docs/development-quality-standard.md \
   | tar -x -C "$snapshot"
@@ -81,7 +84,8 @@ git -C "${{project_dir}}" archive HEAD -- <路径...> PROJECT_RULES.md docs/deve
 Security-Review: v1 scope=<group>[,<group>...] reviewer=<provider>/<model> findings=H<n>/M<n>/L<n> confirmed=<n> fixed=<n> deferred=<n>
 ```
 
-findings 是复核者原始分级计数，confirmed/fixed/deferred 是核实后结果。确实无需审查时写
+scope 列出审过的包组；大目录必须逐个写文件路径（如 `scope=internal/panel/passkey.go,internal/panel/files.go`），
+写目录不覆盖其中的文件。findings 是复核者原始分级计数，confirmed/fixed/deferred 是核实后结果。确实无需审查时写
 `Security-Review: skipped scope=<group>[,<group>...] reason=<理由>`（例如只改注释、只增删
 `internal/panel/server.go` 的路由注册），skip 只覆盖所列包组。trailer 只覆盖它所在提交及其祖先上的改动；
 之后又改动同组代码需重审该组。`check-collaboration-state.mjs --require-candidate` 只提醒
@@ -92,7 +96,7 @@ findings 是复核者原始分级计数，confirmed/fixed/deferred 是核实后�
 - project_dir：精确提交的 clean worktree。
 - base_ref：candidate 档用任务精确基线；review 档用上一稳定 tag。
 - profile：candidate 或 review。
-- groups：步骤 1 输出的待审包组；review 档最多 6 组。
+- groups：步骤 1 输出的待审包组；review 档最多 6 个审查单元。
 
 ## Verification
 

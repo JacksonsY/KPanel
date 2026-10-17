@@ -440,9 +440,9 @@ CF 不再是执行入口。唯一执行入口为
 
 - **自动参与**：代码候选改动触及 `.governance/security-audit/boundary-policy.json` 的 `securityReview.paths`
   时，写任务在候选提交后、预览与最终核验前，不待提示执行 candidate 档（`session-collaboration` 第 4 步）。
-  范围由 `scripts/security-review-scope.mjs` 按目录分组给出；纯文档、治理文本、测试和发布操作不适用。
-- **盲审**：每组由不含实现上下文的新会话或子代理审查，导出粒度与基准一致（工作流写明大目录只导出改动
-  文件及其直接依赖），使用仓库固定的 `.governance/security-audit/review-prompt.md`，不附实现说明或期望结论。
+  范围由 `scripts/security-review-scope.mjs` 按目录分组给出，`fileLevelDirs` 中的大目录按文件分组；纯文档、
+  治理文本、测试和发布操作不适用。
+- **盲审**：每个审查单元由不含实现上下文的新会话或子代理审查（大目录只导出待审文件及其直接依赖），使用仓库固定的 `.governance/security-audit/review-prompt.md`，不附实现说明或期望结论。
   不限定提供商和模型，记录实际配置。
 - **核实与处置**：实现者核实落在本候选改动文件上的发现，以及新出现的紧急/高；既有代码上已记入仓库外
   待办的线索不重复核实。逐条标记 confirmed / rejected / needs-validation，复核者的分级只作参考。
@@ -451,11 +451,12 @@ CF 不再是执行入口。唯一执行入口为
   既有代码上的 confirmed 紧急/高不阻止本候选，按第 11 节另起紧急修复，并阻止下一次发布。
   未核实的线索不能写成漏洞，盲审完成也不能写成"已安全"。
 - **留痕与提醒**：候选写 `Security-Review:` trailer（范围、复核者、原始分级计数、核实结果）；确实无需审查
-  （只改注释、只增删路由注册等）写 `Security-Review: skipped scope=<包组> reason=<理由>`，skip 只覆盖所列包组。
+  （只改注释、只增删路由注册等）写 `Security-Review: skipped scope=<包组> reason=<理由>`，skip 只覆盖所列包组；
+  大目录的 scope 必须写文件路径。
   覆盖按祖先关系计算：只有触及提交本身或其后代上的 trailer 才算覆盖。`check-collaboration-state.mjs
   --require-candidate` 对仍有未覆盖触及的候选输出 `security_review=missing|stale` 提醒，不失败。
 - **稳定版前补漏**：`quality-audit-kpanel` 以上一稳定 tag 为基线运行 review 档，审查仍为 missing/stale 的
-  包组，每次最多 6 组，余下记入验收记录。补漏不阻断发布；其中核实的紧急/高仍按第 11 节阻止发布。
+  包组，每次最多 6 个审查单元，余下记入验收记录。补漏不阻断发布；其中核实的紧急/高仍按第 11 节阻止发布。
 - **审计器回归**：修改提示、默认做法或复核方式前，在回放基准上盲跑，命中不得低于基线；新修复的真实漏洞
   按 README 补入基准。提示和基准的修改按 5.2 独立复核。
 - **披露边界**：未修复线索的攻击细节、payload 与复现步骤只存仓库外或不推送的本地候选；提交、trailer 与
