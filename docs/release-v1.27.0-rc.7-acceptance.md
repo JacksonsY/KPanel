@@ -82,7 +82,7 @@ B8 clean模拟数据预览9项通过、pageErrors0；覆盖浅深主题、390移
 | 体验与可访问性 | 已验证 | Mock9项及公开146项/10PNG、窄屏/主题/键盘；原生zoom、读屏、实体手机未验 |
 | 数据与兼容 | 已验证 | 完整预审、来源私钥排除与身份journal；旧Agent须配套升级重导入，未完成旧日志不自动迁移 |
 
-owned业务分支以原子双expected-SHA lease保存B8到archive/fix/v127-rc7-security-integration并移除活跃远端。4176预览已停止，clean自有业务工作树移除，释放297876464bytes；原作者工作树与其他预览不动，唯一RC列车保留3D。验收文档候选仅修改本记录、当前业务事实和既有提案；文档自身CI/mainCI及分支归档终态记仓库外最终交付回执，不提前写未来结果。
+owned业务分支以原子双expected-SHA lease保存B8到archive/fix/v127-rc7-security-integration并移除活跃远端。4176预览已停止，clean自有业务工作树移除，回收文件逻辑大小297876464bytes（未单测本步净空闲空间）；原作者工作树与其他预览不动，唯一RC列车保留3D。验收文档候选仅修改本记录、当前业务事实和既有提案；文档自身CI/mainCI及分支归档终态记仓库外最终交付回执，不提前写未来结果。
 
 <!-- kpanel-release-metrics:start -->
 - 首个纳入提交时间：2026-10-17T16:08:55+08:00
