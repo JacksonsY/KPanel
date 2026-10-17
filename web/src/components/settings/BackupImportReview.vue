@@ -52,7 +52,7 @@ const reviews = computed(() => props.result?.review?.modules.filter(m => props.m
 </template>
 
 <style scoped>
-.import-review { padding: 14px; border: 1px solid var(--color-border); border-radius: 10px; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.import-review { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 h4, h5 { margin: 0 0 8px; font-size: 14px; }
 p { margin: 8px 0; }
 article, details { margin-top: 12px; }
