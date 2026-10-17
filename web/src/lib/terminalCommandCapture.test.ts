@@ -107,6 +107,18 @@ describe('terminal command capture', () => {
     expect(commands).toEqual([command])
   })
 
+  it.each(['postgres=# ', 'postgres-# ', 'postgres=*# ', 'postgres=!# '])('skips psql prompt %s and resumes at a shell', async (prompt) => {
+    const { commands, type, enter, terminal } = setup()
+    await write(terminal, prompt)
+    await type('select secret from credentials;')
+    await enter()
+    expect(commands).toEqual([])
+    await write(terminal, 'root@host:~# ')
+    await type('uptime')
+    await enter()
+    expect(commands).toEqual(['uptime'])
+  })
+
   it('does not record script menus, password prompts or blank lines', async () => {
     const { commands, type, enter, terminal } = setup()
     await write(terminal, '请输入你的选择: ')

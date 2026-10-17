@@ -3,12 +3,18 @@ import type { IBuffer, IDisposable, IMarker, Terminal } from '@xterm/xterm'
 // Recovers the commands typed at a shell prompt from what the terminal shows.
 // The text left of the cursor at the first keystroke of a line is that line's
 // prompt; it must end like a shell prompt, so script menus ("请输入你的选择: "),
-// password prompts and REPLs are never recorded. When Enter is pressed the
+// common password prompts and supported REPL prompts are skipped. Custom
+// prompts remain a heuristic, so this is not a general secret detector. When Enter is pressed the
 // line is read only after the shell echoes the newline, so tab completion,
 // history recall and line editing are reflected as the shell ran them. Text
 // printed before the prompt stays part of the remembered prompt and can never
 // be mistaken for the command.
 const promptEnding = /[#$%❯➜»]\s*$/u
+// psql's default superuser prompts also end in #, but are program input.
+const psqlPrompt = /(?:^|\s)\S+[=\-\(\'\"$][*!?]?#\s*$/u
+function isShellPrompt(text: string): boolean {
+  return text.length <= maxPromptLength && promptEnding.test(text) && !psqlPrompt.test(text)
+}
 const maxPromptLength = 512
 const maxLogicalRows = 64
 const settleTimeout = 5000
@@ -34,7 +40,7 @@ interface PendingCapture {
 }
 
 export function extractPromptCommand(prompt: string, line: string): string | undefined {
-  if (!prompt.trim() || prompt.length > maxPromptLength || !promptEnding.test(prompt)) return undefined
+  if (!prompt.trim() || !isShellPrompt(prompt)) return undefined
   if (!line.startsWith(prompt)) return undefined
   const typed = line.slice(prompt.length)
   // A leading space keeps a command out of history, as with bash ignorespace.
@@ -122,7 +128,7 @@ export function createTerminalCommandCapture(
       }
       if (prompt === undefined) {
         const text = promptBeforeCursor(terminal.buffer.active)
-        prompt = promptEnding.test(text) && text.length <= maxPromptLength ? text : null
+        prompt = isShellPrompt(text) ? text : null
       }
       if (isEnter(data)) {
         if (prompt) capture(prompt)
