@@ -3033,24 +3033,43 @@ createServer(async (request, response) => {
     if (request.method === 'POST' && action === 'input') {
       const input = await readJSON(request)
       const decoded = Buffer.from(String(input.data || ''), 'base64').toString('utf8')
-      const lines = decoded.replace(/\r\n?/g, '\n').split('\n')
-      const exitIndex = lines.map((line) => line.trim()).lastIndexOf('exit')
-      const command = (exitIndex >= 0 ? lines.slice(0, exitIndex) : lines).join('\n').trim()
-      if (command) {
-        const result = mockTerminalCommandResult(session.host, command)
-        // Simulate the generated startup boundary; never evaluate shell input.
-        const startupToken = command.match(/^command printf '\\033\]kpanel-start;([a-zA-Z0-9-]+)\\007'; /)?.[1]
-        const boundary = startupToken ? `\x1b]kpanel-start;${startupToken}\x07` : ''
-        session.data = Buffer.concat([
-          session.data,
-          Buffer.from(`${command}\r\n${boundary}${result.output}\r\n`),
-        ])
-        session.exitError = result.exitError
+      const prompt = `root@${session.host.lastSnapshot?.telemetry?.hostname || session.host.name}:~# `
+      const echoed = []
+      session.line ??= ''
+      // Behave like a cooked TTY: echo typed text, edit on Backspace, run the line on Enter
+      // and print a fresh prompt. Cursor keys and completion are not simulated.
+      for (const token of decoded.split(/(\x1b\[[0-9;?]*[ -/]*[@-~]|\x1bO.|\r|\x03|\x7f|\x08|\t)/)) {
+        if (!token || session.exitedAt) continue
+        if (token === '\r') {
+          const lines = session.line.split('\n')
+          session.line = ''
+          const exitIndex = lines.map((line) => line.trim()).lastIndexOf('exit')
+          const command = (exitIndex >= 0 ? lines.slice(0, exitIndex) : lines).join('\n').trim()
+          echoed.push('\r\n')
+          if (command) {
+            const result = mockTerminalCommandResult(session.host, command)
+            // Simulate the generated startup boundary; never evaluate shell input.
+            const startupToken = command.match(/^command printf '\\033\]kpanel-start;([a-zA-Z0-9-]+)\\007'; /)?.[1]
+            const boundary = startupToken ? `\x1b]kpanel-start;${startupToken}\x07` : ''
+            echoed.push(`${boundary}${result.output}\r\n`)
+            session.exitError = result.exitError
+          }
+          if (exitIndex >= 0) session.exitedAt = new Date().toISOString()
+          else echoed.push(prompt)
+        } else if (token === '\x03') {
+          session.line = ''
+          echoed.push(`^C\r\n${prompt}`)
+        } else if (token === '\x7f' || token === '\x08') {
+          if (session.line) {
+            session.line = [...session.line].slice(0, -1).join('')
+            echoed.push('\b \b')
+          }
+        } else if (!token.startsWith('\x1b') && token !== '\t') {
+          session.line += token
+          echoed.push(token)
+        }
       }
-      if (exitIndex >= 0) {
-        session.data = Buffer.concat([session.data, Buffer.from('exit\r\n')])
-        session.exitedAt = new Date().toISOString()
-      }
+      if (echoed.length) session.data = Buffer.concat([session.data, Buffer.from(echoed.join(''))])
       send(response, 200, { accepted: true })
       return
     }
