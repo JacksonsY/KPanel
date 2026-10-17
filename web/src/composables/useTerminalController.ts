@@ -131,7 +131,7 @@ export function useTerminalController(options: Options) {
       ...adapter.input,
       error: kind => {
         if (disposed || generation !== targetGeneration || duplexInput !== input) return
-        const keys = { capacity: 'terminal.inputCapacity', retry: 'terminal.inputFailed', fatal: mode === 'task' ? 'terminal.taskInputFailed' : 'terminal.inputUncertain' }
+        const keys = { capacity: 'terminal.inputCapacity', retry: 'terminal.inputFailed', fatal: mode === 'task' ? 'terminal.taskInputFailed' : 'terminal.inputUncertain' } as const
         const key = keys[kind]
         writeTerminalOutput(`\r\n\x1b[31m[KPanel] ${t(key)}\x1b[0m\r\n`)
         if (kind === 'fatal') {
