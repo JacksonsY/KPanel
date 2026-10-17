@@ -59,8 +59,10 @@ describe('terminal and editor workspace theme', () => {
     expect(terminalThemeSource).toContain("terminalColor(style, '--terminal-ansi-cyan'")
     for (const source of [terminalSource, hostTerminalSource]) {
       expect(source).toContain('terminal-theme-scope')
-      expect(source).toContain('terminal.options.theme = readTerminalTheme(host.value)')
+      expect(source).toContain('useTerminalController(')
     }
+    const controller = readFileSync(new URL('../composables/useTerminalController.ts', import.meta.url), 'utf8')
+    expect(controller).toContain('terminal.value.options.theme = readTerminalTheme(host.value)')
     expect(terminalSource).not.toContain("green: '#35cba6'")
     expect(terminalSource).not.toContain("cyan: '#5adaba'")
     expect(terminalSource).not.toContain('#6d5dfc')

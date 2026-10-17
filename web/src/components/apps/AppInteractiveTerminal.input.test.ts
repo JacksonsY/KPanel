@@ -235,6 +235,23 @@ describe('task terminal input channel', () => {
     wrapper.unmount()
   })
 
+  it('isolates different task kinds even when their IDs match', async () => {
+    const wrapper = mountTerminal('app', 'same-id')
+    const first = await readySocket()
+    const oldHandlers = mocks.handlers!
+    await wrapper.setProps({ kind: 'diagnostic' })
+    await flushPromises()
+    expect(first.closed).toBe(true)
+    expect(mocks.socket).toHaveBeenLastCalledWith('diagnostic', 'same-id')
+    oldHandlers.job?.({ dataBase64: btoa('old task output'), nextOffset: 15, finished: true, inputOpen: false })
+    const second = await readySocket(1)
+    mocks.onData!('z\r')
+    expect(second.url).toContain('/diagnostic/same-id/')
+    expect(second.frames().map(text)).toEqual(['z\r'])
+    expect(mocks.writes.join('')).not.toContain('old task output')
+    wrapper.unmount()
+  })
+
   it('falls back to acknowledged HTTP batches when WebSocket cannot connect', async () => {
     mocks.batch.mockImplementation(async (_kind: string, _id: string, frames: Array<{ seq: number }>) => ({ acked: frames.at(-1)!.seq, epoch: 'epoch-a' }))
     const wrapper = mountTerminal('environment')

@@ -41,6 +41,67 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 20))
 afterEach(() => vi.useRealTimers())
 
 describe('TerminalStreamClient', () => {
+  it.each(['terminal', 'job'] as const)('fans out %s output with independent cursors and only removes the last viewer', async kind => {
+    const { client, subscribe } = newClient(undefined, 1000)
+    const first = vi.fn(), second = vi.fn()
+    const target = kind === 'terminal' ? { kind, id: 'shared', offset: 0 } : { kind, job: 'app' as const, id: 'shared', offset: 0, inputOpen: true }
+    const a = client.subscribe(target, kind === 'terminal' ? { output: first } : { job: first })!
+    const b = client.subscribe({ ...target, offset: 2 }, kind === 'terminal' ? { output: second } : { job: second })!
+    const source = FakeEventSource.instances[0]!
+    source.emit('ready', { streamId: 'stream' })
+    await flush()
+    expect(subscribe.mock.calls[0]![0].add).toHaveLength(1)
+    const key = kind === 'terminal' ? 'terminal:shared' : 'job:app:shared'
+    const emit = (data: string, nextOffset: number) => source.emit('output', {
+      key, ...(kind === 'terminal'
+        ? { output: { data: btoa(data), offset: nextOffset - data.length, nextOffset, closed: false, truncated: false } }
+        : { job: { dataBase64: btoa(data), nextOffset, inputOpen: true, finished: false } }),
+    })
+    emit('abcd', 4)
+    expect(first.mock.calls[0]![0]).toMatchObject({ nextOffset: 4, [kind === 'terminal' ? 'data' : 'dataBase64']: btoa('abcd') })
+    expect(second.mock.calls[0]![0]).toMatchObject({ nextOffset: 4, [kind === 'terminal' ? 'data' : 'dataBase64']: btoa('cd') })
+    emit('abcd', 4)
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(second).toHaveBeenCalledTimes(1)
+    a.close()
+    await flush()
+    expect(subscribe).toHaveBeenCalledTimes(1)
+    emit('ef', 6)
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(second).toHaveBeenCalledTimes(2)
+    b.close()
+    await flush()
+    expect(subscribe).toHaveBeenLastCalledWith({ streamId: 'stream', add: [], remove: [key] }, expect.any(AbortSignal))
+  })
+  it('restarts a shared pump for an older viewer without rewinding the existing viewer', async () => {
+    const { client, subscribe } = newClient()
+    const first = vi.fn(), late = vi.fn()
+    const a = client.subscribe({ kind: 'terminal', id: 'shared', offset: 4 }, { output: first })!
+    const source = FakeEventSource.instances[0]!
+    source.emit('ready', { streamId: 'stream' }); await flush()
+    const b = client.subscribe({ kind: 'terminal', id: 'shared', offset: 0 }, { output: late })!
+    await flush()
+    expect(subscribe.mock.calls.at(-1)![0].add[0].offset).toBe(0)
+    source.emit('output', { key: 'terminal:shared', output: { data: btoa('abcd'), offset: 0, nextOffset: 4, closed: false } })
+    expect(first.mock.calls[0]![0].data).toBe('')
+    expect(late.mock.calls[0]![0].data).toBe(btoa('abcd'))
+    source.emit('output', { key: 'terminal:shared', output: { data: btoa('ef'), offset: 4, nextOffset: 6, closed: false } })
+    expect(first.mock.calls.at(-1)![0].data).toBe(btoa('ef'))
+    a.close(); b.close()
+  })
+  it('falls back only the catching-up viewer when an old live pump leaves a gap before its add takes effect', async () => {
+    const { client } = newClient(undefined, 1000)
+    const live = vi.fn(), catchingUp = vi.fn(), unavailable = vi.fn()
+    const a = client.subscribe({ kind: 'terminal', id: 'shared', offset: 10 }, { output: live })!
+    const source = FakeEventSource.instances[0]!
+    source.emit('ready', { streamId: 'stream' }); await flush()
+    const b = client.subscribe({ kind: 'terminal', id: 'shared', offset: 0 }, { output: catchingUp, unavailable })!
+    source.emit('output', { key: 'terminal:shared', output: { data: btoa('ef'), offset: 10, nextOffset: 12, closed: false } })
+    expect(live).toHaveBeenCalledTimes(1)
+    expect(catchingUp).not.toHaveBeenCalled()
+    expect(unavailable).toHaveBeenCalledTimes(1)
+    b.close(); a.close()
+  })
   it('notifies subscribers when the native EventSource reconnects', () => {
     const { client } = newClient()
     const connected = vi.fn()

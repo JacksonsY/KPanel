@@ -5,6 +5,7 @@ const terminalSource = readFileSync(
   new URL('./AppInteractiveTerminal.vue', import.meta.url),
   'utf8',
 )
+const controllerSource = readFileSync(new URL('../../composables/useTerminalController.ts', import.meta.url), 'utf8')
 const diagnosticsSource = readFileSync(
   new URL('../../views/DiagnosticsView.vue', import.meta.url),
   'utf8',
@@ -70,10 +71,10 @@ describe('interactive task terminal layout', () => {
   })
 
   it('focuses the shell when input opens and leaves the composer user-activated', () => {
-    expect(terminalSource).toContain('if (open) focusTerminalWhenInputOpens()')
+    expect(terminalSource).toContain('useTerminalController(')
     // Terminals of unfocused windows stay mounted and must not steal focus.
-    expect(terminalSource).toContain('if (terminalInputOpen.value && activity.focused.value) window.requestAnimationFrame(focusTerminal)')
-    expect(terminalSource).toContain('if (terminalInputOpen.value && !disposed && activity.focused.value) focusTerminal()')
+    expect(controllerSource).toContain("inputOpen.value && activity.focused.value)) window.requestAnimationFrame(focusTerminal)")
+    expect(controllerSource).toContain('if (inputOpen.value && activity.focused.value) focusTerminal()')
     expect(terminalSource).toContain('@click="terminalInputOpen && focusTerminal()"')
     expect(terminalSource).not.toContain('composerInput')
   })
@@ -97,7 +98,7 @@ describe('interactive task terminal layout', () => {
   it('shares the terminal clipboard behavior with host terminals', () => {
     expect(terminalSource).toContain('@contextmenu="clipboardMenu?.open($event)"')
     expect(terminalSource).toContain('@paste.capture="clipboardMenu?.handlePaste($event)"')
-    expect(terminalSource).toContain('terminal.attachCustomKeyEventHandler')
+    expect(controllerSource).toContain('screen.attachCustomKeyEventHandler')
   })
 
   it('keeps fullscreen but removes the jump-to-top control from task terminals', () => {

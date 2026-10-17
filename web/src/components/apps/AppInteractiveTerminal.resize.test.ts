@@ -42,11 +42,11 @@ describe('application script terminal geometry', () => {
   it('sends actual geometry on attachment, resize/fullscreen, and reopening', async () => {
     const wrapper = mount(AppInteractiveTerminal, { props })
     await vi.advanceTimersByTimeAsync(100)
-    expect(mocks.resize).toHaveBeenLastCalledWith('job-a', 24, 80)
+    expect(mocks.resize).toHaveBeenLastCalledWith('job-a', 24, 80, expect.any(AbortSignal))
     mocks.terminal!.rows = 40; mocks.terminal!.cols = 140
     mocks.observer?.()
     await vi.advanceTimersByTimeAsync(100)
-    expect(mocks.resize).toHaveBeenLastCalledWith('job-a', 40, 140)
+    expect(mocks.resize).toHaveBeenLastCalledWith('job-a', 40, 140, expect.any(AbortSignal))
     mocks.observer?.()
     await vi.advanceTimersByTimeAsync(100)
     expect(mocks.resize).toHaveBeenCalledTimes(2)
@@ -68,7 +68,7 @@ describe('application script terminal geometry', () => {
     expect(mocks.resize).toHaveBeenCalledTimes(1)
     finish({ accepted: true }); await flushPromises()
     await vi.advanceTimersByTimeAsync(100)
-    expect(mocks.resize).toHaveBeenLastCalledWith('job-a', 24, 100)
+    expect(mocks.resize).toHaveBeenLastCalledWith('job-a', 24, 100, expect.any(AbortSignal))
     wrapper.unmount()
   })
 
@@ -112,7 +112,7 @@ describe('application script terminal geometry', () => {
     mocks.handlers?.connected?.()
     await vi.advanceTimersByTimeAsync(100)
     expect(mocks.resize).toHaveBeenCalledTimes(6)
-    expect(mocks.resize).toHaveBeenLastCalledWith('job-a', 24, 100)
+    expect(mocks.resize).toHaveBeenLastCalledWith('job-a', 24, 100, expect.any(AbortSignal))
     wrapper.unmount()
   })
 
@@ -124,7 +124,7 @@ describe('application script terminal geometry', () => {
     await wrapper.setProps({ jobId: 'job-b' })
     finish({ accepted: true }); await flushPromises()
     await vi.advanceTimersByTimeAsync(100)
-    expect(mocks.resize).toHaveBeenLastCalledWith('job-b', 24, 80)
+    expect(mocks.resize).toHaveBeenLastCalledWith('job-b', 24, 80, expect.any(AbortSignal))
     wrapper.unmount()
   })
 

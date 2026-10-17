@@ -16,7 +16,10 @@ describe('terminal cursor', () => {
     ['AppInteractiveTerminal', new URL('../components/apps/AppInteractiveTerminal.vue', import.meta.url)],
   ])('is the only cursor definition of %s', (_name, path) => {
     const source = readFileSync(path, 'utf8')
-    expect(source).toContain('...terminalCursorOptions')
+    const controller = readFileSync(new URL('../composables/useTerminalController.ts', import.meta.url), 'utf8')
+    expect(source).toContain('useTerminalController(')
+    expect(source).not.toContain('new Terminal(')
+    expect(controller).toContain('...terminalCursorOptions')
     // A cursor chosen locally would make the terminals look different again.
     expect(source).not.toMatch(/cursorStyle\s*:/)
     expect(source).not.toMatch(/cursorBlink\s*:/)

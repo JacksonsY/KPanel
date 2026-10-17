@@ -9,6 +9,7 @@ const jobs = source('../../views/JobsView.vue')
 const ai = source('../../views/AiView.vue')
 const terminal = source('../terminal/HostTerminal.vue')
 const taskTerminal = source('../apps/AppInteractiveTerminal.vue')
+const controller = source('../../composables/useTerminalController.ts')
 const scriptWindow = source('../../views/AppScriptView.vue')
 
 describe('desktop background lifecycle contract', () => {
@@ -27,13 +28,13 @@ describe('desktop background lifecycle contract', () => {
   it('streams terminals in visible windows and pauses hidden ones without closing the session', () => {
     for (const component of [terminal, taskTerminal]) {
       // Visibility, not focus, gates output so side-by-side terminals stay live.
-      expect(component).toContain('useTerminalActivity()')
+      expect(component).toContain('useTerminalController(')
       expect(component).not.toContain('desktopWindowActive.value')
-      expect(component).toMatch(/canReceiveOutput\(\): boolean \{\s*return [^}]*streaming\.value && !writeFlow\.blocked/)
-      // Both output paths pause: the push subscription closes and polling stops.
-      expect(component).toMatch(/function stopOutput\(\): void \{\s*outputGeneration\+\+\s*streamSubscription\?\.close\(\)[\s\S]*?pollController\?\.abort\(\)/)
-      expect(component).toMatch(/watch\((activity\.)?streaming, \(\w+\) => \{\s*if \(\w+\) startOutput\(\)\s*else stopOutput\(\)/)
     }
+    expect(controller).toContain('useTerminalActivity()')
+    expect(controller).toMatch(/canReceiveOutput\(\): boolean \{\s*return [^}]*streaming\.value && !writeFlow\.blocked/)
+    expect(controller).toMatch(/function stopOutput\(\): void \{\s*outputGeneration\+\+[\s\S]*?subscription\?\.close\(\)[\s\S]*?pollController\?\.abort\(\)/)
+    expect(controller).toContain('watch(activity.streaming, active => { if (active) startOutput(); else stopOutput() })')
   })
 
   it('keeps the script terminal mounted when its window loses focus', () => {

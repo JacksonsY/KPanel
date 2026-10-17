@@ -44,7 +44,7 @@ describe('HostTerminal resize sync', () => {
     expect(mocks.writes.some((line) => line.includes('[KPanel]'))).toBe(true)
     await vi.advanceTimersByTimeAsync(500)
     expect(mocks.resize).toHaveBeenCalledTimes(2)
-    expect(mocks.resize).toHaveBeenLastCalledWith('resize-id', 24, 80)
+    expect(mocks.resize).toHaveBeenLastCalledWith('resize-id', 24, 80, expect.any(AbortSignal))
     // Once synced, an unchanged size is not resent.
     ;(wrapper.vm as unknown as { scheduleResize(): void }).scheduleResize()
     await vi.advanceTimersByTimeAsync(100)
@@ -75,7 +75,7 @@ describe('HostTerminal resize sync', () => {
     await vi.advanceTimersByTimeAsync(500 + 100)
     expect(mocks.output).toHaveBeenCalledTimes(4)
     expect(mocks.resize).toHaveBeenCalledTimes(2)
-    expect(mocks.resize).toHaveBeenLastCalledWith('resize-id', 24, 80)
+    expect(mocks.resize).toHaveBeenLastCalledWith('resize-id', 24, 80, expect.any(AbortSignal))
     wrapper.unmount()
   })
 
@@ -87,7 +87,7 @@ describe('HostTerminal resize sync', () => {
     expect(mocks.resize).not.toHaveBeenCalled()
     await wrapper.setProps({ visible: true })
     await vi.advanceTimersByTimeAsync(100)
-    expect(mocks.resize).toHaveBeenCalledWith('resize-id', 24, 80)
+    expect(mocks.resize).toHaveBeenCalledWith('resize-id', 24, 80, expect.any(AbortSignal))
     wrapper.unmount()
   })
 

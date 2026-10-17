@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 const terminalSource = readFileSync(new URL('./TerminalView.vue', import.meta.url), 'utf8')
 const hostTerminalSource = readFileSync(new URL('../components/terminal/HostTerminal.vue', import.meta.url), 'utf8')
+const controllerSource = readFileSync(new URL('../composables/useTerminalController.ts', import.meta.url), 'utf8')
 const desktopStyles = readFileSync(new URL('../styles/desktop.css', import.meta.url), 'utf8')
 
 describe('multi-host terminal workspace layout', () => {
@@ -258,7 +259,8 @@ describe('multi-host terminal workspace layout', () => {
   })
 
   it('focuses the shell cursor by default and leaves the composer user-activated', () => {
-    expect(hostTerminalSource).toContain('window.requestAnimationFrame(focusTerminal)')
+    expect(hostTerminalSource).toContain('useTerminalController(')
+    expect(controllerSource).toContain('window.requestAnimationFrame(focusTerminal)')
     expect(hostTerminalSource).not.toContain('composerInput')
     expect(terminalSource).toContain('focusActiveTerminal()')
   })
@@ -266,7 +268,7 @@ describe('multi-host terminal workspace layout', () => {
   it('uses the terminal clipboard menu instead of the browser context menu', () => {
     expect(hostTerminalSource).toContain('@contextmenu="clipboardMenu?.open($event)"')
     expect(hostTerminalSource).toContain('@paste.capture="clipboardMenu?.handlePaste($event)"')
-    expect(hostTerminalSource).toContain('terminal.attachCustomKeyEventHandler')
+    expect(controllerSource).toContain('screen.attachCustomKeyEventHandler')
   })
 
   it('keeps session tabs and terminal actions in one dark toolbar row', () => {
@@ -319,7 +321,7 @@ describe('multi-host terminal workspace layout', () => {
     expect(terminalSource).toMatch(
       /\.terminal-stage\.is-quick-commands-open\s*\{[^}]*grid-template-columns:minmax\(0,1fr\) 272px;/,
     )
-    expect(hostTerminalSource).toContain("queueInput(terminalLineSubmission(command.replace(/\\r\\n?/g, '\\n')))")
+    expect(controllerSource).toContain("queueInput(terminalLineSubmission(command.replace(/\\r\\n?/g, '\\n')))")
   })
 
   it('removes grid placement when the quick-command drawer becomes a narrow-screen overlay', () => {

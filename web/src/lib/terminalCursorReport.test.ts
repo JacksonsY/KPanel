@@ -71,12 +71,14 @@ describe('terminal cursor reports', () => {
     ['HostTerminal', new URL('../components/terminal/HostTerminal.vue', import.meta.url)],
     ['AppInteractiveTerminal', new URL('../components/apps/AppInteractiveTerminal.vue', import.meta.url)],
   ])('installs before output and disposes with %s', (_name, path) => {
-    const source = readFileSync(path, 'utf8')
+    expect(readFileSync(path, 'utf8')).toContain('useTerminalController(')
+    const source = readFileSync(new URL('../composables/useTerminalController.ts', import.meta.url), 'utf8')
     const mounted = source.slice(source.indexOf('onMounted(() => {'))
-    expect(mounted.indexOf('terminal.onData(queueInput)')).toBeLessThan(mounted.indexOf('installTerminalCursorReport(terminal)'))
-    expect(mounted.indexOf('installTerminalCursorReport(terminal)')).toBeLessThan(mounted.indexOf('startOutput()'))
+    expect(mounted.indexOf('screen.onData(data => queueInput(data))')).toBeGreaterThan(-1)
+    expect(mounted.indexOf('screen.onData(data => queueInput(data))')).toBeLessThan(mounted.indexOf('installTerminalCursorReport(screen)'))
+    expect(mounted.indexOf('installTerminalCursorReport(screen)')).toBeLessThan(mounted.indexOf('startOutput()'))
     const unmounted = source.slice(source.indexOf('onBeforeUnmount(() => {'))
     expect(unmounted).toContain('cursorReport?.dispose()')
-    expect(unmounted.indexOf('cursorReport?.dispose()')).toBeLessThan(unmounted.indexOf('terminal?.dispose()'))
+    expect(unmounted.indexOf('cursorReport?.dispose()')).toBeLessThan(unmounted.indexOf('terminal.value?.dispose()'))
   })
 })
