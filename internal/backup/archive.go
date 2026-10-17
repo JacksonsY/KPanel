@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/chacha20poly1305"
@@ -195,7 +196,7 @@ func ReadContext(ctx context.Context, r io.Reader, password, directory string) (
 	}
 	for _, part := range manifest.Parts {
 		h, err := tr.Next()
-		if err != nil || h.Name != part.Module+".payload" || h.Typeflag != tar.TypeReg || h.Size != part.Size {
+		if err != nil || h.Name != part.Module+".payload" || h.Typeflag != tar.TypeReg || SparseEntry(h) || h.Size != part.Size {
 			return manifest, ErrInvalid
 		}
 		f, err := os.OpenFile(filepath.Join(directory, h.Name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -233,6 +234,18 @@ func ReadContext(ctx context.Context, r io.Reader, password, directory string) (
 		}
 	}
 	return manifest, nil
+}
+
+// SparseEntry reports a PAX sparse file. archive/tar presents one as a
+// regular file of its expanded size, so a few stored bytes could write that
+// many. Archives written here never contain sparse entries.
+func SparseEntry(h *tar.Header) bool {
+	for key := range h.PAXRecords {
+		if strings.HasPrefix(key, "GNU.sparse.") {
+			return true
+		}
+	}
+	return false
 }
 
 func Decode(data []byte, target any) error {

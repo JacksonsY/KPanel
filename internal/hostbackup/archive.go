@@ -241,6 +241,9 @@ func (e *Engine) writePayload(ctx context.Context, path string, p Payload) (err 
 	return f.Close()
 }
 
+// requireSpace is replaced in tests that cannot exhaust a real filesystem.
+var requireSpace = backup.RequireSpace
+
 func (e *Engine) ReadPayload(ctx context.Context, path, directory string) (Payload, error) {
 	var p Payload
 	input, err := backup.OpenRegular(path, backup.MaxBytes)
@@ -278,7 +281,7 @@ func (e *Engine) ReadPayload(ctx context.Context, path, directory string) (Paylo
 	if estimated > backup.MaxBytes {
 		return p, backup.ErrInvalid
 	}
-	if err := backup.RequireSpace(directory, estimated); err != nil {
+	if err := requireSpace(directory, estimated); err != nil {
 		return p, err
 	}
 	roots := map[string]Root{}
@@ -309,7 +312,7 @@ func (e *Engine) ReadPayload(ctx context.Context, path, directory string) (Paylo
 				return p, backup.ErrInvalid
 			}
 		}
-		if h.Typeflag != tar.TypeReg && h.Typeflag != tar.TypeDir && h.Typeflag != tar.TypeSymlink || h.Size < 0 || h.Size > 10<<30 || h.Mode < 0 || h.Mode > 07777 || h.Uid < 0 || h.Gid < 0 || h.Uid > 1<<31-1 || h.Gid > 1<<31-1 {
+		if h.Typeflag != tar.TypeReg && h.Typeflag != tar.TypeDir && h.Typeflag != tar.TypeSymlink || backup.SparseEntry(h) || h.Size < 0 || h.Size > 10<<30 || h.Mode < 0 || h.Mode > 07777 || h.Uid < 0 || h.Gid < 0 || h.Uid > 1<<31-1 || h.Gid > 1<<31-1 {
 			return p, backup.ErrInvalid
 		}
 		if h.Typeflag == tar.TypeSymlink {
@@ -340,6 +343,13 @@ func (e *Engine) ReadPayload(ctx context.Context, path, directory string) (Paylo
 			copy := *h
 			directories[target] = &copy
 		} else {
+			// Root sizes are declared by the archive itself. Once entries
+			// outgrow them, each further file needs real free space.
+			if total > estimated {
+				if err := requireSpace(directory, h.Size); err != nil {
+					return p, err
+				}
+			}
 			if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 				return p, err
 			}

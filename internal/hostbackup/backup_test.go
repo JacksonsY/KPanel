@@ -550,3 +550,59 @@ func TestBackupExcludesResolvedKPanelRoots(t *testing.T) {
 		t.Fatal("application data next to KPanel was excluded")
 	}
 }
+
+// Root sizes are declared by the archive itself. A root declared empty must
+// still not expand onto the staging filesystem without a space reservation.
+func TestReadPayloadReservesSpaceBeyondDeclaredRootSizes(t *testing.T) {
+	e, _, payload := hostFixture(t)
+	payload.Roots[0].Bytes = 0
+	root := payload.Roots[0]
+	content := make([]byte, 1<<20)
+	var archive bytes.Buffer
+	gz := gzip.NewWriter(&archive)
+	tw := tar.NewWriter(gz)
+	manifest, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "manifest.json", Typeflag: tar.TypeReg, Mode: 0600, Size: int64(len(manifest))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "data/" + root.ID, Typeflag: tar.TypeDir, Mode: 0700}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "data/" + root.ID + "/data", Typeflag: tar.TypeReg, Mode: 0600, Size: int64(len(content))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	archivePath := filepath.Join(t.TempDir(), "apps.payload")
+	if err := os.WriteFile(archivePath, archive.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	previous := requireSpace
+	t.Cleanup(func() { requireSpace = previous })
+	requireSpace = func(_ string, bytes int64) error {
+		if bytes > 0 {
+			return errors.New("insufficient backup staging space")
+		}
+		return nil
+	}
+	directory := t.TempDir()
+	if _, err := e.ReadPayload(context.Background(), archivePath, directory); err == nil {
+		t.Fatal("payload outgrew its declared size without a space reservation")
+	}
+	if _, err := os.Lstat(filepath.Join(directory, "data", root.ID, "data")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("file was written without a space reservation", err)
+	}
+}
