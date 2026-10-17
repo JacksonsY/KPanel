@@ -158,3 +158,22 @@ func TestLinesHidesWindowPrefixBeforeOrphanPrivateKeyEnd(t *testing.T) {
 		t.Fatalf("orphan private key end did not protect the bounded prefix: %s", joined)
 	}
 }
+
+func TestRecordsHidePGPPrivateKeyBlock(t *testing.T) {
+	output := Text(strings.Join([]string{
+		"before",
+		"-----BEGIN PGP PRIVATE KEY BLOCK-----",
+		"",
+		"lQVYBGVwZ3Atc2VjcmV0LWtleS1tYXRlcmlhbA==",
+		"=AbCd",
+		"-----END PGP PRIVATE KEY BLOCK-----",
+		"after",
+	}, "\n"))
+	if strings.Contains(output, "lQVYBGVwZ3Atc2VjcmV0LWtleS1tYXRlcmlhbA") || strings.Contains(output, "=AbCd") ||
+		!strings.Contains(output, privateKeyReplacement) || !strings.Contains(output, "before") || !strings.Contains(output, "after") {
+		t.Fatalf("PGP private key redaction failed: %s", output)
+	}
+	if public := Text("-----BEGIN PGP PUBLIC KEY BLOCK-----\nmQENBGVwZ3AtcHVibGlj\n-----END PGP PUBLIC KEY BLOCK-----"); strings.Contains(public, privateKeyReplacement) {
+		t.Fatalf("PGP public key was treated as private: %s", public)
+	}
+}
