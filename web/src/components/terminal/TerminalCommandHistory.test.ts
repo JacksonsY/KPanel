@@ -6,6 +6,7 @@ import { resetTerminalCommandsForTest } from '@/stores/terminalCommands'
 import { resetTerminalHistoryForTest } from '@/stores/terminalHistory'
 import type { TerminalHistory } from '@/types/api'
 import TerminalCommandHistory from './TerminalCommandHistory.vue'
+import historySource from './TerminalCommandHistory.vue?raw'
 import TerminalQuickCommands from './TerminalQuickCommands.vue'
 
 const now = Date.now()
@@ -143,6 +144,11 @@ describe('terminal command history', () => {
     expect(clear).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('还没有历史命令')
     wrapper.unmount()
+  })
+
+  it('keeps command text on the terminal panel colour instead of the page code colour', () => {
+    // The global code rule follows the page theme; the panel stays dark in the light theme.
+    expect(historySource).toMatch(/\.terminal-history-entry__fill code \{[^}]*color:inherit;/)
   })
 
   it('shows a retry when history cannot be loaded', async () => {

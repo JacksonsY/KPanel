@@ -239,7 +239,7 @@ async function clearHistory(): Promise<void> {
 .terminal-history-entry { display:flex; min-width:0; align-items:flex-start; gap:5px; margin-bottom:5px; border:1px solid transparent; border-radius:var(--radius-sm); padding:4px; }
 .terminal-history-entry:hover,.terminal-history-entry:focus-within { border-color:color-mix(in srgb,var(--brand) 24%,var(--terminal-shell-border,#29383a)); background:color-mix(in srgb,var(--brand) 6%,transparent); }
 .terminal-history-entry__fill { display:grid; min-width:0; flex:1; gap:3px; border:1px solid transparent; border-radius:var(--radius-sm); padding:5px 7px; color:var(--terminal-shell-text,#d8dddc); background:transparent; font:inherit; text-align:left; cursor:pointer; }
-.terminal-history-entry__fill code { display:-webkit-box; overflow:hidden; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; line-height:1.45; white-space:pre-wrap; word-break:break-all; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; }
+.terminal-history-entry__fill code { display:-webkit-box; overflow:hidden; color:inherit; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px; line-height:1.45; white-space:pre-wrap; word-break:break-all; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; }
 .terminal-history-entry__fill small { display:flex; min-width:0; flex-wrap:wrap; gap:0 8px; color:var(--terminal-shell-muted,#8a9695); font-size:13px; line-height:1.4; }
 .terminal-history-entry__fill small span { min-width:0; overflow-wrap:anywhere; }
 .terminal-history-entry__actions { display:flex; flex:0 0 auto; gap:5px; padding-top:2px; opacity:.72; }
