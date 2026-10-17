@@ -11,7 +11,7 @@ const check=(n,v)=>{assert(v,n);report.checks.push(n)};const unwrap=x=>x&&typeof
  if(mode==='published'){
   const opened=await api('/terminal-sessions','POST',{hostId:'local',rows:24,columns:80,retained:true});
   check('real isolated PTY retained acknowledgement',opened.retained===true&&typeof opened.sessionId==='string');report.terminalOpened=opened;
-  const id=opened.sessionId;await api('/terminal-sessions/'+id+'/input','POST',{data:Buffer.from('stty -echo\r').toString('base64').replace(/=+$/,'')});
+  const id=opened.sessionId;await api('/terminal-sessions/'+id+'/input','POST',{data:Buffer.from('stty echo\r').toString('base64').replace(/=+$/,'')});
   await api('/terminal-sessions/'+id+'/output?offset=0&wait=1000');
   await api('/terminal-sessions/'+id+'/input','POST',{data:Buffer.from("printf '%s%s\\n' '__KPANEL_RC127_' 'PTY__'\r").toString('base64').replace(/=+$/,'')});
   let output,transcript='',offset=0;for(let i=0;i<20;i++){output=await api('/terminal-sessions/'+id+'/output?offset='+offset+'&wait=1000');assert(output&&typeof output==='object'&&(typeof output.data==='string'||output.data===null)&&Number.isSafeInteger(output.nextOffset),'terminal output schema');transcript+=Buffer.from(output.data||'','base64').toString();offset=output.nextOffset;if(transcript.includes('__KPANEL_RC127_PTY__'))break}
@@ -21,7 +21,8 @@ const check=(n,v)=>{assert(v,n);report.checks.push(n)};const unwrap=x=>x&&typeof
   await api('/terminal-sessions/'+id+'/resize','POST',{rows:30,columns:100});
   check('one restored terminal tab',await terminalPage.locator('.terminal-tab__close').count()===1);
   // Run through the real composer and shell echo, then read the real Panel store.
-  await api('/terminal-sessions/'+id+'/input','POST',{data:Buffer.from('stty echo\r').toString('base64').replace(/=+$/,'')});
+  await terminalPage.locator('.terminal-tab small').filter({hasText:'已连接'}).first().waitFor();
+  await terminalPage.screenshot({path:out+'/terminal-before-history.png',fullPage:true});report.screenshots.push('terminal-before-history.png');
   const composer=terminalPage.locator('.host-terminal__composer input').first();await composer.waitFor();
   const historyCommand='printf RC6_HISTORY_UI';
   const appended=terminalPage.waitForResponse(r=>r.url()===base+'/api/v1/terminal-history'&&r.request().method()==='POST');
