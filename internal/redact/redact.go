@@ -20,7 +20,8 @@ var (
 	basicSecret          = regexp.MustCompile(`(?i)\bBasic\s+[A-Za-z0-9_+/=-]{8,}`)
 	openAISecret         = regexp.MustCompile(`(?i)\bsk-[A-Za-z0-9._~+/=-]{4,}`)
 	urlCredentials       = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s@]+@`)
-	urlSensitiveQuery    = regexp.MustCompile(`(?i)([?&](?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|secret|signature|sig|password|passwd|pwd|credential|x-amz-(?:signature|credential|security-token))=)[^&#\s]*`)
+	urlSensitiveQuery    = regexp.MustCompile(`(?i)([?&](?:[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key|signature)[A-Za-z0-9_.-]*|key|sig)=)[^&#\s]*`)
+	terminalEscape       = regexp.MustCompile(`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))`)
 	privateKeyBegin      = regexp.MustCompile(`(?i)-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
 	privateKeyEnd        = regexp.MustCompile(`(?i)-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
 )
@@ -71,6 +72,13 @@ func redactRecords(values []string) ([]string, []bool) {
 	lines := make([]physicalLine, 0, len(values))
 	for record, value := range values {
 		value = strings.ToValidUTF8(value, "�")
+		value = terminalEscape.ReplaceAllString(value, "")
+		value = strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' {
+				return -1
+			}
+			return r
+		}, value)
 		value = strings.ReplaceAll(value, "\r\n", "\n")
 		value = strings.ReplaceAll(value, "\r", "\n")
 		for _, line := range strings.Split(value, "\n") {

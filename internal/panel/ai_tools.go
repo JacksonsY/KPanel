@@ -711,6 +711,14 @@ func redactSummaryValue(value any) any {
 	case map[string]any:
 		summary := make(map[string]any, len(typed))
 		for key, item := range typed {
+			// Environment entries carry their sensitive key in a sibling field.
+			// Do not let structured name/value pairs bypass string redaction.
+			if key == "value" {
+				if _, named := typed["name"].(string); named {
+					summary[key] = "[REDACTED]"
+					continue
+				}
+			}
 			if _, drop := topSecretSummaries[key]; drop {
 				summary[key] = "[REDACTED]"
 				continue
