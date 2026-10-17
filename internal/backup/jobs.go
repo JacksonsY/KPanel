@@ -151,8 +151,10 @@ func OpenManager(root string) (*Manager, error) {
 		if err != nil || len(body) > maxRecordBytes {
 			return nil, ErrInvalid
 		}
+		// Records are written only by this manager. Fields from a newer
+		// release are ignored so that rolling back cannot block startup.
 		var record Record
-		if Decode(body, &record) != nil || record.ID != entry.Name() {
+		if json.Unmarshal(body, &record) != nil || record.ID != entry.Name() {
 			return nil, ErrInvalid
 		}
 		if len(m.records) >= 50 {
@@ -282,6 +284,11 @@ func (m *Manager) Abort(id, code string) error {
 	if !ok {
 		return ErrNotFound
 	}
+	// A running worker owns the lease until it returns; aborting it here
+	// would let a second writer start while the first still writes.
+	if r.Status == "running" {
+		return ErrBusy
+	}
 	r.Status = "failed"
 	r.Stage = "failed"
 	r.ErrorCode = code
@@ -329,7 +336,7 @@ func (m *Manager) Run(id string, worker func(context.Context, string) error) err
 			if len(r.CompletedModules) > 0 && r.ErrorCode != "cleanup_pending" && r.ErrorCode != "recovery_required" {
 				r.ErrorCode = "partially_restored"
 			}
-			if ctx.Err() != nil && len(r.CompletedModules) == 0 {
+			if ctx.Err() != nil && len(r.CompletedModules) == 0 && r.ErrorCode != "cleanup_pending" && r.ErrorCode != "recovery_required" {
 				r.ErrorCode = "interrupted"
 			}
 		}
@@ -347,10 +354,12 @@ func (m *Manager) Run(id string, worker func(context.Context, string) error) err
 			m.records[id] = r
 			return
 		}
-		if r.Status != "restarting" {
-			m.active = ""
+		if m.active == id {
+			if r.Status != "restarting" {
+				m.active = ""
+			}
+			m.cancel = nil
 		}
-		m.cancel = nil
 	}()
 	return nil
 }
