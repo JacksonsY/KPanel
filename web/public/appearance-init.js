@@ -28,8 +28,11 @@
   root.style.setProperty('--desktop-wallpaper-image', 'none')
   root.style.setProperty('--auth-wallpaper-image', 'none')
   const publicPage = /^\/(login|setup|share)(\/|$)/.test(location.pathname)
-  const builtinURL = id => ['classic', 'orbit', 'horizon', 'rift', 'prism'].includes(id)
-    ? `/wallpapers/kpanel-desktop${id === 'classic' ? '' : `-${id}`}.webp` : null
+  const builtinURL = id => {
+    if (id === 'xp') return '/wallpapers/kpanel-desktop-xp.svg'
+    return ['classic', 'orbit', 'horizon', 'rift', 'prism'].includes(id)
+      ? `/wallpapers/kpanel-desktop${id === 'classic' ? '' : `-${id}`}.webp` : null
+  }
   const cacheKey = id => `kpanel:desktop-wallpaper-cache:v1:${id}`
   const cachedImage = id => {
     const value = readSession(cacheKey(id))

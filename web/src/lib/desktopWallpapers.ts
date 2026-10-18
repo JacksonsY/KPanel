@@ -48,6 +48,13 @@ export const DESKTOP_WALLPAPERS = [
     descriptionKey: 'desktop.wallpaperPrismDescription',
     themePreset: THEME_COLOR_PRESETS[4]!,
   },
+  {
+    id: 'xp',
+    src: '/wallpapers/kpanel-desktop-xp.svg',
+    nameKey: 'desktop.wallpaperXP',
+    descriptionKey: 'desktop.wallpaperXPDescription',
+    themePreset: THEME_COLOR_PRESETS[1]!,
+  },
 ] as const
 
 export type DesktopStaticWallpaperID = typeof DESKTOP_WALLPAPERS[number]['id']

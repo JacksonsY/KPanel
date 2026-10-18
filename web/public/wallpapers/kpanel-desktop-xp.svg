@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#197cc8"/>
+      <stop offset=".48" stop-color="#59b6e9"/>
+      <stop offset="1" stop-color="#d5edec"/>
+    </linearGradient>
+    <linearGradient id="far-grass" x1="0" y1="0" x2=".15" y2="1">
+      <stop offset="0" stop-color="#a5cf59"/>
+      <stop offset=".45" stop-color="#78b43d"/>
+      <stop offset="1" stop-color="#40852d"/>
+    </linearGradient>
+    <linearGradient id="middle-grass" x1=".1" y1="0" x2=".25" y2="1">
+      <stop offset="0" stop-color="#84bf38"/>
+      <stop offset=".4" stop-color="#4d9c25"/>
+      <stop offset="1" stop-color="#26741d"/>
+    </linearGradient>
+    <linearGradient id="front-grass" x1=".15" y1="0" x2=".4" y2="1">
+      <stop offset="0" stop-color="#6bb431"/>
+      <stop offset=".44" stop-color="#398d20"/>
+      <stop offset="1" stop-color="#155e1a"/>
+    </linearGradient>
+    <radialGradient id="sunwash" cx=".52" cy=".56" r=".66">
+      <stop offset="0" stop-color="#fff" stop-opacity=".53"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft-cloud" x="-20%" y="-40%" width="140%" height="180%">
+      <feGaussianBlur stdDeviation="17"/>
+    </filter>
+    <filter id="fine-texture" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".72" numOctaves="2" seed="19"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 .09"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" mode="soft-light"/>
+    </filter>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <rect width="1920" height="1080" fill="url(#sunwash)"/>
+  <g fill="#fff" opacity=".55" filter="url(#soft-cloud)">
+    <ellipse cx="420" cy="270" rx="280" ry="45"/>
+    <ellipse cx="770" cy="213" rx="210" ry="34"/>
+    <ellipse cx="1385" cy="295" rx="300" ry="52"/>
+  </g>
+  <g fill="#f8ffff" opacity=".35">
+    <path d="M0 493c218-33 387-30 568-6 115 15 236 12 357-9 204-35 403-28 599 0 130 19 263 17 396-5v113H0z"/>
+  </g>
+  <path d="M0 666c151-84 305-130 464-121 139 8 245 61 389 70 129 9 239-21 364-28 196-12 374 48 703 20v473H0z" fill="url(#far-grass)"/>
+  <path d="M0 792c183-102 327-178 495-164 159 14 247 135 420 139 143 3 257-76 413-106 221-42 410 38 592 40v379H0z" fill="url(#middle-grass)"/>
+  <path d="M0 932c184-91 358-142 517-129 181 15 317 110 514 104 178-6 314-109 486-126 157-16 291 21 403 73v226H0z" fill="url(#front-grass)"/>
+  <path d="M0 813c172-80 330-136 475-136 143 0 256 76 389 94 121 17 239-4 362-47 207-73 442-42 694 14" fill="none" stroke="#c4e477" stroke-opacity=".34" stroke-width="16"/>
+  <path d="M0 952c178-78 352-121 511-104 168 18 319 92 492 81 188-11 326-108 495-121 153-12 281 16 422 70" fill="none" stroke="#a4d85c" stroke-opacity=".34" stroke-width="13"/>
+  <rect width="1920" height="1080" fill="#fff" opacity=".12" filter="url(#fine-texture)"/>
+</svg>

@@ -58,6 +58,10 @@ func TestLoginBootstrapUsesLatestSavedAppearanceWithoutPrivateMetadata(t *testin
 	if next := read(); next.Wallpaper.URL != "/wallpapers/kpanel-desktop-rift.webp" || next.Wallpaper.Bright {
 		t.Fatalf("refresh retained previous selection: %+v", next)
 	}
+	savedLoginAppearance(t, s, "xp")
+	if next := read(); next.Wallpaper.URL != "/wallpapers/kpanel-desktop-xp.svg" || next.Wallpaper.Bright {
+		t.Fatalf("Windows XP wallpaper was not published as the selected built-in: %+v", next)
+	}
 }
 
 func TestLoginWallpaperOnlyExposesCurrentThumbnailAndRevokesPreviousURL(t *testing.T) {

@@ -5258,7 +5258,12 @@ function onViewportResize(): void {
           @click="toggleStartMenu"
         >
           <template v-if="desktopShellStyle.preference.value === 'xp'">
-            <span class="desktop__xp-start-mark" aria-hidden="true"><i /><i /><i /><i /></span>
+            <svg class="desktop__xp-start-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M1.8 4.9c2.8-1 5.8-1.5 9-1.5v7.9c-3.1 0-6.1.5-9 1.5V4.9Z" fill="#ed5148" />
+              <path d="M13.1 3.4c3.1.1 6.1.6 9.1 1.6v7.9c-2.9-1-5.9-1.5-9.1-1.6V3.4Z" fill="#70b940" />
+              <path d="M1.8 14.1c2.8-1 5.8-1.5 9-1.5v7.9c-3.2 0-6.2.5-9 1.5v-7.9Z" fill="#438ee2" />
+              <path d="M13.1 12.6c3.1.1 6.1.6 9.1 1.6v7.9c-3-1-6-1.5-9.1-1.6v-7.9Z" fill="#f0c53b" />
+            </svg>
             <span class="desktop__xp-start-label">{{ i18n.t('desktop.startMenuButton') }}</span>
           </template>
           <LogoMark v-else compact site />

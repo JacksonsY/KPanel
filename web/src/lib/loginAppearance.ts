@@ -22,6 +22,7 @@ export function applyLoginAppearance(value: LoginAppearance): void {
   if (!wallpaper || typeof wallpaper.url !== 'string' || typeof wallpaper.bright !== 'boolean'
     || !inRange(wallpaper.focusX) || !inRange(wallpaper.focusY)
     || (!/^\/wallpapers\/kpanel-desktop(?:-(?:orbit|horizon|rift|prism))?\.webp$/.test(wallpaper.url)
+      && wallpaper.url !== '/wallpapers/kpanel-desktop-xp.svg'
       && !/^\/api\/v1\/auth\/wallpaper\/[0-9a-f]{64}$/.test(wallpaper.url))) return
   const root = document.documentElement
   root.dataset.authWallpaper = 'server'

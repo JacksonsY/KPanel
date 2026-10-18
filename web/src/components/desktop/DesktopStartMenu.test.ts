@@ -60,26 +60,34 @@ describe('DesktopStartMenu', () => {
   })
 
   it('uses the XP two-column menu and expands its complete program list', async () => {
+    const extraSystemItems: DesktopStartMenuItem[] = Array.from({ length: 8 }, (_, index) => ({
+      key: `nav:/xp-${index}`,
+      section: 'system',
+      label: `XP System ${index}`,
+    }))
     const extraEntries: DesktopStartMenuItem[] = Array.from({ length: 8 }, (_, index) => ({
       key: `app:xp-${index}`,
       section: 'entries',
       label: `XP App ${index}`,
       detail: '应用',
     }))
-    await mountMenu({ xp: true, items: [...items, ...extraEntries] })
+    await mountMenu({ xp: true, items: [...items, ...extraSystemItems, ...extraEntries] })
 
     expect(wrapper.get('.desktop-start-menu--xp').text()).toContain('admin')
     expect(wrapper.findAll('.desktop-start-menu__option--tile')).toHaveLength(0)
+    expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-system"] [role="option"]')).toHaveLength(6)
     expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-entries"] [role="option"]')).toHaveLength(6)
     expect(wrapper.get('.desktop-start-menu__all-programs').text()).toContain('所有程序')
     expect(document.activeElement).toBe(search().element)
 
     await wrapper.get('.desktop-start-menu__all-programs').trigger('click')
     expect(wrapper.get('.desktop-start-menu__all-programs').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-system"] [role="option"]')).toHaveLength(11)
     expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-entries"] [role="option"]')).toHaveLength(10)
 
     await wrapper.get('.desktop-start-menu__all-programs').trigger('click')
     expect(wrapper.get('.desktop-start-menu__all-programs').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-system"] [role="option"]')).toHaveLength(6)
     expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-entries"] [role="option"]')).toHaveLength(6)
     await search().setValue('XP App 7')
     expect(wrapper.find('[data-start-menu-key="app:xp-7"]').exists()).toBe(true)

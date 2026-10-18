@@ -54,6 +54,15 @@ describe('server appearance before the login form paints', () => {
     expect(document.documentElement.style.getPropertyValue('--auth-wallpaper-image')).toBe('none')
   })
 
+  it('accepts the built-in Windows XP SVG wallpaper', async () => {
+    const wallpaper = { url: '/wallpapers/kpanel-desktop-xp.svg', focusX: 500, focusY: 500, bright: false }
+    applyLoginAppearance({ ...saved, wallpaper })
+    expect(images[0]?.src).toBe(wallpaper.url)
+    images[0]!.resolve()
+    await Promise.resolve()
+    expect(document.documentElement.style.getPropertyValue('--auth-wallpaper-image')).toBe(`url("${wallpaper.url}")`)
+  })
+
   it('does not let an old decode overwrite a newer scheme or the authenticated page', async () => {
     applyLoginAppearance(saved)
     applyLoginAppearance({ ...saved, theme: 'light', wallpaper: { ...saved.wallpaper, url: '/wallpapers/kpanel-desktop-horizon.webp', bright: true } })

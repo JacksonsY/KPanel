@@ -14,6 +14,7 @@ const filesViewSource = readFileSync(new URL('../../views/FilesView.vue', import
 const appsViewSource = readFileSync(new URL('../../views/AppsView.vue', import.meta.url), 'utf8')
 const dockerViewSource = readFileSync(new URL('../../views/DockerView.vue', import.meta.url), 'utf8')
 const terminalMenuSource = readFileSync(new URL('../terminal/TerminalContextMenu.vue', import.meta.url), 'utf8')
+const wallpaperRegistry = readFileSync(new URL('../../lib/desktopWallpapers.ts', import.meta.url), 'utf8')
 
 function cssRule(source: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -38,9 +39,38 @@ describe('desktop visual and interaction contract', () => {
     expect(xpStyles).toContain(".desktop[data-shell-style='xp'] .desktop-window__titlebar")
     expect(xpStyles).toContain(".desktop[data-shell-style='xp'] .desktop__taskbar")
     expect(xpStyles).toContain(".desktop[data-shell-style='xp'] .desktop-start-menu")
-    expect(xpStyles).toContain(".desktop[data-shell-style='xp'] .desktop-wallpaper-surface[data-wallpaper='classic']")
+    expect(wallpaperRegistry).toContain("id: 'xp'")
+    expect(wallpaperRegistry).toContain("src: '/wallpapers/kpanel-desktop-xp.svg'")
+    expect(xpStyles).not.toContain(".desktop-wallpaper-surface[data-wallpaper='classic']")
+    expect(desktopViewSource).toContain('<svg class="desktop__xp-start-mark" viewBox="0 0 24 24"')
     expect(xpStyles).toContain('@media (prefers-contrast: more), (prefers-reduced-transparency: reduce)')
     expect(mainStyles).toContain("@import './desktopXp.css';")
+  })
+
+  it('gives XP taskbar and widgets Luna relief without flattening widget focus', () => {
+    const taskbar = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__taskbar")
+    const tray = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__system-tray")
+    const widgets = cssRule(xpStyles, ".desktop[data-shell-style='xp'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status)")
+    const widgetHeader = cssRule(xpStyles, ".desktop[data-shell-style='xp'] :is(.desktop-clock__header, .desktop-monitor__header, .desktop-service-status__header)")
+
+    expect(taskbar).toContain('background: linear-gradient(')
+    expect(tray).toContain('inset 1px 1px 0')
+    expect(widgets).toContain('border-top-color: #fff;')
+    expect(widgets).toContain('box-shadow: inset 1px 1px 0')
+    expect(widgetHeader).toContain('text-shadow: 0 1px 1px')
+    expect(cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-widget-slot:focus-visible"))
+      .toContain('outline: 3px solid #ffe179;')
+  })
+
+  it('keeps XP desktop labels transparent and readable over the wallpaper', () => {
+    const label = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__icon-label")
+    const selectedLabel = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__icon--selected .desktop__icon-label")
+
+    expect(label).toContain('background: transparent;')
+    expect(label).toContain('color: #fff;')
+    expect(label).toContain('text-shadow: 1px 1px 2px rgb(9 29 55 / 92%);')
+    expect(selectedLabel).toContain('background: #145db8;')
+    expect(selectedLabel).toContain('outline: 1px dotted #fff;')
   })
 
   it('keeps white text readable on XP title bars, taskbar and Start surfaces', () => {

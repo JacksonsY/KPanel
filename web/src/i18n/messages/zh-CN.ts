@@ -965,6 +965,8 @@ export const zhCNMessages = {
   'desktop.appearanceLoadFallback': '当前浏览器的设置仍可使用。',
   'desktop.wallpaperClassic': '经典流光',
   'desktop.wallpaperClassicDescription': 'KPanel 原有的深色流体壁纸',
+  'desktop.wallpaperXP': 'Windows XP 经典草坡',
+  'desktop.wallpaperXPDescription': '蓝天白云与绿色草坡的怀旧桌面',
   'desktop.wallpaperOrbit': '静谧轨道',
   'desktop.wallpaperOrbitDescription': '深海蓝与克制的系统轨道',
   'desktop.wallpaperHorizon': '云端地平线',

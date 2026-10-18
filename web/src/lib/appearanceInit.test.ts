@@ -43,6 +43,13 @@ describe('appearance before server bootstrap', () => {
     result.cache('orbit')
     expect(result.fetch).toHaveBeenCalledWith('/wallpapers/kpanel-desktop-orbit.webp', { cache: 'force-cache' })
   })
+  it('uses the XP wallpaper for early classic-mode paint without treating SVG as a cached WebP', () => {
+    const result = boot({ 'kpanel:classic-wallpaper:v1': 'clear', 'kpanel:desktop-wallpaper:v1': 'xp' })
+    expect(result.properties.get('--classic-wallpaper-image')).toBe('url("/wallpapers/kpanel-desktop-xp.svg")')
+    expect(result.Image).toHaveBeenCalledOnce()
+    result.cache('xp')
+    expect(result.fetch).toHaveBeenCalledWith('/wallpapers/kpanel-desktop-xp.svg', { cache: 'force-cache' })
+  })
   it.each(['light', 'dark'])('restores %s tokens without fetching a cached or default wallpaper', (theme) => {
     const result = boot({ 'kejilion-panel-theme': theme, 'kejilion-panel-desktop-mode': 'desktop', 'kpanel:desktop-wallpaper:v1': 'prism' })
     expect(result.root.dataset.theme).toBe(theme)

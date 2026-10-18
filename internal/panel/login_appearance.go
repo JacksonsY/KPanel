@@ -37,6 +37,8 @@ func (s *Server) loginAppearance() *loginAppearance {
 	}
 	wallpaper := loginWallpaper{URL: "/wallpapers/kpanel-desktop.webp", FocusX: 500, FocusY: 500}
 	switch value.Wallpaper {
+	case "xp":
+		wallpaper.URL = "/wallpapers/kpanel-desktop-xp.svg"
 	case "orbit", "horizon", "rift", "prism":
 		wallpaper.URL = "/wallpapers/kpanel-desktop-" + value.Wallpaper + ".webp"
 		wallpaper.Bright = value.Wallpaper == "horizon"

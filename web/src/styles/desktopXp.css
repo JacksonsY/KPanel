@@ -18,17 +18,6 @@
   display: none;
 }
 
-.desktop[data-shell-style='xp'] .desktop-wallpaper-surface[data-wallpaper='classic'] {
-  background-color: #58a8e9;
-  background-image: url('/wallpapers/kpanel-desktop-xp-photo.jpg') !important;
-  background-position: center;
-  background-size: cover;
-}
-
-.desktop[data-shell-style='xp'] .desktop-wallpaper-surface[data-wallpaper='classic'] .desktop-wallpaper-surface__image {
-  visibility: hidden;
-}
-
 .desktop[data-shell-style='xp'] .desktop__icon-label {
   height: auto;
   min-height: 16px;
@@ -39,65 +28,17 @@
   border: 1px solid transparent;
   border-radius: 0;
   box-shadow: none;
+  font-family: Tahoma, 'Microsoft YaHei', 'PingFang SC', sans-serif;
   font-size: 12px;
   font-weight: 400;
   line-height: 16px;
-  text-shadow: 1px 1px 2px #10294a, -1px -1px 2px #10294a, 0 2px 4px #10294a;
-}
-
-.desktop[data-shell-style='xp'] .desktop__icon {
-  width: 86px;
-  height: 90px;
-  gap: 1px;
-  padding: 3px 2px;
-  border-radius: 2px;
-  transition: background-color .1s linear, border-color .1s linear;
-}
-
-.desktop[data-shell-style='xp'] .desktop__icon:not(.desktop__icon--selected):hover {
-  background: rgb(255 255 255 / 10%);
-  border-color: rgb(255 255 255 / 22%);
-  transform: none;
-}
-
-.desktop[data-shell-style='xp'] .desktop__icon--selected {
-  background: rgb(49 106 197 / 48%);
-  border: 1px dotted #fff;
-  box-shadow: none;
-}
-
-.desktop[data-shell-style='xp'] .desktop__icon-glyph {
-  width: 48px;
-  height: 48px;
-  border-color: transparent;
-  border-radius: 2px;
-  box-shadow: none;
-  transition: none;
-}
-
-.desktop[data-shell-style='xp'] .desktop__icon-glyph::before {
-  background: none;
-}
-
-.desktop[data-shell-style='xp'] .desktop__icon:hover .desktop__icon-glyph {
-  box-shadow: none;
-  transform: none;
-}
-
-.desktop[data-shell-style='xp'] .desktop__icon-img,
-.desktop[data-shell-style='xp'] .desktop__shortcut-directory-image {
-  border-radius: 1px;
-}
-
-.desktop[data-shell-style='xp'] .desktop__shortcut-artwork,
-.desktop[data-shell-style='xp'] .desktop__shortcut-artwork--directory {
-  width: 48px;
-  height: 48px;
+  text-shadow: 1px 1px 2px rgb(9 29 55 / 92%);
 }
 
 .desktop[data-shell-style='xp'] .desktop__icon--selected .desktop__icon-label {
-  background: #316ac5;
-  border-color: #316ac5;
+  background: #145db8;
+  outline: 1px dotted #fff;
+  text-shadow: none;
 }
 
 .desktop[data-shell-style='xp'] .desktop__widgets,
@@ -105,14 +46,77 @@
   color: #1b2c42;
 }
 
-.desktop[data-shell-style='xp'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status, .desktop-widget-slot) {
-  color: #1b2c42;
-  background: #f1f5fa;
-  border: 1px solid #fff;
+.desktop[data-shell-style='xp'] .desktop-widget-slot {
+  background: transparent;
   border-radius: 4px;
-  box-shadow: 1px 2px 5px rgb(17 43 76 / 32%);
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='xp'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status) {
+  --text: #1b2c42;
+  --text-soft: #38516c;
+  --muted: #526981;
+  --brand: #2468b6;
+  --success: #25854c;
+  --border: #adbed1;
+  --surface-subtle: #e5edf7;
+  --desktop-label: #1b2c42;
+  color: #1b2c42;
+  background: linear-gradient(180deg, #f9fbfe 0%, #eef3f9 100%);
+  border: 1px solid #9bb2cd;
+  border-top-color: #fff;
+  border-left-color: #fff;
+  border-radius: 4px;
+  box-shadow: inset 1px 1px 0 rgb(255 255 255 / 85%), inset -1px -1px 0 #d5e0ec, 1px 2px 5px rgb(17 43 76 / 32%);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+}
+
+.desktop[data-shell-style='xp'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status) {
+  padding: 0 14px 14px;
+}
+
+.desktop[data-shell-style='xp'] :is(.desktop-clock__header, .desktop-monitor__header, .desktop-service-status__header) {
+  min-height: 31px;
+  margin: 0 -14px 12px;
+  padding: 0 11px;
+  color: #fff;
+  background: linear-gradient(180deg, #2b6fca 0%, #1768c9 44%, #0753b8 100%);
+  border-bottom: 1px solid #174d8b;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 56%);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+  text-shadow: 0 1px 1px #153f72;
+}
+
+.desktop[data-shell-style='xp'] :is(.desktop-clock__header > span svg, .desktop-monitor__header > svg, .desktop-service-status__header > span svg) {
+  color: #fff;
+}
+
+.desktop[data-shell-style='xp'] .desktop-widget-slot:focus-visible {
+  outline: 3px solid #ffe179;
+  outline-offset: 2px;
+}
+
+.desktop[data-shell-style='xp'] .desktop-clock__time {
+  color: #172b43;
+  text-shadow: none;
+}
+
+.desktop[data-shell-style='xp'] .desktop-clock__weekday {
+  color: #245fa9;
+}
+
+.desktop[data-shell-style='xp'] .desktop-clock__server {
+  border-top-color: #c4d2e2;
+}
+
+.desktop[data-shell-style='xp'] .desktop-clock__server-icon {
+  background: #dce9f8;
+  border: 1px solid #c0d2e7;
+  border-radius: 3px;
 }
 
 .desktop[data-shell-style='xp'] .desktop-window {
@@ -141,20 +145,19 @@
   min-height: 34px;
   padding-left: 7px;
   color: #fff;
-  background: linear-gradient(180deg, #2d72c8 0%, #2b6fca 12%, #226cc3 47%, #0754bd 76%, #06439e 100%);
+  background: linear-gradient(180deg, #2b6fca 0%, #1768c9 28%, #0753b8 74%, #174b9d 100%);
   border-bottom: 1px solid #063778;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 62%), inset 0 -1px 0 rgb(0 34 92 / 38%);
   text-shadow: 0 1px 1px #173d74;
 }
 
 .desktop[data-shell-style='xp'] .desktop-window--focused .desktop-window__titlebar {
   color: #fff;
-  background: linear-gradient(180deg, #2d72c8 0%, #246fc7 12%, #1f68bd 47%, #0757c2 76%, #06449f 100%);
+  background: linear-gradient(180deg, #2b6fca 0%, #176bd2 28%, #0755be 74%, #174da4 100%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window:not(.desktop-window--focused) .desktop-window__titlebar {
   color: #203954;
-  background: linear-gradient(180deg, #edf4fc 0%, #d6e4f3 18%, #bacfe6 61%, #a4bdd8 100%);
+  background: linear-gradient(180deg, #d5e1ee 0%, #b5c9df 55%, #98b1ce 100%);
   text-shadow: none;
 }
 
@@ -179,13 +182,13 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__action {
-  width: 23px;
-  height: 20px;
+  width: 25px;
+  height: 22px;
   color: #fff;
-  background: linear-gradient(180deg, #a9d1f7, #4c8fe0 48%, #1b5cba);
-  border: 1px solid #e3f1ff;
-  border-radius: 3px;
-  box-shadow: 1px 1px 2px rgb(0 30 81 / 54%), inset 1px 1px 0 rgb(255 255 255 / 62%), inset -1px -1px 0 rgb(0 33 101 / 24%);
+  background: linear-gradient(180deg, #78ade9, #2b6fc4 55%, #15509e);
+  border: 1px solid #f5f9ff;
+  border-radius: 4px;
+  box-shadow: 1px 1px 2px rgb(0 30 81 / 54%), inset 0 1px 0 rgb(255 255 255 / 55%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__action svg {
@@ -218,6 +221,10 @@
   outline-offset: 2px;
 }
 
+.desktop[data-shell-style='xp'] .desktop-start-menu__search input:focus-visible {
+  outline: 0;
+}
+
 .desktop[data-shell-style='xp'] .desktop-window__body {
   border-radius: 0;
 }
@@ -231,11 +238,11 @@
   gap: 5px;
   padding: 2px 5px 2px 0;
   color: #fff;
-  background: linear-gradient(180deg, #256fc1 0%, #145ebd 45%, #0b4da9 100%);
+  background: linear-gradient(180deg, #2075d1 0%, #1671de 8%, #0b63d1 52%, #0752bd 100%);
   border: 0;
-  border-top: 1px solid #83bafa;
+  border-top: 1px solid #7bb6f5;
   border-radius: 0;
-  box-shadow: 0 -1px 3px rgb(0 20 73 / 30%), inset 0 1px 0 rgb(255 255 255 / 22%);
+  box-shadow: 0 -1px 3px rgb(0 20 73 / 30%), inset 0 1px 0 rgb(255 255 255 / 52%);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -269,26 +276,13 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop__xp-start-mark {
-  display: grid;
-  width: 17px;
-  height: 17px;
-  flex: 0 0 auto;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 2px;
-  transform: skewY(-9deg);
-}
-
-.desktop[data-shell-style='xp'] .desktop__xp-start-mark i {
   display: block;
-  border: 1px solid rgb(255 255 255 / 78%);
-  border-radius: 1px;
-  box-shadow: 0 1px 1px rgb(0 0 0 / 26%);
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 32%));
 }
-
-.desktop[data-shell-style='xp'] .desktop__xp-start-mark i:nth-child(1) { background: #ed5148; }
-.desktop[data-shell-style='xp'] .desktop__xp-start-mark i:nth-child(2) { background: #70b940; }
-.desktop[data-shell-style='xp'] .desktop__xp-start-mark i:nth-child(3) { background: #438ee2; }
-.desktop[data-shell-style='xp'] .desktop__xp-start-mark i:nth-child(4) { background: #f0c53b; }
 
 .desktop[data-shell-style='xp'] .desktop__xp-start-label {
   line-height: 1.1;
@@ -299,8 +293,12 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop__taskbar-agent {
-  gap: 3px;
+  min-height: 34px;
+  gap: 6px;
+  padding: 0 9px;
   color: #fff;
+  border-left: 1px solid rgb(4 60 143 / 65%);
+  box-shadow: inset 1px 0 0 rgb(255 255 255 / 18%);
 }
 
 .desktop[data-shell-style='xp'] .desktop__taskbar-agent-status,
@@ -326,17 +324,17 @@
   gap: 7px;
   padding: 0 9px;
   color: #fff;
-  background: linear-gradient(180deg, #286fc3, #1758a9 56%, #104887);
-  border: 1px solid #4d8bd6;
+  background: linear-gradient(180deg, #2a72c1 0%, #1b63b2 52%, #15519a 100%);
+  border: 1px solid #3d81c8;
   border-radius: 3px;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 18%), 1px 1px 2px rgb(0 24 70 / 38%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 36%), 1px 1px 2px rgb(0 24 70 / 38%);
 }
 
 .desktop[data-shell-style='xp'] .desktop__taskbar-item:hover,
 .desktop[data-shell-style='xp'] .desktop__taskbar-item--active {
-  background: linear-gradient(180deg, #0e4b99, #154f9c 60%, #1d59a4);
-  border-color: #103d7d;
-  box-shadow: inset 1px 1px 2px rgb(0 24 72 / 52%), 0 1px 0 rgb(255 255 255 / 12%);
+  background: linear-gradient(180deg, #1255a5 0%, #0d4b9b 60%, #1c5da8 100%);
+  border-color: #0c438d;
+  box-shadow: inset 1px 1px 2px rgb(0 24 72 / 58%), inset -1px -1px 0 rgb(255 255 255 / 10%);
   transform: none;
 }
 
@@ -376,10 +374,14 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop__system-tray {
-  gap: 3px;
-  padding-left: 8px;
-  border-left: 1px solid #7aace2;
-  box-shadow: inset 1px 0 0 #144990;
+  min-height: 34px;
+  gap: 1px;
+  padding: 0 3px;
+  background: linear-gradient(180deg, #2473c2 0%, #1d6bb7 50%, #145ca8 100%);
+  border: 1px solid #4c9dec;
+  border-left-color: #0a4fa4;
+  border-radius: 2px;
+  box-shadow: inset 1px 1px 0 rgb(255 255 255 / 38%), inset -1px -1px 0 rgb(0 48 128 / 28%);
 }
 
 .desktop[data-shell-style='xp'] .desktop__taskbar-clock {
@@ -390,8 +392,8 @@
   justify-content: center;
   padding: 0 7px;
   color: #fff;
-  border-left: 1px solid #76a9df;
-  box-shadow: inset 1px 0 0 #164b8d;
+  border-left: 1px solid rgb(255 255 255 / 20%);
+  box-shadow: inset 1px 0 0 rgb(0 50 126 / 32%);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 1px #15427c;
@@ -400,6 +402,7 @@
 
 .desktop[data-shell-style='xp'] .desktop__tray-button,
 .desktop[data-shell-style='xp'] .desktop__classic-button {
+  min-width: 28px;
   min-height: 34px;
   color: #fff;
   background: transparent;
@@ -409,8 +412,8 @@
 
 .desktop[data-shell-style='xp'] .desktop__tray-button:hover,
 .desktop[data-shell-style='xp'] .desktop__classic-button:hover {
-  background: #1b65bb;
-  border-color: #72a8e3;
+  background: linear-gradient(180deg, #2b78c5, #125caf);
+  border-color: #96c3ef;
 }
 
 .desktop[data-shell-style='xp'] .desktop__classic-button span {
@@ -420,9 +423,8 @@
 .desktop[data-shell-style='xp'] .desktop-start-menu {
   bottom: 48px;
   left: 0;
-  width: min(620px, calc(100vw - 12px));
-  max-height: min(660px, calc(100dvh - 56px));
-  min-height: min(440px, calc(100dvh - 56px));
+  width: min(540px, calc(100vw - 12px));
+  max-height: min(560px, calc(100dvh - 56px));
   color: #192b40;
   background: #dbe9f8;
   border: 2px solid #1259b8;
@@ -757,7 +759,7 @@
 }
 
 .desktop-shell-style-options__preview--xp {
-  background: url('/wallpapers/kpanel-desktop-xp-photo.jpg') center / cover no-repeat;
+  background: url('/wallpapers/kpanel-desktop-xp.svg') center / cover no-repeat;
 }
 
 .desktop-shell-style-options__window {
@@ -873,7 +875,7 @@
   .desktop[data-shell-style='xp'] .desktop-start-menu {
     bottom: 48px;
     width: calc(100vw - 8px);
-    max-height: min(620px, calc(100dvh - 56px));
+    max-height: min(560px, calc(100dvh - 56px));
   }
 
   .desktop[data-shell-style='xp'] .desktop-start-menu__xp-header {

@@ -49,7 +49,18 @@ describe('shared desktop wallpaper', () => {
 
     expect(wallpaper.id.value).toBe('orbit')
     expect(window.localStorage.getItem(DESKTOP_WALLPAPER_KEY)).toBe('orbit')
-    expect(theme.setColors).toHaveBeenCalledWith(DESKTOP_WALLPAPERS[1].themePreset.colors)
+    expect(theme.setColors).toHaveBeenCalledWith(DESKTOP_WALLPAPERS.find((item) => item.id === 'orbit')?.themePreset.colors)
+  })
+
+  it('registers the Windows XP wallpaper as a selectable built-in', () => {
+    const wallpaper = useDesktopWallpaper()
+
+    expect(isDesktopWallpaperID('xp')).toBe(true)
+    expect(desktopWallpaperImage('xp').url).toBe('/wallpapers/kpanel-desktop-xp.svg')
+    expect(wallpaper.select('xp')).toBe(true)
+    expect(wallpaper.id.value).toBe('xp')
+    expect(window.localStorage.getItem(DESKTOP_WALLPAPER_KEY)).toBe('xp')
+    expect(theme.setColors).toHaveBeenCalledWith(DESKTOP_WALLPAPERS.find((item) => item.id === 'xp')?.themePreset.colors)
   })
 
   it('uses only the matching bounded built-in cache and replaces it with the server choice', () => {
