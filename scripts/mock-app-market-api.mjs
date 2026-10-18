@@ -1866,6 +1866,41 @@ async function readJSON(request, maxBytes = 65_536) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
 }
 
+async function readAvatarUpload(request, maxBytes = 544 << 10) {
+  const chunks = []
+  let size = 0
+  let tooLarge = false
+  for await (const chunk of request) {
+    size += chunk.length
+    if (size > maxBytes) {
+      tooLarge = true
+      continue
+    }
+    chunks.push(chunk)
+  }
+  if (tooLarge) return { tooLarge: true }
+
+  const contentType = request.headers['content-type'] || ''
+  const boundary = contentType.match(/^multipart\/form-data;\s*boundary=(?:"([^"]+)"|([^;\s]+))/i)
+  const marker = boundary?.[1] || boundary?.[2]
+  if (!marker) return null
+
+  const body = Buffer.concat(chunks)
+  const fieldStart = body.indexOf(Buffer.from('name="avatar"'))
+  if (fieldStart < 0) return null
+  const headersEnd = body.indexOf(Buffer.from('\r\n\r\n'), fieldStart)
+  if (headersEnd < 0) return null
+  const dataStart = headersEnd + 4
+  const dataEnd = body.indexOf(Buffer.from(`\r\n--${marker}`), dataStart)
+  if (dataEnd < 0) return null
+
+  const headers = body.subarray(fieldStart, headersEnd).toString('latin1')
+  const mediaType = headers.match(/(?:^|\r\n)Content-Type:\s*([^\r\n;]+)/i)?.[1]?.trim().toLowerCase()
+  const data = body.subarray(dataStart, dataEnd)
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(mediaType) || data.length === 0) return null
+  return { mediaType, data }
+}
+
 let mockMonitoringCheckRevision = 1
 let mockMonitoringChecks = [
   ...['telecom', 'unicom', 'mobile'].flatMap((operator, operatorIndex) =>
@@ -1937,6 +1972,19 @@ createServer(async (request, response) => {
   if (await mockDesktopWallpapers(request, response, url, send)) return
   if (await mockGallery(request, response, url, send, readJSON)) return
   if (await mockOffers(request, response, url, send)) return
+  if (url.pathname === '/api/v1/settings/avatar' && request.method === 'PUT') {
+    const upload = await readAvatarUpload(request)
+    if (upload?.tooLarge) {
+      send(response, 413, { title: 'Avatar file is too large', code: 'avatar_file_too_large' })
+      return
+    }
+    if (!upload) {
+      send(response, 422, { title: 'Avatar image is invalid', code: 'avatar_image_invalid' })
+      return
+    }
+    send(response, 200, { avatar: `data:${upload.mediaType};base64,${upload.data.toString('base64')}` })
+    return
+  }
   if (url.pathname === '/api/v1/settings/preferences' && request.method === 'GET') {
     send(response, 200, mockPreferences)
     return
