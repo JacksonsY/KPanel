@@ -20,7 +20,7 @@
 
 .desktop[data-shell-style='xp'] .desktop-wallpaper-surface[data-wallpaper='classic'] {
   background-color: #58a8e9;
-  background-image: url('/wallpapers/kpanel-desktop-xp.svg') !important;
+  background-image: url('/wallpapers/kpanel-desktop-xp-photo.jpg') !important;
   background-position: center;
   background-size: cover;
 }
@@ -30,13 +30,74 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop__icon-label {
+  height: auto;
+  min-height: 16px;
+  max-width: 84px;
+  padding: 0 2px;
   color: #fff;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
   text-shadow: 1px 1px 2px #10294a, -1px -1px 2px #10294a, 0 2px 4px #10294a;
 }
 
+.desktop[data-shell-style='xp'] .desktop__icon {
+  width: 86px;
+  height: 90px;
+  gap: 1px;
+  padding: 3px 2px;
+  border-radius: 2px;
+  transition: background-color .1s linear, border-color .1s linear;
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon:not(.desktop__icon--selected):hover {
+  background: rgb(255 255 255 / 10%);
+  border-color: rgb(255 255 255 / 22%);
+  transform: none;
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon--selected {
+  background: rgb(49 106 197 / 48%);
+  border: 1px dotted #fff;
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon-glyph {
+  width: 48px;
+  height: 48px;
+  border-color: transparent;
+  border-radius: 2px;
+  box-shadow: none;
+  transition: none;
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon-glyph::before {
+  background: none;
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon:hover .desktop__icon-glyph {
+  box-shadow: none;
+  transform: none;
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon-img,
+.desktop[data-shell-style='xp'] .desktop__shortcut-directory-image {
+  border-radius: 1px;
+}
+
+.desktop[data-shell-style='xp'] .desktop__shortcut-artwork,
+.desktop[data-shell-style='xp'] .desktop__shortcut-artwork--directory {
+  width: 48px;
+  height: 48px;
+}
+
 .desktop[data-shell-style='xp'] .desktop__icon--selected .desktop__icon-label {
-  background: #145db8;
-  outline: 1px dotted #fff;
+  background: #316ac5;
+  border-color: #316ac5;
 }
 
 .desktop[data-shell-style='xp'] .desktop__widgets,
@@ -57,15 +118,17 @@
 .desktop[data-shell-style='xp'] .desktop-window {
   background: #f1f3f7;
   border: 1px solid #0a3478;
-  border-top-color: #c6dcf2;
-  border-radius: 8px 8px 0 0;
-  box-shadow: 2px 4px 10px rgb(0 22 68 / 34%);
+  border-top-color: #d8e9fa;
+  border-left-color: #9fc6ee;
+  border-radius: 7px 7px 0 0;
+  box-shadow: 1px 2px 5px rgb(0 22 68 / 34%), inset 1px 0 0 rgb(255 255 255 / 36%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window--focused {
   border-color: #073a87;
-  border-top-color: #d9eaff;
-  box-shadow: 2px 4px 11px rgb(0 22 68 / 48%);
+  border-top-color: #e7f4ff;
+  border-left-color: #bad9f6;
+  box-shadow: 1px 2px 6px rgb(0 22 68 / 48%), inset 1px 0 0 rgb(255 255 255 / 48%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window--maximized,
@@ -78,19 +141,20 @@
   min-height: 34px;
   padding-left: 7px;
   color: #fff;
-  background: linear-gradient(180deg, #2b6fca 0%, #1768c9 28%, #0753b8 74%, #174b9d 100%);
+  background: linear-gradient(180deg, #2d72c8 0%, #2b6fca 12%, #226cc3 47%, #0754bd 76%, #06439e 100%);
   border-bottom: 1px solid #063778;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 62%), inset 0 -1px 0 rgb(0 34 92 / 38%);
   text-shadow: 0 1px 1px #173d74;
 }
 
 .desktop[data-shell-style='xp'] .desktop-window--focused .desktop-window__titlebar {
   color: #fff;
-  background: linear-gradient(180deg, #2b6fca 0%, #176bd2 28%, #0755be 74%, #174da4 100%);
+  background: linear-gradient(180deg, #2d72c8 0%, #246fc7 12%, #1f68bd 47%, #0757c2 76%, #06449f 100%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window:not(.desktop-window--focused) .desktop-window__titlebar {
   color: #203954;
-  background: linear-gradient(180deg, #d5e1ee 0%, #b5c9df 55%, #98b1ce 100%);
+  background: linear-gradient(180deg, #edf4fc 0%, #d6e4f3 18%, #bacfe6 61%, #a4bdd8 100%);
   text-shadow: none;
 }
 
@@ -115,13 +179,13 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__action {
-  width: 25px;
-  height: 22px;
+  width: 23px;
+  height: 20px;
   color: #fff;
-  background: linear-gradient(180deg, #78ade9, #2b6fc4 55%, #15509e);
-  border: 1px solid #f5f9ff;
-  border-radius: 4px;
-  box-shadow: 1px 1px 2px rgb(0 30 81 / 54%), inset 0 1px 0 rgb(255 255 255 / 55%);
+  background: linear-gradient(180deg, #a9d1f7, #4c8fe0 48%, #1b5cba);
+  border: 1px solid #e3f1ff;
+  border-radius: 3px;
+  box-shadow: 1px 1px 2px rgb(0 30 81 / 54%), inset 1px 1px 0 rgb(255 255 255 / 62%), inset -1px -1px 0 rgb(0 33 101 / 24%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__action svg {
@@ -136,12 +200,14 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__action--close {
-  background: linear-gradient(180deg, #d74c3c, #bd2f22 54%, #8e1b17);
+  background: linear-gradient(180deg, #f48972, #e34f3d 46%, #c6281f 100%);
+  border-color: #fff0e7;
+  box-shadow: 1px 1px 2px rgb(80 8 7 / 52%), inset 1px 1px 0 rgb(255 255 255 / 68%), inset -1px -1px 0 rgb(104 11 10 / 28%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__action--close:hover {
   color: #fff;
-  background: linear-gradient(180deg, #d74c3c, #bd2f22 54%, #8e1b17);
+  background: linear-gradient(180deg, #f6977f, #eb604b 46%, #c92c22 100%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__action:focus-visible,
@@ -316,6 +382,22 @@
   box-shadow: inset 1px 0 0 #144990;
 }
 
+.desktop[data-shell-style='xp'] .desktop__taskbar-clock {
+  display: inline-flex;
+  min-width: 52px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  color: #fff;
+  border-left: 1px solid #76a9df;
+  box-shadow: inset 1px 0 0 #164b8d;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 1px #15427c;
+  white-space: nowrap;
+}
+
 .desktop[data-shell-style='xp'] .desktop__tray-button,
 .desktop[data-shell-style='xp'] .desktop__classic-button {
   min-height: 34px;
@@ -331,14 +413,19 @@
   border-color: #72a8e3;
 }
 
+.desktop[data-shell-style='xp'] .desktop__classic-button span {
+  display: none;
+}
+
 .desktop[data-shell-style='xp'] .desktop-start-menu {
   bottom: 48px;
   left: 0;
   width: min(620px, calc(100vw - 12px));
   max-height: min(660px, calc(100dvh - 56px));
+  min-height: min(440px, calc(100dvh - 56px));
   color: #192b40;
-  background: #f1f5fa;
-  border: 2px solid #0753b5;
+  background: #dbe9f8;
+  border: 2px solid #1259b8;
   border-bottom: 0;
   border-radius: 7px 7px 0 0;
   box-shadow: 3px -2px 9px rgb(0 30 80 / 40%);
@@ -346,78 +433,118 @@
   backdrop-filter: none;
 }
 
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-header {
+  display: flex;
+  min-height: 54px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  color: #fff;
+  background: linear-gradient(180deg, #2d72c8 0%, #2371c5 13%, #1458ab 100%);
+  border-bottom: 1px solid #0a4ca5;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 35%), inset 0 -1px 0 rgb(0 37 101 / 44%);
+  text-shadow: 0 1px 1px #174d8d;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-header .desktop-start-menu__avatar {
+  width: 40px;
+  height: 40px;
+  color: #164f91;
+  background: linear-gradient(145deg, #fff, #c9dcf0);
+  border: 2px solid #f7fbff;
+  border-radius: 4px;
+  box-shadow: 1px 2px 3px rgb(0 29 74 / 42%);
+  font-size: 19px;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-user-name {
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .desktop[data-shell-style='xp'] .desktop-start-menu__search {
-  min-height: 42px;
-  margin: 10px 10px 7px;
+  min-width: 0;
+  min-height: 32px;
+  margin: 0;
+  gap: 6px;
+  padding: 0 7px;
   color: #3b5066;
   background: #fff;
-  border: 1px solid #91a9c3;
-  border-radius: 2px;
-  box-shadow: inset 1px 1px 2px rgb(28 57 91 / 16%);
+  border: 1px solid #748eaa;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #c6d4e2, inset -1px -1px 0 #fff;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__search input {
-  height: 40px;
+  height: 30px;
   color: #17283d;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__body {
+  min-height: 0;
   padding: 0 8px 8px;
+  background: linear-gradient(90deg, #fff 0 54%, #dbe9f8 54% 100%);
   border-top: 1px solid #d0d9e4;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__results {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
   align-content: start;
-  gap: 0 8px;
+  gap: 0 10px;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-entries'] {
   grid-column: 1;
   grid-row: 1 / span 2;
-  padding: 0 8px 8px 0;
-  background: #fff;
+  padding: 0 10px 8px 0;
+  background: transparent;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-system'] {
   grid-column: 2;
   grid-row: 1;
   padding: 0 0 8px 8px;
-  background: #dbe9f8;
+  background: transparent;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-actions'] {
   grid-column: 2;
   grid-row: 2;
   padding: 0 0 8px 8px;
-  background: #dbe9f8;
+  background: transparent;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__heading {
-  padding: 8px 6px 6px;
-  color: #314b68;
-  border-bottom: 1px solid #d4deea;
+  padding: 10px 6px 7px;
+  color: #304a67;
+  border-bottom: 1px solid #d0d9e3;
   font-size: 12px;
   font-weight: 700;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__option {
-  min-height: 40px;
-  gap: 8px;
-  padding: 5px 6px;
-  border-radius: 2px;
+  min-height: 36px;
+  gap: 7px;
+  padding: 3px 5px;
+  border-radius: 0;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__option--active {
   color: #fff;
-  background: #1767bd;
-  box-shadow: inset 0 0 0 1px #0d4c99;
+  background: #316ac5;
+  box-shadow: inset 0 0 0 1px #2359a9;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__option--active .desktop-start-menu__detail {
   color: #e5f0ff;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__detail {
+  display: none;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__label {
@@ -434,22 +561,64 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__footer {
-  padding: 5px 8px;
+  min-height: 46px;
+  padding: 4px 8px;
   color: #fff;
-  background: linear-gradient(180deg, #256fc1, #155db3 55%, #0c4c9e);
-  border-top: 1px solid #7eafe7;
+  background: linear-gradient(180deg, #2371c5 0%, #1c66bf 48%, #1052a7 100%);
+  border-top: 1px solid #80b6ee;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 15%);
 }
 
-.desktop[data-shell-style='xp'] .desktop-start-menu__user,
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-logoff,
 .desktop[data-shell-style='xp'] .desktop-start-menu__footer-button,
 .desktop[data-shell-style='xp'] .desktop-start-menu .language-selector__trigger {
   color: #fff;
   border-radius: 2px;
 }
 
-.desktop[data-shell-style='xp'] .desktop-start-menu__user > svg,
-.desktop[data-shell-style='xp'] .desktop-start-menu__user-text small {
-  color: #e5f1ff;
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-logoff {
+  display: inline-flex;
+  min-width: 88px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  background: linear-gradient(180deg, #2371c5, #1e64b9 55%, #164f9c);
+  border: 1px solid #a6cdf2;
+  box-shadow: inset 1px 1px 0 rgb(255 255 255 / 32%), inset -1px -1px 0 rgb(0 36 100 / 35%);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-logoff:hover:not(:disabled),
+.desktop[data-shell-style='xp'] .desktop-start-menu__all-programs:hover {
+  filter: brightness(1.08);
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-logoff:disabled {
+  opacity: .65;
+  cursor: progress;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__footer-button {
+  width: 34px;
+  height: 32px;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__footer-actions {
+  gap: 2px;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu .language-selector__trigger {
+  height: 32px;
+  min-height: 32px;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__footer-button,
+.desktop[data-shell-style='xp'] .desktop-start-menu .language-selector__trigger {
+  border: 1px solid transparent;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__avatar {
@@ -459,12 +628,58 @@
   border-radius: 3px;
 }
 
-.desktop[data-shell-style='xp'] .desktop-start-menu__user:hover:not(:disabled),
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-logoff:hover:not(:disabled),
 .desktop[data-shell-style='xp'] .desktop-start-menu__footer-button:hover,
 .desktop[data-shell-style='xp'] .desktop-start-menu .language-selector__trigger:hover {
   color: #fff;
   background: #256dbd;
   border-color: #8ec3f7;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-controls {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+  gap: 10px;
+  padding: 6px 12px 8px;
+  background: linear-gradient(90deg, #fff 0 54%, #dbe9f8 54% 100%);
+  border-top: 1px solid #d0d9e3;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-controls--search-only {
+  grid-template-columns: 1fr;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__all-programs {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  color: #1b2c40;
+  background: linear-gradient(180deg, #fff, #edf2f7);
+  border: 1px solid #c6d2df;
+  border-radius: 2px;
+  box-shadow: inset 1px 1px 0 #fff, 1px 1px 1px rgb(22 45 70 / 14%);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__all-programs svg {
+  flex: 0 0 auto;
+  color: #33802b;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__xp-controls .desktop-start-menu__search:focus-within {
+  border-color: #245da4;
+  outline: 1px dotted #245da4;
+  outline-offset: 1px;
+  box-shadow: inset 1px 1px 0 #c6d4e2, inset -1px -1px 0 #fff;
 }
 
 .desktop[data-shell-style='xp'] .desktop__context-menu {
@@ -542,7 +757,7 @@
 }
 
 .desktop-shell-style-options__preview--xp {
-  background: url('/wallpapers/kpanel-desktop-xp.svg') center / cover no-repeat;
+  background: url('/wallpapers/kpanel-desktop-xp-photo.jpg') center / cover no-repeat;
 }
 
 .desktop-shell-style-options__window {
@@ -661,8 +876,36 @@
     max-height: min(620px, calc(100dvh - 56px));
   }
 
+  .desktop[data-shell-style='xp'] .desktop-start-menu__xp-header {
+    min-height: 50px;
+  }
+
   .desktop-shell-style-options {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .desktop[data-shell-style='xp'] .desktop-start-menu__results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-entries'],
+  .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-system'],
+  .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-actions'] {
+    grid-column: 1;
+    grid-row: auto;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .desktop[data-shell-style='xp'] .desktop-start-menu__xp-controls {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .desktop[data-shell-style='xp'] .desktop-start-menu__xp-controls--search-only {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

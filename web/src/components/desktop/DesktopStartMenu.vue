@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { focusTextInput } from '../../lib/touchFocus'
 import { computed, nextTick, ref, watch } from 'vue'
-import { LayoutPanelLeft, LogOut, Moon, RotateCw, Search, Sun } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, LayoutPanelLeft, LogOut, Moon, RotateCw, Search, Sun } from '@lucide/vue'
 import LanguageSelector from '@/components/common/LanguageSelector.vue'
 import { useI18n } from '@/i18n'
 import {
@@ -13,8 +13,8 @@ import {
 } from '@/lib/desktopStartMenu'
 
 /**
- * Search-first start menu opened from the taskbar K button. It only presents
- * items and reports choices; DesktopView owns every launch and command.
+ * Taskbar menu for both the KPanel and XP shells. It only presents items and
+ * reports choices; DesktopView owns every launch and command.
  */
 
 const props = defineProps<{
@@ -22,6 +22,7 @@ const props = defineProps<{
   items: readonly DesktopStartMenuItem[]
   entriesState: 'loading' | 'ready' | 'unavailable'
   userName: string
+  xp?: boolean
   signingOut?: boolean
   dark?: boolean
   /** The toggle button; moving focus to it does not dismiss the menu. */
@@ -48,24 +49,31 @@ const gridElement = ref<HTMLElement>()
 const body = ref<HTMLElement>()
 const query = ref('')
 const active = ref(0)
+const allProgramsExpanded = ref(false)
 const failedIcons = ref(new Set<string>())
 const loadedIcons = ref(new Set<string>())
 
 const searching = computed(() => Boolean(query.value.trim()))
 const results = computed(() => searchDesktopStartMenu(props.items, query.value))
+const visibleResults = computed(() => {
+  if (!props.xp || searching.value || allProgramsExpanded.value) return results.value
+  let visibleEntries = 0
+  return results.value.filter((item) => item.section !== 'entries' || visibleEntries++ < 6)
+})
 const gridCount = computed(() =>
-  searching.value ? 0 : results.value.filter((item) => item.section === 'system').length)
+  searching.value || props.xp ? 0 : visibleResults.value.filter((item) => item.section === 'system').length)
 const groups = computed(() => DESKTOP_START_MENU_SECTIONS
   .map((section) => ({
     section,
-    grid: section === 'system' && !searching.value,
-    options: results.value
+    grid: section === 'system' && !searching.value && !props.xp,
+    options: visibleResults.value
       .map((item, index) => ({ item, index }))
       .filter((option) => option.item.section === section),
   }))
   .filter((group) => group.options.length))
 const entryCount = computed(() => props.items.filter((item) => item.section === 'entries').length)
-const activeId = computed(() => results.value[active.value] ? optionId(active.value) : undefined)
+const canExpandPrograms = computed(() => Boolean(props.xp && !searching.value && entryCount.value > 6))
+const activeId = computed(() => visibleResults.value[active.value] ? optionId(active.value) : undefined)
 const userInitial = computed(() => props.userName.trim().slice(0, 1).toLocaleUpperCase() || 'K')
 
 function optionId(index: number): string {
@@ -116,6 +124,11 @@ function setGridElement(element: unknown): void {
   gridElement.value = element instanceof HTMLElement ? element : undefined
 }
 
+function toggleAllPrograms(): void {
+  allProgramsExpanded.value = !allProgramsExpanded.value
+  active.value = 0
+}
+
 const NAVIGATION_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'] as const
 type NavigationKey = (typeof NAVIGATION_KEYS)[number]
 
@@ -144,7 +157,7 @@ function onSearchKeyDown(event: KeyboardEvent): void {
     return
   }
   if (event.key !== 'Enter') return
-  const item = results.value[active.value]
+  const item = visibleResults.value[active.value]
   if (!item) return
   event.preventDefault()
   emit('select', item)
@@ -178,6 +191,7 @@ watch(() => props.open, async (open) => {
   if (!open) return
   query.value = ''
   active.value = 0
+  allProgramsExpanded.value = false
   await nextTick()
   focusTextInput(input.value, { preventScroll: true })
 }, { immediate: true })
@@ -187,7 +201,12 @@ watch(query, () => {
   if (body.value) body.value.scrollTop = 0
 })
 
-watch(() => results.value.length, (length) => {
+watch(() => props.xp, () => {
+  allProgramsExpanded.value = false
+  active.value = 0
+})
+
+watch(() => visibleResults.value.length, (length) => {
   if (active.value >= length) active.value = length ? 0 : -1
   else if (active.value < 0 && length) active.value = 0
 })
@@ -201,6 +220,7 @@ watch(() => results.value.length, (length) => {
       :id="MENU_ID"
       ref="root"
       class="desktop-start-menu"
+      :class="{ 'desktop-start-menu--xp': xp }"
       role="dialog"
       aria-modal="false"
       :aria-label="i18n.t('desktop.startMenuLabel')"
@@ -208,7 +228,12 @@ watch(() => results.value.length, (length) => {
       @focusout="onFocusOut"
       @contextmenu.prevent.stop
     >
-      <label class="desktop-start-menu__search">
+      <div v-if="xp" class="desktop-start-menu__xp-header">
+        <span class="desktop-start-menu__avatar" aria-hidden="true">{{ userInitial }}</span>
+        <strong class="desktop-start-menu__xp-user-name">{{ userName }}</strong>
+      </div>
+
+      <label v-if="!xp" class="desktop-start-menu__search">
         <Search :size="18" aria-hidden="true" />
         <input
           ref="input"
@@ -320,8 +345,44 @@ watch(() => results.value.length, (length) => {
         </template>
       </div>
 
+      <div v-if="xp" class="desktop-start-menu__xp-controls" :class="{ 'desktop-start-menu__xp-controls--search-only': !canExpandPrograms }">
+        <button
+          v-if="canExpandPrograms"
+          type="button"
+          class="desktop-start-menu__all-programs"
+          :aria-expanded="allProgramsExpanded"
+          :aria-controls="LIST_ID"
+          @click="toggleAllPrograms"
+        >
+          <span>{{ i18n.t(allProgramsExpanded ? 'desktop.startMenuFewerPrograms' : 'desktop.startMenuAllPrograms') }}</span>
+          <ChevronLeft v-if="allProgramsExpanded" :size="16" aria-hidden="true" />
+          <ChevronRight v-else :size="16" aria-hidden="true" />
+        </button>
+        <label class="desktop-start-menu__search">
+          <Search :size="17" aria-hidden="true" />
+          <input
+            ref="input"
+            v-model="query"
+            type="text"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded="true"
+            :aria-controls="LIST_ID"
+            :aria-activedescendant="activeId"
+            :aria-label="i18n.t('desktop.startMenuSearch')"
+            :placeholder="i18n.t('desktop.startMenuSearchShort')"
+            autocomplete="off"
+            spellcheck="false"
+            enterkeyhint="go"
+            maxlength="120"
+            @keydown="onSearchKeyDown"
+          />
+        </label>
+      </div>
+
       <footer class="desktop-start-menu__footer">
         <button
+          v-if="!xp"
           class="desktop-start-menu__user"
           type="button"
           :disabled="signingOut"
@@ -333,6 +394,18 @@ watch(() => results.value.length, (length) => {
             <small>{{ i18n.t('nav.signOut') }}</small>
           </span>
           <LogOut :size="16" aria-hidden="true" />
+        </button>
+        <button
+          v-else
+          class="desktop-start-menu__xp-logoff"
+          type="button"
+          :disabled="signingOut"
+          :aria-label="i18n.t('nav.signOut')"
+          :title="i18n.t('nav.signOut')"
+          @click="emit('sign-out')"
+        >
+          <LogOut :size="16" aria-hidden="true" />
+          <span>{{ i18n.t('nav.signOut') }}</span>
         </button>
         <div class="desktop-start-menu__footer-actions">
           <LanguageSelector compact />
