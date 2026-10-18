@@ -49,11 +49,15 @@ describe('desktop visual and interaction contract', () => {
 
   it('gives XP taskbar and widgets Luna relief without flattening widget focus', () => {
     const taskbar = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__taskbar")
+    const startButton = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__taskbar-brand .desktop__start-button")
     const tray = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__system-tray")
     const widgets = cssRule(xpStyles, ".desktop[data-shell-style='xp'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status)")
     const widgetHeader = cssRule(xpStyles, ".desktop[data-shell-style='xp'] :is(.desktop-clock__header, .desktop-monitor__header, .desktop-service-status__header)")
 
     expect(taskbar).toContain('background: linear-gradient(')
+    expect(startButton).toContain('display: flex;')
+    expect(startButton).toContain('align-items: center;')
+    expect(startButton).toContain('justify-content: flex-start;')
     expect(tray).toContain('inset 1px 1px 0')
     expect(widgets).toContain('border-top-color: #fff;')
     expect(widgets).toContain('box-shadow: inset 1px 1px 0')

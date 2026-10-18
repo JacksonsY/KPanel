@@ -253,6 +253,8 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop__taskbar-brand .desktop__start-button {
+  display: flex;
+  align-items: center;
   width: 112px;
   height: 46px;
   justify-content: flex-start;
