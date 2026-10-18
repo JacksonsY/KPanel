@@ -14,8 +14,8 @@ var (
 	jsonSecretAssignment        = regexp.MustCompile(`(?i)("(?:[^"\\]|\\.)*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)(?:[^"\\]|\\.)*"\s*:\s*)("(?:\\.|[^"\\])*"|[^,\s}\]]+)`)
 	secretAssignment            = regexp.MustCompile(`(?i)(^|[^?&%A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*)(\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\s]+)`)
 	secretFlag                  = regexp.MustCompile(`(?i)(--?[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*\s+)("(?:\\.|[^"\\])*"|'[^']*'|[^\s]+)`)
-	mysqlPasswordAttachedOption = regexp.MustCompile(`(?i:(\b(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)\b))([^\r\n]*?\s-p)([^\s;&|]+)`)
-	mysqlPasswordSpacedOption   = regexp.MustCompile(`(?i:(\b(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)\b))([^\r\n]*?\s-p)(\s+)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s;&|-][^\s;&|]*)`)
+	mysqlPasswordAttachedOption = regexp.MustCompile(`(?i:(\b(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)\b))([^\r\n]*?\s-p)((?:"(?:\\.|[^"\\])*"|'[^']*'|\\.|[^\s;&|'"\\])+)`)
+	mysqlPasswordSpacedOption   = regexp.MustCompile(`(?i:(\b(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)\b))([^\r\n]*?\s-p)(\s+)((?:"(?:\\.|[^"\\])*"|'[^']*'|\\.|[^\s;&|'"\\-])(?:"(?:\\.|[^"\\])*"|'[^']*'|\\.|[^\s;&|'"\\])*)`)
 	authorizationHeader         = regexp.MustCompile(`(?i)\b(authorization|proxy-authorization)(\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\r\n]+)`)
 	authorizationFlag           = regexp.MustCompile(`(?i)(--?(?:proxy-)?authorization\s+)("(?:\\.|[^"\\])*"|'[^']*'|[^\r\n]+)`)
 	cookieHeader                = regexp.MustCompile(`(?i)\b(cookie|set-cookie)(\s*:\s*)[^\r\n]+`)
@@ -24,7 +24,7 @@ var (
 	openAISecret                = regexp.MustCompile(`(?i)\bsk-[A-Za-z0-9._~+/=-]{4,}`)
 	urlCredentials              = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s@]+@`)
 	urlQueryParameter           = regexp.MustCompile(`(?i)([?&]((?:[A-Za-z0-9_.-]|%[0-9a-f]{2})+)=)([^&#\s]*)`)
-	sensitiveURLQueryName       = regexp.MustCompile(`(?i)(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key|signature|key|sig)`)
+	sensitiveURLQueryName       = regexp.MustCompile(`(?i)(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key|signature)`)
 	terminalEscape              = regexp.MustCompile(`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))`)
 	privateKeyBegin             = regexp.MustCompile(`(?i)-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
 	privateKeyEnd               = regexp.MustCompile(`(?i)-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
@@ -176,7 +176,7 @@ func redactLine(value string) string {
 			return parameter
 		}
 		name, err := url.QueryUnescape(parts[2])
-		if err != nil || !sensitiveURLQueryName.MatchString(name) {
+		if err != nil || !isSensitiveURLQueryName(name) {
 			return parameter
 		}
 		return parts[1] + "[REDACTED]"
@@ -196,6 +196,42 @@ func redactLine(value string) string {
 		}
 		return -1
 	}, value)
+}
+
+func isSensitiveURLQueryName(name string) bool {
+	if sensitiveURLQueryName.MatchString(name) {
+		return true
+	}
+	// Split compound names such as access_token and accessToken so generic
+	// words like key and sig only match when they are complete name parts.
+	parts := make([]string, 0, 4)
+	runes := []rune(name)
+	start := 0
+	for index, character := range runes {
+		if character == '_' || character == '-' || character == '.' {
+			if start < index {
+				parts = append(parts, strings.ToLower(string(runes[start:index])))
+			}
+			start = index + 1
+			continue
+		}
+		if index > start && unicode.IsUpper(character) && (unicode.IsLower(runes[index-1]) || unicode.IsDigit(runes[index-1])) {
+			parts = append(parts, strings.ToLower(string(runes[start:index])))
+			start = index
+		}
+	}
+	if start < len(runes) {
+		parts = append(parts, strings.ToLower(string(runes[start:])))
+	}
+	for _, part := range parts {
+		switch part {
+		case "password", "passwd", "pwd", "token", "secret", "authorization", "cookie", "credential", "signature", "key", "sig":
+			return true
+		case "signingkey":
+			return true
+		}
+	}
+	return false
 }
 
 func truncateUTF8(value string, limit int) string {

@@ -19,6 +19,8 @@ func TestTextRedactsCredentialFamiliesAndKeepsSafeURLFields(t *testing.T) {
 		`Basic ZHVtbXk6ZHVtbXk=`,
 		`Cookie: session=cookie-secret; csrf=csrf-secret`,
 		`https://url-user:url-pass@example.test/path?access_token=query-secret&safe=visible`,
+		`https://example.test/path?design=dark`,
+		`https://example.test/path?authtoken=auto-secret&clientsecret=client-secret&password1=number-secret&key=key-secret&sig=sig-secret&myKey=camel-key-secret&mySig=camel-sig-secret&api=visible`,
 		`https://token-only@example.test/path`,
 		`https://example.test:8443/path`,
 	}, "\n")
@@ -28,6 +30,7 @@ func TestTextRedactsCredentialFamiliesAndKeepsSafeURLFields(t *testing.T) {
 		"YmFzaWMtc2VjcmV0", "ApiKey", "arbitrary-auth-secret", "Custom", "another-auth-secret",
 		"sk-example-dummy-secret", "ZHVtbXk6ZHVtbXk=",
 		"cookie-secret", "csrf-secret", "url-user", "url-pass", "query-secret", "token-only",
+		"auto-secret", "client-secret", "number-secret", "key-secret", "sig-secret", "camel-key-secret", "camel-sig-secret",
 	} {
 		if strings.Contains(output, secret) {
 			t.Fatalf("secret %q was not redacted: %s", secret, output)
@@ -35,6 +38,12 @@ func TestTextRedactsCredentialFamiliesAndKeepsSafeURLFields(t *testing.T) {
 	}
 	if !strings.Contains(output, "safe=visible") {
 		t.Fatalf("safe URL query was removed: %s", output)
+	}
+	if !strings.Contains(output, "design=dark") {
+		t.Fatalf("ordinary URL query was redacted: %s", output)
+	}
+	if !strings.Contains(output, "api=visible") {
+		t.Fatalf("ordinary api query was redacted: %s", output)
 	}
 	if !strings.Contains(output, "https://example.test:8443/path") {
 		t.Fatalf("ordinary URL host port was redacted: %s", output)
@@ -89,6 +98,26 @@ func TestTextRedactsMySQLShortPasswordOptionWithoutMaskingPort(t *testing.T) {
 	}
 	if !strings.Contains(output, `mysql -P 3306 -u panel`) {
 		t.Fatalf("MySQL port option was redacted: %s", output)
+	}
+}
+
+func TestTextRedactsQuotedAttachedMySQLShortPasswordOption(t *testing.T) {
+	output := Text(strings.Join([]string{
+		`mysql -p"alpha beta" database`,
+		`mariadb -p'gamma delta' database`,
+		`mysqldump -p"alpha \"quoted\" beta" database`,
+		`mysql -p'alpha'\'' beta' database`,
+		`mysql -p 'theta'\'' iota' database`,
+		`mysql -p'omega\' database`,
+		`mysql -p "kappa"-suffix database`,
+	}, "\n"))
+	for _, leaked := range []string{"alpha", "beta", "gamma", "delta", "quoted", "theta", "iota", "omega", "kappa", "suffix"} {
+		if strings.Contains(output, leaked) {
+			t.Fatalf("quoted MySQL password leaked %q: %s", leaked, output)
+		}
+	}
+	if strings.Count(output, "[REDACTED]") != 7 || strings.Count(output, "database") != 7 {
+		t.Fatalf("quoted MySQL arguments were not fully redacted: %s", output)
 	}
 }
 

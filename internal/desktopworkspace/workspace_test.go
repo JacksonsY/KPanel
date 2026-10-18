@@ -891,9 +891,19 @@ func TestShortcutSecretValuesAreRejectedAndLegacyDataIsRedacted(t *testing.T) {
 			},
 			field: "shortcuts.url",
 		},
+		{
+			name: "ordinary URL query",
+			input: func() ReplaceInput {
+				input := validReplaceInput(base.ResourceVersion)
+				input.Shortcuts[0].URL = "https://example.com/admin?design=dark"
+				return input
+			},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := store.Replace(test.input()); validationField(err) != test.field {
+			if _, err := store.Replace(test.input()); test.field == "" && err != nil {
+				t.Fatalf("Replace error = %v, want success", err)
+			} else if test.field != "" && validationField(err) != test.field {
 				t.Fatalf("Replace error = %v, want field %s", err, test.field)
 			}
 			data, err := os.ReadFile(store.workspacePath)
@@ -904,7 +914,7 @@ func TestShortcutSecretValuesAreRejectedAndLegacyDataIsRedacted(t *testing.T) {
 	}
 
 	legacy := store.state
-	legacy.Shortcuts[0].URL = "https://example.com/admin?token=legacy-workspace-secret"
+	legacy.Shortcuts[0].URL = "https://example.com/admin?token=legacy-workspace-secret&design=dark"
 	data, err := json.Marshal(legacy)
 	if err != nil {
 		t.Fatal(err)
@@ -920,7 +930,7 @@ func TestShortcutSecretValuesAreRejectedAndLegacyDataIsRedacted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(saved), "legacy-workspace-secret") || !strings.Contains(string(saved), "[REDACTED]") {
+	if strings.Contains(string(saved), "legacy-workspace-secret") || !strings.Contains(string(saved), "[REDACTED]") || !strings.Contains(string(saved), "design=dark") {
 		t.Fatalf("legacy shortcut secret was not redacted on open: %s", saved)
 	}
 }

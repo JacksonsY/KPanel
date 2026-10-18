@@ -100,6 +100,51 @@ func TestAppendAndOpenRedactRecognizableCommandSecrets(t *testing.T) {
 	}
 }
 
+func TestAppendAndOpenRedactShellQuotedMySQLPassword(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "terminal-history")
+	store, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := `mysql -p'alpha'\'' beta' database`
+	snapshot, err := store.Append(AppendInput{Items: []AppendItem{{Command: command, HostID: "local"}}}, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := os.ReadFile(store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "alpha") || strings.Contains(string(encoded), "beta") ||
+		strings.Contains(snapshot.Items[0].Command, "alpha") || strings.Contains(snapshot.Items[0].Command, "beta") ||
+		!strings.Contains(snapshot.Items[0].Command, "[REDACTED]") {
+		t.Fatalf("quoted MySQL password survived append: disk=%s snapshot=%#v", encoded, snapshot.Items)
+	}
+
+	legacy := persistedState{SchemaVersion: SchemaVersion, Items: []Entry{{
+		Command: command, HostID: "local", At: testNow.UnixMilli(),
+	}}}
+	encoded, err = json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err = os.ReadFile(reopened.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "alpha") || strings.Contains(string(encoded), "beta") ||
+		len(reopened.Snapshot().Items) != 1 || !strings.Contains(reopened.Snapshot().Items[0].Command, "[REDACTED]") {
+		t.Fatalf("legacy quoted MySQL password survived open: disk=%s snapshot=%#v", encoded, reopened.Snapshot().Items)
+	}
+}
+
 func TestAppendTrimsToNewestEntries(t *testing.T) {
 	store := openTestStore(t)
 	for batch := 0; batch < (MaxEntries+40)/MaxAppendItems+1; batch++ {
