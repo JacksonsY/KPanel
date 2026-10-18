@@ -204,6 +204,12 @@ const desktopFileDropStyle = computed(() => {
 })
 const toast = useToast()
 const i18n = useI18n()
+const taskbarNow = ref(new Date())
+const taskbarLocalTime = computed(() => new Intl.DateTimeFormat(i18n.locale.value, {
+  hour: 'numeric',
+  minute: '2-digit',
+}).format(taskbarNow.value))
+let taskbarClockTimer: number | undefined
 provide(desktopCloseGuardCoordinatorKey, desktopCloseGuardCoordinator)
 
 const openWindows = computed(() => desktop.windows.value)
@@ -4330,6 +4336,7 @@ function onSideSplitKeyDown(event: KeyboardEvent): void {
 onMounted(() => {
   document.documentElement.classList.add('desktop-mode-open')
   document.body.classList.add('desktop-mode-open')
+  taskbarClockTimer = window.setInterval(() => { taskbarNow.value = new Date() }, 30_000)
   window.addEventListener('pointerdown', onGlobalPointerDown)
   window.addEventListener('keydown', onGlobalKeyDown)
   window.addEventListener('resize', onViewportResize)
@@ -4350,6 +4357,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   cancelDesktopLongPress()
+  if (taskbarClockTimer !== undefined) window.clearInterval(taskbarClockTimer)
   entriesSequence += 1
   syncLiveSceneFlag(false)
   document.documentElement.classList.remove('desktop-mode-open')
@@ -5217,6 +5225,7 @@ function onViewportResize(): void {
       :items="startMenuItems"
       :entries-state="startMenuEntriesState"
       :user-name="startMenuUserName"
+      :xp="desktopShellStyle.preference.value === 'xp'"
       :signing-out="signingOut"
       :dark="theme.resolved.value === 'dark'"
       :opener="startButtonElement"
@@ -5341,6 +5350,12 @@ function onViewportResize(): void {
           <ArrowLeft :size="15" aria-hidden="true" />
           <span>{{ i18n.t('desktop.switchClassic') }}</span>
         </button>
+        <time
+          v-if="desktopShellStyle.preference.value === 'xp'"
+          class="desktop__taskbar-clock"
+          :datetime="taskbarNow.toISOString()"
+          :aria-label="i18n.t('desktop.taskbarClock')"
+        >{{ taskbarLocalTime }}</time>
       </div>
     </footer>
 
