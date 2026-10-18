@@ -1,6 +1,7 @@
 package redact
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 	"unicode"
@@ -11,7 +12,7 @@ const privateKeyReplacement = "[REDACTED PRIVATE KEY]"
 
 var (
 	jsonSecretAssignment        = regexp.MustCompile(`(?i)("(?:[^"\\]|\\.)*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)(?:[^"\\]|\\.)*"\s*:\s*)("(?:\\.|[^"\\])*"|[^,\s}\]]+)`)
-	secretAssignment            = regexp.MustCompile(`(?i)(^|[^?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*)(\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\s]+)`)
+	secretAssignment            = regexp.MustCompile(`(?i)(^|[^?&%A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*)(\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\s]+)`)
 	secretFlag                  = regexp.MustCompile(`(?i)(--?[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*\s+)("(?:\\.|[^"\\])*"|'[^']*'|[^\s]+)`)
 	mysqlPasswordAttachedOption = regexp.MustCompile(`(?i:(\b(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)\b))([^\r\n]*?\s-p)([^\s;&|]+)`)
 	mysqlPasswordSpacedOption   = regexp.MustCompile(`(?i:(\b(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)\b))([^\r\n]*?\s-p)(\s+)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s;&|-][^\s;&|]*)`)
@@ -22,7 +23,8 @@ var (
 	basicSecret                 = regexp.MustCompile(`(?i)\bBasic\s+[A-Za-z0-9_+/=-]{8,}`)
 	openAISecret                = regexp.MustCompile(`(?i)\bsk-[A-Za-z0-9._~+/=-]{4,}`)
 	urlCredentials              = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s@]+@`)
-	urlSensitiveQuery           = regexp.MustCompile(`(?i)([?&](?:[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key|signature)[A-Za-z0-9_.-]*|key|sig)=)[^&#\s]*`)
+	urlQueryParameter           = regexp.MustCompile(`(?i)([?&]((?:[A-Za-z0-9_.-]|%[0-9a-f]{2})+)=)([^&#\s]*)`)
+	sensitiveURLQueryName       = regexp.MustCompile(`(?i)(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key|signature|key|sig)`)
 	terminalEscape              = regexp.MustCompile(`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))`)
 	privateKeyBegin             = regexp.MustCompile(`(?i)-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
 	privateKeyEnd               = regexp.MustCompile(`(?i)-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
@@ -168,7 +170,17 @@ func redactLine(value string) string {
 	value = authorizationHeader.ReplaceAllString(value, "${1}${2}[REDACTED]")
 	value = authorizationFlag.ReplaceAllString(value, "${1}[REDACTED]")
 	value = cookieHeader.ReplaceAllString(value, "${1}${2}[REDACTED]")
-	value = urlSensitiveQuery.ReplaceAllString(value, "${1}[REDACTED]")
+	value = urlQueryParameter.ReplaceAllStringFunc(value, func(parameter string) string {
+		parts := urlQueryParameter.FindStringSubmatch(parameter)
+		if len(parts) != 4 {
+			return parameter
+		}
+		name, err := url.QueryUnescape(parts[2])
+		if err != nil || !sensitiveURLQueryName.MatchString(name) {
+			return parameter
+		}
+		return parts[1] + "[REDACTED]"
+	})
 	value = jsonSecretAssignment.ReplaceAllString(value, `${1}"[REDACTED]"`)
 	value = mysqlPasswordAttachedOption.ReplaceAllString(value, "${1}${2}[REDACTED]")
 	value = mysqlPasswordSpacedOption.ReplaceAllString(value, "${1}${2}${3}[REDACTED]")

@@ -87,6 +87,19 @@ func TestRunRejectsUnsupportedRuntimeBeforeEnrollment(t *testing.T) {
 	}
 }
 
+func TestEnrollmentRequiresRootIdentity(t *testing.T) {
+	err := requireEnrollmentIdentity()
+	if os.Geteuid() == 0 {
+		if err != nil {
+			t.Fatalf("root enrollment identity rejected: %v", err)
+		}
+		return
+	}
+	if err == nil || !strings.Contains(err.Error(), "requires root") {
+		t.Fatalf("non-root enrollment identity error = %v, want root requirement", err)
+	}
+}
+
 func TestBatchEnrollmentTokenUsesDedicatedEndpointAndSevenDayBound(t *testing.T) {
 	token := lightBatchTokenForNodeTest(t, "https://panel.example", time.Now().UTC().Add(6*24*time.Hour))
 	target, err := enrollmentTargetFromToken(token)

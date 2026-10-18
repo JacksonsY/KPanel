@@ -265,6 +265,10 @@ func (s *Service) scriptJobUnitState(id string) (running bool, known bool) {
 }
 
 func ensureAppJobDirectory(path string) error {
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) || path == string(filepath.Separator) {
+		return errors.New("application job state path must be a dedicated absolute directory")
+	}
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		if err := os.MkdirAll(path, 0o750); err != nil {
@@ -272,7 +276,8 @@ func ensureAppJobDirectory(path string) error {
 		}
 		info, err = os.Lstat(path)
 	}
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 ||
+		!trustedJobDirectoryMode(info) || !trustedJobDirectoryOwner(info) {
 		return errors.New("application job state directory is unavailable or unsafe")
 	}
 	return nil
