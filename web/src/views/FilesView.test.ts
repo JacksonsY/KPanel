@@ -113,6 +113,11 @@ function testDirectory(path: string): FileDirectoryResult {
 }
 
 interface FileBindings {
+  pathCopyVisible: { value: boolean }
+  pathCopyInput: { value: HTMLInputElement | undefined }
+  breadcrumbBar: { value: HTMLElement | undefined }
+  showPathCopy: () => Promise<void>
+  closePathCopy: () => Promise<void>
   requestedFilePath: (value: unknown) => string | undefined
   loadRequestedRoute: () => Promise<void>
   openRequestedFile: (value: unknown) => Promise<void>
@@ -484,6 +489,28 @@ beforeEach(() => {
       updatedAt: '2026-08-14T00:00:00Z',
     })),
   }))
+})
+
+describe('file path copying', () => {
+  it('focuses and selects the full path, then restores keyboard focus without navigation', async () => {
+    const view = setupView()
+    const focus = vi.fn()
+    const select = vi.fn()
+    const returnFocus = vi.fn()
+    view.pathCopyInput.value = { focus, select } as unknown as HTMLInputElement
+    view.breadcrumbBar.value = { focus: returnFocus } as unknown as HTMLElement
+
+    await view.showPathCopy()
+    expect(view.pathCopyVisible.value).toBe(true)
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(select).toHaveBeenCalledOnce()
+
+    await view.closePathCopy()
+    expect(view.pathCopyVisible.value).toBe(false)
+    expect(returnFocus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(mocks.list).not.toHaveBeenCalled()
+    expect(mocks.push).not.toHaveBeenCalled()
+  })
 })
 
 describe('FilesView external upload', () => {

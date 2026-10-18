@@ -386,6 +386,22 @@ function handleFileHostSelection(host: ClusterHost): void {
 
 const directory = ref<FileDirectory>()
 const currentPath = ref('/home')
+const pathCopyVisible = ref(false)
+const pathCopyInput = ref<HTMLInputElement>()
+const breadcrumbBar = ref<HTMLElement>()
+
+async function showPathCopy(): Promise<void> {
+  pathCopyVisible.value = true
+  await nextTick()
+  pathCopyInput.value?.focus({ preventScroll: true })
+  pathCopyInput.value?.select()
+}
+
+async function closePathCopy(): Promise<void> {
+  pathCopyVisible.value = false
+  await nextTick()
+  breadcrumbBar.value?.focus({ preventScroll: true })
+}
 const search = ref('')
 const sortKey = ref<'name' | 'size' | 'modified'>('name')
 const sortDescending = ref(false)
@@ -3139,13 +3155,19 @@ onBeforeUnmount(() => {
             @refresh="loadFileHosts"
             @select="handleFileHostSelection"
           />
-          <nav class="breadcrumbs" aria-label="文件路径">
+          <input
+            v-if="pathCopyVisible" ref="pathCopyInput" class="path-copy-input"
+            :value="currentPath" aria-label="文件路径" type="text" readonly
+            @blur="pathCopyVisible = false" @contextmenu.stop
+            @keydown.esc.prevent.stop="closePathCopy" @keydown.enter.prevent.stop="closePathCopy"
+          />
+          <nav v-else ref="breadcrumbBar" class="breadcrumbs" aria-label="文件路径" tabindex="0"
+            @click.self="showPathCopy" @keydown.enter.self.prevent="showPathCopy" @keydown.space.self.prevent="showPathCopy">
             <button
               v-for="(item, index) in breadcrumbs"
               :key="item.path"
               type="button"
-              :disabled="item.path === currentPath"
-              @click="navigateDirectory(item.path)"
+              @click="item.path === currentPath ? showPathCopy() : navigateDirectory(item.path)"
             >
               <HardDrive v-if="index === 0" :size="15" />
               <span>{{ item.name }}</span>
@@ -4233,6 +4255,14 @@ onBeforeUnmount(() => {
   flex: 1 1 auto;
   align-items: center;
   gap: 10px;
+}
+
+.path-copy-input {
+  min-width: 0;
+  width: 0;
+  flex: 1 1 auto;
+  padding: 7px 4px;
+  font-size: 14px;
 }
 
 .breadcrumbs {
