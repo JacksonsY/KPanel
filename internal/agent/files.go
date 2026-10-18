@@ -40,7 +40,8 @@ const (
 	fileTransferMaxDuration  = 2 * time.Hour
 	fileThumbnailTimeout     = 20 * time.Second
 	fileThumbnailMaxBytes    = 12 << 20
-	fileThumbnailMaxPixels   = 8_000_000
+	fileGridSourceMaxBytes   = 64 << 20
+	fileThumbnailMaxPixels   = 64_000_000
 	fileThumbnailMaxWidth    = 320
 	fileThumbnailMaxHeight   = 210
 	fileToolTextMaxBytes     = 64 << 10
@@ -562,6 +563,20 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 			}
 			cached = true
 		}
+		if !cached && readMode == "thumbnail" {
+			content, contentType, err = s.loadThumbnail(transferContext, file, entry)
+			if err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					writeProblem(w, requestID, http.StatusRequestTimeout, "thumbnail_timeout", "缩略图生成超时", "")
+				} else if errors.Is(err, errThumbnailUnavailable) {
+					writeProblem(w, requestID, http.StatusUnprocessableEntity, "file_thumbnail_unavailable", "无法生成文件缩略图", "")
+				} else {
+					writeFileProblem(w, requestID, err)
+				}
+				return
+			}
+			cached = true
+		}
 		if !cached {
 			// Preview decoding is serialized and also shares the thumbnail gate.
 			// This bounds combined work without blocking cached responses.
@@ -659,15 +674,29 @@ func makeFilePreview(file io.ReadSeeker, size int64) ([]byte, string, error) {
 }
 
 func makeFileImage(file io.ReadSeeker, size int64, maxWidth, maxHeight, maxPixels int, preview bool) ([]byte, string, error) {
-	if size <= 0 || size > fileThumbnailMaxBytes {
+	maxBytes := int64(fileGridSourceMaxBytes)
+	if preview {
+		maxBytes = fileThumbnailMaxBytes
+	}
+	if size <= 0 || size > maxBytes {
 		return nil, "", filemanager.ErrTooLarge
 	}
-	config, format, err := image.DecodeConfig(io.LimitReader(file, fileThumbnailMaxBytes+1))
-	if err != nil || (format != "jpeg" && format != "png" && format != "gif") {
+	config, format, err := image.DecodeConfig(io.LimitReader(file, maxBytes+1))
+	if err != nil || (preview && format != "jpeg" && format != "png" && format != "gif") ||
+		(!preview && format != "jpeg" && format != "png" && format != "gif" && format != "webp" && format != "bmp" && format != "tiff") {
 		return nil, "", errThumbnailUnavailable
 	}
 	if config.Width <= 0 || config.Height <= 0 ||
 		config.Width > maxPixels/config.Height {
+		return nil, "", filemanager.ErrTooLarge
+	}
+	// 16-bit TIFF/PNG can require twice the memory of ordinary phone photos.
+	// Keep a decoded-pixel budget in addition to the compressed-source limit.
+	bytesPerPixel := 4
+	if config.ColorModel == color.RGBA64Model || config.ColorModel == color.NRGBA64Model {
+		bytesPerPixel = 8
+	}
+	if int64(config.Width)*int64(config.Height) > (256<<20)/int64(bytesPerPixel) {
 		return nil, "", filemanager.ErrTooLarge
 	}
 	if preview && format == "gif" { // Preserve animation through the native original path.
@@ -685,13 +714,13 @@ func makeFileImage(file io.ReadSeeker, size int64, maxWidth, maxHeight, maxPixel
 			return nil, "", err
 		}
 	}
-	if preview && format == "jpeg" {
+	if format == "jpeg" {
 		orientation = fileJPEGOrientation(file)
 		if _, err := file.Seek(0, io.SeekStart); err != nil {
 			return nil, "", err
 		}
 	}
-	source, decodedFormat, err := image.Decode(io.LimitReader(file, fileThumbnailMaxBytes+1))
+	source, decodedFormat, err := image.Decode(io.LimitReader(file, maxBytes+1))
 	if err != nil || decodedFormat != format {
 		return nil, "", errThumbnailUnavailable
 	}

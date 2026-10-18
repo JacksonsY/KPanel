@@ -426,7 +426,7 @@ describe('GalleryView', () => {
   })
 
   it('does not use large originals as grid thumbnails, while keeping explicit viewing available', async () => {
-    harness.tree['/home/gallery'] = [media('/home/gallery/large.jpg', undefined, 14 * 1024 * 1024)]
+    harness.tree['/home/gallery'] = [media('/home/gallery/large.jpg', undefined, 65 * 1024 * 1024)]
     const view = await mountGallery()
     const tile = view.get('.gallery-tile')
     expect(tile.find('img').exists()).toBe(false)

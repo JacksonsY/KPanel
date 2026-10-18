@@ -63,11 +63,11 @@ describe('gallery media classification', () => {
     expect(galleryTileSource(heavy)).toEqual({ type: 'thumbnail' })
     expect(galleryTileSource(heavy, true)).toEqual({ type: 'original' })
     const over = { entry: entry('o.jpg', { sizeBytes: 13 * 1024 * 1024 }), kind: 'image' as const }
-    // Past the Agent thumbnail limit a large tile still loads the original up to the fallback cap.
-    expect(galleryTileSource(over)).toEqual({ type: 'original' })
-    expect(galleryTileSource({ entry: entry('c.webp'), kind: 'image' })).toEqual({ type: 'original' })
-    expect(galleryTileSource({ entry: entry('d.webp', { sizeBytes: 40 * 1024 * 1024 }), kind: 'image' })).toEqual({ type: 'none' })
-    expect(galleryTileSource({ entry: entry('e.heic'), kind: 'image' })).toEqual({ type: 'none' })
+    expect(galleryTileSource(over)).toEqual({ type: 'thumbnail' })
+    for (const extension of ['webp', 'heic', 'heif', 'avif', 'bmp', 'tif', 'tiff']) {
+      expect(galleryTileSource({ entry: entry(`photo.${extension}`, { sizeBytes: 40 * 1024 * 1024 }), kind: 'image' })).toEqual({ type: 'thumbnail' })
+    }
+    expect(galleryTileSource({ entry: entry('huge.jpg', { sizeBytes: 65 * 1024 * 1024 }), kind: 'image' })).toEqual({ type: 'none' })
     expect(galleryTileSource({ entry: entry('f.mov'), kind: 'video' })).toEqual({ type: 'video' })
     expect(galleryTileSource({ entry: entry('g.avi'), kind: 'video' })).toEqual({ type: 'none' })
   })

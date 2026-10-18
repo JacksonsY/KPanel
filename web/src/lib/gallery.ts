@@ -50,7 +50,7 @@ interface StorageLike {
 export const GALLERY_DEFAULT_ROOT = '/home/gallery'
 export const GALLERY_PREFERENCES_KEY = 'kpanel:gallery:v1'
 /** Matches the Agent thumbnail source limit (internal/agent/files.go). */
-export const GALLERY_THUMBNAIL_SOURCE_MAX_BYTES = 12 * 1024 * 1024
+export const GALLERY_THUMBNAIL_SOURCE_MAX_BYTES = 64 * 1024 * 1024
 /**
  * Originals at or below this size stand in for the cover and featured tiles,
  * which are far larger than the Agent's 320x210 thumbnail box.
@@ -73,8 +73,8 @@ const imageExtensions = new Set([
 const videoExtensions = new Set(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'ogv', 'avi', '3gp'])
 /** Image formats that every supported browser decodes in an <img>. */
 const browserImageExtensions = new Set(['jpg', 'jpeg', 'jpe', 'jfif', 'png', 'gif', 'webp', 'avif', 'bmp'])
-/** Image formats the Agent can scale down (it sniffs JPEG, PNG and GIF content). */
-const thumbnailExtensions = new Set(['jpg', 'jpeg', 'jpe', 'jfif', 'png', 'gif'])
+/** Portable decoders plus optional host HEIF/AVIF conversion; the Agent sniffs content. */
+const thumbnailExtensions = imageExtensions
 /** Containers that usually carry browser-playable H.264/VP9/AV1 streams. */
 const browserVideoExtensions = new Set(['mp4', 'm4v', 'mov', 'webm', 'ogv'])
 
@@ -110,12 +110,12 @@ export function galleryBrowserCanShow(item: Pick<GalleryItem, 'entry' | 'kind'>)
 export function galleryTileSource(item: Pick<GalleryItem, 'entry' | 'kind'>, large = false): GalleryTileSource {
   if (item.kind === 'video') return galleryBrowserCanShow(item) ? { type: 'video' } : { type: 'none' }
   const { sizeBytes } = item.entry
-  if (!galleryBrowserCanShow(item) || sizeBytes <= 0) return { type: 'none' }
+  if (sizeBytes <= 0) return { type: 'none' }
   const thumbnailable = thumbnailExtensions.has(galleryFileExtension(item.entry.name))
     && sizeBytes <= GALLERY_THUMBNAIL_SOURCE_MAX_BYTES
-  if (large && sizeBytes <= GALLERY_ORIGINAL_TILE_MAX_BYTES) return { type: 'original' }
+  if (large && galleryBrowserCanShow(item) && sizeBytes <= GALLERY_ORIGINAL_TILE_MAX_BYTES) return { type: 'original' }
   if (thumbnailable) return { type: 'thumbnail' }
-  return sizeBytes <= GALLERY_ORIGINAL_FALLBACK_MAX_BYTES ? { type: 'original' } : { type: 'none' }
+  return { type: 'none' }
 }
 
 export function galleryItemsFromEntries(entries: readonly FileEntry[], folder: string): GalleryItem[] {

@@ -118,6 +118,7 @@ type Server struct {
 	previewJobs       *previewQueue
 	thumbnailGate     chan struct{}
 	thumbnails        *thumbnailCache
+	thumbnailDisk     *previewDisk
 	storageUsageGate  chan struct{}
 	processReads      processReads
 	systemLogsGate    chan struct{}
@@ -134,6 +135,7 @@ type Server struct {
 
 func (s *Server) Close() {
 	s.previewJobs.close()
+	s.thumbnailDisk.close()
 	if s.backups != nil {
 		s.backups.Close()
 	}
@@ -267,10 +269,11 @@ func NewServer(config Config) (*Server, error) {
 		siteIcons:        config.SiteIcons,
 		monitoring:       config.Monitoring,
 		terminals:        config.Terminals,
-		thumbnailGate:    make(chan struct{}, 2),
+		thumbnailGate:    make(chan struct{}, 1),
 		previewGate:      make(chan struct{}, 1),
 		previews:         newPreviewCache(),
 		thumbnails:       newThumbnailCache(thumbnailCacheBytes),
+		thumbnailDisk:    newThumbnailDisk(config.StateDir),
 		storageUsageGate: make(chan struct{}, 1),
 		systemLogsGate:   make(chan struct{}, 1),
 		serviceReadGate:  make(chan struct{}, 2),

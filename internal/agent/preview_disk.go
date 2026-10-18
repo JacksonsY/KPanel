@@ -28,19 +28,30 @@ type previewDiskEntry struct {
 	used time.Time
 }
 type previewDisk struct {
-	mu      sync.Mutex
-	root    *os.Root
-	lock    *os.File
-	entries map[string]previewDiskEntry
-	bytes   int64
-	limit   int64
-	count   int
-	now     func() time.Time
+	mu        sync.Mutex
+	root      *os.Root
+	lock      *os.File
+	entries   map[string]previewDiskEntry
+	bytes     int64
+	limit     int64
+	count     int
+	now       func() time.Time
+	schema    string
+	itemBytes int
 }
 
 // A disposable derivative store, never a source of file authorization or metadata.
 // Root-relative operations cannot follow a cache symlink outside this directory.
 func newPreviewDisk(stateDir string) *previewDisk {
+	return newImageDisk(stateDir, "gallery-previews-v1", "screen-v1-1440-static-orientation", previewDiskBytes, previewDiskEntries, previewDiskItemBytes)
+}
+
+// Both derivatives share the same integrity, private-directory and quota machinery.
+func newThumbnailDisk(stateDir string) *previewDisk {
+	return newImageDisk(stateDir, "gallery-thumbnails-v1", "thumb-v1-320x210-orientation", 1<<30, 32768, thumbnailCacheMaxEntry)
+}
+
+func newImageDisk(stateDir, directory, schema string, limit int64, count, itemBytes int) *previewDisk {
 	if !filepath.IsAbs(stateDir) {
 		return nil
 	}
@@ -49,7 +60,6 @@ func newPreviewDisk(stateDir string) *previewDisk {
 		return nil
 	}
 	defer state.Close()
-	const directory = "gallery-previews-v1"
 	if err = state.Mkdir(directory, 0700); err != nil && !os.IsExist(err) {
 		return nil
 	}
@@ -77,7 +87,7 @@ func newPreviewDisk(stateDir string) *previewDisk {
 		root.Close()
 		return nil
 	}
-	d := &previewDisk{root: root, lock: lock, entries: make(map[string]previewDiskEntry), limit: previewDiskBytes, count: previewDiskEntries, now: time.Now}
+	d := &previewDisk{root: root, lock: lock, entries: make(map[string]previewDiskEntry), limit: limit, count: count, now: time.Now, schema: schema, itemBytes: itemBytes}
 	// Bounded recovery: unexpected directory growth disables persistence instead
 	// of allocating an unbounded index or deleting unrelated names.
 	f, err := root.Open(".")
@@ -85,9 +95,9 @@ func newPreviewDisk(stateDir string) *previewDisk {
 		d.close()
 		return nil
 	}
-	items, err := f.ReadDir(previewDiskEntries*2 + 1)
+	items, err := f.ReadDir(count*2 + 1)
 	f.Close()
-	if (err != nil && err != io.EOF) || len(items) > previewDiskEntries*2 {
+	if (err != nil && err != io.EOF) || len(items) > count*2 {
 		d.close()
 		return nil
 	}
@@ -104,7 +114,7 @@ func newPreviewDisk(stateDir string) *previewDisk {
 		if err != nil {
 			continue
 		}
-		if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() <= previewDiskHeader || info.Size() > previewDiskItemBytes+previewDiskHeader || d.now().Sub(info.ModTime()) > previewDiskTTL {
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() <= previewDiskHeader || info.Size() > int64(itemBytes+previewDiskHeader) || d.now().Sub(info.ModTime()) > previewDiskTTL {
 			_ = root.Remove(name)
 			continue
 		}
@@ -132,6 +142,10 @@ func previewDiskKey(key string) [32]byte {
 	return sha256.Sum256([]byte("screen-v1-1440-static-orientation\x00" + key))
 }
 
+func (d *previewDisk) key(key string) [32]byte {
+	return sha256.Sum256([]byte(d.schema + "\x00" + key))
+}
+
 func (d *previewDisk) get(key string) ([]byte, string, bool) {
 	if d == nil {
 		return nil, "", false
@@ -141,7 +155,7 @@ func (d *previewDisk) get(key string) ([]byte, string, bool) {
 	if d.root == nil {
 		return nil, "", false
 	}
-	hash := previewDiskKey(key)
+	hash := d.key(key)
 	name := hex.EncodeToString(hash[:]) + ".preview"
 	entry, ok := d.entries[name]
 	if !ok {
@@ -157,9 +171,9 @@ func (d *previewDisk) get(key string) ([]byte, string, bool) {
 		d.remove(name)
 		return nil, "", false
 	}
-	data, err := io.ReadAll(io.LimitReader(f, previewDiskItemBytes+previewDiskHeader+1))
+	data, err := io.ReadAll(io.LimitReader(f, int64(d.itemBytes+previewDiskHeader+1)))
 	f.Close()
-	if err != nil || len(data) <= previewDiskHeader || len(data) > previewDiskItemBytes+previewDiskHeader || string(data[:4]) != "KPV1" || !bytes.Equal(data[5:37], hash[:]) {
+	if err != nil || len(data) <= previewDiskHeader || len(data) > d.itemBytes+previewDiskHeader || string(data[:4]) != "KPV1" || !bytes.Equal(data[5:37], hash[:]) {
 		d.remove(name)
 		return nil, "", false
 	}
@@ -186,7 +200,7 @@ func (d *previewDisk) get(key string) ([]byte, string, bool) {
 }
 
 func (d *previewDisk) put(key string, body []byte, mime string) {
-	if d == nil || len(body) == 0 || len(body) > previewDiskItemBytes || (mime != "image/jpeg" && mime != "image/png") {
+	if d == nil || len(body) == 0 || len(body) > d.itemBytes || (mime != "image/jpeg" && mime != "image/png") {
 		return
 	}
 	d.mu.Lock()
@@ -194,7 +208,7 @@ func (d *previewDisk) put(key string, body []byte, mime string) {
 	if d.root == nil {
 		return
 	}
-	hash := previewDiskKey(key)
+	hash := d.key(key)
 	name := hex.EncodeToString(hash[:]) + ".preview"
 	var random [32]byte
 	if _, err := rand.Read(random[:]); err != nil {
