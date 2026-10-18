@@ -59,6 +59,14 @@ describe('desktop visual and interaction contract', () => {
     }
   })
 
+  it('preserves the KPanel content colors inside XP windows', () => {
+    expect(cssRule(styles, '.desktop-window')).toContain('color: var(--text);')
+    expect(cssRule(styles, '.desktop-window__body')).toContain('background: var(--bg);')
+
+    const xpBody = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-window__body")
+    expect(xpBody).not.toMatch(/(?:^|;)\s*(?:color|background)\s*:/)
+  })
+
   it('keeps semantic desktop copy at or above the 12px product floor', () => {
     expect(styles).not.toMatch(/font-size:\s*(?:[1-9]|1[01])px/)
   })
