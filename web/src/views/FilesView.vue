@@ -4259,7 +4259,7 @@ onBeforeUnmount(() => {
 
 .path-copy-input {
   min-width: 0;
-  width: 0;
+  width: 100%;
   flex: 1 1 auto;
   padding: 7px 4px;
   font-size: 14px;
