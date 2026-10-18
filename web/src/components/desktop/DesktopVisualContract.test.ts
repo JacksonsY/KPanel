@@ -63,6 +63,9 @@ describe('desktop visual and interaction contract', () => {
     expect(cssRule(styles, '.desktop-window')).toContain('color: var(--text);')
     expect(cssRule(styles, '.desktop-window__body')).toContain('background: var(--bg);')
 
+    const xpWindow = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-window")
+    expect(xpWindow).not.toMatch(/(?:^|;)\s*color\s*:/)
+
     const xpBody = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-window__body")
     expect(xpBody).not.toMatch(/(?:^|;)\s*(?:color|background)\s*:/)
   })
