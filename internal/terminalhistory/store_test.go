@@ -2,6 +2,7 @@ package terminalhistory
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -51,6 +52,52 @@ func TestAppendKeepsDistinctCommandsNewestFirstAndSurvivesRestart(t *testing.T) 
 		t.Fatal(err)
 	}
 	assertEntries(t, reopened.Snapshot().Items, want)
+}
+
+func TestAppendAndOpenRedactRecognizableCommandSecrets(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "terminal-history")
+	store, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := "mysql -p history-secret-value"
+	snapshot, err := store.Append(AppendInput{Items: []AppendItem{{Command: command, HostID: "local"}}}, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := os.ReadFile(store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "history-secret-value") || strings.Contains(snapshot.Items[0].Command, "history-secret-value") ||
+		!strings.Contains(snapshot.Items[0].Command, "[REDACTED]") {
+		t.Fatalf("append retained a recognizable secret: disk=%s snapshot=%#v", encoded, snapshot.Items)
+	}
+	if _, removed, err := store.Remove(RemoveInput{Command: command}); err != nil || !removed {
+		t.Fatalf("remove of original command = removed %v, err %v", removed, err)
+	}
+
+	legacy := persistedState{SchemaVersion: SchemaVersion, Items: []Entry{{
+		Command: command, HostID: "local", At: testNow.UnixMilli(),
+	}}}
+	encoded, err = json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err = os.ReadFile(reopened.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "history-secret-value") || len(reopened.Snapshot().Items) != 1 {
+		t.Fatalf("legacy history secret was not redacted on open: %s", encoded)
+	}
 }
 
 func TestAppendTrimsToNewestEntries(t *testing.T) {

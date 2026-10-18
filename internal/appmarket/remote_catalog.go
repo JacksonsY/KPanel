@@ -164,6 +164,9 @@ func validateRemoteCatalog(catalog Catalog, meta remoteCatalogMeta) error {
 		if app.Source != "builtin" && app.Source != "thirdparty" {
 			return fmt.Errorf("application catalog entry %q has an invalid source", app.ID)
 		}
+		if app.Source == "thirdparty" && reservedThirdPartyScriptSelector(app.Token) {
+			return fmt.Errorf("application catalog entry %q uses a reserved kejilion.sh selector", app.ID)
+		}
 		if app.Website != "" {
 			website, err := url.Parse(app.Website)
 			if err != nil || website.Host == "" || website.User != nil ||

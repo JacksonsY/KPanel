@@ -21,6 +21,9 @@ const (
 	lightFileMaxHeaders     = 16
 )
 
+// MaxFileRelayRequests bounds active lightweight-node file relay requests.
+const MaxFileRelayRequests = lightFileQueueLimit
+
 func validateFileRelayPoll(input FileRelayPollRequest) error {
 	if len(input.RequestIDs) > lightFileQueueLimit || len(input.Events) > lightFileEventLimit {
 		return ErrAuthentication

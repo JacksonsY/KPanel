@@ -71,6 +71,38 @@ func TestTransportRetriesReplayableRequestAndSharesCache(t *testing.T) {
 	}
 }
 
+func TestTransportRetriesDefaultAfterClassicalCacheExpires(t *testing.T) {
+	cache := &HostCache{classical: map[string]time.Time{
+		"panel.example": time.Now().Add(-time.Second),
+	}}
+	primaryCalls := 0
+	classicalCalls := 0
+	transport := newTransport(
+		roundTripFunc(func(*http.Request) (*http.Response, error) {
+			primaryCalls++
+			return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}, nil
+		}),
+		roundTripFunc(func(*http.Request) (*http.Response, error) {
+			classicalCalls++
+			return nil, nil
+		}),
+		cache,
+	)
+	request, err := http.NewRequest(http.MethodGet, "https://panel.example/report", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transport.RoundTrip(request); err != nil {
+		t.Fatal(err)
+	}
+	if primaryCalls != 1 || classicalCalls != 0 {
+		t.Fatalf("calls = primary %d, classical %d; expired fallback cache must retry defaults", primaryCalls, classicalCalls)
+	}
+	if _, cached := cache.classical["panel.example"]; cached {
+		t.Fatal("expired fallback cache entry was retained")
+	}
+}
+
 func TestTransportDoesNotRetryOtherTimeouts(t *testing.T) {
 	t.Parallel()
 

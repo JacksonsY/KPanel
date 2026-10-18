@@ -227,6 +227,9 @@ func (control *lightFileControl) startRequest(command cluster.FileRelayCommand) 
 		control.queueEvent(event)
 		return nil
 	}
+	if len(control.sessions) >= cluster.MaxFileRelayRequests {
+		return errors.New("file relay request session limit reached")
+	}
 	requestContext, cancel := context.WithCancel(control.ctx)
 	if command.Path == cluster.HistoryPath {
 		cancel()

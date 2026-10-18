@@ -27,6 +27,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/kejilion/kejilion-panel/internal/redact"
 	"golang.org/x/image/webp"
 )
 
@@ -210,7 +211,13 @@ func Open(root string) (*Store, error) {
 	state, err := readPersistedWorkspace(store.workspacePath)
 	switch {
 	case err == nil:
+		state, redacted := redactPersistedShortcutSecrets(state)
 		store.state = state
+		if redacted {
+			if persistErr := store.persistLocked(state); persistErr != nil {
+				return nil, fmt.Errorf("redact stored desktop shortcut secrets: %w", persistErr)
+			}
+		}
 		if chmodErr := os.Chmod(store.workspacePath, 0o600); chmodErr != nil {
 			return nil, fmt.Errorf("protect desktop workspace: %w", chmodErr)
 		}
@@ -534,6 +541,25 @@ func readPersistedWorkspace(path string) (persistedWorkspace, error) {
 	return canonicalizePersistedWorkspace(state), nil
 }
 
+func redactPersistedShortcutSecrets(state persistedWorkspace) (persistedWorkspace, bool) {
+	changed := false
+	for index := range state.Shortcuts {
+		item := &state.Shortcuts[index]
+		if safe := redact.Text(item.Command); safe != item.Command {
+			item.Command = safe
+			changed = true
+		}
+		if safe := redact.Text(item.URL); safe != item.URL {
+			item.URL = safe
+			changed = true
+		}
+	}
+	if changed {
+		state = canonicalizePersistedWorkspace(state)
+	}
+	return state, changed
+}
+
 func buildPersistedWorkspace(input ReplaceInput, current persistedWorkspace, now time.Time) (persistedWorkspace, error) {
 	if !ValidResourceVersion(input.ExpectedResourceVersion) {
 		return persistedWorkspace{}, &ValidationError{
@@ -569,6 +595,12 @@ func buildPersistedWorkspace(input ReplaceInput, current persistedWorkspace, now
 		targetType, targetURL, targetPath, err := normalizedShortcutTarget(requestedType, item.URL, item.Path)
 		if err != nil {
 			return persistedWorkspace{}, err
+		}
+		if redact.Text(item.Command) != item.Command {
+			return persistedWorkspace{}, &ValidationError{Field: "shortcuts.command", Detail: "command shortcuts cannot store recognizable secret values"}
+		}
+		if targetType == ShortcutTargetURL && redact.Text(targetURL) != targetURL {
+			return persistedWorkspace{}, &ValidationError{Field: "shortcuts.url", Detail: "URL shortcuts cannot store recognizable secret query values"}
 		}
 		record := shortcutRecord{
 			ID: item.ID, Name: item.Name, Description: item.Description,

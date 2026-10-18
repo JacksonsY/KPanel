@@ -18,6 +18,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/kejilion/kejilion-panel/internal/redact"
 )
 
 const (
@@ -109,7 +111,13 @@ func Open(root string) (*Store, error) {
 	state, err := readState(store.path)
 	switch {
 	case err == nil:
+		state, redacted := redactPersistedCommands(state)
 		store.state = state
+		if redacted {
+			if persistErr := store.persistLocked(state); persistErr != nil {
+				return nil, fmt.Errorf("redact stored terminal history: %w", persistErr)
+			}
+		}
 		if chmodErr := os.Chmod(store.path, 0o600); chmodErr != nil {
 			return nil, fmt.Errorf("protect terminal history: %w", chmodErr)
 		}
@@ -143,7 +151,13 @@ func (s *Store) Append(input AppendInput, now time.Time) (Snapshot, error) {
 	if len(input.Items) == 0 || len(input.Items) > MaxAppendItems {
 		return Snapshot{}, &ValidationError{Field: "items", Detail: "between 1 and 32 commands are required"}
 	}
-	for _, item := range input.Items {
+	input.Items = append([]AppendItem(nil), input.Items...)
+	for index := range input.Items {
+		item := &input.Items[index]
+		if err := validateCommand(item.Command); err != nil {
+			return Snapshot{}, err
+		}
+		item.Command = redact.Text(item.Command)
 		if err := validateCommand(item.Command); err != nil {
 			return Snapshot{}, err
 		}
@@ -175,6 +189,10 @@ func (s *Store) Append(input AppendInput, now time.Time) (Snapshot, error) {
 
 // Remove deletes one command; removing a command that is already gone succeeds.
 func (s *Store) Remove(input RemoveInput) (Snapshot, bool, error) {
+	if err := validateCommand(input.Command); err != nil {
+		return Snapshot{}, false, err
+	}
+	input.Command = redact.Text(input.Command)
 	if err := validateCommand(input.Command); err != nil {
 		return Snapshot{}, false, err
 	}
@@ -287,6 +305,28 @@ func readState(path string) (persistedState, error) {
 	}
 	state.Items = cloneEntries(state.Items)
 	return state, nil
+}
+
+func redactPersistedCommands(state persistedState) (persistedState, bool) {
+	items := make([]Entry, 0, len(state.Items))
+	seen := make(map[string]bool, len(state.Items))
+	changed := false
+	for _, item := range state.Items {
+		if safe := redact.Text(item.Command); safe != item.Command {
+			item.Command = safe
+			changed = true
+		}
+		if seen[item.Command] {
+			changed = true
+			continue
+		}
+		seen[item.Command] = true
+		items = append(items, item)
+	}
+	if changed {
+		state.Items = items
+	}
+	return state, changed
 }
 
 func validateState(state persistedState) error {

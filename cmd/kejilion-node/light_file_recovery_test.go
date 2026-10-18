@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -55,5 +56,40 @@ func TestLightFileTransientRetryBacksOffAndResets(t *testing.T) {
 	control.acceptRelayResponse(cluster.FileRelayPollResponse{Epoch: strings.Repeat("a", 32)})
 	if delay := control.retryDelay(err); delay != time.Second {
 		t.Fatalf("first failure after recovery = %v", delay)
+	}
+}
+
+func TestLightFileRequestSessionLimitRejectsOverflow(t *testing.T) {
+	control := &lightFileControl{
+		ctx:       context.Background(),
+		sessions:  make(map[string]*lightNodeFileSession, cluster.MaxFileRelayRequests),
+		processed: make(map[string]cluster.FileRelayEvent),
+	}
+	for index := 0; index < cluster.MaxFileRelayRequests; index++ {
+		id := fmt.Sprintf("%032x", index)
+		control.sessions[id] = &lightNodeFileSession{
+			requestID: id,
+			ctx:       context.Background(),
+			events:    make(chan cluster.FileRelayEvent, 1),
+		}
+	}
+	command := cluster.FileRelayCommand{
+		ID: strings.Repeat("a", 32), RequestID: strings.Repeat("b", 32),
+		Kind: "request", Method: http.MethodGet, Path: "/v1/files/entry",
+	}
+	err := control.startRequest(command)
+	if err == nil {
+		t.Fatal("request above the active session limit was accepted")
+	}
+	control.queueCommandError(command, err)
+	if len(control.sessions) != cluster.MaxFileRelayRequests {
+		t.Fatalf("active requests = %d, want bounded limit %d", len(control.sessions), cluster.MaxFileRelayRequests)
+	}
+	if _, exists := control.sessions[command.RequestID]; exists {
+		t.Fatal("overflow request retained a session")
+	}
+	if len(control.pendingEvents) != 1 || control.pendingEvents[0].Kind != "error" ||
+		!control.pollPayloadFits(control.pendingEvents, control.requestIDs()) {
+		t.Fatalf("overflow rejection cannot be returned in a valid poll: %#v", control.pendingEvents)
 	}
 }

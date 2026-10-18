@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
+
+const classicalHostCacheTTL = 5 * time.Minute
 
 var classicalCurves = []tls.CurveID{
 	tls.X25519,
@@ -16,15 +19,16 @@ var classicalCurves = []tls.CurveID{
 	tls.CurveP521,
 }
 
-// HostCache remembers endpoints that require a classical TLS key exchange.
-// Its zero value is ready for use and may be shared by multiple transports.
+// HostCache temporarily remembers endpoints that need the classical TLS
+// compatibility fallback. Its zero value is ready for use and may be shared.
 type HostCache struct {
-	classical sync.Map
+	mu        sync.Mutex
+	classical map[string]time.Time
 }
 
 // Transport tries Go's default TLS curve preferences first and retries an
 // exact TLS handshake timeout with classical curves when the request body can
-// be replayed safely.
+// be replayed safely. A successful fallback is cached only temporarily.
 type Transport struct {
 	primary   http.RoundTripper
 	classical http.RoundTripper
@@ -53,7 +57,7 @@ func newTransport(primary, classical http.RoundTripper, cache *HostCache) *Trans
 }
 
 func (transport *Transport) RoundTrip(request *http.Request) (*http.Response, error) {
-	if _, ok := transport.cache.classical.Load(request.URL.Host); ok {
+	if transport.cache.useClassical(request.URL.Host) {
 		return transport.classical.RoundTrip(request)
 	}
 
@@ -73,9 +77,39 @@ func (transport *Transport) RoundTrip(request *http.Request) (*http.Response, er
 	slog.Warn("TLS handshake timed out; retrying with classical key exchange", "host", request.URL.Host)
 	response, retryErr := transport.classical.RoundTrip(retry)
 	if retryErr == nil {
-		transport.cache.classical.Store(request.URL.Host, struct{}{})
+		transport.cache.rememberClassical(request.URL.Host)
 	}
 	return response, retryErr
+}
+
+func (cache *HostCache) useClassical(host string) bool {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	until, ok := cache.classical[host]
+	if !ok {
+		return false
+	}
+	if !time.Now().Before(until) {
+		delete(cache.classical, host)
+		return false
+	}
+	return true
+}
+
+func (cache *HostCache) rememberClassical(host string) {
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	now := time.Now()
+	if cache.classical == nil {
+		cache.classical = make(map[string]time.Time)
+	} else {
+		for cachedHost, until := range cache.classical {
+			if !now.Before(until) {
+				delete(cache.classical, cachedHost)
+			}
+		}
+	}
+	cache.classical[host] = now.Add(classicalHostCacheTTL)
 }
 
 func (transport *Transport) CloseIdleConnections() {

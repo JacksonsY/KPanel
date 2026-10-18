@@ -1390,6 +1390,10 @@ func findTrustedKejilionScript(required ...string) (string, error) {
 		if err != nil {
 			continue
 		}
+		resolved, err = filepath.Abs(resolved)
+		if err != nil {
+			continue
+		}
 		resolved = filepath.Clean(resolved)
 		if seen[resolved] {
 			continue
@@ -1397,7 +1401,7 @@ func findTrustedKejilionScript(required ...string) (string, error) {
 		seen[resolved] = true
 		info, err := os.Stat(resolved)
 		if err != nil || !info.Mode().IsRegular() || info.Size() < 1024 || info.Size() > 4<<20 ||
-			info.Mode().Perm()&0o022 != 0 || !recipeScriptOwnerTrusted(info) {
+			info.Mode().Perm()&0o022 != 0 || !recipeScriptOwnerTrusted(info) || !recipeScriptParentsTrusted(filepath.Dir(resolved)) {
 			continue
 		}
 		content, err := os.ReadFile(resolved)
@@ -1410,6 +1414,21 @@ func findTrustedKejilionScript(required ...string) (string, error) {
 		}
 	}
 	return "", errors.New("a trusted kejilion.sh website command was not found")
+}
+
+func recipeScriptParentsTrusted(directory string) bool {
+	directory = filepath.Clean(directory)
+	for {
+		info, err := os.Stat(directory)
+		if err != nil || !info.IsDir() || info.Mode().Perm()&0o022 != 0 || !recipeScriptOwnerTrusted(info) {
+			return false
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			return true
+		}
+		directory = parent
+	}
 }
 
 func containsAll(value string, required []string) bool {

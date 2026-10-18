@@ -3,6 +3,7 @@ package desktopworkspace
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -856,5 +857,70 @@ func TestCommandShortcutHostPersistenceAndLegacyClient(t *testing.T) {
 	input.Shortcuts[0].URL = "https://example.com"
 	if _, err := store.Replace(input); validationField(err) != "shortcuts.hostId" {
 		t.Fatalf("host accepted on URL: %v", err)
+	}
+}
+
+func TestShortcutSecretValuesAreRejectedAndLegacyDataIsRedacted(t *testing.T) {
+	store := openTestStore(t)
+	if _, err := store.Replace(validReplaceInput(store.Workspace().ResourceVersion)); err != nil {
+		t.Fatal(err)
+	}
+	base := store.Workspace()
+	for _, test := range []struct {
+		name  string
+		input func() ReplaceInput
+		field string
+	}{
+		{
+			name: "command credential",
+			input: func() ReplaceInput {
+				input := validReplaceInput(base.ResourceVersion)
+				input.Shortcuts[0].TargetType = ShortcutTargetCommand
+				input.Shortcuts[0].URL = ""
+				input.Shortcuts[0].Command = "curl -H 'Authorization: Bearer workspace-secret'"
+				return input
+			},
+			field: "shortcuts.command",
+		},
+		{
+			name: "URL query credential",
+			input: func() ReplaceInput {
+				input := validReplaceInput(base.ResourceVersion)
+				input.Shortcuts[0].URL = "https://example.com/admin?access_token=workspace-secret"
+				return input
+			},
+			field: "shortcuts.url",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := store.Replace(test.input()); validationField(err) != test.field {
+				t.Fatalf("Replace error = %v, want field %s", err, test.field)
+			}
+			data, err := os.ReadFile(store.workspacePath)
+			if err != nil || strings.Contains(string(data), "workspace-secret") {
+				t.Fatalf("rejected shortcut secret reached disk: %v", err)
+			}
+		})
+	}
+
+	legacy := store.state
+	legacy.Shortcuts[0].URL = "https://example.com/admin?token=legacy-workspace-secret"
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.workspacePath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(store.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(reopened.workspacePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(saved), "legacy-workspace-secret") || !strings.Contains(string(saved), "[REDACTED]") {
+		t.Fatalf("legacy shortcut secret was not redacted on open: %s", saved)
 	}
 }

@@ -502,6 +502,32 @@ func TestBuiltinSelectorRequiresExplicitScriptSupport(t *testing.T) {
 	}
 }
 
+func TestThirdPartyAppsCannotUseBackupOrRestoreScriptSelectors(t *testing.T) {
+	service := &Service{}
+	for _, selector := range []string{"b", "r"} {
+		if got, ok := service.scriptSelectorFor(Summary{App: App{ID: "thirdparty-example", Source: "thirdparty", Token: selector}}); ok || got != "" {
+			t.Fatalf("third-party selector %q was accepted: %q, %v", selector, got, ok)
+		}
+	}
+
+	embedded, _, _, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, selector := range []string{"b", "r"} {
+		payload := remotePayloadFromCatalog(embedded)
+		for index := range payload.Apps {
+			if payload.Apps[index].Source == "thirdparty" {
+				payload.Apps[index].Token = selector
+				break
+			}
+		}
+		if err := validateRemoteCatalog(Catalog{Categories: payload.Categories, Apps: payload.Apps}, payload.Meta); err == nil {
+			t.Fatalf("remote catalog accepted reserved third-party selector %q", selector)
+		}
+	}
+}
+
 func TestRemoteCatalogFallsBackToLastKnownGood(t *testing.T) {
 	embedded, _, _, err := LoadCatalog()
 	if err != nil {

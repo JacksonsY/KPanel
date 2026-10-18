@@ -662,12 +662,19 @@ func (s *Service) scriptSelectorFor(item Summary) (string, bool) {
 		return localAppSelectorPrefix + item.Token, true
 	}
 	if item.Source == "thirdparty" {
+		if reservedThirdPartyScriptSelector(item.Token) {
+			return "", false
+		}
 		return item.Token, true
 	}
 	if item.Source == "builtin" && item.Num > 0 && item.Num <= maxRemoteCatalogApps {
 		return strconv.Itoa(item.Num), true
 	}
 	return "", false
+}
+
+func reservedThirdPartyScriptSelector(value string) bool {
+	return value == "b" || value == "r"
 }
 
 func (s *Service) scriptInstallAvailable() bool {

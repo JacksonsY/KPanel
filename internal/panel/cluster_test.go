@@ -95,6 +95,25 @@ func TestClusterMutationsRequireOriginAndCSRF(t *testing.T) {
 	}
 }
 
+func TestClusterHostAuditOriginOmitsInvalidCredentials(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "credential-bearing origin", raw: "https://admin:cluster-secret@panel.example", want: "[invalid origin omitted]"},
+		{name: "query-bearing origin", raw: "https://panel.example/?token=cluster-secret", want: "[invalid origin omitted]"},
+		{name: "valid origin", raw: "https://panel.example", want: "https://panel.example"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := clusterHostAuditOrigin(test.raw)
+			if got != test.want || strings.Contains(got, "cluster-secret") {
+				t.Fatalf("clusterHostAuditOrigin(%q) = %q, want %q", test.raw, got, test.want)
+			}
+		})
+	}
+}
+
 func TestClusterMutualFilesRejectsChunkedRequestBody(t *testing.T) {
 	server, tokenPath := newTestServer(t)
 	sessionCookie, csrfCookie := bootstrapCookies(t, server, tokenPath)

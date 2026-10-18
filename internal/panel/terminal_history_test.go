@@ -45,7 +45,7 @@ func TestTerminalHistoryAPIAppendRemoveClearAndAuditMetadata(t *testing.T) {
 		t.Fatalf("unexpected history after append: %#v", snapshot)
 	}
 	loaded := authenticatedRequest(server, http.MethodGet, terminalHistoryPath, nil, sessionCookie, csrfCookie, nil)
-	if loaded.Code != http.StatusOK || !strings.Contains(loaded.Body.String(), "history-secret-command") {
+	if loaded.Code != http.StatusOK || strings.Contains(loaded.Body.String(), "history-secret-command") || !strings.Contains(loaded.Body.String(), "[REDACTED]") {
 		t.Fatalf("history was not returned: %d %s", loaded.Code, loaded.Body.String())
 	}
 

@@ -195,7 +195,7 @@ func (s *Server) handleClusterHostAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	input.ControllerOrigin = s.clusterFileCallbackOrigin(r)
 	change := map[string]any{
-		"name": strings.TrimSpace(input.Name), "origin": strings.TrimSpace(input.Origin),
+		"name": strings.TrimSpace(input.Name), "origin": clusterHostAuditOrigin(input.Origin),
 	}
 	if err := s.audit(r, session.User.ID, "cluster.host.add", "cluster-host", "", "intent", change); err != nil {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "audit_unavailable", "Audit storage unavailable", "")
@@ -209,6 +209,14 @@ func (s *Server) handleClusterHostAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.audit(r, session.User.ID, "cluster.host.add", "cluster-host", host.ID, "success", change)
 	s.writeJSON(w, http.StatusCreated, host)
+}
+
+func clusterHostAuditOrigin(raw string) string {
+	normalized, err := cluster.NormalizeV2Origin(raw)
+	if err != nil {
+		return "[invalid origin omitted]"
+	}
+	return normalized
 }
 
 func (s *Server) handleClusterHost(w http.ResponseWriter, r *http.Request) {

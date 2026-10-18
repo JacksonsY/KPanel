@@ -76,6 +76,22 @@ func TestTextRedactsArbitraryAuthorizationSchemeAndValue(t *testing.T) {
 	}
 }
 
+func TestTextRedactsMySQLShortPasswordOptionWithoutMaskingPort(t *testing.T) {
+	output := Text(strings.Join([]string{
+		`mysql -p history-secret`,
+		`mysqldump -pattached-secret database`,
+		`mysql -P 3306 -u panel`,
+	}, "\n"))
+	for _, leaked := range []string{"history-secret", "attached-secret"} {
+		if strings.Contains(output, leaked) {
+			t.Fatalf("MySQL short password option leaked %q: %s", leaked, output)
+		}
+	}
+	if !strings.Contains(output, `mysql -P 3306 -u panel`) {
+		t.Fatalf("MySQL port option was redacted: %s", output)
+	}
+}
+
 func TestRecordsHidePrivateKeyAcrossRecords(t *testing.T) {
 	values := []string{
 		"before",
