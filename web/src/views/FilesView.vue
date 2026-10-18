@@ -4261,9 +4261,21 @@ onBeforeUnmount(() => {
 .path-copy-input {
   min-width: 0;
   width: 100%;
+  height: 38px;
   flex: 1 1 auto;
-  padding: 7px 4px;
+  padding: 0 10px;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--surface);
   font-size: 14px;
+}
+
+.path-copy-input:focus {
+  border-color: var(--brand);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 16%, transparent);
 }
 
 .breadcrumbs {
