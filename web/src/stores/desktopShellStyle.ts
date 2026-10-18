@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { useDesktopWallpaper } from '@/lib/desktopWallpapers'
 
 export type DesktopShellStyle = 'modern' | 'xp'
 
@@ -56,8 +57,10 @@ export function resetDesktopShellStyleForTest(): void {
 
 export function useDesktopShellStyle() {
   function setStyle(value: DesktopShellStyle): void {
+    const enteringXP = preference.value !== 'xp' && value === 'xp'
     preference.value = value
     persistPreference(value)
+    if (enteringXP) useDesktopWallpaper().select('xp')
   }
 
   return {

@@ -13,7 +13,7 @@ import (
 	"unicode/utf8"
 )
 
-var appearanceWallpaperPattern = regexp.MustCompile(`^(classic|orbit|horizon|rift|prism|pack:[a-z0-9][a-z0-9-]{0,39}|custom:[0-9a-f]{32})$`)
+var appearanceWallpaperPattern = regexp.MustCompile(`^(classic|xp|orbit|horizon|rift|prism|pack:[a-z0-9][a-z0-9-]{0,39}|custom:[0-9a-f]{32})$`)
 var appearanceColorPattern = regexp.MustCompile(`^#[0-9a-f]{6}$`)
 
 func ValidateAppearance(value Appearance) error {

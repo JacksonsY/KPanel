@@ -964,6 +964,8 @@ export const enUSMessages = {
   'desktop.appearanceLoadFallback': 'This browser can still use its local settings.',
   'desktop.wallpaperClassic': 'Classic Flow',
   'desktop.wallpaperClassicDescription': 'KPanel’s original dark fluid wallpaper',
+  'desktop.wallpaperXP': 'Windows XP Bliss',
+  'desktop.wallpaperXPDescription': 'Blue sky, white clouds, and a green hillside',
   'desktop.wallpaperOrbit': 'Quiet Orbit',
   'desktop.wallpaperOrbitDescription': 'Deep ocean blue with restrained system orbits',
   'desktop.wallpaperHorizon': 'Cloud Horizon',

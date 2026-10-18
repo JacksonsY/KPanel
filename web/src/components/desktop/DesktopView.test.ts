@@ -6,6 +6,7 @@ import DesktopView from '@/components/desktop/DesktopView.vue'
 import { resetDesktopModeForTest, useDesktopMode } from '@/stores/desktopMode'
 import { resetDesktopShellStyleForTest, useDesktopShellStyle } from '@/stores/desktopShellStyle'
 import { useTheme } from '@/stores/theme'
+import { DESKTOP_WALLPAPER_KEY, useDesktopWallpaper } from '@/lib/desktopWallpapers'
 import { THEME_COLOR_PRESETS } from '@/theme/colors'
 vi.mock('@/lib/appearanceSync', () => ({ appearanceReady: true }))
 
@@ -45,6 +46,7 @@ describe('DesktopView', () => {
     resetDesktopModeForTest()
     resetDesktopShellStyleForTest()
     window.localStorage.clear()
+    useDesktopWallpaper().refresh()
     window.scrollTo = vi.fn()
     Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
       configurable: true,
@@ -81,6 +83,8 @@ describe('DesktopView', () => {
 
     expect(wrapper.get('.desktop').attributes('data-shell-style')).toBe('xp')
     expect(wrapper.get('.desktop__xp-start-label').text()).toBe('开始')
+    expect(wrapper.findAll('.desktop__xp-start-mark path')).toHaveLength(4)
+    expect(window.localStorage.getItem(DESKTOP_WALLPAPER_KEY)).toBe('xp')
 
     wrapper.unmount()
   })
@@ -547,7 +551,7 @@ describe('DesktopView', () => {
     const dialog = document.body.querySelector<HTMLElement>('.desktop-wallpaper-picker')
     const orbit = dialog?.querySelector<HTMLButtonElement>('[data-wallpaper-option="orbit"]')
     expect(dialog).not.toBeNull()
-    expect(dialog?.querySelectorAll('[data-wallpaper-option]')).toHaveLength(5)
+    expect(dialog?.querySelectorAll('[data-wallpaper-option]')).toHaveLength(6)
     expect(orbit?.getAttribute('aria-checked')).toBe('false')
 
     vi.useFakeTimers()

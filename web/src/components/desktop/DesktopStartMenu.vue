@@ -41,6 +41,7 @@ const emit = defineEmits<{
 
 const MENU_ID = 'desktop-start-menu'
 const LIST_ID = `${MENU_ID}-results`
+const XP_PROGRAM_PREVIEW_LIMIT = 6
 
 const i18n = useI18n()
 const root = ref<HTMLElement>()
@@ -57,8 +58,12 @@ const searching = computed(() => Boolean(query.value.trim()))
 const results = computed(() => searchDesktopStartMenu(props.items, query.value))
 const visibleResults = computed(() => {
   if (!props.xp || searching.value || allProgramsExpanded.value) return results.value
-  let visibleEntries = 0
-  return results.value.filter((item) => item.section !== 'entries' || visibleEntries++ < 6)
+  const visibleCounts: Partial<Record<DesktopStartMenuSection, number>> = {}
+  return results.value.filter((item) => {
+    const count = visibleCounts[item.section] ?? 0
+    visibleCounts[item.section] = count + 1
+    return item.section !== 'actions' && count < XP_PROGRAM_PREVIEW_LIMIT
+  })
 })
 const gridCount = computed(() =>
   searching.value || props.xp ? 0 : visibleResults.value.filter((item) => item.section === 'system').length)
@@ -71,8 +76,10 @@ const groups = computed(() => DESKTOP_START_MENU_SECTIONS
       .filter((option) => option.item.section === section),
   }))
   .filter((group) => group.options.length))
+const systemCount = computed(() => props.items.filter((item) => item.section === 'system').length)
 const entryCount = computed(() => props.items.filter((item) => item.section === 'entries').length)
-const canExpandPrograms = computed(() => Boolean(props.xp && !searching.value && entryCount.value > 6))
+const canExpandPrograms = computed(() => Boolean(props.xp && !searching.value
+  && (systemCount.value > XP_PROGRAM_PREVIEW_LIMIT || entryCount.value > XP_PROGRAM_PREVIEW_LIMIT)))
 const activeId = computed(() => visibleResults.value[active.value] ? optionId(active.value) : undefined)
 const userInitial = computed(() => props.userName.trim().slice(0, 1).toLocaleUpperCase() || 'K')
 
@@ -149,7 +156,7 @@ function onSearchKeyDown(event: KeyboardEvent): void {
     // While typing, horizontal keys edit the query instead of moving the highlight.
     if (searching.value && event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
     event.preventDefault()
-    active.value = moveStartMenuIndex(active.value, event.key, results.value.length, {
+    active.value = moveStartMenuIndex(active.value, event.key, visibleResults.value.length, {
       count: gridCount.value,
       columns: gridColumns(),
     })

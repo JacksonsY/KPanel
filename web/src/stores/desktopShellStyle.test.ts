@@ -7,11 +7,15 @@ import {
   useDesktopShellStyle,
 } from './desktopShellStyle'
 
+const wallpaper = vi.hoisted(() => ({ select: vi.fn() }))
+vi.mock('@/lib/desktopWallpapers', () => ({ useDesktopWallpaper: () => ({ select: wallpaper.select }) }))
+
 const STORAGE_KEY = 'kpanel:desktop-shell-style:v1'
 
 beforeEach(() => {
   resetDesktopShellStyleForTest()
   window.localStorage.clear()
+  wallpaper.select.mockClear()
 })
 
 afterEach(() => {
@@ -45,12 +49,24 @@ describe('desktop shell style preference', () => {
     style.setStyle('xp')
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe('xp')
     expect(style.preference.value).toBe('xp')
+    expect(wallpaper.select).toHaveBeenCalledOnce()
+    expect(wallpaper.select).toHaveBeenCalledWith('xp')
 
     window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue: 'modern' }))
     expect(style.preference.value).toBe('modern')
 
     window.dispatchEvent(new StorageEvent('storage', { key: null, newValue: null }))
     expect(style.preference.value).toBe('modern')
+  })
+
+  it('does not reset a manually selected wallpaper when XP is already active', () => {
+    initializeDesktopShellStyle()
+    const style = useDesktopShellStyle()
+
+    style.setStyle('xp')
+    style.setStyle('xp')
+
+    expect(wallpaper.select).toHaveBeenCalledOnce()
   })
 
   it('keeps the in-memory choice when browser storage is unavailable', () => {

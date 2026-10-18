@@ -113,3 +113,9 @@ func TestSiteBrandingValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestAppearanceAcceptsWindowsXPWallpaper(t *testing.T) {
+	if err := ValidateAppearance(Appearance{Theme: "system", Wallpaper: "xp", ClassicLevel: "off"}); err != nil {
+		t.Fatalf("Windows XP wallpaper rejected: %v", err)
+	}
+}

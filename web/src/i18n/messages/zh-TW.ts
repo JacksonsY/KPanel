@@ -896,6 +896,8 @@ export const zhTWMessages = {
   "desktop.appearanceLoadFallback": "目前瀏覽器的設定仍可使用。",
   "desktop.wallpaperClassic": "經典流光",
   "desktop.wallpaperClassicDescription": "KPanel 原有的深色流體桌布",
+  "desktop.wallpaperXP": "Windows XP 經典草坡",
+  "desktop.wallpaperXPDescription": "藍天白雲與綠色草坡的懷舊桌面",
   "desktop.wallpaperOrbit": "靜謐軌道",
   "desktop.wallpaperOrbitDescription": "深海藍與克制的系統軌道",
   "desktop.wallpaperHorizon": "雲端地平線",
