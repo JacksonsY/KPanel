@@ -17,6 +17,21 @@ RHEL/Fedora、Arch/Manjaro、openSUSE/SLES，以及 Alpine Linux 3.24 `sys` mode
 具体实机验收层级见[宿主机系统兼容矩阵](platform-support.md)。Alpine/OpenRC
 已有自动化契约证据，但尚未完成真实 PID 1 VPS/VM 的 L3 准入，不能写成已实机验证。
 
+### 继承 POSIX ACL 的文件系统
+
+安装和应用市场更新会规范化 KPanel 自有 IPC 目录的权限，不按 NAS 品牌或发行版判断。
+范围仅为 `run`、`secrets`（源码安装对应 `/run/kejilion-panel`、`/etc/kejilion-panel`）
+以及其中的 `agent.sock`、`agent.token`；不递归清理父目录、共享目录或用户数据的 ACL。
+目录清除扩展及默认 ACL，Token 和 Socket 清除扩展 ACL，再分别设置
+`root:kejilion-panel` 和 `0750`、`0640`、`0660`。这会移除这些专用对象上的自定义 ACL 授权。
+已有 ACL 时需要宿主机提供 `acl` 软件包的 `setfacl`；检测到 ACL 却缺少工具或处理失败时明确停止，
+普通无 ACL 主机不强制安装该工具。此逻辑处理 POSIX ACL，不承诺支持所有 NAS 私有 ACL 实现。
+
+应用市场安装和更新成功还须由面板容器的实际非 root 用户执行
+`/paneld agent-healthcheck`，避免 root 探测成功而面板无法读取 Token 或连接 Socket。
+回归入口为 `packaging/tests/app-conf-acl.sh`；设置 `KPANEL_REQUIRE_REAL_ACL=1` 时要求
+Linux 环境提供 `acl` 和 `python3`，实际验证拒绝访问、修复、Socket 重建、Token 替换和用户隔离。
+
 安装器只管理 `/etc/kejilion-panel`、`/opt/kejilion-panel`、
 `/var/lib/kejilion-panel`、`/run/kejilion-panel`、
 `/usr/local/libexec/kejilion-agent`、对应 systemd unit 或

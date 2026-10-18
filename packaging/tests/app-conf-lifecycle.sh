@@ -8,6 +8,7 @@ set -eu
 }
 
 PROJECT_DIR=${1:-/src}
+bash "$PROJECT_DIR/packaging/tests/app-conf-acl.sh" "$PROJECT_DIR"
 RELEASE_VERSION=$(tr -d '\r\n' <"$PROJECT_DIR/VERSION")
 export KPANEL_RELEASE_VERSION=$RELEASE_VERSION
 export KPANEL_PROJECT_DIR=$PROJECT_DIR
@@ -55,6 +56,11 @@ case "$1 ${2:-}" in
 		;;
 	"ps -a")
 		exit 0
+		;;
+	"exec kejilion-panel")
+		[ "$3 ${4:-}" = '/paneld agent-healthcheck' ] || exit 2
+		[ "${KPANEL_MOCK_PANEL_AGENT_FAIL:-0}" != 1 ]
+		exit
 		;;
 	"network ls")
 		exit 0

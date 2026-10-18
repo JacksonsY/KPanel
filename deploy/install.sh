@@ -8,6 +8,7 @@ export LC_ALL
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/init-system.sh"
+. "$SCRIPT_DIR/ipc-permissions.sh"
 
 AGENT_BINARY=
 AGENT_SHA256=
@@ -489,6 +490,9 @@ ENV_TARGET=$OPT_DIR/.env
 TOKEN_TARGET=$ETC_DIR/agent.token
 
 install -d -o root -g "$PANEL_GROUP" -m 0750 "$ETC_DIR"
+install -d -o root -g "$PANEL_GROUP" -m 0750 /run/kejilion-panel
+kpanel_prepare_ipc_permissions "$PANEL_GID" /run/kejilion-panel "$ETC_DIR" ||
+	fail "cannot prepare private Agent IPC permissions"
 install -d -o root -g root -m 0755 "$OPT_DIR"
 install -d -o root -g root -m 0755 "$(dirname "$DATA_DIR")"
 install -d -o 65532 -g 65532 -m 0700 "$DATA_DIR"
