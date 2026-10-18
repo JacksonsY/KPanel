@@ -24,6 +24,7 @@ const props = defineProps<{
   userName: string
   xp?: boolean
   win98?: boolean
+  userAvatar?: string
   signingOut?: boolean
   dark?: boolean
   /** The toggle button; moving focus to it does not dismiss the menu. */
@@ -396,7 +397,8 @@ watch(() => visibleResults.value.length, (length) => {
           :disabled="signingOut"
           @click="emit('sign-out')"
         >
-          <span class="desktop-start-menu__avatar" aria-hidden="true">{{ userInitial }}</span>
+          <img v-if="userAvatar" class="desktop-start-menu__avatar desktop-start-menu__avatar--image" :src="userAvatar" alt="" />
+          <span v-else class="desktop-start-menu__avatar" aria-hidden="true">{{ userInitial }}</span>
           <span class="desktop-start-menu__user-text">
             <strong>{{ userName }}</strong>
             <small>{{ i18n.t('nav.signOut') }}</small>

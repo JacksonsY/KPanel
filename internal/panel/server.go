@@ -457,6 +457,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.handlePasswordChange(w, r)
 	case r.Method == http.MethodPut && r.URL.Path == "/api/v1/settings/username":
 		s.handleUsernameChange(w, r)
+	case r.URL.Path == avatarPath:
+		s.handleAvatar(w, r)
 	case r.URL.Path == "/api/v1/settings/totp":
 		s.handleTOTPSettings(w, r)
 	case r.URL.Path == "/api/v1/settings/totp/enrollment":

@@ -80,6 +80,11 @@ const theme = useTheme()
 const desktopShellStyle = useDesktopShellStyle()
 const toast = useToast()
 const i18n = useI18n()
+const avatarInput = ref<HTMLInputElement>()
+const uploadingAvatar = ref(false)
+
+const maxAvatarBytes = 512 * 1024
+const avatarTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
 function phrase(value: string): string {
   phraseCatalogVersion.value
@@ -128,7 +133,7 @@ const settingsSections: SettingsSectionDefinition[] = [
   { id: 'branding', category: 'appearance', title: '站点名称与图标', description: '自定义面板与登录页标识', keywords: ['名称', '图标', 'Logo', 'favicon', 'KPanel'] },
   { id: 'guides', category: 'support', title: '使用说明', description: '视频与图文教程，帮助你熟悉 KPanel', keywords: ['教程', '视频', '图文', '帮助'] },
   { id: 'help', category: 'support', title: '帮助与问题报告', description: '生成问题报告并获取排查帮助', keywords: ['反馈', '诊断', '日志', '报告'] },
-  { id: 'account-overview', category: 'account', title: '管理账户', description: '当前登录身份与会话信息', keywords: ['管理员', 'Session', '登录', '身份验证'] },
+  { id: 'account-overview', category: 'account', title: '管理账户', description: '当前登录身份与会话信息', keywords: ['管理员', 'Session', '登录', '身份验证', '头像', '个人资料', 'avatar'] },
   { id: 'username', category: 'account', title: '修改用户名', description: '更新当前管理员账户的登录名称', keywords: ['账号', '名称'] },
   { id: 'password', category: 'account', title: '修改密码', description: '更新当前管理员账户的登录凭据', keywords: ['凭据', '登录'] },
   { id: 'security-entrance', category: 'account', title: '登录安全入口', description: '隐藏常规登录路径', keywords: ['安全路径', '公网扫描', '撞库'] },
@@ -738,6 +743,45 @@ async function changeUsername(): Promise<void> {
   await endAuthenticatedSession()
 }
 
+function openAvatarPicker(): void {
+  if (!uploadingAvatar.value) avatarInput.value?.click()
+}
+
+async function changeAvatar(event: Event): Promise<void> {
+  const input = event.currentTarget as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (file.size > maxAvatarBytes) {
+    toast.danger(phrase('头像更新失败'), phrase('头像文件不能超过 512 KiB。'))
+    input.value = ''
+    return
+  }
+  if (!avatarTypes.has(file.type.toLowerCase())) {
+    toast.danger(phrase('头像更新失败'), phrase('请选择 PNG、JPEG 或 WebP 图片。'))
+    input.value = ''
+    return
+  }
+
+  uploadingAvatar.value = true
+  try {
+    const result = await api.settings.updateAvatar(file)
+    if (session.state.user) session.state.user.avatar = result.avatar
+    toast.success(phrase('头像已更新'))
+  } catch (reason) {
+    const message = reason instanceof ApiError
+      ? reason.code === 'avatar_file_too_large'
+        ? phrase('头像文件不能超过 512 KiB。')
+        : reason.code === 'avatar_image_invalid'
+          ? phrase('请选择尺寸不超过 2048 × 2048 像素的有效图片。')
+          : reason.message
+      : phrase('请重试。')
+    toast.danger(phrase('头像更新失败'), message)
+  } finally {
+    uploadingAvatar.value = false
+    input.value = ''
+  }
+}
+
 function unlockUsernamePassword(): void {
   usernamePasswordUnlocked.value = true
 }
@@ -1007,10 +1051,16 @@ onBeforeUnmount(stopKPanelReleaseRequest)
         </button>
       </header>
       <div class="account-card">
-        <span class="avatar avatar--large">{{ session.state.user?.username?.slice(0, 1).toUpperCase() || 'A' }}</span>
+        <img v-if="session.state.user?.avatar" class="avatar avatar--large avatar--image" :src="session.state.user.avatar" alt="" />
+        <span v-else class="avatar avatar--large">{{ session.state.user?.username?.slice(0, 1).toUpperCase() || 'A' }}</span>
         <div>
           <strong>{{ session.state.user?.displayName || session.state.user?.username || '管理员' }}</strong>
           <small>{{ session.state.user?.role || 'administrator' }}</small>
+          <button class="button button--secondary account-avatar-button" type="button" :disabled="uploadingAvatar" @click="openAvatarPicker">
+            {{ phrase(uploadingAvatar ? '正在上传…' : '更换头像') }}
+          </button>
+          <small class="account-avatar-help">{{ phrase('支持 PNG、JPEG 和 WebP，最大 512 KiB、2048 × 2048 像素。') }}</small>
+          <input ref="avatarInput" hidden type="file" accept="image/png,image/jpeg,image/webp" tabindex="-1" aria-hidden="true" @change="changeAvatar" />
         </div>
         <StatusBadge status="connected" label="当前会话" subtle />
       </div>

@@ -72,6 +72,7 @@ type PublicUser struct {
 	ID          string `json:"id"`
 	Username    string `json:"username"`
 	Role        string `json:"role"`
+	Avatar      string `json:"avatar,omitempty"`
 	TOTPEnabled bool   `json:"totpEnabled"`
 }
 
@@ -894,7 +895,7 @@ func loginKeys(ip, username string) (string, string) {
 }
 
 func publicUser(user store.User) PublicUser {
-	return PublicUser{ID: user.ID, Username: user.Username, Role: user.Role, TOTPEnabled: user.TOTPSecret != ""}
+	return PublicUser{ID: user.ID, Username: user.Username, Role: user.Role, Avatar: user.Avatar, TOTPEnabled: user.TOTPSecret != ""}
 }
 
 func randomToken(bytes int) (string, error) {

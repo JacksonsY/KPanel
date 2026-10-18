@@ -42,6 +42,7 @@ export interface User {
   displayName?: string
   role?: string
   totpEnabled?: boolean
+  avatar?: string
 }
 
 export interface AuthStatus {

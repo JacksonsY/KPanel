@@ -3140,6 +3140,10 @@ body.desktop-mode-open::-webkit-scrollbar {
   font-weight: 700;
 }
 
+.desktop-start-menu__avatar--image {
+  object-fit: cover;
+}
+
 .desktop-start-menu__user-text {
   display: grid;
   min-width: 0;

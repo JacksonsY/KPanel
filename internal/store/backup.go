@@ -61,6 +61,9 @@ func ValidateIdentityBackup(data []byte) error {
 	if u.ID == "" || len(u.ID) > 128 || u.Role != "admin" || u.Username == "" || len(u.Username) > 128 || len(u.PasswordHash) > 1024 || len(u.PasswordHash) < 32 || len(u.TOTPRecoveryCodeHashes) != 0 || len(u.Passkeys) != 0 {
 		return errors.New("invalid backup account")
 	}
+	if err := validateUserAvatar(u.Avatar); err != nil {
+		return errors.New("invalid backup account")
+	}
 	return nil
 }
 

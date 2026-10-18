@@ -5227,6 +5227,7 @@ function onViewportResize(): void {
       :user-name="startMenuUserName"
       :xp="desktopShellStyle.preference.value === 'xp'"
       :win98="desktopShellStyle.preference.value === 'win98'"
+      :user-avatar="session.state.user?.avatar"
       :signing-out="signingOut"
       :dark="theme.resolved.value === 'dark'"
       :opener="startButtonElement"

@@ -2743,6 +2743,11 @@ export const api = {
         method: 'PUT',
         body: { currentPassword, newUsername },
       }),
+    updateAvatar: (file: File) => {
+      const body = new FormData()
+      body.set('avatar', file, file.name)
+      return request<{ avatar: string }>('/settings/avatar', { method: 'PUT', body })
+    },
   },
 }
 

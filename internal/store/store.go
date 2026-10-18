@@ -25,6 +25,7 @@ import (
 
 const (
 	maxStoreBytes               int64 = 32 << 20
+	MaxUserAvatarBytes                 = 512 << 10
 	MaxFileShares                     = 256
 	MaxClusterHostOrder               = 101
 	MaxClusterHostIDLength            = 128
@@ -53,6 +54,7 @@ type User struct {
 	Username               string     `json:"username"`
 	PasswordHash           string     `json:"passwordHash"`
 	Role                   string     `json:"role"`
+	Avatar                 string     `json:"avatar,omitempty"`
 	TOTPSecret             string     `json:"totpSecret,omitempty"`
 	TOTPEnabledAt          *time.Time `json:"totpEnabledAt,omitempty"`
 	TOTPLastUsedStep       int64      `json:"totpLastUsedStep,omitempty"`
@@ -238,6 +240,9 @@ func Open(path string) (*Store, error) {
 			if len(user.Passkeys) != 0 && s.data.SchemaVersion < 2 {
 				return nil, ErrInvalidRecord
 			}
+			if err := validateUserAvatar(user.Avatar); err != nil {
+				return nil, fmt.Errorf("validate user avatar: %w", err)
+			}
 			if err := validatePasskeys(user.Passkeys); err != nil {
 				return nil, fmt.Errorf("validate passkeys: %w", err)
 			}
@@ -336,6 +341,9 @@ func (s *Store) CreateInitialAdmin(user User) error {
 	}
 	previous := cloneDiskState(s.data)
 	if err := validatePasskeys(user.Passkeys); err != nil {
+		return err
+	}
+	if err := validateUserAvatar(user.Avatar); err != nil {
 		return err
 	}
 	if len(user.Passkeys) != 0 {

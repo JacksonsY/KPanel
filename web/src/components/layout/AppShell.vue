@@ -413,7 +413,8 @@ watch(
           :title="sidebarCollapsed ? i18n.t('nav.signOut') : undefined"
           @click="signOut"
         >
-          <span class="avatar">{{ session.state.user?.username?.slice(0, 1).toUpperCase() || 'A' }}</span>
+          <img v-if="session.state.user?.avatar" class="avatar avatar--image" :src="session.state.user.avatar" alt="" />
+          <span v-else class="avatar">{{ session.state.user?.username?.slice(0, 1).toUpperCase() || 'A' }}</span>
           <span>
             <strong>{{ session.state.user?.displayName || session.state.user?.username || i18n.t('common.admin') }}</strong>
             <small>{{ i18n.t('nav.signOut') }}</small>

@@ -2274,6 +2274,10 @@ textarea:focus-visible,
   font-size: 17px;
 }
 
+.avatar--image {
+  object-fit: cover;
+}
+
 .app-shell__main {
   --app-shell-inline-offset: var(--sidebar-width);
 
@@ -5366,6 +5370,16 @@ div.resource-name {
 }
 
 .account-card small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.account-avatar-button {
+  justify-self: start;
+  margin-top: 5px;
+}
+
+.account-avatar-help {
   color: var(--muted);
   font-size: 13px;
 }
