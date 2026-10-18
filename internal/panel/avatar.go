@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	avatarPath            = "/api/v1/settings/avatar"
-	maxAvatarRequestBytes = store.MaxUserAvatarBytes + (32 << 10)
-	maxAvatarDimension    = 2048
-	maxAvatarPixels int64 = 4 * 1024 * 1024
+	avatarPath                  = "/api/v1/settings/avatar"
+	maxAvatarRequestBytes       = store.MaxUserAvatarBytes + (32 << 10)
+	maxAvatarDimension          = 2048
+	maxAvatarPixels       int64 = 4 * 1024 * 1024
 )
 
 func (s *Server) handleAvatar(w http.ResponseWriter, r *http.Request) {

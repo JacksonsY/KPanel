@@ -25,7 +25,7 @@ import (
 
 const (
 	maxStoreBytes               int64 = 32 << 20
-	MaxUserAvatarBytes                 = 512 << 10
+	MaxUserAvatarBytes                = 512 << 10
 	MaxFileShares                     = 256
 	MaxClusterHostOrder               = 101
 	MaxClusterHostIDLength            = 128
