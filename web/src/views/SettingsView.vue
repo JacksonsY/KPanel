@@ -53,6 +53,7 @@ import {
 import { usePanelState } from '@/stores/panel'
 import { useSession } from '@/stores/session'
 import { useTheme, type ThemePreference } from '@/stores/theme'
+import { useDesktopShellStyle, type DesktopShellStyle } from '@/stores/desktopShellStyle'
 import {
   DEFAULT_THEME_COLORS,
   THEME_COLOR_PRESETS,
@@ -76,6 +77,7 @@ const router = useRouter()
 const session = useSession()
 const panel = usePanelState()
 const theme = useTheme()
+const desktopShellStyle = useDesktopShellStyle()
 const toast = useToast()
 const i18n = useI18n()
 
@@ -347,6 +349,22 @@ const themeModes: Array<{ id: ThemePreference; label: string; description: strin
   { id: 'dark', label: '深色', description: '始终使用低亮度界面', icon: Moon },
   { id: 'system', label: '跟随系统', description: '随设备设置自动切换', icon: Monitor },
 ]
+const desktopShellStyleOptions = computed(() => [
+  {
+    id: 'modern' as const,
+    label: i18n.t('desktop.shellStyleModern'),
+    description: i18n.t('desktop.shellStyleModernDescription'),
+  },
+  {
+    id: 'xp' as const,
+    label: i18n.t('desktop.shellStyleXP'),
+    description: i18n.t('desktop.shellStyleXPDescription'),
+  },
+])
+
+function setDesktopShellStyle(value: DesktopShellStyle): void {
+  desktopShellStyle.setStyle(value)
+}
 
 const classicWallpaper = useClassicWallpaper()
 const desktopWallpaper = useDesktopWallpaper()
@@ -1422,6 +1440,38 @@ onBeforeUnmount(stopKPanelReleaseRequest)
             <strong>{{ option.label }}</strong>
             <small>{{ option.description }}</small>
             <Check v-if="theme.preference.value === option.id" class="theme-options__check" :size="17" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <div class="appearance-group">
+        <div class="appearance-group__header">
+          <h3>{{ i18n.t('desktop.shellStyleTitle') }}</h3>
+          <p>{{ i18n.t('desktop.shellStyleDescription') }}</p>
+        </div>
+        <div class="desktop-shell-style-options" role="radiogroup" :aria-label="i18n.t('desktop.shellStyleTitle')">
+          <button
+            v-for="option in desktopShellStyleOptions"
+            :key="option.id"
+            type="button"
+            role="radio"
+            :tabindex="desktopShellStyle.preference.value === option.id ? 0 : -1"
+            :aria-checked="desktopShellStyle.preference.value === option.id"
+            :class="{ 'is-active': desktopShellStyle.preference.value === option.id }"
+            @keydown="moveRadioFocus"
+            @click="setDesktopShellStyle(option.id)"
+          >
+            <span class="desktop-shell-style-options__preview" :class="`desktop-shell-style-options__preview--${option.id}`" aria-hidden="true">
+              <i class="desktop-shell-style-options__window">
+                <b />
+                <em />
+              </i>
+              <i class="desktop-shell-style-options__taskbar"><b /></i>
+            </span>
+            <span class="desktop-shell-style-options__copy">
+              <strong>{{ option.label }}</strong>
+              <small>{{ option.description }}</small>
+            </span>
+            <Check v-if="desktopShellStyle.preference.value === option.id" class="theme-options__check" :size="17" aria-hidden="true" />
           </button>
         </div>
       </div>

@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => {
     themeResetColors: vi.fn(),
     themePreference: { value: 'system' },
     themeResolved: { value: 'light' },
+    desktopShellStyleSet: vi.fn(),
+    desktopShellStylePreference: { value: 'modern' as 'modern' | 'xp' },
     themeColors: {
       value: {
         brand: '#2867b2',
@@ -120,6 +122,13 @@ vi.mock('@/stores/theme', () => ({
   }),
 }))
 
+vi.mock('@/stores/desktopShellStyle', () => ({
+  useDesktopShellStyle: () => ({
+    preference: mocks.desktopShellStylePreference,
+    setStyle: mocks.desktopShellStyleSet,
+  }),
+}))
+
 vi.mock('@/stores/toast', () => ({
   useToast: () => ({
     success: mocks.toastSuccess,
@@ -135,6 +144,7 @@ interface SettingsBindings {
   isSettingsSectionVisible: (id: 'help' | 'guides' | 'account-overview' | 'username' | 'password' | 'security-entrance' | 'totp' | 'language' | 'appearance' | 'wallpaper' | 'backup' | 'mcp' | 'version-updates' | 'agent' | 'license') => boolean
   settingsCategoryCount: (category: 'all' | 'account' | 'appearance' | 'data' | 'system' | 'support') => number
   selectSettingsCategory: (category: 'all' | 'account' | 'appearance' | 'data' | 'system' | 'support') => void
+  setDesktopShellStyle: (value: 'modern' | 'xp') => void
   clearSettingsSearch: () => void
   resetSettingsFilters: () => void
   usernameForm: { newUsername: string; currentPassword: string }
@@ -284,6 +294,7 @@ describe('SettingsView navigation', () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.desktopShellStylePreference.value = 'modern'
   vi.stubGlobal('confirm', vi.fn(() => true))
   vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
     callback(0)
@@ -520,7 +531,20 @@ describe('SettingsView appearance', () => {
     expect(settingsSource).toContain(':aria-checked="classicWallpaper.level.value === option.id"')
     expect(settingsSource).toContain('<DesktopWallpaperPicker')
     expect(settingsSource).toContain('@select="(id, pack) => desktopWallpaper.select(id, pack)"')
-    expect(settingsSource.match(/@keydown="moveRadioFocus"/g)).toHaveLength(5)
+    expect(settingsSource.match(/@keydown="moveRadioFocus"/g)).toHaveLength(6)
+  })
+
+  it('offers an independent accessible desktop shell style choice', () => {
+    expect(settingsSource).toContain('role="radiogroup" :aria-label="i18n.t(\'desktop.shellStyleTitle\')"')
+    expect(settingsSource).toContain(':aria-checked="desktopShellStyle.preference.value === option.id"')
+    expect(settingsSource).toContain('@click="setDesktopShellStyle(option.id)"')
+    expect(settingsSource).toContain('desktop.shellStyleXP')
+
+    setupView().setDesktopShellStyle('xp')
+
+    expect(mocks.desktopShellStyleSet).toHaveBeenCalledWith('xp')
+    expect(mocks.themeSetTheme).not.toHaveBeenCalled()
+    expect(mocks.themeSetColors).not.toHaveBeenCalled()
   })
 
   it('validates and normalizes Hex input before applying a complete color intent', () => {

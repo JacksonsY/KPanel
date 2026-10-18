@@ -3,11 +3,13 @@ import App from './App.vue'
 import { router } from './router'
 import { initializeI18n } from './i18n'
 import { initializeTheme } from './stores/theme'
+import { initializeDesktopShellStyle } from './stores/desktopShellStyle'
 import { initializeDesktopMode } from './stores/desktopMode'
 import './styles/main.css'
 import './styles/classicWallpaper.css'
 
 initializeTheme()
+initializeDesktopShellStyle()
 initializeDesktopMode()
 
 async function bootstrap(): Promise<void> {

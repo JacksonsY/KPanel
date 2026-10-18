@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import DesktopView from '@/components/desktop/DesktopView.vue'
 import { resetDesktopModeForTest, useDesktopMode } from '@/stores/desktopMode'
+import { resetDesktopShellStyleForTest, useDesktopShellStyle } from '@/stores/desktopShellStyle'
 import { useTheme } from '@/stores/theme'
 import { THEME_COLOR_PRESETS } from '@/theme/colors'
 vi.mock('@/lib/appearanceSync', () => ({ appearanceReady: true }))
@@ -42,6 +43,7 @@ function touchPointer(type: string, x = 40, y = 50, id = 1): PointerEvent {
 describe('DesktopView', () => {
   beforeEach(() => {
     resetDesktopModeForTest()
+    resetDesktopShellStyleForTest()
     window.localStorage.clear()
     window.scrollTo = vi.fn()
     Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
@@ -52,6 +54,7 @@ describe('DesktopView', () => {
   })
 
   afterEach(() => {
+    resetDesktopShellStyleForTest()
     vi.useRealTimers()
     vi.unstubAllGlobals()
     Object.defineProperties(document, {
@@ -69,6 +72,16 @@ describe('DesktopView', () => {
     const wrapper = mount(DesktopView)
     const icons = wrapper.findAll('.desktop__icon')
     expect(icons.length).toBeGreaterThanOrEqual(11)
+    wrapper.unmount()
+  })
+
+  it('projects the XP shell style and localized Start label into the desktop', () => {
+    useDesktopShellStyle().setStyle('xp')
+    const wrapper = mount(DesktopView)
+
+    expect(wrapper.get('.desktop').attributes('data-shell-style')).toBe('xp')
+    expect(wrapper.get('.desktop__xp-start-label').text()).toBe('开始')
+
     wrapper.unmount()
   })
 

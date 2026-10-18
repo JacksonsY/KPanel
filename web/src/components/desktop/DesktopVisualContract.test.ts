@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
+const xpStyles = readFileSync(new URL('../../styles/desktopXp.css', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../../styles/desktop.css', import.meta.url), 'utf8')
   + readFileSync(new URL('../../styles/desktopWallpaper.css', import.meta.url), 'utf8')
+  + xpStyles
 const mainStyles = readFileSync(new URL('../../styles/main.css', import.meta.url), 'utf8')
 const themeStyles = readFileSync(new URL('../../styles/themes.css', import.meta.url), 'utf8')
 const themeStoreSource = readFileSync(new URL('../../stores/theme.ts', import.meta.url), 'utf8')
@@ -18,7 +20,45 @@ function cssRule(source: string, selector: string): string {
   return source.match(new RegExp(`${escaped}\\s*\\{[^}]*\\}`))?.[0] ?? ''
 }
 
+function whiteTextContrast(hex: string): number {
+  const channels = hex.slice(1).match(/.{2}/g)?.map((channel) => Number.parseInt(channel, 16) / 255) ?? []
+  const linear = channels.map((channel) => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4)
+  const luminance = .2126 * (linear[0] ?? 0) + .7152 * (linear[1] ?? 0) + .0722 * (linear[2] ?? 0)
+  return 1.05 / (luminance + .05)
+}
+
+function gradientColors(selector: string): string[] {
+  const gradient = cssRule(xpStyles, selector).match(/background:\s*linear-gradient\([^;]+\)/)?.[0] ?? ''
+  return [...gradient.matchAll(/#[0-9a-f]{6}/gi)].map(([color]) => color)
+}
+
 describe('desktop visual and interaction contract', () => {
+  it('keeps the XP shell opt-in and scoped to desktop mode', () => {
+    expect(desktopViewSource).toContain(':data-shell-style="desktopShellStyle.preference.value"')
+    expect(xpStyles).toContain(".desktop[data-shell-style='xp'] .desktop-window__titlebar")
+    expect(xpStyles).toContain(".desktop[data-shell-style='xp'] .desktop__taskbar")
+    expect(xpStyles).toContain(".desktop[data-shell-style='xp'] .desktop-start-menu")
+    expect(xpStyles).toContain(".desktop[data-shell-style='xp'] .desktop-wallpaper-surface[data-wallpaper='classic']")
+    expect(xpStyles).toContain('@media (prefers-contrast: more), (prefers-reduced-transparency: reduce)')
+    expect(mainStyles).toContain("@import './desktopXp.css';")
+  })
+
+  it('keeps white text readable on XP title bars, taskbar and Start surfaces', () => {
+    const selectors = [
+      ".desktop[data-shell-style='xp'] .desktop-window__titlebar",
+      ".desktop[data-shell-style='xp'] .desktop__taskbar",
+      ".desktop[data-shell-style='xp'] .desktop__taskbar-brand .desktop__start-button",
+      ".desktop[data-shell-style='xp'] .desktop__taskbar-item",
+      ".desktop[data-shell-style='xp'] .desktop-start-menu__footer",
+    ]
+
+    for (const selector of selectors) {
+      const colors = gradientColors(selector)
+      expect(colors.length, selector).toBeGreaterThan(0)
+      for (const color of colors) expect(whiteTextContrast(color), `${selector} ${color}`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
   it('keeps semantic desktop copy at or above the 12px product floor', () => {
     expect(styles).not.toMatch(/font-size:\s*(?:[1-9]|1[01])px/)
   })
