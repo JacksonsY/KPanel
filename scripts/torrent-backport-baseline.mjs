@@ -105,7 +105,7 @@ export function validateScanScope(policy, identity, now = new Date()) {
       || JSON.stringify(policy.buildTargetFilesSha256) !== JSON.stringify(identity.buildTargetFilesSha256)) throw new Error('Scan scope source, targets or closure changed');
   if (policy.review?.state !== 'reviewed' || !policy.owner || !policy.review.reviewerRole
       || !/^[a-f0-9]{64}$/.test(policy.review.evidenceSha256 ?? '')) throw new Error('Scan scope requires independent review');
-  if (!Array.isArray(policy.findings) || policy.findings.length !== 36) throw new Error('Unexpected bounded scan scope');
+  if (!Array.isArray(policy.findings) || policy.findings.length !== 37) throw new Error('Unexpected bounded scan scope');
   const keys = new Set();
   for (const f of policy.findings) {
     const key = [f.scope, f.kind, f.id, f.module, f.version].join('|');
@@ -117,7 +117,7 @@ export function validateScanScope(policy, identity, now = new Date()) {
     keys.add(key);
   }
   if (policy.findings.filter(f => f.scope === 'selected' && f.kind === 'vulnerability').length !== 10
-      || policy.findings.filter(f => f.scope === 'standalone' && f.kind === 'vulnerability').length !== 24
+      || policy.findings.filter(f => f.scope === 'standalone' && f.kind === 'vulnerability').length !== 25
       || policy.findings.filter(f => f.scope === 'standalone' && f.kind === 'misconfiguration').length !== 2) throw new Error('Unexpected bounded scan finding kinds');
 }
 

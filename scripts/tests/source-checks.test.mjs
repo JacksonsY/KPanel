@@ -173,7 +173,7 @@ test('bounded scan scope expires, binds source and targets, and requires exact i
     assert.throws(() => validateScanScope(changed, identity, observed));
   }
   assert.equal(policy.findings.filter(f => f.scope === 'selected').length, 10);
-  assert.equal(policy.findings.filter(f => f.scope === 'standalone').length, 26);
+  assert.equal(policy.findings.filter(f => f.scope === 'standalone').length, 27);
 });
 
 test('release inventory matrix and build-file hashes cover every supported release environment', () => {
@@ -243,6 +243,17 @@ test('selected and standalone findings remain visible and cannot allow unknown I
   report.Results.push({ Target: 'Dockerfile', Class: 'config', Type: 'dockerfile', Misconfigurations: [] });
   assert.throws(() => verifyScanReport(report, oldInventory, 1, 'standalone', policy, [], oldInventory), /not superseded/);
   assert.equal(verifyScanReport(report, oldInventory, 1, 'standalone', policy, [], [{ Path: old.module, Version: 'v99.0.0' }]).findingsRetained.length, 1);
+  const xText = policy.findings.find(f => f.scope === 'standalone' && f.id === 'CVE-2026-56851');
+  assert.equal(xText?.module, 'golang.org/x/text');
+  assert.equal(xText?.version, 'v0.31.0');
+  assert.equal(xText?.disposition, 'superseded-by-selected-version');
+  assert.match(xText?.reason ?? '', /below v0\.41\.0; KPanel selected and production inventories use v0\.42\.0/);
+  const xTextInventory = [{ Path: xText.module, Version: xText.version }];
+  const xTextFinding = { VulnerabilityID: xText.id, PkgName: xText.module, InstalledVersion: xText.version, Severity: xText.severity };
+  const xTextReport = scanReport(xTextInventory, [xTextFinding]);
+  xTextReport.Results.push({ Target: 'Dockerfile', Class: 'config', Type: 'dockerfile', Misconfigurations: [] });
+  assert.equal(verifyScanReport(xTextReport, xTextInventory, 1, 'standalone', policy, [], [{ Path: xText.module, Version: 'v0.42.0' }]).findingsRetained[0].id, xText.id);
+  assert.throws(() => verifyScanReport(xTextReport, xTextInventory, 1, 'standalone', policy, [], xTextInventory), /not superseded/);
   const selected = [{ Path: old.module, Version: 'v99.0.0' }];
   assert.throws(() => verifyScanReport({ ...report, Results: report.Results.slice(0, 1) }, oldInventory, 1, 'standalone', policy, [], selected), /incomplete/);
   const config = policy.findings.find(f => f.kind === 'misconfiguration');
