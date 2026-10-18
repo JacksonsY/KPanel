@@ -32,11 +32,22 @@ func (s *Service) CreateLightBatchEnrollmentForOrigin(
 	origin string,
 	input CreateLightBatchEnrollmentInput,
 ) (LightBatchEnrollment, error) {
+	return s.CreateLightBatchEnrollmentForOriginWithTLSPin(origin, input, "")
+}
+
+func (s *Service) CreateLightBatchEnrollmentForOriginWithTLSPin(
+	origin string,
+	input CreateLightBatchEnrollmentInput,
+	tlsPublicKeyPin string,
+) (LightBatchEnrollment, error) {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
 	validatedOrigin, err := validateLightOrigin(origin)
 	if err != nil {
 		return LightBatchEnrollment{}, ErrLightHTTPSOrigin
+	}
+	if tlsPublicKeyPin != "" && !validLightTLSPublicKeyPin(tlsPublicKeyPin) {
+		return LightBatchEnrollment{}, ErrPairingCode
 	}
 	namePrefix, err := validateLightBatchNamePrefix(input.NamePrefix)
 	if err != nil {
@@ -80,6 +91,7 @@ func (s *Service) CreateLightBatchEnrollmentForOrigin(
 	wire, err := json.Marshal(lightTokenWire{
 		Version: 1, Origin: validatedOrigin, ID: id,
 		Secret: base64.RawURLEncoding.EncodeToString(secret), ExpiresAt: expiresAt.Unix(),
+		TLSPublicKeyPin: tlsPublicKeyPin,
 	})
 	if err != nil {
 		_ = s.lightBatches.Delete(id, now)
@@ -274,7 +286,8 @@ func parseLightTokenForPrefix(
 	secret, err := base64.RawURLEncoding.DecodeString(wire.Secret)
 	validatedOrigin, originErr := validateLightOrigin(wire.Origin)
 	if err != nil || originErr != nil || validatedOrigin != wire.Origin || len(secret) != 32 ||
-		wire.Version != 1 || !validID(wire.ID) {
+		wire.Version != 1 || !validID(wire.ID) ||
+		(wire.TLSPublicKeyPin != "" && !validLightTLSPublicKeyPin(wire.TLSPublicKeyPin)) {
 		return lightTokenWire{}, nil, ErrPairingCode
 	}
 	expiresAt := time.Unix(wire.ExpiresAt, 0).UTC()

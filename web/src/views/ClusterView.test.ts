@@ -918,7 +918,7 @@ describe('ClusterView inventory and navigation', () => {
     expect(view.lightEnrollment.value).toBeUndefined()
     expect(mocks.toastDanger).toHaveBeenCalledWith(
       '轻量节点命令生成失败',
-      '轻量节点需要可从被控机访问的 HTTPS 根地址。请先通过 k fd 为 KPanel 绑定域名后重试。',
+      '轻量节点需要可从节点访问的 HTTPS 根地址。可使用受信任证书的域名，或为直连 IP + 端口启用面板自签 HTTPS 后重新生成命令；HTTP 不支持。',
     )
   })
 

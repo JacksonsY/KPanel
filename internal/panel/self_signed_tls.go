@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
@@ -43,11 +44,12 @@ const (
 var errSelfSignedTLSInvalidHost = errors.New("self-signed TLS hosts must be IP literals or localhost")
 
 type selfSignedTLSInfo struct {
-	Enabled     bool       `json:"enabled"`
-	Fingerprint string     `json:"fingerprintSha256,omitempty"`
-	NotBefore   *time.Time `json:"notBefore,omitempty"`
-	NotAfter    *time.Time `json:"notAfter,omitempty"`
-	Hosts       []string   `json:"hosts,omitempty"`
+	Enabled         bool       `json:"enabled"`
+	Fingerprint     string     `json:"fingerprintSha256,omitempty"`
+	TLSPublicKeyPin string     `json:"-"`
+	NotBefore       *time.Time `json:"notBefore,omitempty"`
+	NotAfter        *time.Time `json:"notAfter,omitempty"`
+	Hosts           []string   `json:"hosts,omitempty"`
 }
 
 type selfSignedTLSState struct {
@@ -113,10 +115,9 @@ func (m *selfSignedTLS) TLSConfig() *tls.Config {
 	return m.state.Load().config
 }
 
-// Enable activates TLS on the shared listener. The existing key pair is kept
-// so the fingerprint the administrator verified stays stable; a new pair is
-// issued only on request, when missing, near expiry, or when the current IP
-// host is not covered.
+// Enable activates TLS on the shared listener. Automatic certificate renewal
+// and host expansion reuse the existing key so pinned lightweight nodes remain
+// connected. An explicit regenerate request creates a new key pair.
 func (m *selfSignedTLS) Enable(hosts []string, regenerate bool) (selfSignedTLSInfo, error) {
 	normalized, err := normalizeSelfSignedTLSHosts(hosts)
 	if err != nil {
@@ -129,10 +130,12 @@ func (m *selfSignedTLS) Enable(hosts []string, regenerate bool) (selfSignedTLSIn
 		regenerate = true
 	}
 	if err != nil || regenerate || time.Until(leaf.NotAfter) < selfSignedTLSRenewal || !certificateCovers(leaf, normalized) {
+		var reuseKey *ecdsa.PrivateKey
 		if leaf != nil && !regenerate {
 			normalized = mergeSelfSignedTLSHosts(certificateHosts(leaf), normalized)
+			reuseKey, _ = certificate.PrivateKey.(*ecdsa.PrivateKey)
 		}
-		certificate, leaf, err = m.issue(normalized)
+		certificate, leaf, err = m.issue(normalized, reuseKey)
 		if err != nil {
 			return selfSignedTLSInfo{}, err
 		}
@@ -210,10 +213,14 @@ func (m *selfSignedTLS) readPair() (tls.Certificate, *x509.Certificate, error) {
 	return certificate, leaf, nil
 }
 
-func (m *selfSignedTLS) issue(hosts []string) (tls.Certificate, *x509.Certificate, error) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, nil, err
+func (m *selfSignedTLS) issue(hosts []string, reuseKey *ecdsa.PrivateKey) (tls.Certificate, *x509.Certificate, error) {
+	key := reuseKey
+	if key == nil {
+		var err error
+		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return tls.Certificate{}, nil, err
+		}
 	}
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 127))
 	if err != nil {
@@ -279,11 +286,20 @@ func certificateInfo(leaf *x509.Certificate) selfSignedTLSInfo {
 	}
 	notBefore, notAfter := leaf.NotBefore.UTC(), leaf.NotAfter.UTC()
 	return selfSignedTLSInfo{
-		Fingerprint: strings.Join(parts, ":"),
-		NotBefore:   &notBefore,
-		NotAfter:    &notAfter,
-		Hosts:       certificateHosts(leaf),
+		Fingerprint:     strings.Join(parts, ":"),
+		TLSPublicKeyPin: selfSignedTLSPublicKeyPin(leaf),
+		NotBefore:       &notBefore,
+		NotAfter:        &notAfter,
+		Hosts:           certificateHosts(leaf),
 	}
+}
+
+func selfSignedTLSPublicKeyPin(leaf *x509.Certificate) string {
+	if leaf == nil || len(leaf.RawSubjectPublicKeyInfo) == 0 {
+		return ""
+	}
+	sum := sha256.Sum256(leaf.RawSubjectPublicKeyInfo)
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 func certificateHosts(leaf *x509.Certificate) []string {

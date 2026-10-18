@@ -123,7 +123,7 @@ export default [
   ["请确认双方 KPanel 在线后重试。", "Make sure both KPanel instances are online, then try again."],
   ["请检查目标 KPanel 和授权码后重试。", "Check the target KPanel and access code, then try again."],
   ["请清除搜索词后重试。", "Clear the search and try again."],
-  ["轻量节点需要可从被控机访问的 HTTPS 根地址。请先通过 k fd 为 KPanel 绑定域名后重试。", "Lightweight nodes require an HTTPS root address reachable from the managed host. Bind a domain to KPanel with k fd, then try again."],
+  ["轻量节点需要可从节点访问的 HTTPS 根地址。可使用受信任证书的域名，或为直连 IP + 端口启用面板自签 HTTPS 后重新生成命令；HTTP 不支持。", "Lightweight nodes need a reachable HTTPS origin. Use a domain with a trusted certificate, or enable the panel's self-signed HTTPS on its direct IP and port, then generate a new command. HTTP is unsupported."],
   ["请确认当前 KPanel 已通过 HTTPS 域名访问；轻量节点不使用 HTTP 直连地址。", "Confirm that the current KPanel is accessed through an HTTPS domain. Lightweight nodes do not use direct HTTP addresses."],
   ["节点已出现在当前主机列表。", "The node is now in the current host list."],
   ["请稍后重试。", "Please try again later."],

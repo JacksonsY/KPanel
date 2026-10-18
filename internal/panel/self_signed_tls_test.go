@@ -29,7 +29,7 @@ func TestSelfSignedTLSKeepsFingerprintAcrossToggleAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !enabled.Enabled || enabled.Fingerprint == "" || manager.TLSConfig() == nil {
+	if !enabled.Enabled || enabled.Fingerprint == "" || enabled.TLSPublicKeyPin == "" || manager.TLSConfig() == nil {
 		t.Fatalf("enable did not activate TLS: %+v", enabled)
 	}
 	if !containsString(enabled.Hosts, "203.0.113.5") || !containsString(enabled.Hosts, "127.0.0.1") {
@@ -63,14 +63,16 @@ func TestSelfSignedTLSKeepsFingerprintAcrossToggleAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if widened.Fingerprint == enabled.Fingerprint || !containsString(widened.Hosts, "203.0.113.5") || !containsString(widened.Hosts, "198.51.100.7") {
+	if widened.Fingerprint == enabled.Fingerprint || widened.TLSPublicKeyPin != enabled.TLSPublicKeyPin ||
+		!containsString(widened.Hosts, "203.0.113.5") || !containsString(widened.Hosts, "198.51.100.7") {
 		t.Fatalf("new IP host must reissue while keeping existing hosts: %+v", widened)
 	}
 	regenerated, err := restarted.Enable([]string{"198.51.100.7"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if regenerated.Fingerprint == widened.Fingerprint || containsString(regenerated.Hosts, "203.0.113.5") {
+	if regenerated.Fingerprint == widened.Fingerprint || regenerated.TLSPublicKeyPin == widened.TLSPublicKeyPin ||
+		containsString(regenerated.Hosts, "203.0.113.5") {
 		t.Fatalf("regenerate must issue a fresh pair for the current host only: %+v", regenerated)
 	}
 	if _, err := restarted.Enable([]string{"panel.example.com"}, false); err == nil {
@@ -81,6 +83,38 @@ func TestSelfSignedTLSKeepsFingerprintAcrossToggleAndRestart(t *testing.T) {
 	}
 	if recovered, err := openSelfSignedTLS(dir); err != nil || recovered.TLSConfig() != nil {
 		t.Fatalf("offline recovery must disable TLS on next start: %v", err)
+	}
+}
+
+func TestLightEnrollmentPinOnlyAppliesToDirectBuiltinSelfSignedOrigin(t *testing.T) {
+	server, _ := newTestServer(t)
+	info, err := server.selfTLS.Enable([]string{"203.0.113.5"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "https://203.0.113.5:8865/api/v1/cluster/light-enrollments", nil)
+	request.TLS = &tls.ConnectionState{Version: tls.VersionTLS13}
+	if pin := server.lightEnrollmentTLSPublicKeyPin(request, "https://203.0.113.5:8865"); pin != info.TLSPublicKeyPin {
+		t.Fatalf("direct self-signed pin = %q, want %q", pin, info.TLSPublicKeyPin)
+	}
+	request.Host = "LOCALHOST:8865"
+	if pin := server.lightEnrollmentTLSPublicKeyPin(request, "https://LOCALHOST:8865"); pin != info.TLSPublicKeyPin {
+		t.Fatalf("case-insensitive localhost certificate pin = %q, want %q", pin, info.TLSPublicKeyPin)
+	}
+	request.Host = "203.0.113.5:8865"
+	request.TLS = nil
+	if pin := server.lightEnrollmentTLSPublicKeyPin(request, "https://203.0.113.5:8865"); pin != "" {
+		t.Fatalf("plain HTTP request received a pin: %q", pin)
+	}
+	request.TLS = &tls.ConnectionState{Version: tls.VersionTLS13}
+	if pin := server.lightEnrollmentTLSPublicKeyPin(request, "https://198.51.100.7:8865"); pin != "" {
+		t.Fatalf("origin outside the built-in certificate SAN received a pin: %q", pin)
+	}
+	request.Host = "203.0.113.5:8865"
+	request.RemoteAddr = "127.0.0.1:12345"
+	request.Header.Set("X-Forwarded-Proto", "http")
+	if pin := server.lightEnrollmentTLSPublicKeyPin(request, "https://203.0.113.5:8865"); pin != "" {
+		t.Fatalf("trusted proxy request received a pin: %q", pin)
 	}
 }
 

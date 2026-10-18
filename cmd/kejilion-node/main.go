@@ -41,23 +41,25 @@ const (
 )
 
 type nodeConfig struct {
-	SchemaVersion  int    `json:"schemaVersion"`
-	Origin         string `json:"origin"`
-	NodeID         string `json:"nodeId"`
-	TargetNodeID   string `json:"targetNodeId,omitempty"`
-	ReportingKey   string `json:"reportingKey"`
-	ReportInterval int    `json:"reportIntervalSeconds"`
-	SSHLogin       bool   `json:"sshLogin,omitempty"`
-	Health         bool   `json:"-"`
-	ServiceChecks  bool   `json:"-"`
+	SchemaVersion   int    `json:"schemaVersion"`
+	Origin          string `json:"origin"`
+	TLSPublicKeyPin string `json:"tlsPublicKeyPin,omitempty"`
+	NodeID          string `json:"nodeId"`
+	TargetNodeID    string `json:"targetNodeId,omitempty"`
+	ReportingKey    string `json:"reportingKey"`
+	ReportInterval  int    `json:"reportIntervalSeconds"`
+	SSHLogin        bool   `json:"sshLogin,omitempty"`
+	Health          bool   `json:"-"`
+	ServiceChecks   bool   `json:"-"`
 }
 
 type tokenWire struct {
-	Version   int    `json:"v"`
-	Origin    string `json:"origin"`
-	ID        string `json:"id"`
-	Secret    string `json:"secret"`
-	ExpiresAt int64  `json:"expiresAt"`
+	Version         int    `json:"v"`
+	Origin          string `json:"origin"`
+	ID              string `json:"id"`
+	Secret          string `json:"secret"`
+	ExpiresAt       int64  `json:"expiresAt"`
+	TLSPublicKeyPin string `json:"pin,omitempty"`
 }
 
 type enrollRequest struct {
@@ -69,9 +71,10 @@ type enrollRequest struct {
 }
 
 type enrollmentTarget struct {
-	Origin string
-	Path   string
-	Batch  bool
+	Origin          string
+	Path            string
+	Batch           bool
+	TLSPublicKeyPin string
 }
 
 type enrollResponse struct {
@@ -166,6 +169,10 @@ func runEnroll(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	httpClient, err := nodeHTTPClientForOrigin(target.Origin, target.TLSPublicKeyPin)
+	if err != nil {
+		return err
+	}
 	terminalKey, err := cluster.GenerateFederationV2Keypair()
 	if err != nil {
 		return fmt.Errorf("generate terminal identity: %w", err)
@@ -199,14 +206,14 @@ func runEnroll(arguments []string) error {
 		request.AttemptID = batchAttempt.AttemptID
 	}
 	var response enrollResponse
-	status, responseHeaders, err := postJSONWithStatusAndHeaders(context.Background(), target.Origin+target.Path, request, nil, &response)
+	status, responseHeaders, err := postJSONWithHTTPClient(context.Background(), httpClient, target.Origin+target.Path, request, nil, &response)
 	if err != nil && !target.Batch && status == http.StatusBadRequest {
 		// A pre-v2 center rejects the optional key field because its decoder is
 		// strict. Retry the same one-time token without terminal capability so
 		// the node remains telemetry-compatible and never guesses a protocol.
 		request.TerminalPublicKey = ""
 		response = enrollResponse{}
-		status, responseHeaders, err = postJSONWithStatusAndHeaders(context.Background(), target.Origin+target.Path, request, nil, &response)
+		status, responseHeaders, err = postJSONWithHTTPClient(context.Background(), httpClient, target.Origin+target.Path, request, nil, &response)
 	}
 	if err != nil {
 		return fmt.Errorf("enroll lightweight node: %w", err)
@@ -238,7 +245,7 @@ func runEnroll(arguments []string) error {
 		return err
 	}
 	config := nodeConfig{
-		SchemaVersion: 1, Origin: target.Origin, NodeID: response.NodeID,
+		SchemaVersion: 1, Origin: target.Origin, TLSPublicKeyPin: target.TLSPublicKeyPin, NodeID: response.NodeID,
 		ReportingKey: response.ReportingKey, ReportInterval: response.ReportInterval,
 		SSHLogin:      hasResponseCapability(responseHeaders, cluster.SSHLoginCapability),
 		Health:        hasResponseCapability(responseHeaders, cluster.LightHealthCapability),
@@ -381,6 +388,10 @@ func collectAndReport(
 }
 
 func sendLightReport(ctx context.Context, config nodeConfig, secret []byte, payload reportRequest, previousReportLatency *int64) (nodeConfig, int64, error) {
+	httpClient, err := nodeHTTPClientForOrigin(config.Origin, config.TLSPublicKeyPin)
+	if err != nil {
+		return config, 0, err
+	}
 	if !config.ServiceChecks {
 		payload.Telemetry.ServiceChecks = nil
 	}
@@ -397,7 +408,7 @@ func sendLightReport(ctx context.Context, config nodeConfig, secret []byte, payl
 	}
 	var response reportResponse
 	requestStartedAt := time.Now()
-	status, responseHeaders, err := postRawJSONWithStatusAndHeaders(ctx, config.Origin+lightReportPath, body, headers, &response)
+	status, responseHeaders, err := postRawJSONWithHTTPClient(ctx, httpClient, config.Origin+lightReportPath, body, headers, &response)
 	if err != nil && (config.SSHLogin || config.Health || config.ServiceChecks) && shouldRetryLightReportWithoutSSHLogin(status) {
 		payload.Telemetry.SSHLogin = nil
 		payload.Telemetry.ServiceChecks = nil
@@ -408,7 +419,7 @@ func sendLightReport(ctx context.Context, config nodeConfig, secret []byte, payl
 		}
 		if err == nil {
 			response = reportResponse{}
-			_, responseHeaders, err = postRawJSONWithStatusAndHeaders(ctx, config.Origin+lightReportPath, body, headers, &response)
+			_, responseHeaders, err = postRawJSONWithHTTPClient(ctx, httpClient, config.Origin+lightReportPath, body, headers, &response)
 		}
 	}
 	if err != nil {
@@ -510,7 +521,13 @@ func enrollmentTargetFromToken(token string) (enrollmentTarget, error) {
 	if err != nil || len(secret) != 32 {
 		return enrollmentTarget{}, errors.New("enrollment token is invalid")
 	}
+	if wire.TLSPublicKeyPin != "" {
+		if _, err := decodeTLSPublicKeyPin(wire.TLSPublicKeyPin); err != nil {
+			return enrollmentTarget{}, errors.New("enrollment token is invalid")
+		}
+	}
 	target.Origin, err = validateHTTPSOrigin(wire.Origin)
+	target.TLSPublicKeyPin = wire.TLSPublicKeyPin
 	return target, err
 }
 
@@ -552,7 +569,8 @@ func readConfig(path string) (nodeConfig, []byte, error) {
 	key, keyErr := base64.RawURLEncoding.DecodeString(config.ReportingKey)
 	if err != nil || keyErr != nil || origin != config.Origin || config.SchemaVersion != 1 ||
 		!validHexID(config.NodeID) || (config.TargetNodeID != "" && !validHexID(config.TargetNodeID)) ||
-		len(key) != 32 || config.ReportInterval < 20 || config.ReportInterval > 600 {
+		len(key) != 32 || config.ReportInterval < 20 || config.ReportInterval > 600 ||
+		(config.TLSPublicKeyPin != "" && !validLightNodeTLSPublicKeyPin(config.TLSPublicKeyPin)) {
 		return nodeConfig{}, nil, errors.New("configuration file is invalid")
 	}
 	return config, key, nil
@@ -644,14 +662,22 @@ func postRawJSONWithStatus(ctx context.Context, endpoint string, body []byte, he
 }
 
 func postJSONWithStatusAndHeaders(ctx context.Context, endpoint string, input any, headers map[string]string, output any) (int, http.Header, error) {
+	return postJSONWithHTTPClient(ctx, nodeHTTPClient, endpoint, input, headers, output)
+}
+
+func postJSONWithHTTPClient(ctx context.Context, client *http.Client, endpoint string, input any, headers map[string]string, output any) (int, http.Header, error) {
 	body, err := json.Marshal(input)
 	if err != nil {
 		return 0, nil, err
 	}
-	return postRawJSONWithStatusAndHeaders(ctx, endpoint, body, headers, output)
+	return postRawJSONWithHTTPClient(ctx, client, endpoint, body, headers, output)
 }
 
 func postRawJSONWithStatusAndHeaders(ctx context.Context, endpoint string, body []byte, headers map[string]string, output any) (int, http.Header, error) {
+	return postRawJSONWithHTTPClient(ctx, nodeHTTPClient, endpoint, body, headers, output)
+}
+
+func postRawJSONWithHTTPClient(ctx context.Context, client *http.Client, endpoint string, body []byte, headers map[string]string, output any) (int, http.Header, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return 0, nil, err
@@ -661,7 +687,10 @@ func postRawJSONWithStatusAndHeaders(ctx context.Context, endpoint string, body 
 	for name, value := range headers {
 		request.Header.Set(name, value)
 	}
-	response, err := nodeHTTPClient.Do(request)
+	if client == nil {
+		client = nodeHTTPClient
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return 0, nil, err
 	}

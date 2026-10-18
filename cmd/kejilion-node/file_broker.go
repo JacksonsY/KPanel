@@ -47,6 +47,10 @@ func runFileBroker(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	httpClient, err := nodeHTTPClientForOrigin(config.Origin, config.TLSPublicKeyPin)
+	if err != nil {
+		return err
+	}
 	ctx, stop := nodeSignalContext()
 	defer stop()
 	stopProcdHealth := startNodeProcdHealth(ctx)
@@ -83,11 +87,11 @@ func runFileBroker(arguments []string) error {
 		return err
 	}
 	defer manager.Close()
-	relay, err := cluster.NewFileRelayClient(nodeHTTPClient)
+	relay, err := cluster.NewFileRelayClient(httpClient)
 	if err != nil {
 		return err
 	}
-	historyRelay, err := cluster.NewHistoryRelayClient(nodeHTTPClient)
+	historyRelay, err := cluster.NewHistoryRelayClient(httpClient)
 	if err != nil {
 		return err
 	}
@@ -183,8 +187,13 @@ func ensureFileCapability(
 	requestContext, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	var response cluster.LightFileCapabilityResponse
-	if _, _, err := postRawJSONWithStatusAndHeaders(
+	httpClient, err := nodeHTTPClientForOrigin(config.Origin, config.TLSPublicKeyPin)
+	if err != nil {
+		return nodeConfig{}, terminalIdentity{}, err
+	}
+	if _, _, err := postRawJSONWithHTTPClient(
 		requestContext,
+		httpClient,
 		config.Origin+cluster.LightFileCapabilityPath,
 		body,
 		headers,

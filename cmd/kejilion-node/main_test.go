@@ -115,6 +115,40 @@ func TestBatchEnrollmentTokenUsesDedicatedEndpointAndSevenDayBound(t *testing.T)
 	if err != nil || target.Path != lightEnrollPath || target.Batch {
 		t.Fatalf("enrollmentTargetFromToken(single) = %#v, %v", target, err)
 	}
+	pin := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x31}, 32))
+	wire := tokenWire{
+		Version: 1, Origin: "https://panel.example", ID: strings.Repeat("c", 32),
+		Secret:    base64.RawURLEncoding.EncodeToString(make([]byte, 32)),
+		ExpiresAt: time.Now().UTC().Add(time.Minute).Unix(), TLSPublicKeyPin: pin,
+	}
+	content, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinnedToken := lightTokenPrefix + base64.RawURLEncoding.EncodeToString(content)
+	target, err = enrollmentTargetFromToken(pinnedToken)
+	if err != nil || target.TLSPublicKeyPin != pin {
+		t.Fatalf("pinned enrollment target = %#v, %v", target, err)
+	}
+	wire.ID = strings.Repeat("d", 32)
+	wire.ExpiresAt = time.Now().UTC().Add(24 * time.Hour).Unix()
+	content, err = json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinnedBatchTarget, err := enrollmentTargetFromToken(lightBatchTokenPrefix + base64.RawURLEncoding.EncodeToString(content))
+	if err != nil || !pinnedBatchTarget.Batch || pinnedBatchTarget.TLSPublicKeyPin != pin {
+		t.Fatalf("pinned batch enrollment target = %#v, %v", pinnedBatchTarget, err)
+	}
+	wire.ExpiresAt = time.Now().UTC().Add(time.Minute).Unix()
+	wire.TLSPublicKeyPin = "not-a-pin"
+	content, err = json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := enrollmentTargetFromToken(lightTokenPrefix + base64.RawURLEncoding.EncodeToString(content)); err == nil {
+		t.Fatal("enrollment token accepted an invalid TLS pin")
+	}
 }
 
 func TestBatchEnrollmentAttemptPersistsIdentityWithoutRawToken(t *testing.T) {
@@ -165,7 +199,8 @@ func TestNodeConfigRoundTripIsStrictAndRejectsNonRegularTargets(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "node.json")
 	config := nodeConfig{
 		SchemaVersion: 1, Origin: "https://panel.example", NodeID: strings.Repeat("b", 32),
-		ReportingKey: base64.RawURLEncoding.EncodeToString(make([]byte, 32)), ReportInterval: 30,
+		TLSPublicKeyPin: base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32)),
+		ReportingKey:    base64.RawURLEncoding.EncodeToString(make([]byte, 32)), ReportInterval: 30,
 	}
 	if err := writeConfigAtomic(path, config); err != nil {
 		t.Fatalf("writeConfigAtomic() error = %v", err)
@@ -173,6 +208,16 @@ func TestNodeConfigRoundTripIsStrictAndRejectsNonRegularTargets(t *testing.T) {
 	loaded, secret, err := readConfig(path)
 	if err != nil || !reflect.DeepEqual(loaded, config) || len(secret) != 32 {
 		t.Fatalf("readConfig() = %#v, %d, %v", loaded, len(secret), err)
+	}
+	legacyPath := filepath.Join(t.TempDir(), "legacy-node.json")
+	legacyConfig := config
+	legacyConfig.TLSPublicKeyPin = ""
+	if err := writeConfigAtomic(legacyPath, legacyConfig); err != nil {
+		t.Fatal(err)
+	}
+	loadedLegacy, _, err := readConfig(legacyPath)
+	if err != nil || loadedLegacy.TLSPublicKeyPin != "" {
+		t.Fatalf("legacy node config was not accepted: %#v, %v", loadedLegacy, err)
 	}
 	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
 		t.Fatalf("configuration is not a regular file: %#v, %v", info, err)
@@ -187,6 +232,15 @@ func TestNodeConfigRoundTripIsStrictAndRejectsNonRegularTargets(t *testing.T) {
 	}
 	if _, _, err := readConfig(path); err == nil {
 		t.Fatal("readConfig() accepted an unknown field")
+	}
+	invalidConfigPath := filepath.Join(t.TempDir(), "invalid-pin.json")
+	invalidConfig := config
+	invalidConfig.TLSPublicKeyPin = "invalid"
+	if err := writeConfigAtomic(invalidConfigPath, invalidConfig); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := readConfig(invalidConfigPath); err == nil {
+		t.Fatal("readConfig() accepted an invalid TLS pin")
 	}
 	directoryTarget := filepath.Join(t.TempDir(), "directory")
 	if err := os.Mkdir(directoryTarget, 0o700); err != nil {

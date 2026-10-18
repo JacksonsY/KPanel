@@ -76,6 +76,35 @@ func TestLightBatchEnrollmentDefaultsToAndAllowsOneHundredHosts(t *testing.T) {
 	}
 }
 
+func TestLightBatchEnrollmentCarriesOptionalSelfSignedTLSPin(t *testing.T) {
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	service := newLightServiceForTest(t, &serviceTestClock{now: now})
+	pin := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x6b}, sha256.Size))
+	caEnrollment, err := service.CreateLightBatchEnrollmentForOrigin("https://panel.example", CreateLightBatchEnrollmentInput{MaxUses: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinnedEnrollment, err := service.CreateLightBatchEnrollmentForOriginWithTLSPin("https://panel.example", CreateLightBatchEnrollmentInput{MaxUses: 2}, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caWire, _, err := parseLightTokenForPrefix(lightBatchTokenForTest(t, caEnrollment), lightBatchTokenPrefix, maximumLightBatchDuration, now)
+	if err != nil || caWire.TLSPublicKeyPin != "" {
+		t.Fatalf("CA batch token pin = %q, %v; want no pin", caWire.TLSPublicKeyPin, err)
+	}
+	pinnedWire, _, err := parseLightTokenForPrefix(lightBatchTokenForTest(t, pinnedEnrollment), lightBatchTokenPrefix, maximumLightBatchDuration, now)
+	if err != nil || pinnedWire.TLSPublicKeyPin != pin {
+		t.Fatalf("self-signed batch token pin = %q, %v", pinnedWire.TLSPublicKeyPin, err)
+	}
+	commandGrowth := len(pinnedEnrollment.Command) - len(caEnrollment.Command)
+	if commandGrowth < 60 || commandGrowth > 80 {
+		t.Fatalf("self-signed batch command grew by %d bytes; want a compact pin addition", commandGrowth)
+	}
+	if _, err := service.CreateLightBatchEnrollmentForOriginWithTLSPin("https://panel.example", CreateLightBatchEnrollmentInput{MaxUses: 1}, "invalid"); !errors.Is(err, ErrPairingCode) {
+		t.Fatalf("invalid pin error = %v, want ErrPairingCode", err)
+	}
+}
+
 func TestLightBatchEnrollmentCreatesUniqueNodesAndRetriesIdempotently(t *testing.T) {
 	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
 	clock := &serviceTestClock{now: now}

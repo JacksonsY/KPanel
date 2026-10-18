@@ -264,6 +264,36 @@ func TestLightEnrollmentCommandCarriesOptionalDisplayName(t *testing.T) {
 	}
 }
 
+func TestLightEnrollmentCarriesOptionalSelfSignedTLSPin(t *testing.T) {
+	service := newLightServiceForTest(t, &serviceTestClock{now: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)})
+	pin := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x5a}, sha256.Size))
+	caEnrollment, err := service.CreateLightEnrollmentForOriginAndName("https://panel.example", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinnedEnrollment, err := service.CreateLightEnrollmentForOriginAndNameWithTLSPin("https://panel.example", "", pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caToken := strings.Trim(strings.Fields(caEnrollment.Command)[len(strings.Fields(caEnrollment.Command))-1], "'")
+	pinnedToken := strings.Trim(strings.Fields(pinnedEnrollment.Command)[len(strings.Fields(pinnedEnrollment.Command))-1], "'")
+	caWire, _, err := parseLightToken(caToken, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC))
+	if err != nil || caWire.TLSPublicKeyPin != "" {
+		t.Fatalf("CA token pin = %q, %v; want no pin", caWire.TLSPublicKeyPin, err)
+	}
+	pinnedWire, _, err := parseLightToken(pinnedToken, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC))
+	if err != nil || pinnedWire.TLSPublicKeyPin != pin {
+		t.Fatalf("self-signed token pin = %q, %v", pinnedWire.TLSPublicKeyPin, err)
+	}
+	commandGrowth := len(pinnedEnrollment.Command) - len(caEnrollment.Command)
+	if commandGrowth < 60 || commandGrowth > 80 {
+		t.Fatalf("self-signed command grew by %d bytes; want a compact pin addition", commandGrowth)
+	}
+	if _, err := service.CreateLightEnrollmentForOriginAndNameWithTLSPin("https://panel.example", "edge", "invalid"); !errors.Is(err, ErrPairingCode) {
+		t.Fatalf("invalid pin error = %v, want ErrPairingCode", err)
+	}
+}
+
 func TestLightEnrollmentAcceptsLegacyThirtyMinuteTokenDuringRollingUpgrade(t *testing.T) {
 	now := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
 	clock := &serviceTestClock{now: now}

@@ -41,6 +41,10 @@ func runTerminalBroker(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	httpClient, err := nodeHTTPClientForOrigin(config.Origin, config.TLSPublicKeyPin)
+	if err != nil {
+		return err
+	}
 	if config.TargetNodeID == "" {
 		return errors.New("terminal relay is not enrolled")
 	}
@@ -48,7 +52,7 @@ func runTerminalBroker(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	relayClient, err := cluster.NewTerminalRelayClient(nodeHTTPClient)
+	relayClient, err := cluster.NewTerminalRelayClient(httpClient)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -406,7 +407,9 @@ func (s *Server) handleLightEnrollmentCreate(w http.ResponseWriter, r *http.Requ
 		s.writeClusterError(w, r, cluster.ErrLightHTTPSOrigin)
 		return
 	}
-	enrollment, err := s.cluster.CreateLightEnrollmentForOriginAndName(origin, input.Name)
+	enrollment, err := s.cluster.CreateLightEnrollmentForOriginAndNameWithTLSPin(
+		origin, input.Name, s.lightEnrollmentTLSPublicKeyPin(r, origin),
+	)
 	if err != nil {
 		_ = s.audit(r, session.User.ID, "cluster.light-enrollment.create", "cluster-node", s.cluster.NodeID(), "failure", nil)
 		s.writeClusterError(w, r, err)
@@ -448,7 +451,9 @@ func (s *Server) handleLightBatchEnrollmentCreate(w http.ResponseWriter, r *http
 		s.writeClusterError(w, r, cluster.ErrLightHTTPSOrigin)
 		return
 	}
-	enrollment, err := s.cluster.CreateLightBatchEnrollmentForOrigin(origin, input)
+	enrollment, err := s.cluster.CreateLightBatchEnrollmentForOriginWithTLSPin(
+		origin, input, s.lightEnrollmentTLSPublicKeyPin(r, origin),
+	)
 	if err != nil {
 		_ = s.audit(r, session.User.ID, "cluster.light-batch-enrollment.create", "cluster-node", s.cluster.NodeID(), "failure", change)
 		s.writeClusterError(w, r, err)
@@ -460,6 +465,40 @@ func (s *Server) handleLightBatchEnrollmentCreate(w http.ResponseWriter, r *http
 	change["protocol"] = cluster.LightNodeProtocol
 	_ = s.audit(r, session.User.ID, "cluster.light-batch-enrollment.create", "cluster-node", s.cluster.NodeID(), "success", change)
 	s.writeJSON(w, http.StatusCreated, enrollment)
+}
+
+func (s *Server) lightEnrollmentTLSPublicKeyPin(r *http.Request, origin string) string {
+	if r == nil || r.TLS == nil || s.selfTLS == nil {
+		return ""
+	}
+	if s.isTrustedProxyPeer(r) {
+		return ""
+	}
+	info := s.selfTLS.Info()
+	if !info.Enabled || info.TLSPublicKeyPin == "" {
+		return ""
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return ""
+	}
+	host := parsed.Hostname()
+	if ip := net.ParseIP(host); ip != nil {
+		host = ip.String()
+	} else {
+		host = strings.ToLower(host)
+	}
+	hostCovered := false
+	for _, certificateHost := range info.Hosts {
+		if certificateHost == host {
+			hostCovered = true
+			break
+		}
+	}
+	if !hostCovered {
+		return ""
+	}
+	return info.TLSPublicKeyPin
 }
 
 func (s *Server) handleLightBatchEnrollmentDelete(w http.ResponseWriter, r *http.Request) {

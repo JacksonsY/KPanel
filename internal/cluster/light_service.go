@@ -28,11 +28,12 @@ const (
 const LightFileCapabilityPath = "/api/v3/federation/light/file-capability"
 
 type lightTokenWire struct {
-	Version   int    `json:"v"`
-	Origin    string `json:"origin"`
-	ID        string `json:"id"`
-	Secret    string `json:"secret"`
-	ExpiresAt int64  `json:"expiresAt"`
+	Version         int    `json:"v"`
+	Origin          string `json:"origin"`
+	ID              string `json:"id"`
+	Secret          string `json:"secret"`
+	ExpiresAt       int64  `json:"expiresAt"`
+	TLSPublicKeyPin string `json:"pin,omitempty"`
 }
 
 type LightReportAuth struct {
@@ -66,11 +67,18 @@ func (s *Service) CreateLightEnrollmentForOrigin(origin string) (LightEnrollment
 }
 
 func (s *Service) CreateLightEnrollmentForOriginAndName(origin, requestedName string) (LightEnrollment, error) {
+	return s.CreateLightEnrollmentForOriginAndNameWithTLSPin(origin, requestedName, "")
+}
+
+func (s *Service) CreateLightEnrollmentForOriginAndNameWithTLSPin(origin, requestedName, tlsPublicKeyPin string) (LightEnrollment, error) {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
 	origin, err := validateLightOrigin(origin)
 	if err != nil {
 		return LightEnrollment{}, ErrLightHTTPSOrigin
+	}
+	if tlsPublicKeyPin != "" && !validLightTLSPublicKeyPin(tlsPublicKeyPin) {
+		return LightEnrollment{}, ErrPairingCode
 	}
 	name, err := validateOptionalName(requestedName)
 	if err != nil {
@@ -95,6 +103,7 @@ func (s *Service) CreateLightEnrollmentForOriginAndName(origin, requestedName st
 	wire, err := json.Marshal(lightTokenWire{
 		Version: 1, Origin: origin, ID: id,
 		Secret: base64.RawURLEncoding.EncodeToString(secret), ExpiresAt: expiresAt.Unix(),
+		TLSPublicKeyPin: tlsPublicKeyPin,
 	})
 	if err != nil {
 		return LightEnrollment{}, err
@@ -386,6 +395,11 @@ func publicLightHostWithCapabilities(record lightHostRecord, now time.Time, term
 
 func parseLightToken(token string, now time.Time) (lightTokenWire, []byte, error) {
 	return parseLightTokenForPrefix(token, lightTokenPrefix, maxLightTokenAge, now)
+}
+
+func validLightTLSPublicKeyPin(value string) bool {
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	return err == nil && len(decoded) == sha256.Size && base64.RawURLEncoding.EncodeToString(decoded) == value
 }
 
 func validateLightOrigin(value string) (string, error) {

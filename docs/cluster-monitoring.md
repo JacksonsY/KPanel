@@ -246,6 +246,14 @@ bash <(curl -fsSL https://kejilion.sh) kpanel node join '<kpl1-token>'
 
 - 命令中的 `kpl1` 授权包含中心端当前已验证的 HTTPS 根地址、随机 ID、32 字节随机 secret 和到期时间；
   5 分钟过期且只能成功消费一次，非法名称或无效请求不会提前烧毁有效授权；
+- 通过 KPanel 内置自签 HTTPS 的直连 IP + 端口生成命令时，`kpl1` 与 `kpb1` 会额外包含短字段 `pin`：
+  它是服务器公钥信息（SPKI）的 SHA-256 Base64URL 指纹。轻量节点只在该公钥匹配、证书 SAN 主机名匹配、
+  证书仍在有效期内且用途包含 TLS server authentication 时连接；系统 CA 根证书校验不会被全局关闭。
+  受信任 CA 路径不携带 `pin`，继续使用 Go 的系统根证书与主机名校验，因此命令长度与原有 CA 命令一致。
+  该指纹保存在 root-only 节点配置中，并用于后续遥测、终端及文件连接；旧配置没有该字段时仍沿用系统 CA 校验。
+  只对实际直连内置自签证书、且目标地址被证书 SAN 覆盖的 HTTPS 请求生成指纹；可信反向代理路径保持原行为。
+- 内置自签证书续期或增加地址时会保留公钥，因此已配对节点可以继续连接；“重新签发证书”会生成新公钥，
+  使用旧公钥配对的轻量节点需要重新生成命令并配对。面板之间的 KPanel 对接不使用此 pin，HTTP 仍不能用于轻量节点接入；
 - `kpb1` 授权按策略保存 secret 哈希、有效期、最多使用次数和已分配身份。每台目标机先在
   root-only 暂存文件中生成独立 `attemptId` 与 Noise 密钥；网络响应丢失时复用同一身份重试，
   中心返回同一节点 ID 与 reporting key，不重复占用名额。成功落盘后删除暂存；换 token、换名称
@@ -261,7 +269,8 @@ bash <(curl -fsSL https://kejilion.sh) kpanel node join '<kpl1-token>'
   `apt-get` 和 RPM 家族的 `dnf`/`yum`；OpenWrt 与 Alpine 即使同用 `apk`，仍分别使用各自的包名。
   工具齐全时不调用包管理器；无法识别的软件源家族或安装失败时明确报告缺项，保留手动补齐路径。
   不替换软件源、不升级整个系统、不安装或更换服务管理器；`node update`、无人值守更新、状态查询和
-  卸载不触发这项自动补包。在线接入命令启动前仍需准备 `bash`、`curl` 和可用的 HTTPS CA 证书；
+  卸载不触发这项自动补包。在线接入命令仍需准备 `bash`、`curl` 和可用的 HTTPS CA 证书，以安全下载 kejilion.sh；
+  节点连接到内置自签 HTTPS 面板时则由上述 `pin` 完成服务端身份校验；
 - procd 按 PID 1、可信 `/etc/rc.common`、`/lib/functions/procd.sh`、`ubus`、`jsonfilter` 与原生
   `/etc/init.d/cron` 能力识别，适用于满足这些条件的 OpenWrt 及其衍生系统，不依赖 iStoreOS 等品牌名称。
   32 位 ARM/MIPS 没有本项目发布产物。精简 OpenWrt 固件常见缺项包括 `coreutils-install`、
