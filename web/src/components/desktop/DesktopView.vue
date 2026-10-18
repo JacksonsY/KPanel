@@ -161,6 +161,7 @@ import { useSession } from '@/stores/session'
 import { useDocumentFullscreen } from '@/composables/useDocumentFullscreen'
 import { useWindowGesture } from '@/composables/useWindowGesture'
 import { useTheme } from '@/stores/theme'
+import { useDesktopShellStyle } from '@/stores/desktopShellStyle'
 import { deriveThemeTokens } from '@/theme/colors'
 import { useToast } from '@/stores/toast'
 import { useI18n } from '@/i18n'
@@ -190,6 +191,7 @@ const executionTarget = ref<FileEntry>()
 let executionOpener: HTMLElement | undefined
 const documentFullscreen = useDocumentFullscreen()
 const theme = useTheme()
+const desktopShellStyle = useDesktopShellStyle()
 // The translucent drag hint keeps the dark palette even over a light desktop.
 const desktopFileDropStyle = computed(() => {
   const tokens = deriveThemeTokens(theme.colors.value, 'dark')
@@ -4413,6 +4415,7 @@ function onViewportResize(): void {
   <div
     ref="desktopElement"
     class="desktop"
+    :data-shell-style="desktopShellStyle.preference.value"
     :class="{ 'desktop--split-resizing': sideSplitResizeActive }"
     :style="desktopSplitStyle"
     tabindex="-1"
@@ -5245,7 +5248,11 @@ function onViewportResize(): void {
           aria-keyshortcuts="Control+K Meta+K"
           @click="toggleStartMenu"
         >
-          <LogoMark compact site />
+          <template v-if="desktopShellStyle.preference.value === 'xp'">
+            <span class="desktop__xp-start-mark" aria-hidden="true"><i /><i /><i /><i /></span>
+            <span class="desktop__xp-start-label">{{ i18n.t('desktop.startMenuButton') }}</span>
+          </template>
+          <LogoMark v-else compact site />
         </button>
         <span class="desktop__site-name">{{ siteBranding.name.value }}</span>
         <div v-if="props.agent" class="desktop__taskbar-agent">

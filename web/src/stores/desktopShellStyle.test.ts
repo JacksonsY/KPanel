@@ -1,0 +1,73 @@
+// @vitest-environment jsdom
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  initializeDesktopShellStyle,
+  resetDesktopShellStyleForTest,
+  useDesktopShellStyle,
+} from './desktopShellStyle'
+
+const STORAGE_KEY = 'kpanel:desktop-shell-style:v1'
+
+beforeEach(() => {
+  resetDesktopShellStyleForTest()
+  window.localStorage.clear()
+})
+
+afterEach(() => {
+  resetDesktopShellStyleForTest()
+  vi.restoreAllMocks()
+})
+
+describe('desktop shell style preference', () => {
+  it('defaults to the native shell and restores the XP choice', () => {
+    initializeDesktopShellStyle()
+    expect(useDesktopShellStyle().preference.value).toBe('modern')
+
+    window.localStorage.setItem(STORAGE_KEY, 'xp')
+    initializeDesktopShellStyle()
+
+    expect(useDesktopShellStyle().preference.value).toBe('xp')
+  })
+
+  it('falls back to the native shell for an unknown stored value', () => {
+    window.localStorage.setItem(STORAGE_KEY, 'unexpected')
+
+    initializeDesktopShellStyle()
+
+    expect(useDesktopShellStyle().preference.value).toBe('modern')
+  })
+
+  it('persists selections and synchronizes changes from another tab', () => {
+    initializeDesktopShellStyle()
+    const style = useDesktopShellStyle()
+
+    style.setStyle('xp')
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('xp')
+    expect(style.preference.value).toBe('xp')
+
+    window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue: 'modern' }))
+    expect(style.preference.value).toBe('modern')
+
+    window.dispatchEvent(new StorageEvent('storage', { key: null, newValue: null }))
+    expect(style.preference.value).toBe('modern')
+  })
+
+  it('keeps the in-memory choice when browser storage is unavailable', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('blocked') })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('blocked') })
+
+    expect(() => initializeDesktopShellStyle()).not.toThrow()
+    expect(() => useDesktopShellStyle().setStyle('xp')).not.toThrow()
+    expect(useDesktopShellStyle().preference.value).toBe('xp')
+  })
+
+  it('does not attach duplicate storage listeners when initialized more than once', () => {
+    const addEventListener = vi.spyOn(window, 'addEventListener')
+
+    initializeDesktopShellStyle()
+    initializeDesktopShellStyle()
+
+    expect(addEventListener.mock.calls.filter(([type]) => type === 'storage')).toHaveLength(1)
+  })
+})
