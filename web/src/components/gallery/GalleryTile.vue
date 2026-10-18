@@ -214,7 +214,7 @@ onBeforeUnmount(() => {
   object-fit: cover;
   opacity: 0;
   transform: scale(1.001);
-  transition: opacity .32s ease, transform .5s cubic-bezier(.2, .7, .2, 1);
+  transition: transform .5s cubic-bezier(.2, .7, .2, 1);
 }
 
 .gallery-tile--loaded .gallery-tile__media {

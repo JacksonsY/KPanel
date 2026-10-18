@@ -425,6 +425,16 @@ describe('GalleryView', () => {
     expect(view.find('img[src="/thumb/home/gallery/sunset.jpg"]').exists()).toBe(true)
   })
 
+  it('does not use large originals as grid thumbnails, while keeping explicit viewing available', async () => {
+    harness.tree['/home/gallery'] = [media('/home/gallery/large.jpg', undefined, 14 * 1024 * 1024)]
+    const view = await mountGallery()
+    const tile = view.get('.gallery-tile')
+    expect(tile.find('img').exists()).toBe(false)
+    expect(tile.get('.gallery-tile__open').attributes('aria-label')).toContain('large.jpg')
+    await tile.get('.gallery-tile__open').trigger('click')
+    expect(view.find('.gallery-viewer').exists()).toBe(true)
+  })
+
   it('filters to videos and opens an album through the route', async () => {
     const view = await mountGallery()
     const videoFilter = view.findAll('.gallery-segmented button').find((button) => button.text().startsWith('视频'))!

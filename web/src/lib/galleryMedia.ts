@@ -1,3 +1,8 @@
+import type { InjectionKey, Ref } from 'vue'
+
+/** A gallery window's interaction state; the viewer overrides it for its own media. */
+export const galleryMediaPausedKey: InjectionKey<Readonly<Ref<boolean>>> = Symbol('gallery-media-paused')
+
 /** Shared across gallery windows: leave file-service capacity for the active viewer. */
 export function createGalleryQueue(limit: number) {
   let active = 0

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { loadGalleryPoster, readGalleryPoster } from '@/lib/galleryPosters'
-import { galleryIntersectionRoot } from '@/lib/galleryMedia'
+import { galleryIntersectionRoot, galleryMediaPausedKey } from '@/lib/galleryMedia'
 
 const props = defineProps<{ src: string; posterKey: string; preview?: boolean; suspended?: boolean }>()
+const mediaPaused = inject(galleryMediaPausedKey, computed(() => false))
+const paused = computed(() => props.suspended || mediaPaused.value)
 const emit = defineEmits<{ load: []; error: [] }>()
 const root = ref<HTMLElement>()
 const poster = computed(() => readGalleryPoster(props.posterKey)?.poster)
@@ -14,7 +16,7 @@ let stopped = false
 
 async function load(): Promise<void> {
   controller?.abort()
-  if (!near || stopped || props.suspended || poster.value) return
+  if (!near || stopped || paused.value || poster.value) return
   const current = new AbortController()
   controller = current
   try {
@@ -31,7 +33,7 @@ async function load(): Promise<void> {
   }
 }
 
-watch(() => [props.src, props.posterKey, props.suspended], () => { void load() })
+watch(() => [props.src, props.posterKey, paused.value], () => { void load() })
 onMounted(() => {
   if (typeof IntersectionObserver === 'undefined') { near = true; void load(); return }
   observer = new IntersectionObserver((entries) => {
@@ -47,7 +49,7 @@ onBeforeUnmount(() => { stopped = true; observer?.disconnect(); controller?.abor
 <template>
   <span ref="root" class="gallery-video">
     <img v-if="poster" :src="poster" alt="" decoding="async" draggable="false" />
-    <video v-if="preview && !suspended" :src="src" :poster="poster" muted loop playsinline autoplay preload="metadata" aria-hidden="true" tabindex="-1" />
+    <video v-if="preview && !paused" :src="src" :poster="poster" muted loop playsinline autoplay preload="metadata" aria-hidden="true" tabindex="-1" />
   </span>
 </template>
 

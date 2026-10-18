@@ -4,9 +4,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import GalleryTimeline from './GalleryTimeline.vue'
 import type { GalleryItem } from '@/lib/gallery'
 
-afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = '' })
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); document.body.innerHTML = '' })
 
 it('mounts a bounded range, reveals a distant photo and updates geometry on density change', async () => {
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
   let width = 1280
   let minimum = 168
   const scroller = document.createElement('div')
@@ -27,8 +28,40 @@ it('mounts a bounded range, reveals a distant photo and updates geometry on dens
     attachTo: scroller,
   })
   await flushPromises()
+  await new Promise(resolve => setTimeout(resolve, 10))
   expect(view.findAll('button').length).toBeLessThan(120)
   expect(view.find('[data-gallery-path="/p0"]').exists()).toBe(true)
+  // Scrolling retains the heavy subtree, and reads cached geometry rather than CSS.
+  vi.useFakeTimers()
+  const styleReads = vi.fn(() => ({ getPropertyValue: () => '' }))
+  vi.stubGlobal('getComputedStyle', styleReads)
+  const initial = view.findAll('button').map(button => button.attributes('data-gallery-path'))
+  scroller.scrollTop = 10000
+  scroller.dispatchEvent(new Event('scroll'))
+  await vi.advanceTimersByTimeAsync(80)
+  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).toEqual(initial)
+  expect(view.findAll('.gallery-timeline__placeholder').length).toBeGreaterThan(0)
+  scroller.scrollTop = 12000
+  scroller.dispatchEvent(new Event('scroll'))
+  await vi.advanceTimersByTimeAsync(159)
+  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).toEqual(initial)
+  expect(styleReads).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(1)
+  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).not.toEqual(initial)
+  expect(view.findAll('.gallery-timeline__placeholder')).toHaveLength(0)
+  expect(view.emitted('scrolling')).toEqual([[true], [false]])
+  // An inactive desktop window neither mounts new cards nor starts another scroll cycle.
+  await view.setProps({ active: false })
+  const inactive = view.findAll('button').map(button => button.attributes('data-gallery-path'))
+  scroller.scrollTop = 18000
+  scroller.dispatchEvent(new Event('scroll'))
+  await vi.advanceTimersByTimeAsync(500)
+  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).toEqual(inactive)
+  await view.setProps({ active: true })
+  await vi.advanceTimersByTimeAsync(20)
+  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).not.toEqual(inactive)
+  vi.useRealTimers()
+  vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: (name: string) => name === '--gallery-tile' ? String(minimum) : '6' }))
   view.vm.reveal('/p4500')
   await flushPromises()
   expect(view.find('[data-gallery-path="/p4500"]').exists()).toBe(true)

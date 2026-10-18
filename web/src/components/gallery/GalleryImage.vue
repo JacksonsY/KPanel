@@ -1,94 +1,100 @@
 <script setup lang="ts">
-import { inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { fetchGalleryImage, GalleryImageError, galleryIntersectionRoot } from '@/lib/galleryMedia'
-import { galleryImageCacheKey, type GalleryImageLease } from '@/lib/galleryImageCache'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { fetchGalleryImage, GalleryImageError, galleryIntersectionRoot, galleryMediaPausedKey } from '@/lib/galleryMedia'
 
 const props = defineProps<{ src: string; fallback?: string; eager?: boolean; version?: string }>()
 const emit = defineEmits<{ load: [event: Event]; error: [] }>()
+const paused = inject(galleryMediaPausedKey, computed(() => false))
 const element = ref<HTMLImageElement>()
-const objectUrl = ref<string>()
-let controller: AbortController | undefined
+const source = ref<string>()
 let observer: IntersectionObserver | undefined
+let recovery: AbortController | undefined
+let recoveryUrl: string | undefined
 let visible = false
 let stopped = false
+let loaded = false
+let recovering = false
 let fallbackUsed = false
-const cache = inject(galleryImageCacheKey, undefined)
-let lease: GalleryImageLease | undefined
+let pendingLoad: Event | undefined
 
-function release(): void {
-  controller?.abort()
-  controller = undefined
-  if (lease) { lease.release(); lease = undefined }
-  else if (objectUrl.value) URL.revokeObjectURL(objectUrl.value)
-  objectUrl.value = undefined
+function releaseRecovery(): void {
+  recovery?.abort()
+  recovery = undefined
+  if (recoveryUrl) URL.revokeObjectURL(recoveryUrl)
+  recoveryUrl = undefined
 }
-
-async function load(fallback = false): Promise<void> {
-  if (!fallback) fallbackUsed = false
-  release()
-  const current = new AbortController()
-  controller = current
-  const src = fallback ? props.fallback! : props.src
-  const version = cache && (props.version || new URL(src, location.href).searchParams.get('version'))
-  const key = version ? `${src}\0${version}` : undefined
-  const generation = cache?.generation
-  try {
-    const cached = key ? cache?.acquire(key) : undefined
-    if (cached) { lease = cached; objectUrl.value = cached.url; return }
-    const blob = await fetchGalleryImage(src, current.signal)
-    if (current.signal.aborted || stopped || controller !== current) return
-    lease = key ? cache?.store(key, blob, generation) : undefined
-    objectUrl.value = lease?.url ?? URL.createObjectURL(blob)
-  } catch (error) {
-    if (current.signal.aborted || stopped || controller !== current) return
-    if (!fallback && props.fallback && error instanceof GalleryImageError && [413, 422].includes(error.status)) {
-      fallbackUsed = true
-      void load(true)
-    } else emit('error')
-  }
+function start(): void {
+  if (visible && !paused.value && !stopped && !source.value) source.value = fallbackUsed ? props.fallback : props.src
 }
-
-function onDecodeError(): void {
-  if (!visible || stopped || !objectUrl.value) return
-  lease?.invalidate()
+function fallback(): void {
+  releaseRecovery()
+  recovering = false
   if (props.fallback && !fallbackUsed) {
     fallbackUsed = true
-    void load(true)
+    source.value = props.fallback
   } else emit('error')
 }
-
-function onLoad(event: Event): void {
-  const image = event.currentTarget as HTMLImageElement
-  lease?.decoded(image.naturalWidth, image.naturalHeight)
-  emit('load', event)
-}
-
-watch([() => props.src, () => props.version], () => {
-  release()
-  fallbackUsed = false
-  if (visible) void load()
-})
-
-onMounted(() => {
-  if (props.eager || typeof IntersectionObserver === 'undefined') {
-    visible = true
-    void load()
-    return
+async function onError(): Promise<void> {
+  if (paused.value || stopped || !source.value) return
+  if (fallbackUsed) { emit('error'); return }
+  if (recoveryUrl) { fallback(); return }
+  if (recovering) return
+  // Native img errors do not expose HTTP status. Only this exceptional path probes
+  // through the bounded reader, preserving retries and never falling back on 401/403.
+  recovering = true
+  const current = new AbortController()
+  recovery = current
+  try {
+    const blob = await fetchGalleryImage(props.src, current.signal)
+    if (current.signal.aborted || paused.value || stopped || recovery !== current) return
+    recoveryUrl = URL.createObjectURL(blob)
+    source.value = recoveryUrl
+  } catch (error) {
+    if (current.signal.aborted || paused.value || stopped || recovery !== current) return
+    if (error instanceof GalleryImageError && [413, 422].includes(error.status)) fallback()
+    else emit('error')
+  } finally {
+    if (recovery === current) recovering = false
   }
+}
+function onLoad(event: Event): void {
+  if (!source.value || stopped) return
+  loaded = true
+  if (paused.value) pendingLoad = event
+  else emit('load', event)
+}
+watch([() => props.src, () => props.version], () => {
+  releaseRecovery()
+  source.value = undefined
+  loaded = false
+  recovering = false
+  fallbackUsed = false
+  pendingLoad = undefined
+  start()
+})
+watch(paused, (value) => {
+  if (value) {
+    // Keep already displayed pixels; cancel only work that has not produced a photo.
+    if (!loaded) { releaseRecovery(); recovering = false; source.value = undefined }
+  } else {
+    if (pendingLoad) { emit('load', pendingLoad); pendingLoad = undefined }
+    start()
+  }
+}, { flush: 'sync' })
+onMounted(() => {
+  if (props.eager || typeof IntersectionObserver === 'undefined') { visible = true; start(); return }
   observer = new IntersectionObserver((entries) => {
-    const next = entries.some((entry) => entry.isIntersecting)
-    if (next === visible) return
-    visible = next
-    if (visible) void load()
-    // Visibility starts loading once. The timeline owns unmounting, cancellation and release.
-    if (visible) { observer?.disconnect(); observer = undefined }
+    if (!entries.some((entry) => entry.isIntersecting)) return
+    visible = true
+    observer?.disconnect()
+    observer = undefined
+    start()
   }, { root: galleryIntersectionRoot(element.value), rootMargin: '160px 0px' })
   if (element.value) observer.observe(element.value)
 })
-
-onBeforeUnmount(() => { stopped = true; observer?.disconnect(); release() })
+onBeforeUnmount(() => { stopped = true; observer?.disconnect(); releaseRecovery() })
 </script>
 
 <template>
-  <img ref="element" :src="objectUrl" decoding="async" @load="onLoad" @error="onDecodeError" />
+  <img ref="element" :src="source" decoding="async" @load="onLoad" @error="onError" />
 </template>

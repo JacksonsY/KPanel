@@ -1,5 +1,3 @@
-import type { InjectionKey } from 'vue'
-
 interface Entry {
   key: string
   blob: Blob
@@ -103,5 +101,3 @@ export class GalleryImageCache {
 
   dispose(): void { this.disposed = true; this.clear() }
 }
-
-export const galleryImageCacheKey: InjectionKey<GalleryImageCache> = Symbol('gallery-image-cache')

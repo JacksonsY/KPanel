@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import {
   Check,
   ChevronLeft,
@@ -29,9 +29,15 @@ import {
   type GalleryItem,
 } from '@/lib/gallery'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
-import { fetchGalleryImage, galleryAllowsPrefetch } from '@/lib/galleryMedia'
+import { fetchGalleryImage, galleryAllowsPrefetch, galleryMediaPausedKey } from '@/lib/galleryMedia'
+import { desktopWindowActiveKey } from '@/lib/desktopRouteKeys'
 import { GalleryImageCache, type GalleryImageLease } from '@/lib/galleryImageCache'
 import GalleryImage from './GalleryImage.vue'
+
+const windowActive = inject(desktopWindowActiveKey, computed(() => true))
+const foreground = ref(document.visibilityState !== 'hidden')
+function syncVisibility(): void { foreground.value = document.visibilityState !== 'hidden' }
+provide(galleryMediaPausedKey, computed(() => !windowActive.value || !foreground.value))
 
 function phrase(value: string): string {
   phraseCatalogVersion.value
@@ -628,6 +634,7 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(() => {
+  document.addEventListener('visibilitychange', syncVisibility)
   opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
   if (!props.contained) activateModal(modalId)
   document.addEventListener('fullscreenchange', syncFullscreen)
@@ -637,6 +644,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', syncVisibility)
   releaseOriginal()
   originalCache.dispose()
   screenEpoch += 1

@@ -1,92 +1,93 @@
 // @vitest-environment jsdom
 import { flushPromises, mount } from '@vue/test-utils'
+import { computed, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GalleryImage from './GalleryImage.vue'
-import { GalleryImageCache, galleryImageCacheKey } from '@/lib/galleryImageCache'
+import { galleryMediaPausedKey } from '@/lib/galleryMedia'
 
 const NativeURL = URL
-
 beforeEach(() => {
   vi.stubGlobal('IntersectionObserver', undefined)
   vi.stubGlobal('URL', class extends NativeURL {
-    static createObjectURL = vi.fn(() => 'blob:test')
+    static createObjectURL = vi.fn(() => 'blob:recovered')
     static revokeObjectURL = vi.fn()
   })
 })
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
-describe('gallery image lifecycle', () => {
-  it('reuses compressed bytes across remounts while releasing each display URL', async () => {
-    const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response('jpeg')))
-    vi.stubGlobal('fetch', fetch)
-    const cache = new GalleryImageCache()
-    const options = { props: { src: '/original', version: 'v1' }, global: { provide: { [galleryImageCacheKey as symbol]: cache } } }
+describe('native gallery image loading', () => {
+  it('lets the browser load and reuse versioned URLs without a JS body reader or Blob cache', async () => {
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
+    const options = { props: { src: '/thumbnail?version=v1', version: 'v1' } }
     const first = mount(GalleryImage, options)
     await flushPromises()
+    expect(first.attributes('src')).toBe('/thumbnail?version=v1')
     first.unmount()
-    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
     const second = mount(GalleryImage, options)
-    await flushPromises()
-    expect(fetch).toHaveBeenCalledTimes(1)
-    expect(second.attributes('src')).toBe('blob:test')
+    await second.setProps({ src: '/thumbnail?version=v2', version: 'v2' })
+    expect(second.attributes('src')).toBe('/thumbnail?version=v2')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
     second.unmount()
-    cache.dispose()
-    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
   })
-
-  it('reloads changed versions and evicts a failed decoded image', async () => {
-    const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response('jpeg')))
-    vi.stubGlobal('fetch', fetch)
-    const cache = new GalleryImageCache()
-    const view = mount(GalleryImage, { props: { src: '/original', version: 'v1' }, global: { provide: { [galleryImageCacheKey as symbol]: cache } } })
-    await flushPromises()
-    await view.setProps({ version: 'v2' })
-    await flushPromises()
-    expect(fetch).toHaveBeenCalledTimes(2)
-    await view.trigger('error')
-    expect(cache.acquire('/original\0v2')).toBeUndefined()
+  it('defers pending loads while scrolling or inactive but preserves already displayed photos', async () => {
+    const paused = ref(true)
+    const view = mount(GalleryImage, { props: { src: '/thumbnail', eager: true }, global: { provide: { [galleryMediaPausedKey as symbol]: paused } } })
+    expect(view.attributes('src')).toBeUndefined()
+    paused.value = false; await flushPromises()
+    expect(view.attributes('src')).toBe('/thumbnail')
+    paused.value = true; await flushPromises()
+    expect(view.attributes('src')).toBeUndefined()
+    paused.value = false; await flushPromises()
+    await view.trigger('load')
+    paused.value = true; await flushPromises()
+    expect(view.attributes('src')).toBe('/thumbnail')
+    expect(view.emitted('load')).toHaveLength(1)
     view.unmount()
-    cache.dispose()
   })
-  it('loads a blob and revokes it when the tile leaves the page', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('jpeg')))
-    const view = mount(GalleryImage, { props: { src: '/thumbnail' } })
-    await flushPromises()
-    expect(view.attributes('src')).toBe('blob:test')
-    view.unmount()
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test')
-  })
-
-  it('uses the original only when thumbnail generation is unsupported', async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(new Response('', { status: 422 })).mockResolvedValueOnce(new Response('jpeg'))
-    vi.stubGlobal('fetch', fetch)
+  it('only falls back on explicitly unsupported thumbnails, not authorization or network errors', async () => {
+    for (const status of [401, 403, 413, 422]) {
+      const fetch = vi.fn().mockResolvedValue(new Response('', { status })); vi.stubGlobal('fetch', fetch)
+      const view = mount(GalleryImage, { props: { src: '/thumbnail', fallback: '/original' } })
+      await view.trigger('error'); await flushPromises()
+      expect(fetch.mock.calls.map(call => call[0])).toEqual(['/thumbnail'])
+      expect(view.attributes('src')).toBe(status === 413 || status === 422 ? '/original' : '/thumbnail')
+      expect(Boolean(view.emitted('error'))).toBe(status === 401 || status === 403)
+      view.unmount()
+    }
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
     const view = mount(GalleryImage, { props: { src: '/thumbnail', fallback: '/original' } })
-    await flushPromises()
-    expect(fetch.mock.calls.map((call) => call[0])).toEqual(['/thumbnail', '/original'])
-    view.unmount()
-  })
-
-  it('never falls back to the original on authorization or network errors', async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response('', { status: 403 }))
-    vi.stubGlobal('fetch', fetch)
-    const view = mount(GalleryImage, { props: { src: '/thumbnail', fallback: '/original' } })
-    await flushPromises()
-    expect(fetch).toHaveBeenCalledTimes(1)
+    await view.trigger('error'); await flushPromises()
+    expect(view.attributes('src')).toBe('/thumbnail')
     expect(view.emitted('error')).toHaveLength(1)
     view.unmount()
   })
-
-  it('cancels a pending load on unmount without emitting a stale error', async () => {
-    let signal: AbortSignal | undefined
-    vi.stubGlobal('fetch', vi.fn((_url, options) => new Promise((_resolve, reject) => {
-      signal = options.signal
-      signal!.addEventListener('abort', () => reject(signal!.reason), { once: true })
-    })))
-    const view = mount(GalleryImage, { props: { src: '/thumbnail' } })
-    await flushPromises()
+  it('uses bounded error recovery and releases its temporary URL after decode failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('jpeg')))
+    const view = mount(GalleryImage, { props: { src: '/thumbnail', fallback: '/original' } })
+    await view.trigger('error'); await flushPromises()
+    expect(view.attributes('src')).toBe('blob:recovered')
+    await view.trigger('error')
+    expect(view.attributes('src')).toBe('/original')
+    expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:recovered')
+    await view.trigger('error')
+    expect(view.emitted('error')).toHaveLength(1)
     view.unmount()
-    await flushPromises()
+  })
+  it('cancels error recovery on pause and ignores its late result', async () => {
+    const paused = ref(false)
+    let complete!: (response: Response) => void
+    let signal: AbortSignal | undefined
+    vi.stubGlobal('fetch', vi.fn((_url, options) => new Promise<Response>(resolve => { signal = options.signal; complete = resolve })))
+    const view = mount(GalleryImage, { props: { src: '/thumbnail' }, global: { provide: { [galleryMediaPausedKey as symbol]: computed(() => paused.value) } } })
+    await view.trigger('error'); await flushPromises()
+    paused.value = true; await flushPromises()
     expect(signal?.aborted).toBe(true)
+    complete(new Response('late')); await flushPromises()
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
     expect(view.emitted('error')).toBeUndefined()
+    paused.value = false; await flushPromises()
+    expect(view.attributes('src')).toBe('/thumbnail')
+    view.unmount()
   })
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue'
-import { GalleryImageCache, galleryImageCacheKey } from '@/lib/galleryImageCache'
+import { galleryMediaPausedKey } from '@/lib/galleryMedia'
 import { useRoute, useRouter } from 'vue-router'
 import { createGalleryTouchSelection } from '@/lib/galleryTouchSelection'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
@@ -143,6 +143,8 @@ const timeline = ref<InstanceType<typeof GalleryTimeline>>()
 const scroller = ref<HTMLElement>()
 const uploadInput = ref<HTMLInputElement>()
 const windowed = ref(false)
+const foreground = ref(document.visibilityState !== 'hidden')
+function syncVisibility(): void { foreground.value = document.visibilityState !== 'hidden' }
 
 const hostId = computed(() => typeof route.query.hostId === 'string' ? route.query.hostId : '')
 const fileAPI = computed(() => fileAPIForHost(hostId.value))
@@ -171,8 +173,8 @@ const showHostSwitcher = computed(() => hosts.value.length > 1 || Boolean(hostId
 
 const snapshot = shallowRef<GalleryFolderSnapshot>()
 const folderCache = new GalleryFolderCache()
-const imageCache = new GalleryImageCache()
-provide(galleryImageCacheKey, imageCache)
+const scrolling = ref(false)
+provide(galleryMediaPausedKey, computed(() => scrolling.value || !foreground.value || !desktopWindowActive.value || Boolean(viewerPath.value)))
 const loading = ref(true)
 const loadError = ref('')
 let loadController: AbortController | undefined
@@ -435,11 +437,11 @@ function tileUrls(item: GalleryItem, large = false): { image?: string; fallback?
   if (source.type === 'thumbnail') {
     return {
       image: api.thumbnailUrl(item.entry.path, item.entry.resourceVersion),
-      // Some JPEGs (CMYK, unusual sampling) defeat the Agent decoder; the original still renders.
-      fallback: item.entry.sizeBytes <= GALLERY_ORIGINAL_FALLBACK_MAX_BYTES ? api.contentUrl(item.entry.path, 'inline') : undefined,
+      // A failed grid thumbnail must not silently start decoding a full-size photo.
+      fallback: large && item.entry.sizeBytes <= GALLERY_ORIGINAL_FALLBACK_MAX_BYTES ? api.contentUrl(item.entry.path, 'inline') : undefined,
     }
   }
-  if (source.type === 'original') return { image: api.contentUrl(item.entry.path, 'inline') }
+  if (source.type === 'original' && large) return { image: api.contentUrl(item.entry.path, 'inline') }
   return {}
 }
 
@@ -581,7 +583,6 @@ watch([currentPath, hostId, hostsLoaded], ([nextPath, nextHost], [previousPath, 
   if (nextPath === previousPath && nextHost === previousHost && !nextHost) return
   if (nextHost !== previousHost) {
     folderCache.clear()
-    imageCache.clear()
     loadController?.abort()
     loadController = undefined
     ++loadSequence
@@ -1202,13 +1203,13 @@ function onPageKeydown(event: KeyboardEvent): void {
 let unsubscribeChanges: (() => void) | undefined
 
 onMounted(() => {
+  document.addEventListener('visibilitychange', syncVisibility)
   void loadHosts()
   if (!hostId.value) void load()
   windowed.value = Boolean(page.value?.closest('.desktop-window__body'))
   unsubscribeChanges = subscribeFileDirectoryChanges((directories, _origin, moves, changedHost) => {
     if ((changedHost || '') !== hostId.value) return
     folderCache.clear()
-    imageCache.clear()
     if (!snapshot.value) return
     const watched = new Set([currentPath.value, ...snapshot.value.albums.map((album) => album.path)])
     const touched = [...directories].some((directory) => watched.has(directory))
@@ -1227,7 +1228,7 @@ watch(desktopWindowActive, (active) => {
 })
 
 onBeforeUnmount(() => {
-  imageCache.dispose()
+  document.removeEventListener('visibilitychange', syncVisibility)
   touchSelection.cancel()
   unmounted = true
   loadController?.abort()
@@ -1585,6 +1586,8 @@ onBeforeUnmount(() => {
 
         <GalleryTimeline
           ref="timeline"
+          :active="desktopWindowActive && foreground && !viewerPath"
+          @scrolling="scrolling = $event"
           :groups="groups"
           :density="preferences.density"
           :featured="preferences.density !== 'compact' && preferences.sort !== 'name'"
