@@ -360,6 +360,11 @@ const desktopShellStyleOptions = computed(() => [
     label: i18n.t('desktop.shellStyleXP'),
     description: i18n.t('desktop.shellStyleXPDescription'),
   },
+  {
+    id: 'win98' as const,
+    label: i18n.t('desktop.shellStyleWin98'),
+    description: i18n.t('desktop.shellStyleWin98Description'),
+  },
 ])
 
 function setDesktopShellStyle(value: DesktopShellStyle): void {

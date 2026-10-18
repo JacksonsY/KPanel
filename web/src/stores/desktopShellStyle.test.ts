@@ -69,6 +69,17 @@ describe('desktop shell style preference', () => {
     expect(wallpaper.select).toHaveBeenCalledOnce()
   })
 
+  it('persists the Win98 choice without changing the selected wallpaper', () => {
+    initializeDesktopShellStyle()
+    const style = useDesktopShellStyle()
+
+    style.setStyle('win98')
+
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('win98')
+    expect(style.preference.value).toBe('win98')
+    expect(wallpaper.select).not.toHaveBeenCalled()
+  })
+
   it('keeps the in-memory choice when browser storage is unavailable', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('blocked') })
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('blocked') })

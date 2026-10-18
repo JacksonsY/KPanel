@@ -13,7 +13,7 @@ import {
 } from '@/lib/desktopStartMenu'
 
 /**
- * Taskbar menu for both the KPanel and XP shells. It only presents items and
+ * Taskbar menu for the KPanel, XP and Win98 shells. It only presents items and
  * reports choices; DesktopView owns every launch and command.
  */
 
@@ -23,6 +23,7 @@ const props = defineProps<{
   entriesState: 'loading' | 'ready' | 'unavailable'
   userName: string
   xp?: boolean
+  win98?: boolean
   signingOut?: boolean
   dark?: boolean
   /** The toggle button; moving focus to it does not dismiss the menu. */
@@ -66,11 +67,11 @@ const visibleResults = computed(() => {
   })
 })
 const gridCount = computed(() =>
-  searching.value || props.xp ? 0 : visibleResults.value.filter((item) => item.section === 'system').length)
+  searching.value || props.xp || props.win98 ? 0 : visibleResults.value.filter((item) => item.section === 'system').length)
 const groups = computed(() => DESKTOP_START_MENU_SECTIONS
   .map((section) => ({
     section,
-    grid: section === 'system' && !searching.value && !props.xp,
+    grid: section === 'system' && !searching.value && !props.xp && !props.win98,
     options: visibleResults.value
       .map((item, index) => ({ item, index }))
       .filter((option) => option.item.section === section),
@@ -227,7 +228,7 @@ watch(() => visibleResults.value.length, (length) => {
       :id="MENU_ID"
       ref="root"
       class="desktop-start-menu"
-      :class="{ 'desktop-start-menu--xp': xp }"
+      :class="{ 'desktop-start-menu--xp': xp, 'desktop-start-menu--win98': win98 }"
       role="dialog"
       aria-modal="false"
       :aria-label="i18n.t('desktop.startMenuLabel')"

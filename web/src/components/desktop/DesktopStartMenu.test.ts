@@ -59,6 +59,21 @@ describe('DesktopStartMenu', () => {
     expect(activeKey()).toBe('nav:/overview')
   })
 
+  it('shows every Win98 app and website directly without an All Programs step', async () => {
+    const entries: DesktopStartMenuItem[] = Array.from({ length: 11 }, (_, index) => ({
+      key: index % 2 ? `site:site-${index}` : `app:app-${index}`,
+      section: 'entries',
+      label: `应用或网站 ${index + 1}`,
+      detail: index % 2 ? '网站' : '应用',
+    }))
+    await mountMenu({ win98: true, items: [...items.filter((item) => item.section === 'system'), ...entries] })
+
+    expect(wrapper.get('.desktop-start-menu').classes()).toContain('desktop-start-menu--win98')
+    expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-entries"] [role="option"]')).toHaveLength(11)
+    expect(wrapper.find('.desktop-start-menu__group--grid').exists()).toBe(false)
+    expect(wrapper.find('.desktop-start-menu__all-programs').exists()).toBe(false)
+  })
+
   it('uses the XP two-column menu and expands its complete program list', async () => {
     const extraSystemItems: DesktopStartMenuItem[] = Array.from({ length: 8 }, (_, index) => ({
       key: `nav:/xp-${index}`,

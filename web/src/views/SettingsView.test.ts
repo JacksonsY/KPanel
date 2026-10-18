@@ -38,7 +38,7 @@ const mocks = vi.hoisted(() => {
     themePreference: { value: 'system' },
     themeResolved: { value: 'light' },
     desktopShellStyleSet: vi.fn(),
-    desktopShellStylePreference: { value: 'modern' as 'modern' | 'xp' },
+    desktopShellStylePreference: { value: 'modern' as 'modern' | 'xp' | 'win98' },
     themeColors: {
       value: {
         brand: '#2867b2',
@@ -144,7 +144,7 @@ interface SettingsBindings {
   isSettingsSectionVisible: (id: 'help' | 'guides' | 'account-overview' | 'username' | 'password' | 'security-entrance' | 'totp' | 'language' | 'appearance' | 'wallpaper' | 'backup' | 'mcp' | 'version-updates' | 'agent' | 'license') => boolean
   settingsCategoryCount: (category: 'all' | 'account' | 'appearance' | 'data' | 'system' | 'support') => number
   selectSettingsCategory: (category: 'all' | 'account' | 'appearance' | 'data' | 'system' | 'support') => void
-  setDesktopShellStyle: (value: 'modern' | 'xp') => void
+  setDesktopShellStyle: (value: 'modern' | 'xp' | 'win98') => void
   clearSettingsSearch: () => void
   resetSettingsFilters: () => void
   usernameForm: { newUsername: string; currentPassword: string }
@@ -539,12 +539,16 @@ describe('SettingsView appearance', () => {
     expect(settingsSource).toContain(':aria-checked="desktopShellStyle.preference.value === option.id"')
     expect(settingsSource).toContain('@click="setDesktopShellStyle(option.id)"')
     expect(settingsSource).toContain('desktop.shellStyleXP')
+    expect(settingsSource).toContain('desktop.shellStyleWin98')
 
     setupView().setDesktopShellStyle('xp')
 
     expect(mocks.desktopShellStyleSet).toHaveBeenCalledWith('xp')
     expect(mocks.themeSetTheme).not.toHaveBeenCalled()
     expect(mocks.themeSetColors).not.toHaveBeenCalled()
+
+    setupView().setDesktopShellStyle('win98')
+    expect(mocks.desktopShellStyleSet).toHaveBeenLastCalledWith('win98')
   })
 
   it('validates and normalizes Hex input before applying a complete color intent', () => {

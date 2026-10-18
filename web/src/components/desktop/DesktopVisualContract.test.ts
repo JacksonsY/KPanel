@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const xpStyles = readFileSync(new URL('../../styles/desktopXp.css', import.meta.url), 'utf8')
+const win98Styles = readFileSync(new URL('../../styles/desktopWin98.css', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../../styles/desktop.css', import.meta.url), 'utf8')
   + readFileSync(new URL('../../styles/desktopWallpaper.css', import.meta.url), 'utf8')
   + xpStyles
+  + win98Styles
 const mainStyles = readFileSync(new URL('../../styles/main.css', import.meta.url), 'utf8')
 const themeStyles = readFileSync(new URL('../../styles/themes.css', import.meta.url), 'utf8')
 const themeStoreSource = readFileSync(new URL('../../stores/theme.ts', import.meta.url), 'utf8')
@@ -75,6 +77,22 @@ describe('desktop visual and interaction contract', () => {
     expect(label).toContain('text-shadow: 1px 1px 2px rgb(9 29 55 / 92%);')
     expect(selectedLabel).toContain('background: #145db8;')
     expect(selectedLabel).toContain('outline: 1px dotted #fff;')
+  })
+
+  it('uses Win98 raised chrome and preserves KPanel icon-label treatment', () => {
+    const taskbar = cssRule(win98Styles, ".desktop[data-shell-style='win98'] .desktop__taskbar")
+    const startButton = cssRule(win98Styles, ".desktop[data-shell-style='win98'] .desktop__taskbar-brand .desktop__start-button")
+    const titlebar = cssRule(win98Styles, ".desktop[data-shell-style='win98'] .desktop-window__titlebar")
+    const widget = cssRule(win98Styles, ".desktop[data-shell-style='win98'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status)")
+
+    expect(taskbar).toContain('background: #c0c0c0;')
+    expect(taskbar).toContain('border-radius: 0;')
+    expect(startButton).toContain('display: flex;')
+    expect(startButton).toContain('justify-content: flex-start;')
+    expect(titlebar).toContain('linear-gradient(90deg, #000080 0%, #1084d0 100%)')
+    expect(widget).toContain('border: 2px outset #fff;')
+    expect(win98Styles).not.toContain('.desktop__icon-label')
+    expect(mainStyles).toContain("@import './desktopWin98.css';")
   })
 
   it('keeps white text readable on XP title bars, taskbar and Start surfaces', () => {

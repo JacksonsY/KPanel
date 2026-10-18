@@ -5226,6 +5226,7 @@ function onViewportResize(): void {
       :entries-state="startMenuEntriesState"
       :user-name="startMenuUserName"
       :xp="desktopShellStyle.preference.value === 'xp'"
+      :win98="desktopShellStyle.preference.value === 'win98'"
       :signing-out="signingOut"
       :dark="theme.resolved.value === 'dark'"
       :opener="startButtonElement"
@@ -5265,6 +5266,15 @@ function onViewportResize(): void {
               <path d="M13.1 12.6c3.1.1 6.1.6 9.1 1.6v7.9c-3-1-6-1.5-9.1-1.6v-7.9Z" fill="#f0c53b" />
             </svg>
             <span class="desktop__xp-start-label">{{ i18n.t('desktop.startMenuButton') }}</span>
+          </template>
+          <template v-else-if="desktopShellStyle.preference.value === 'win98'">
+            <svg class="desktop__win98-start-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M2 4h8v7H2z" fill="#ed5148" />
+              <path d="M13 3h9v8h-9z" fill="#70b940" />
+              <path d="M2 13h8v8H2z" fill="#438ee2" />
+              <path d="M13 13h9v8h-9z" fill="#f0c53b" />
+            </svg>
+            <span class="desktop__win98-start-label">{{ i18n.t('desktop.startMenuButton') }}</span>
           </template>
           <LogoMark v-else compact site />
         </button>
@@ -5356,7 +5366,7 @@ function onViewportResize(): void {
           <span>{{ i18n.t('desktop.switchClassic') }}</span>
         </button>
         <time
-          v-if="desktopShellStyle.preference.value === 'xp'"
+          v-if="desktopShellStyle.preference.value !== 'modern'"
           class="desktop__taskbar-clock"
           :datetime="taskbarNow.toISOString()"
           :aria-label="i18n.t('desktop.taskbarClock')"
