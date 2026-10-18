@@ -63,10 +63,10 @@ describe('viewer recent original cache', () => {
     const first = view.get('img.gallery-viewer__media').attributes('src')
     await view.setProps({ index: 2 }); await flushPromises()
     await view.setProps({ index: 1 }); await flushPromises()
-    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(first)
+    expect(view.get('img.gallery-viewer__media').attributes('src')).not.toBe(first)
     expect(fetch).toHaveBeenCalledTimes(2)
     view.unmount(); wrapper = undefined
-    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3)
   })
 
   it('reloads changed versions and retries a failed decode instead of retaining it', async () => {

@@ -130,11 +130,11 @@ onBeforeUnmount(() => {
         v-if="showsImage"
         :key="item.entry.resourceVersion"
         :version="item.entry.resourceVersion"
+        eager
         class="gallery-tile__media"
         :src="source!"
         :fallback="fallbackUrl"
         alt=""
-        loading="lazy"
         decoding="async"
         draggable="false"
         @load="loaded = true"
@@ -181,11 +181,6 @@ onBeforeUnmount(() => {
   border-radius: var(--gallery-tile-radius, var(--radius-sm));
   background: var(--surface-subtle);
   isolation: isolate;
-}
-
-.gallery-tile--featured {
-  grid-column: span 2;
-  grid-row: span 2;
 }
 
 .gallery-tile__open {

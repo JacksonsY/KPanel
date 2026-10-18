@@ -44,6 +44,7 @@ import ErrorState from '@/components/feedback/ErrorState.vue'
 import LoadingState from '@/components/feedback/LoadingState.vue'
 import GalleryMoveDialog, { type GalleryMoveFolder } from '@/components/gallery/GalleryMoveDialog.vue'
 import GalleryTile from '@/components/gallery/GalleryTile.vue'
+import GalleryTimeline from '@/components/gallery/GalleryTimeline.vue'
 import GalleryImage from '@/components/gallery/GalleryImage.vue'
 import GalleryVideo from '@/components/gallery/GalleryVideo.vue'
 import GalleryViewer, { type GalleryCoverOption, type GalleryViewerSources } from '@/components/gallery/GalleryViewer.vue'
@@ -121,7 +122,6 @@ type DeleteDialog =
   | { kind: 'media'; entries: FileEntry[] }
   | { kind: 'album'; album: GalleryAlbum }
 
-const RENDER_STEP = 240
 const UPLOAD_CONCURRENCY = 2
 const ALBUM_PREVIEW_COUNT = 11
 const RELOAD_DEBOUNCE_MS = 450
@@ -139,7 +139,7 @@ const preferences = reactive(readGalleryPreferences(browserStorage()))
 watch(preferences, (value) => writeGalleryPreferences(browserStorage(), { ...value }))
 
 const page = ref<HTMLElement>()
-const sentinel = ref<HTMLElement>()
+const timeline = ref<InstanceType<typeof GalleryTimeline>>()
 const scroller = ref<HTMLElement>()
 const uploadInput = ref<HTMLInputElement>()
 const windowed = ref(false)
@@ -182,7 +182,6 @@ let unmounted = false
 
 const filter = ref<GalleryFilter>('all')
 const search = ref('')
-const renderLimit = ref(RENDER_STEP)
 const albumsExpanded = ref(false)
 const albumMenu = ref<string>()
 const moreMenuOpen = ref(false)
@@ -236,8 +235,7 @@ const visibleItems = computed(() => sortGalleryItems(
   filterGalleryItems(allItems.value, filter.value, search.value),
   preferences.sort,
 ))
-const renderedItems = computed(() => visibleItems.value.slice(0, renderLimit.value))
-const groups = computed(() => groupGalleryItemsByMonth(renderedItems.value, preferences.sort))
+const groups = computed(() => groupGalleryItemsByMonth(visibleItems.value, preferences.sort))
 const locale = computed(() => getLocale())
 const viewerIndex = computed(() => {
   if (!viewerPath.value) return -1
@@ -600,14 +598,12 @@ watch([currentPath, hostId, hostsLoaded], ([nextPath, nextHost], [previousPath, 
   viewerPath.value = undefined
   coverPicking.value = false
   clearSelection()
-  renderLimit.value = RENDER_STEP
   albumsExpanded.value = false
   search.value = ''
   void load()
 })
 
 watch([filter, search, () => preferences.sort], () => {
-  renderLimit.value = RENDER_STEP
   selectionAnchor = ''
   selectionBase = new Set()
 })
@@ -688,8 +684,17 @@ function navigateViewer(index: number): void {
   const item = visibleItems.value[index]
   if (!item) return
   viewerPath.value = item.entry.path
-  // Keep the timeline rendered up to the viewed photo so closing lands on it.
-  if (index >= renderLimit.value) renderLimit.value = index + RENDER_STEP
+}
+
+async function closeViewer(): Promise<void> {
+  const path = viewerPath.value
+  viewerPath.value = undefined
+  if (!path) return
+  timeline.value?.reveal(path)
+  await nextTick()
+  const tile = Array.from(page.value?.querySelectorAll<HTMLElement>('[data-gallery-path]') ?? [])
+    .find((element) => element.dataset.galleryPath === path)
+  tile?.querySelector<HTMLButtonElement>('.gallery-tile__open')?.focus({ preventScroll: true })
 }
 
 async function downloadEntries(entries: FileEntry[]): Promise<void> {
@@ -1194,27 +1199,12 @@ function onPageKeydown(event: KeyboardEvent): void {
   }
 }
 
-let sentinelObserver: IntersectionObserver | undefined
-watch(sentinel, (element, previous) => {
-  if (previous) sentinelObserver?.unobserve(previous)
-  if (element) sentinelObserver?.observe(element)
-})
-
 let unsubscribeChanges: (() => void) | undefined
 
 onMounted(() => {
   void loadHosts()
   if (!hostId.value) void load()
   windowed.value = Boolean(page.value?.closest('.desktop-window__body'))
-  if (typeof IntersectionObserver !== 'undefined') {
-    // Inside a desktop window the gallery scrolls its own frame, which would clip a viewport root.
-    sentinelObserver = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting) && renderLimit.value < visibleItems.value.length) {
-        renderLimit.value += RENDER_STEP
-      }
-    }, { root: windowed.value ? scroller.value : null, rootMargin: '800px 0px' })
-    if (sentinel.value) sentinelObserver.observe(sentinel.value)
-  }
   unsubscribeChanges = subscribeFileDirectoryChanges((directories, _origin, moves, changedHost) => {
     if ((changedHost || '') !== hostId.value) return
     folderCache.clear()
@@ -1241,7 +1231,6 @@ onBeforeUnmount(() => {
   touchSelection.cancel()
   unmounted = true
   loadController?.abort()
-  sentinelObserver?.disconnect()
   unsubscribeChanges?.()
   window.clearTimeout(reloadTimer)
   window.clearTimeout(uploadClearTimer)
@@ -1594,27 +1583,30 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section
-          v-for="group in groups"
-          :key="group.key"
-          class="gallery-month"
-          :aria-label="group.month ? formatGalleryMonth(group.month, locale) : '全部照片和视频'"
+        <GalleryTimeline
+          ref="timeline"
+          :groups="groups"
+          :density="preferences.density"
+          :featured="preferences.density !== 'compact' && preferences.sort !== 'name'"
+          :scroll-root="windowed ? scroller : undefined"
+          :reset-key="`${hostId}:${currentPath}:${filter}:${search}:${preferences.sort}`"
         >
-          <header v-if="group.key !== 'all'" class="gallery-month__header">
-            <h3>{{ group.month ? formatGalleryMonth(group.month, locale) : '时间未知' }}</h3>
-            <span>{{ group.items.length }} 项</span>
-          </header>
-          <div class="gallery-grid">
+          <template #month="{ group }">
+            <header class="gallery-month__header">
+              <h3>{{ group.month ? formatGalleryMonth(group.month, locale) : '时间未知' }}</h3>
+              <span>{{ group.items.length }} 项</span>
+            </header>
+          </template>
+          <template #default="{ item, featured }">
             <GalleryTile
-              v-for="(item, index) in group.items"
               :key="item.entry.path"
               :item="item"
               :data-gallery-path="item.entry.path"
-              :image-url="tileUrls(item, index === 0 && group.items.length >= 5 && preferences.density !== 'compact').image"
-              :fallback-url="tileUrls(item, index === 0 && group.items.length >= 5 && preferences.density !== 'compact').fallback"
+              :image-url="tileUrls(item).image"
+              :fallback-url="tileUrls(item).fallback"
               :video-url="tileUrls(item).video"
               :suspended="Boolean(viewerPath) || !desktopWindowActive"
-              :featured="index === 0 && group.items.length >= 5 && preferences.density !== 'compact' && preferences.sort !== 'name'"
+              :featured="featured"
               :selecting="selecting"
               :selected="selected.has(item.entry.path)"
               draggable
@@ -1623,12 +1615,8 @@ onBeforeUnmount(() => {
               @dragstart="onTileDragStart"
               @dragend="onTileDragEnd"
             />
-          </div>
-        </section>
-        <div v-if="renderLimit < visibleItems.length" ref="sentinel" class="gallery-more" role="status">
-          正在加载更多…
-          <button type="button" class="gallery-link" @click="renderLimit += RENDER_STEP">立即加载</button>
-        </div>
+          </template>
+        </GalleryTimeline>
       </template>
     </div>
 
@@ -1695,7 +1683,7 @@ onBeforeUnmount(() => {
       :cover-options="viewerCoverOptions"
       can-delete
       can-move
-      @close="viewerPath = undefined"
+      @close="closeViewer"
       @update:filmstrip="preferences.filmstrip = $event"
       @cover="chooseCover($event.item, $event.option)"
       @navigate="navigateViewer"
@@ -2452,13 +2440,6 @@ onBeforeUnmount(() => {
 
 /* ---- Timeline ---- */
 
-.gallery-month {
-  display: grid;
-  gap: 10px;
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 640px;
-}
-
 .gallery-month__header {
   display: flex;
   align-items: baseline;
@@ -2474,25 +2455,8 @@ onBeforeUnmount(() => {
 
 .gallery-month__header span {
   color: var(--muted);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-
-.gallery-grid {
-  display: grid;
-  grid-auto-flow: row dense;
-  grid-template-columns: repeat(auto-fill, minmax(var(--gallery-tile), 1fr));
-  gap: var(--gallery-gap);
-}
-
-.gallery-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 18px;
-  color: var(--muted);
   font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Empty and missing states ---- */

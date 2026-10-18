@@ -11,7 +11,7 @@ beforeEach(() => {
 })
 afterEach(() => { cache.dispose(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
-it('shares the retained URL until expiry and only revokes after the last active owner', () => {
+it('shares the active URL and revokes only after the last active owner, even after expiry', () => {
   const first = cache.store('a:v1', new Blob(['aa']))
   const second = cache.acquire('a:v1')!
   expect(second.url).toBe(first.url)
@@ -77,4 +77,18 @@ it('keeps different resource versions separate and never extends the freshness d
   vi.advanceTimersByTime(11)
   expect(cache.acquire('a:v1')).toBeUndefined()
   const two = cache.acquire('a:v2'); expect(two).toBeDefined(); two!.release()
+})
+
+it('retains a thousand compressed thumbnails without retaining their display URLs', () => {
+  const library = new GalleryImageCache()
+  for (let index = 0; index < 1000; index += 1) {
+    const image = library.store(`photo:${index}`, new Blob([new Uint8Array(8192)]))
+    image.decoded(320, 210)
+    image.release()
+  }
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1000)
+  const returned = library.acquire('photo:0')!
+  expect(returned).toBeDefined()
+  returned.release()
+  library.dispose()
 })

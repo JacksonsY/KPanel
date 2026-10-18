@@ -65,6 +65,7 @@ async function mountGallery(path = '/gallery'): Promise<VueWrapper> {
 const heroSrc = (view: VueWrapper) => view.find('.gallery-hero__backdrop img').attributes('src')
 
 beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000)
   localStorage.clear()
   harness.markers = {}
   harness.tree = {
@@ -92,6 +93,7 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
+  vi.restoreAllMocks()
 })
 
 describe('gallery covers', () => {

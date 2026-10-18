@@ -112,6 +112,7 @@ function fakeTransfer() {
 }
 
 beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000)
   localStorage.clear()
   harness.tree = {
     [ROOT]: [
@@ -139,6 +140,7 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
+  vi.restoreAllMocks()
 })
 
 describe('moving photos to another album', () => {

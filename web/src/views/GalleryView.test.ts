@@ -64,6 +64,7 @@ async function mountGallery(path = '/gallery'): Promise<VueWrapper> {
 }
 
 beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000)
   localStorage.clear()
   harness.tree = {
     '/home/gallery': [
@@ -91,6 +92,7 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
+  vi.restoreAllMocks()
 })
 
 const clusterHosts = [

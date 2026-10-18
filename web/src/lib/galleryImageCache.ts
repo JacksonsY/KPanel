@@ -2,9 +2,8 @@ import type { InjectionKey } from 'vue'
 
 interface Entry {
   key: string
-  url: string
-  bytes: number
-  decoded: number
+  blob: Blob
+  url?: string
   at: number
   refs: number
 }
@@ -15,17 +14,20 @@ export interface GalleryImageLease {
   invalidate: () => void
 }
 
-/** Per-gallery memory only. Active leases survive eviction; idle URLs are revoked immediately. */
+/** Retain compressed bytes, not a library of decoded images. URLs exist only while mounted. */
 export class GalleryImageCache {
   private entries = new Map<string, Entry>()
   private timer?: ReturnType<typeof setTimeout>
   private disposed = false
+  private bytes = 0
   generation = 0
-  constructor(private limits = { count: 96, bytes: 16 * 1024 * 1024, decoded: 64 * 1024 * 1024, itemBytes: 4 * 1024 * 1024, ttl: 60_000 }) {}
+  constructor(private limits = { count: 2048, bytes: 24 * 1024 * 1024, decoded: 32 * 1024 * 1024, itemBytes: 512 * 1024, ttl: 10 * 60_000 }) {}
 
   private remove(entry: Entry): void {
-    if (this.entries.get(entry.key) === entry) this.entries.delete(entry.key)
-    if (!entry.refs) URL.revokeObjectURL(entry.url)
+    if (this.entries.get(entry.key) === entry) {
+      this.entries.delete(entry.key)
+      this.bytes -= entry.blob.size
+    }
   }
 
   private prune(): void {
@@ -34,8 +36,7 @@ export class GalleryImageCache {
     for (const entry of this.entries.values()) {
       if (Date.now() - entry.at >= this.limits.ttl) this.remove(entry)
     }
-    const total = (field: 'bytes' | 'decoded') => [...this.entries.values()].reduce((sum, entry) => sum + entry[field], 0)
-    while (this.entries.size > this.limits.count || total('bytes') > this.limits.bytes || total('decoded') > this.limits.decoded) {
+    while (this.entries.size > this.limits.count || this.bytes > this.limits.bytes) {
       const idle = [...this.entries.values()].find((entry) => !entry.refs)
       // Evict active entries from retention as well; their owners still hold safe leases.
       const entry = idle ?? this.entries.values().next().value
@@ -47,6 +48,7 @@ export class GalleryImageCache {
   }
 
   private lease(entry: Entry): GalleryImageLease {
+    entry.url ??= URL.createObjectURL(entry.blob)
     entry.refs += 1
     let released = false
     return {
@@ -55,23 +57,23 @@ export class GalleryImageCache {
         if (released) return
         released = true
         entry.refs -= 1
-        if (this.entries.get(entry.key) !== entry && !entry.refs) URL.revokeObjectURL(entry.url)
-        else this.prune()
+        if (!entry.refs && entry.url) {
+          URL.revokeObjectURL(entry.url)
+          entry.url = undefined
+        }
       },
       decoded: (width, height) => {
         if (released) return
-        entry.decoded = Math.max(0, width * height * 4)
-        if (entry.decoded > this.limits.decoded && this.entries.get(entry.key) === entry) this.remove(entry)
-        this.prune()
+        if (width * height * 4 > this.limits.decoded && this.entries.get(entry.key) === entry) this.remove(entry)
       },
       invalidate: () => { if (this.entries.get(entry.key) === entry) this.remove(entry) },
     }
   }
 
   acquire(key: string): GalleryImageLease | undefined {
-    this.prune()
     const entry = this.entries.get(key)
-    if (!entry) return undefined
+    if (!entry || this.disposed) return undefined
+    if (Date.now() - entry.at >= this.limits.ttl) { this.remove(entry); return undefined }
     this.entries.delete(key)
     this.entries.set(key, entry)
     return this.lease(entry)
@@ -82,10 +84,13 @@ export class GalleryImageCache {
       const existing = this.acquire(key)
       if (existing) return existing
     }
-    const entry: Entry = { key, url: URL.createObjectURL(blob), bytes: blob.size, decoded: 0, at: Date.now(), refs: 0 }
+    const entry: Entry = { key, blob, at: Date.now(), refs: 0 }
     const lease = this.lease(entry)
-    if (!this.disposed && generation === this.generation && blob.size <= Math.min(this.limits.itemBytes, this.limits.bytes)) this.entries.set(key, entry)
-    this.prune()
+    if (!this.disposed && generation === this.generation && blob.size <= Math.min(this.limits.itemBytes, this.limits.bytes)) {
+      this.entries.set(key, entry)
+      this.bytes += blob.size
+      this.prune()
+    }
     return lease
   }
 

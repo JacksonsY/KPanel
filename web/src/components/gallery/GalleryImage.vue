@@ -80,8 +80,8 @@ onMounted(() => {
     if (next === visible) return
     visible = next
     if (visible) void load()
-    // Release the visible lease; recent small images remain in the bounded page cache.
-    else release()
+    // Visibility starts loading once. The timeline owns unmounting, cancellation and release.
+    if (visible) { observer?.disconnect(); observer = undefined }
   }, { root: galleryIntersectionRoot(element.value), rootMargin: '160px 0px' })
   if (element.value) observer.observe(element.value)
 })

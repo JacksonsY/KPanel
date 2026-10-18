@@ -16,7 +16,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('gallery image lifecycle', () => {
-  it('reuses a versioned small image across unmount/remount until the gallery is closed', async () => {
+  it('reuses compressed bytes across remounts while releasing each display URL', async () => {
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response('jpeg')))
     vi.stubGlobal('fetch', fetch)
     const cache = new GalleryImageCache()
@@ -24,14 +24,14 @@ describe('gallery image lifecycle', () => {
     const first = mount(GalleryImage, options)
     await flushPromises()
     first.unmount()
-    expect(URL.revokeObjectURL).not.toHaveBeenCalled()
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
     const second = mount(GalleryImage, options)
     await flushPromises()
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(second.attributes('src')).toBe('blob:test')
     second.unmount()
     cache.dispose()
-    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
   })
 
   it('reloads changed versions and evicts a failed decoded image', async () => {
