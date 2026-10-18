@@ -28,6 +28,7 @@ func (s *Server) loadThumbnail(ctx context.Context, file io.ReadSeekCloser, entr
 		return nil, "", ctx.Err()
 	}
 	if body, mime, ok := s.thumbnails.get(key); ok {
+		s.thumbnailDisk.touch(key)
 		return body, mime, nil
 	}
 	if body, mime, ok := s.thumbnailDisk.get(key); ok {

@@ -146,6 +146,35 @@ func (d *previewDisk) key(key string) [32]byte {
 	return sha256.Sum256([]byte(d.schema + "\x00" + key))
 }
 
+// RAM hits count as use too. Persist activity once per clock hour so frequently
+// viewed thumbnails survive restart without a metadata write on every request.
+func (d *previewDisk) touch(key string) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.root == nil {
+		return
+	}
+	hash := d.key(key)
+	name := hex.EncodeToString(hash[:]) + ".preview"
+	entry, ok := d.entries[name]
+	if !ok {
+		return
+	}
+	now := d.now()
+	persist := now.Truncate(time.Hour).After(entry.used.Truncate(time.Hour))
+	entry.used = now
+	d.entries[name] = entry
+	if persist {
+		info, err := d.root.Lstat(name)
+		if err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0077 == 0 && info.Size() == entry.size {
+			_ = d.root.Chtimes(name, now, now)
+		}
+	}
+}
+
 func (d *previewDisk) get(key string) ([]byte, string, bool) {
 	if d == nil {
 		return nil, "", false

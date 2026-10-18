@@ -534,6 +534,9 @@ func (s *Server) fileRead(w http.ResponseWriter, r *http.Request, requestID stri
 			cache = s.previews
 		}
 		content, contentType, cached := cache.get(cacheKey)
+		if cached && readMode == "thumbnail" {
+			s.thumbnailDisk.touch(cacheKey)
+		}
 		if readMode == "preview" && !cached && s.previewJobs != nil {
 			// Do not hold a source download slot while waiting for background work.
 			_ = file.Close()

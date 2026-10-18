@@ -113,6 +113,54 @@ func TestThumbnailDiskIntegrityQuotaAndNamespace(t *testing.T) {
 	}
 }
 
+func TestThumbnailRAMHitsPersistRecentUseAcrossRestart(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("persistent cache locking requires Linux")
+	}
+	state := t.TempDir()
+	s := testServer(t)
+	s.files = writeTestPhoto(t, t.TempDir())
+	s.previewJobs.close()
+	s.previewJobs = nil
+	s.thumbnailDisk.close()
+	s.thumbnailDisk = newThumbnailDisk(state)
+	if s.thumbnailDisk == nil {
+		t.Fatal("disk unavailable")
+	}
+	t.Cleanup(s.thumbnailDisk.close)
+	clock := time.Now().Add(-31 * 24 * time.Hour)
+	s.thumbnailDisk.now = func() time.Time { return clock }
+	path := thumbnailPath(t, s.files)
+	first := fileRequest(s, http.MethodGet, path, "")
+	if first.Code != 200 {
+		t.Fatal(first.Body.String())
+	}
+	for name := range s.thumbnailDisk.entries {
+		if err := os.Chtimes(filepath.Join(state, "gallery-thumbnails-v1", name), clock, clock); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clock = time.Now()
+	s.thumbnailGate <- struct{}{}
+	defer func() { <-s.thumbnailGate }()
+	if hit := fileRequest(s, http.MethodGet, path, ""); hit.Code != 200 {
+		t.Fatal("RAM hit blocked on decode")
+	}
+	s.thumbnailDisk.close()
+	restarted := newThumbnailDisk(state)
+	if restarted == nil {
+		t.Fatal("restart unavailable")
+	}
+	defer restarted.close()
+	entry, err := s.files.Stat("/photo.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body, _, ok := restarted.get(thumbnailCacheKey(entry.Path, entry.ResourceVersion)); !ok || !bytes.Equal(body, first.Body.Bytes()) {
+		t.Fatal("active RAM cache expired on restart")
+	}
+}
+
 type thumbnailCountedReader struct {
 	io.ReadSeekCloser
 	reads *atomic.Int64
