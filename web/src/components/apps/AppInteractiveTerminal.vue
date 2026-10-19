@@ -20,6 +20,10 @@ const { locale, t } = useI18n()
 const activity = useTerminalActivity()
 const host = ref<HTMLElement>()
 const clipboardMenu = ref<InstanceType<typeof TerminalContextMenu>>()
+const mobileTerminalKeys = [
+  ['Esc', '\x1b'], ['Tab', '\t'], ['↑', '\x1b[A'], ['↓', '\x1b[B'], ['←', '\x1b[D'], ['→', '\x1b[C'],
+  ['Space', ' '], ['Ctrl+C', '\x03'], ['Ctrl+D', '\x04'], ['Ctrl+Z', '\x1a'], ['Ctrl+L', '\x0c'], ['Enter', '\r'],
+] as const
 const sizeMembership = shallowRef<TerminalSizeMembership>()
 const ownsSize = computed(() => sizeMembership.value?.isOwner() ?? true)
 const ownerSize = computed(() => sizeMembership.value?.ownerSize())
@@ -33,7 +37,7 @@ watch(activity.focused, focused => { if (focused) sizeMembership.value?.claim() 
 const adapter = computed(() => jobTerminalAdapter(props.kind ?? 'app', props.jobId))
 const {
   terminal, state, inputOpen: terminalInputOpen, pendingLine, canInput,
-  focusTerminal, fitTerminal, containTerminalWheel, terminalTouchScroll, submitPendingLine, handlePendingLineEnter,
+  focusTerminal, fitTerminal, containTerminalWheel, terminalTouchScroll, queueInput, submitPendingLine, handlePendingLineEnter,
 } = useTerminalController({
   adapter: () => adapter.value, host, clipboardMenu, activity,
   inputOpen: () => props.inputOpen,
@@ -41,6 +45,18 @@ const {
   sizeSynced: size => sizeMembership.value?.publish(size),
 })
 const { fullscreen, toggleFullscreen } = useTerminalFullscreen(fitTerminal)
+function sendMobileTerminalKey(sequence: string): void {
+  if (!canInput.value) return
+  if (sequence === '\r') {
+    if (queueInput(`${pendingLine.value}\r`)) pendingLine.value = ''
+    return
+  }
+  if (sequence === '\t' && pendingLine.value) {
+    if (queueInput(`${pendingLine.value}${sequence}`)) pendingLine.value = ''
+    return
+  }
+  queueInput(sequence)
+}
 const connectionState = computed(() => state.value === 'reconnecting' ? 'error' : state.value)
 const taskKindLabel = computed(() => { locale.value; return t(`terminal.task.kind.${props.kind ?? 'app'}`) })
 const taskDescription = computed(() => { locale.value; return t(`terminal.task.description.${props.kind ?? 'app'}`) })
@@ -105,6 +121,18 @@ onBeforeUnmount(() => sizeMembership.value?.leave())
       {{ connectionStatusLabel }}
     </span>
     <div v-if="terminalInputOpen" class="interactive-terminal__input-area">
+      <div class="interactive-terminal__mobile-keys" role="group" :aria-label="t('terminal.mobileKeys')">
+        <button
+          v-for="([label, sequence]) in mobileTerminalKeys"
+          :key="label"
+          class="interactive-terminal__mobile-key"
+          type="button"
+          :aria-label="label"
+          :disabled="!canInput"
+          @pointerdown.prevent
+          @click="sendMobileTerminalKey(sequence)"
+        >{{ label }}</button>
+      </div>
       <form
         class="interactive-terminal__composer"
         @submit.prevent="submitPendingLine"
@@ -303,6 +331,43 @@ onBeforeUnmount(() => sizeMembership.value?.leave())
   padding: 10px;
   border-top: 1px solid var(--terminal-border);
   background: var(--terminal-panel);
+}
+
+.interactive-terminal__mobile-keys {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .interactive-terminal__mobile-keys {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .interactive-terminal__mobile-key {
+    min-width: 0;
+    min-height: 40px;
+    border: 1px solid var(--terminal-border);
+    border-radius: var(--radius-sm, 8px);
+    padding: 4px 2px;
+    color: var(--terminal-text);
+    background: var(--terminal-background);
+    font: 600 12px ui-sans-serif, system-ui, sans-serif;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .interactive-terminal__mobile-key:active:not(:disabled),
+  .interactive-terminal__mobile-key:focus-visible {
+    border-color: var(--terminal-accent);
+    outline: 2px solid var(--terminal-accent);
+    outline-offset: 1px;
+  }
+
+  .interactive-terminal__mobile-key:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
 }
 
 .interactive-terminal__composer input {
