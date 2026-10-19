@@ -2,9 +2,12 @@
 
 ## [1.27.0-rc.13] - 2026-10-19
 
-### Improved
+### Changed
 
 - 继续打磨 Windows XP 与 Windows 98 桌面外观，补充 Windows 98 壁纸，并默认选用经典青绿色桌面。
+
+### Fixed
+
 - 修正退出复古桌面模式后，普通页面弹窗仍沿用复古说明布局的问题。
 
 ### Security
