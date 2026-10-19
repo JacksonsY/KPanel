@@ -39,6 +39,18 @@ html[data-desktop-shell-style='xp'] {
   box-shadow: none;
 }
 
+.desktop[data-shell-style='xp'] .desktop__icon-label {
+  color: #111;
+  background: #fff8df;
+  border-color: #e5d59b;
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon--selected .desktop__icon-label {
+  color: var(--on-brand);
+  background: var(--brand-action);
+  border-color: var(--brand-action);
+}
+
 .desktop[data-shell-style='xp'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status) {
   --text: #1b2c42;
   --text-soft: #38516c;

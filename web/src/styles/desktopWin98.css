@@ -69,6 +69,18 @@ html[data-desktop-shell-style='win98'] {
   box-shadow: none;
 }
 
+.desktop[data-shell-style='win98'] .desktop__icon-label {
+  color: #fff;
+  background: #008000;
+  border-color: #006400;
+}
+
+.desktop[data-shell-style='win98'] .desktop__icon--selected .desktop__icon-label {
+  color: #fff;
+  background: var(--win98-dialog-blue);
+  border-color: var(--win98-dialog-blue);
+}
+
 .desktop[data-shell-style='win98'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status) {
   --text: var(--win98-text-color);
   --text-soft: #202020;
