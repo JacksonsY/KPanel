@@ -96,6 +96,18 @@ describe('HostTerminal command history', () => {
     expect(mocks.dispose).toHaveBeenCalledTimes(1)
   })
 
+  it('adds the mobile Space key to a composed host command before Enter submits it', async () => {
+    const view = mountTerminal('host-a')
+    await flushPromises()
+    const input = view.get<HTMLInputElement>('.host-terminal__composer input')
+    await input.setValue('ls')
+    await view.findAll('.host-terminal__mobile-key').find((button) => button.text() === 'Space')!.trigger('click')
+    expect(input.element.value).toBe('ls ')
+    await view.findAll('.host-terminal__mobile-key').find((button) => button.text() === 'Enter')!.trigger('click')
+    expect(input.element.value).toBe('')
+    expect(mocks.captured).toEqual(['ls \r'])
+  })
+
   it('fills the composer for review and refuses commands it cannot hold', async () => {
     const view = mountTerminal('host-a')
     await flushPromises()

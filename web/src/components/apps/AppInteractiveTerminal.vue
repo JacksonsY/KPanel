@@ -55,6 +55,10 @@ function sendMobileTerminalKey(sequence: string): void {
     if (queueInput(`${pendingLine.value}${sequence}`)) pendingLine.value = ''
     return
   }
+  if (sequence === ' ' && pendingLine.value) {
+    pendingLine.value += sequence
+    return
+  }
   queueInput(sequence)
 }
 const connectionState = computed(() => state.value === 'reconnecting' ? 'error' : state.value)

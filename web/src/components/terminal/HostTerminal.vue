@@ -96,6 +96,10 @@ function sendMobileTerminalKey(sequence: string): void {
     if (queueInput(`${pendingLine.value}${sequence}`)) pendingLine.value = ''
     return
   }
+  if (sequence === ' ' && pendingLine.value) {
+    pendingLine.value += sequence
+    return
+  }
   queueInput(sequence)
 }
 let closeRequest: Promise<void> | undefined

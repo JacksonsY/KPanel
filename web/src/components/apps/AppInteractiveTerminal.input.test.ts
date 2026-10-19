@@ -118,6 +118,19 @@ describe('task terminal input channel', () => {
     wrapper.unmount()
   })
 
+  it('adds the mobile Space key to a composed task command before Enter submits it', async () => {
+    const wrapper = mountTerminal('app')
+    const socket = await readySocket()
+    const composer = wrapper.get<HTMLInputElement>('.interactive-terminal__composer input')
+    await composer.setValue('ls')
+    await wrapper.findAll('.interactive-terminal__mobile-key').find((button) => button.text() === 'Space')!.trigger('click')
+    expect(composer.element.value).toBe('ls ')
+    await wrapper.findAll('.interactive-terminal__mobile-key').find((button) => button.text() === 'Enter')!.trigger('click')
+    await vi.advanceTimersByTimeAsync(12)
+    expect(socket.frames().map(text)).toEqual(['ls \r'])
+    wrapper.unmount()
+  })
+
   it('keeps a burst in order without waiting for each acknowledgement', async () => {
     const wrapper = mountTerminal('app')
     const socket = await readySocket()
