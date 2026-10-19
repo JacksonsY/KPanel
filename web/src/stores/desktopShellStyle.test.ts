@@ -71,7 +71,7 @@ describe('desktop shell style preference', () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe('win98')
     expect(style.preference.value).toBe('win98')
     expect(wallpaper.select).toHaveBeenCalledOnce()
-    expect(wallpaper.select).toHaveBeenCalledWith('win98')
+    expect(wallpaper.select).toHaveBeenCalledWith('win98-teal')
 
     style.setStyle('modern')
     expect(style.preference.value).toBe('modern')
