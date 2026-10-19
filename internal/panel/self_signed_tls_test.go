@@ -171,6 +171,124 @@ func TestSelfSignedTLSListenerServesHTTPAndTLSOnOnePort(t *testing.T) {
 	if fetchBody(t, &http.Client{}, "http://"+address+"/") != "tls=false" {
 		t.Fatal("a silent connection must not block other clients")
 	}
+	if got := cap(listener.classifierSlots); got != selfSignedTLSMaxConcurrentClassifiers {
+		t.Fatalf("classifier limit = %d, want %d", got, selfSignedTLSMaxConcurrentClassifiers)
+	}
+}
+
+func TestSelfSignedTLSListenerBoundsConcurrentClassifiers(t *testing.T) {
+	const limit = 2
+	inner := &selfSignedTLSQueueListener{conns: make(chan net.Conn, limit+2), done: make(chan struct{})}
+	listener := &selfSignedTLSListener{
+		Listener:        inner,
+		config:          func() *tls.Config { return nil },
+		conns:           make(chan net.Conn),
+		errs:            make(chan error),
+		done:            make(chan struct{}),
+		classifierSlots: make(chan struct{}, limit),
+	}
+	go listener.acceptLoop()
+	t.Cleanup(func() { _ = listener.Close() })
+
+	type pendingConn struct {
+		client net.Conn
+		server *selfSignedTLSProbeConn
+	}
+	newPendingConn := func() pendingConn {
+		serverSide, clientSide := net.Pipe()
+		return pendingConn{
+			client: clientSide,
+			server: &selfSignedTLSProbeConn{Conn: serverSide, started: make(chan struct{}, 1)},
+		}
+	}
+	wait := func(t *testing.T, signal <-chan struct{}, message string) {
+		t.Helper()
+		select {
+		case <-signal:
+		case <-time.After(time.Second):
+			t.Fatal(message)
+		}
+	}
+
+	first := newPendingConn()
+	second := newPendingConn()
+	inner.conns <- first.server
+	inner.conns <- second.server
+	wait(t, first.server.started, "first classifier did not start")
+	wait(t, second.server.started, "second classifier did not start")
+	if got := len(listener.classifierSlots); got != limit {
+		t.Fatalf("active classifiers = %d, want %d", got, limit)
+	}
+
+	third := newPendingConn()
+	inner.conns <- third.server
+	if err := third.client.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := third.client.Read(make([]byte, 1)); err == nil {
+		t.Fatal("connection over the classifier limit was not closed")
+	}
+	if got := len(listener.classifierSlots); got != limit {
+		t.Fatalf("active classifiers after rejection = %d, want %d", got, limit)
+	}
+
+	if err := first.client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.NewTimer(time.Second)
+	ticker := time.NewTicker(time.Millisecond)
+	defer deadline.Stop()
+	defer ticker.Stop()
+	for len(listener.classifierSlots) == limit {
+		select {
+		case <-ticker.C:
+		case <-deadline.C:
+			t.Fatal("classifier slot was not released after a client disconnected")
+		}
+	}
+	fourth := newPendingConn()
+	inner.conns <- fourth.server
+	wait(t, fourth.server.started, "classifier slot was not released after a client disconnected")
+
+	for _, conn := range []pendingConn{second, third, fourth} {
+		_ = conn.client.Close()
+	}
+}
+
+type selfSignedTLSQueueListener struct {
+	conns chan net.Conn
+	done  chan struct{}
+}
+
+func (l *selfSignedTLSQueueListener) Accept() (net.Conn, error) {
+	select {
+	case conn := <-l.conns:
+		return conn, nil
+	case <-l.done:
+		return nil, net.ErrClosed
+	}
+}
+
+func (l *selfSignedTLSQueueListener) Close() error { close(l.done); return nil }
+
+func (l *selfSignedTLSQueueListener) Addr() net.Addr { return selfSignedTLSQueueAddr{} }
+
+type selfSignedTLSQueueAddr struct{}
+
+func (selfSignedTLSQueueAddr) Network() string { return "test" }
+func (selfSignedTLSQueueAddr) String() string  { return "self-signed-tls-test" }
+
+type selfSignedTLSProbeConn struct {
+	net.Conn
+	started chan struct{}
+}
+
+func (c *selfSignedTLSProbeConn) Read(p []byte) (int, error) {
+	select {
+	case c.started <- struct{}{}:
+	default:
+	}
+	return c.Conn.Read(p)
 }
 
 func TestSelfSignedTLSRedirectsOnlyDirectIPNavigations(t *testing.T) {

@@ -388,24 +388,28 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 }
 
 // selfSignedTLSListener serves TLS and plain HTTP on one port. Each accepted
-// connection is classified in its own goroutine by the first byte (0x16 is a
-// TLS handshake record), so a slow client cannot stall Accept.
+// connection is classified in its own bounded goroutine by the first byte
+// (0x16 is a TLS handshake record), so a slow client cannot stall Accept.
 type selfSignedTLSListener struct {
 	net.Listener
-	config    func() *tls.Config
-	conns     chan net.Conn
-	errs      chan error
-	done      chan struct{}
-	closeOnce sync.Once
+	config          func() *tls.Config
+	conns           chan net.Conn
+	errs            chan error
+	done            chan struct{}
+	classifierSlots chan struct{}
+	closeOnce       sync.Once
 }
+
+const selfSignedTLSMaxConcurrentClassifiers = 64
 
 func newSelfSignedTLSListener(inner net.Listener, config func() *tls.Config) *selfSignedTLSListener {
 	listener := &selfSignedTLSListener{
-		Listener: inner,
-		config:   config,
-		conns:    make(chan net.Conn),
-		errs:     make(chan error),
-		done:     make(chan struct{}),
+		Listener:        inner,
+		config:          config,
+		conns:           make(chan net.Conn),
+		errs:            make(chan error),
+		done:            make(chan struct{}),
+		classifierSlots: make(chan struct{}, selfSignedTLSMaxConcurrentClassifiers),
 	}
 	go listener.acceptLoop()
 	return listener
@@ -425,7 +429,15 @@ func (l *selfSignedTLSListener) acceptLoop() {
 			}
 			continue
 		}
-		go l.classify(conn)
+		select {
+		case l.classifierSlots <- struct{}{}:
+			go func() {
+				defer func() { <-l.classifierSlots }()
+				l.classify(conn)
+			}()
+		default:
+			_ = conn.Close()
+		}
 	}
 }
 
