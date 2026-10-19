@@ -539,6 +539,7 @@ describe('SettingsView appearance', () => {
     expect(settingsSource).toContain(':aria-checked="desktopShellStyle.preference.value === option.id"')
     expect(settingsSource).toContain('@click="setDesktopShellStyle(option.id)"')
     expect(settingsSource).toContain('desktop.shellStyleXP')
+    expect(settingsSource).toContain('desktop.shellStyleWin98')
 
     setupView().setDesktopShellStyle('xp')
 

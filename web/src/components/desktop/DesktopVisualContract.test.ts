@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const xpStyles = readFileSync(new URL('../../styles/desktopXp.css', import.meta.url), 'utf8')
+const win98Styles = readFileSync(new URL('../../styles/desktopWin98.css', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../../styles/desktop.css', import.meta.url), 'utf8')
   + readFileSync(new URL('../../styles/desktopWallpaper.css', import.meta.url), 'utf8')
   + xpStyles
+  + win98Styles
 const mainStyles = readFileSync(new URL('../../styles/main.css', import.meta.url), 'utf8')
 const themeStyles = readFileSync(new URL('../../styles/themes.css', import.meta.url), 'utf8')
 const themeStoreSource = readFileSync(new URL('../../stores/theme.ts', import.meta.url), 'utf8')
@@ -42,19 +44,49 @@ describe('desktop visual and interaction contract', () => {
     expect(wallpaperRegistry).toContain("id: 'xp'")
     expect(wallpaperRegistry).toContain("src: '/wallpapers/kpanel-desktop-xp.svg'")
     expect(xpStyles).not.toContain(".desktop-wallpaper-surface[data-wallpaper='classic']")
-    expect(desktopViewSource).toContain('<svg class="desktop__xp-start-mark" viewBox="0 0 24 24"')
+    expect(desktopViewSource).toContain("'desktop__xp-start-mark'")
     expect(xpStyles).toContain('@media (prefers-contrast: more), (prefers-reduced-transparency: reduce)')
     expect(mainStyles).toContain("@import './desktopXp.css';")
+  })
+
+  it('keeps Win98 opt-in and applies classic raised controls to desktop chrome', () => {
+    expect(win98Styles).toContain(".desktop[data-shell-style='win98'] .desktop-window__titlebar")
+    expect(win98Styles).toContain(".desktop[data-shell-style='win98'] .desktop__taskbar")
+    expect(win98Styles).toContain(".desktop[data-shell-style='win98'] .desktop-start-menu")
+    expect(win98Styles).toContain('border-color: #fff #404040 #404040 #fff;')
+    expect(win98Styles).toContain(".desktop[data-shell-style='win98'] :is(.desktop-clock__header, .desktop-monitor__header, .desktop-service-status__header)")
+    expect(win98Styles).toContain(".desktop-shell-style-options__preview--win98")
+    expect(wallpaperRegistry).toContain("id: 'win98'")
+    expect(wallpaperRegistry).toContain("src: '/wallpapers/kpanel-desktop-win98.svg'")
+    expect(desktopViewSource).toContain(":win98=\"desktopShellStyle.preference.value === 'win98'\"")
+    expect(mainStyles).toContain("@import '/src/styles/desktopWin98.css';")
   })
 
   it('gives XP taskbar and widgets Luna relief without flattening widget focus', () => {
     const taskbar = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__taskbar")
     const startButton = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__taskbar-brand .desktop__start-button")
+    const windowFrame = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-window--focused")
+    const titlebar = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-window__titlebar")
+    const focusedTitlebar = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-window--focused .desktop-window__titlebar")
+    const titlebarIcon = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-window__app-glyph")
+    const windowAction = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-window__action")
     const tray = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__system-tray")
     const widgets = cssRule(xpStyles, ".desktop[data-shell-style='xp'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status)")
     const widgetHeader = cssRule(xpStyles, ".desktop[data-shell-style='xp'] :is(.desktop-clock__header, .desktop-monitor__header, .desktop-service-status__header)")
 
     expect(taskbar).toContain('background: linear-gradient(')
+    expect(taskbar).toContain('border-top: 1px solid #9cc8f0;')
+    expect(taskbar).toContain('inset 0 1px 0 #b9dcfb')
+    expect(windowFrame).toContain('border-top-color: #b5dcff;')
+    expect(windowFrame).toContain('inset 1px 1px 0 #d6edff')
+    expect(titlebar).toContain('inset 0 1px 0 #a4d2ff')
+    expect(titlebarIcon).toContain('width: 16px;')
+    expect(titlebarIcon).toContain('border: 0;')
+    expect(windowAction).toContain('border: 1px solid #9bc7ef;')
+    expect(widgetHeader.match(/background: linear-gradient\([^;]+/)?.[0])
+      .toBe(focusedTitlebar.match(/background: linear-gradient\([^;]+/)?.[0])
+    expect(widgetHeader).toContain('border-bottom: 1px solid #063778;')
+    expect(widgetHeader).toContain('inset 0 1px 0 #a4d2ff')
     expect(startButton).toContain('display: flex;')
     expect(startButton).toContain('align-items: center;')
     expect(startButton).toContain('justify-content: flex-start;')
@@ -66,15 +98,17 @@ describe('desktop visual and interaction contract', () => {
       .toContain('outline: 3px solid #ffe179;')
   })
 
-  it('keeps XP desktop labels transparent and readable over the wallpaper', () => {
+  it('keeps XP desktop icon labels on the native KPanel light and dark surfaces', () => {
     const label = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__icon-label")
     const selectedLabel = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__icon--selected .desktop__icon-label")
+    const nativeLabel = styles.match(/(?:^|\n)\.desktop__icon-label\s*\{[^}]*\}/)?.[0] ?? ''
+    const nativeLightLabel = cssRule(styles, ':root:not([data-theme=\'dark\']) .desktop__icon-label')
 
-    expect(label).toContain('background: transparent;')
-    expect(label).toContain('color: #fff;')
-    expect(label).toContain('text-shadow: 1px 1px 2px rgb(9 29 55 / 92%);')
-    expect(selectedLabel).toContain('background: #145db8;')
-    expect(selectedLabel).toContain('outline: 1px dotted #fff;')
+    expect(label).toBe('')
+    expect(selectedLabel).toBe('')
+    expect(nativeLabel).toContain('color: var(--desktop-label);')
+    expect(nativeLabel).toContain('background: rgb(3 13 16 / 68%);')
+    expect(nativeLightLabel).toContain('background: var(--material-panel-fill);')
   })
 
   it('keeps white text readable on XP title bars, taskbar and Start surfaces', () => {
@@ -93,7 +127,7 @@ describe('desktop visual and interaction contract', () => {
     }
   })
 
-  it('preserves the KPanel content colors inside XP windows', () => {
+  it('scopes XP and Windows 98 client surfaces while retaining semantic content colors', () => {
     expect(cssRule(styles, '.desktop-window')).toContain('color: var(--text);')
     expect(cssRule(styles, '.desktop-window__body')).toContain('background: var(--bg);')
 
@@ -101,7 +135,18 @@ describe('desktop visual and interaction contract', () => {
     expect(xpWindow).not.toMatch(/(?:^|;)\s*color\s*:/)
 
     const xpBody = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-window__body")
-    expect(xpBody).not.toMatch(/(?:^|;)\s*(?:color|background)\s*:/)
+    expect(xpBody).toContain('--bg: var(--desktop-window-client-background);')
+    expect(xpBody).toContain('--surface-subtle: #e2eaf4;')
+    expect(xpBody).toContain('--surface-raised: #fff;')
+    expect(xpBody).toContain('background: var(--bg);')
+    expect(xpBody).not.toMatch(/--(?:brand|success|warning|danger)\s*:/)
+
+    const win98Body = cssRule(win98Styles, ".desktop[data-shell-style='win98'] .desktop-window__body")
+    expect(win98Body).toContain('--bg: var(--desktop-window-client-background);')
+    expect(win98Body).toContain('--surface-subtle: #d4d0c8;')
+    expect(win98Body).toContain('--surface-raised: #fff;')
+    expect(win98Body).toContain('background: var(--bg);')
+    expect(win98Body).not.toMatch(/--(?:brand|success|warning|danger)\s*:/)
   })
 
   it('keeps semantic desktop copy at or above the 12px product floor', () => {

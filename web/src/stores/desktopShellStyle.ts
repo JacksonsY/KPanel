@@ -1,14 +1,14 @@
 import { computed, ref } from 'vue'
 import { useDesktopWallpaper } from '@/lib/desktopWallpapers'
 
-export type DesktopShellStyle = 'modern' | 'xp'
+export type DesktopShellStyle = 'modern' | 'xp' | 'win98'
 
 const STORAGE_KEY = 'kpanel:desktop-shell-style:v1'
 const preference = ref<DesktopShellStyle>('modern')
 let storageListenerAttached = false
 
 function isDesktopShellStyle(value: string | null): value is DesktopShellStyle {
-  return value === 'modern' || value === 'xp'
+  return value === 'modern' || value === 'xp' || value === 'win98'
 }
 
 function readPreference(): string | null {
@@ -57,10 +57,10 @@ export function resetDesktopShellStyleForTest(): void {
 
 export function useDesktopShellStyle() {
   function setStyle(value: DesktopShellStyle): void {
-    const enteringXP = preference.value !== 'xp' && value === 'xp'
+    const enteringWindowsStyle = preference.value !== value && value !== 'modern'
     preference.value = value
     persistPreference(value)
-    if (enteringXP) useDesktopWallpaper().select('xp')
+    if (enteringWindowsStyle) useDesktopWallpaper().select(value)
   }
 
   return {

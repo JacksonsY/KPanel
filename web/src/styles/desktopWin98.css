@@ -1,0 +1,956 @@
+/* Windows 98 shell with a scoped classic client-area surface palette. */
+.desktop[data-shell-style='win98'] {
+  --desktop-window-client-background: #d4d0c8;
+  --desktop-group-surface: #fff;
+  --desktop-group-border: #808080;
+  --desktop-group-text: #000;
+  --desktop-group-muted: #404040;
+  --desktop-group-hover: #d6d6d6;
+  --desktop-group-focus: #000080;
+  --desktop-titlebar-active: linear-gradient(90deg, #000080, #1084d0);
+  --desktop-titlebar-inactive: linear-gradient(90deg, #808080, #b5b5b5);
+  --desktop-window-shadow-active: 1px 1px 0 #000;
+  color: #000;
+  background: #008080;
+  font-family: Tahoma, Arial, 'Microsoft YaHei', sans-serif;
+}
+
+.desktop[data-shell-style='win98'] :is(.desktop__wallpaper-veil, .desktop__aurora) {
+  display: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__widgets,
+.desktop[data-shell-style='win98'] .desktop-widget-slot {
+  color: #000;
+}
+
+.desktop[data-shell-style='win98'] .desktop-widget-slot {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status) {
+  --text: #000;
+  --text-soft: #202020;
+  --muted: #404040;
+  --brand: #000080;
+  --success: #008000;
+  --border: #808080;
+  --surface-subtle: #d4d0c8;
+  --desktop-label: #000;
+  color: #000;
+  background: #d4d0c8;
+  border: 2px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #dfdfdf, 1px 1px 0 #000;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.desktop[data-shell-style='win98'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status) {
+  padding: 0 10px 10px;
+}
+
+.desktop[data-shell-style='win98'] :is(.desktop-clock__header, .desktop-monitor__header, .desktop-service-status__header) {
+  min-height: 25px;
+  margin: 0 -10px 9px;
+  padding: 0 7px;
+  color: #fff;
+  background: linear-gradient(90deg, #000080, #1084d0);
+  border-bottom: 1px solid #000040;
+  box-shadow: inset 0 1px 0 #7bb9e7;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+  text-shadow: 1px 1px 0 #000040;
+}
+
+.desktop[data-shell-style='win98'] :is(.desktop-clock__header > span svg, .desktop-monitor__header > svg, .desktop-service-status__header > span svg) {
+  color: #fff;
+}
+
+.desktop[data-shell-style='win98'] .desktop-widget-slot:focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: 2px;
+}
+
+.desktop[data-shell-style='win98'] .desktop-clock__time {
+  color: #000;
+  text-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop-clock__weekday {
+  color: #000080;
+}
+
+.desktop[data-shell-style='win98'] .desktop-clock__server {
+  border-top-color: #808080;
+}
+
+.desktop[data-shell-style='win98'] .desktop-clock__server-icon {
+  color: #000080;
+  background: #d4d0c8;
+  border: 1px solid #808080;
+  border-radius: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window {
+  background: #d4d0c8;
+  border: 2px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: 1px 1px 0 #000, inset 1px 1px 0 #dfdfdf;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window--focused {
+  border-color: #fff #404040 #404040 #fff;
+  box-shadow: 1px 1px 0 #000, inset 1px 1px 0 #dfdfdf;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window--maximized,
+.desktop[data-shell-style='win98'] .desktop-window--snapped {
+  border-radius: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__titlebar {
+  height: 25px;
+  min-height: 25px;
+  padding-left: 4px;
+  color: #fff;
+  background: linear-gradient(90deg, #000080, #1084d0);
+  border-bottom: 1px solid #000040;
+  box-shadow: inset 0 1px 0 #7bb9e7;
+  text-shadow: 1px 1px 0 #000040;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window:not(.desktop-window--focused) .desktop-window__titlebar {
+  color: #fff;
+  background: linear-gradient(90deg, #808080, #b5b5b5);
+  border-bottom-color: #404040;
+  box-shadow: inset 0 1px 0 #dfdfdf;
+  text-shadow: 1px 1px 0 #404040;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__title {
+  gap: 5px;
+  font-family: Tahoma, Arial, 'Microsoft YaHei', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__app-glyph {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__actions {
+  gap: 2px;
+  padding-right: 3px;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__action {
+  width: 18px;
+  height: 18px;
+  color: #000;
+  background: #d4d0c8;
+  border: 1px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #dfdfdf;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__action svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 2.5px;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__action:hover {
+  color: #000;
+  background: #e5e2da;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__action:active {
+  border-color: #404040 #fff #fff #404040;
+  box-shadow: inset 1px 1px 0 #808080;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__action--close {
+  color: #000;
+  background: #d4d0c8;
+  border-color: #fff #404040 #404040 #fff;
+  box-shadow: inset 1px 1px 0 #dfdfdf;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__action--close:hover {
+  color: #000;
+  background: #e5e2da;
+}
+
+.desktop[data-shell-style='win98'] :is(.desktop-window__action, .desktop__start-button, .desktop__taskbar-item, .desktop-start-menu :focus-visible) {
+  outline-color: #000;
+  outline-style: dotted;
+  outline-width: 1px;
+  outline-offset: 1px;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__action:focus-visible,
+.desktop[data-shell-style='win98'] .desktop-start-menu :focus-visible {
+  outline: 1px dotted #000;
+}
+
+.desktop[data-shell-style='win98'] .desktop-window__body {
+  --bg: var(--desktop-window-client-background);
+  --surface-subtle: #d4d0c8;
+  --surface: #f6f5f1;
+  --surface-raised: #fff;
+  --border: #808080;
+  --border-strong: #404040;
+  --surface-muted: var(--surface-subtle);
+  --surface-strong: var(--surface-raised);
+  --line: var(--border);
+  --line-soft: var(--border);
+  --border-subtle: var(--border);
+  --page-ambient-background: var(--bg);
+  --surface-gradient: var(--surface);
+  --surface-gradient-muted: var(--surface-subtle);
+  --interaction-hover-surface: color-mix(in srgb, var(--brand) 7%, var(--surface));
+  --interaction-hover-subtle: color-mix(in srgb, var(--brand) 7%, var(--surface-subtle));
+  color: var(--text);
+  background: var(--bg);
+  border-radius: 0;
+}
+
+:root[data-theme='dark'] .desktop[data-shell-style='win98'] .desktop-window__body {
+  --surface-subtle: #34373b;
+  --surface: #3d4146;
+  --surface-raised: #484c52;
+  --border: #62676d;
+  --border-strong: #858b92;
+}
+
+:root[data-theme='dark'] .desktop[data-shell-style='win98'] {
+  --desktop-window-client-background: #2d3035;
+}
+
+/* Classic gray taskbar and raised Start / application buttons. */
+.desktop[data-shell-style='win98'] .desktop__taskbar {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 40px;
+  grid-template-columns: minmax(88px, auto) minmax(0, 1fr) auto;
+  gap: 4px;
+  padding: 3px 5px;
+  color: #000;
+  background: #c0c0c0;
+  border: 0;
+  border-top: 2px solid #fff;
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 #dfdfdf, 0 -1px 0 #808080;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-brand {
+  gap: 0;
+  padding: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-brand .desktop__start-button {
+  display: flex;
+  width: 88px;
+  height: 32px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  padding: 0 7px;
+  color: #000;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #dfdfdf;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 700;
+  text-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-brand .desktop__start-button:hover {
+  color: #000;
+  background: #d4d0c8;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-brand .desktop__start-button[aria-expanded='true'],
+.desktop[data-shell-style='win98'] .desktop__taskbar-brand .desktop__start-button:active {
+  border-color: #404040 #fff #fff #404040;
+  box-shadow: inset 1px 1px 0 #808080;
+}
+
+.desktop[data-shell-style='win98'] .desktop__win98-start-mark {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.desktop[data-shell-style='win98'] .desktop__win98-start-label {
+  line-height: 1;
+}
+
+.desktop[data-shell-style='win98'] .desktop__site-name {
+  display: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-agent {
+  min-height: 30px;
+  gap: 5px;
+  padding: 0 7px;
+  color: #000;
+  border-left: 1px solid #808080;
+  box-shadow: inset 1px 0 0 #fff;
+}
+
+.desktop[data-shell-style='win98'] :is(.desktop__taskbar-agent-status, .desktop__taskbar-agent-update) {
+  color: #000;
+  font-size: 12px;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-apps {
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-item {
+  display: flex;
+  width: clamp(92px, 14vw, 160px);
+  height: 30px;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 5px;
+  padding: 0 5px;
+  color: #000;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #dfdfdf;
+  transition: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-item:hover {
+  color: #000;
+  background: #d4d0c8;
+  border-color: #fff #404040 #404040 #fff;
+  transform: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-item--active {
+  background: #c0c0c0;
+  border-color: #404040 #fff #fff #404040;
+  box-shadow: inset 1px 1px 0 #808080;
+  transform: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-glyph {
+  width: 17px;
+  height: 17px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-glyph svg {
+  width: 16px;
+  height: 16px;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-item > i {
+  display: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-label {
+  position: static;
+  max-width: none;
+  flex: 1 1 auto;
+  padding: 0;
+  overflow: hidden;
+  color: #000;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-family: Tahoma, Arial, 'Microsoft YaHei', sans-serif;
+  font-size: 12px;
+  opacity: 1;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-shadow: none;
+  transform: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__system-tray {
+  min-height: 30px;
+  gap: 1px;
+  padding: 0 2px;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #808080 #fff #fff #808080;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #404040;
+}
+
+.desktop[data-shell-style='win98'] .desktop__taskbar-clock {
+  display: inline-flex;
+  min-width: 52px;
+  min-height: 25px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  color: #000;
+  border-left: 1px solid #808080;
+  box-shadow: inset 1px 0 0 #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+  white-space: nowrap;
+}
+
+.desktop[data-shell-style='win98'] .desktop__tray-button,
+.desktop[data-shell-style='win98'] .desktop__classic-button {
+  min-width: 25px;
+  min-height: 26px;
+  color: #000;
+  background: #c0c0c0;
+  border: 1px solid transparent;
+  border-radius: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop__tray-button:hover,
+.desktop[data-shell-style='win98'] .desktop__classic-button:hover {
+  background: #d4d0c8;
+  border: 1px solid;
+  border-color: #fff #404040 #404040 #fff;
+}
+
+.desktop[data-shell-style='win98'] .desktop__classic-button span {
+  display: none;
+}
+
+/* A single-level, gray Start menu with the classic vertical Windows rail. */
+.desktop[data-shell-style='win98'] .desktop-start-menu {
+  bottom: 40px;
+  left: 0;
+  width: min(370px, calc(100vw - 8px));
+  max-height: min(560px, calc(100dvh - 48px));
+  padding-left: 25px;
+  color: #000;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: 1px 1px 0 #000;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 23px;
+  color: #fff;
+  background: linear-gradient(180deg, #000080, #1084d0);
+  content: 'Windows 98';
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .2px;
+  line-height: 23px;
+  text-shadow: 1px 1px 0 #000040;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__body {
+  min-height: 0;
+  padding: 4px 5px;
+  background: #fff;
+  border: 1px solid;
+  border-color: #808080 #fff #fff #808080;
+  scrollbar-gutter: stable;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__results {
+  display: flex;
+  flex-direction: column;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__group + .desktop-start-menu__group {
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid #c0c0c0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__heading {
+  padding: 4px 5px;
+  color: #404040;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__option {
+  min-height: 31px;
+  gap: 7px;
+  padding: 3px 5px;
+  color: #000;
+  border-radius: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__option--active {
+  color: #fff;
+  background: #000080;
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__option--active .desktop-start-menu__detail {
+  color: #e7e7ff;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__detail {
+  display: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__label {
+  font-size: 12px;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__icon,
+.desktop[data-shell-style='win98'] .desktop-start-menu__option--tile .desktop-start-menu__icon {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #808080;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__footer {
+  min-height: 38px;
+  padding: 3px 4px;
+  color: #000;
+  background: #c0c0c0;
+  border-top: 1px solid #808080;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__user,
+.desktop[data-shell-style='win98'] .desktop-start-menu__footer-button,
+.desktop[data-shell-style='win98'] .desktop-start-menu .language-selector__trigger,
+.desktop[data-shell-style='win98'] .desktop-start-menu__retry {
+  color: #000;
+  border-radius: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__user {
+  min-height: 30px;
+  gap: 6px;
+  padding: 2px 5px;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #fff #404040 #404040 #fff;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__user:hover:not(:disabled),
+.desktop[data-shell-style='win98'] .desktop-start-menu__footer-button:hover,
+.desktop[data-shell-style='win98'] .desktop-start-menu .language-selector__trigger:hover,
+.desktop[data-shell-style='win98'] .desktop-start-menu__retry:hover {
+  color: #000;
+  background: #d4d0c8;
+  border-color: #fff #404040 #404040 #fff;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__avatar {
+  width: 24px;
+  height: 24px;
+  color: #000080;
+  background: #fff;
+  border: 1px solid #808080;
+  border-radius: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__user-text strong {
+  font-size: 12px;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__user-text small {
+  color: #404040;
+  font-size: 12px;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__footer-actions {
+  gap: 1px;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__footer-button,
+.desktop[data-shell-style='win98'] .desktop-start-menu .language-selector__trigger {
+  width: 27px;
+  height: 27px;
+  min-height: 27px;
+  background: #c0c0c0;
+  border: 1px solid transparent;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__xp-controls {
+  display: block;
+  flex: 0 0 auto;
+  padding: 4px;
+  background: #c0c0c0;
+  border-top: 1px solid #808080;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__search {
+  min-height: 28px;
+  margin: 0;
+  gap: 5px;
+  padding: 0 6px;
+  color: #000;
+  background: #fff;
+  border: 1px solid;
+  border-color: #808080 #fff #fff #808080;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__search svg {
+  width: 14px;
+  height: 14px;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__search input {
+  height: 26px;
+  color: #000;
+  font-size: 12px;
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu__search:focus-within {
+  border-color: #000080;
+  outline: 1px dotted #000;
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__context-menu {
+  padding: 2px;
+  color: #000;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: 1px 1px 0 #000;
+}
+
+.desktop[data-shell-style='win98'] .desktop__context-menu button {
+  color: #000;
+  border-radius: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop__context-menu button:hover,
+.desktop[data-shell-style='win98'] .desktop__context-menu button:focus-visible {
+  color: #fff;
+  background: #000080;
+  outline: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop__context-separator {
+  background: #808080;
+}
+
+/* Teleported third-level business dialogs inherit the active classic shell. */
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-backdrop {
+  background: rgb(0 0 0 / 48%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel {
+  --text: #000;
+  --text-soft: #202020;
+  --muted: #404040;
+  --surface: #fff;
+  --surface-raised: #d4d0c8;
+  --surface-subtle: #d4d0c8;
+  --border: #808080;
+  --border-strong: #404040;
+  --brand: #000080;
+  --brand-strong: #000080;
+  --brand-soft: #d9e3f0;
+  --brand-action: #d4d0c8;
+  --on-brand: #000;
+  --danger: #a40000;
+  color: #000;
+  background: #d4d0c8;
+  border: 2px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #dfdfdf, 1px 1px 0 #000;
+  font-family: Tahoma, Arial, 'Microsoft YaHei', sans-serif;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__header {
+  min-height: 34px;
+  align-items: center;
+  padding: 5px 7px 5px 10px;
+  color: #fff;
+  background: linear-gradient(90deg, #000080, #1084d0);
+  border-bottom: 1px solid #000040;
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 #7bb9e7;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-shadow: 1px 1px 0 #000040;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__header p {
+  color: #e5edff;
+  font-size: 11px;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__actions .icon-button {
+  width: 24px;
+  height: 22px;
+  color: #000;
+  background: #d4d0c8;
+  border: 1px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #dfdfdf;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__actions .icon-button:last-child {
+  color: #fff;
+  background: #c75050;
+  border-color: #fff #681515 #681515 #fff;
+  text-shadow: 1px 1px 0 #681515;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__body {
+  background: #d4d0c8;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__description--body {
+  margin: 0 0 10px;
+  padding: 0 0 7px;
+  color: #202020;
+  border-bottom: 1px solid #808080;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__footer {
+  background: #d4d0c8;
+  border-top: 1px solid #808080;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.field input, .field select, .field textarea) {
+  color: #000;
+  background: #fff;
+  border: 2px solid;
+  border-color: #808080 #fff #fff #808080;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.field input, .field select, .field textarea):focus {
+  outline: 1px dotted #000;
+  outline-offset: -4px;
+  box-shadow: none;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.button, .icon-button, .site-service-card, .choice-pills button, .site-template-toggle, .dns-guide nav a, .dns-guide__records button) {
+  color: #000;
+  background: #d4d0c8;
+  border: 1px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 #dfdfdf;
+  transition: none;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.button, .icon-button, .site-service-card, .choice-pills button, .site-template-toggle, .dns-guide nav a, .dns-guide__records button):active:not(:disabled) {
+  border-color: #404040 #fff #fff #404040;
+  box-shadow: inset 1px 1px 0 #808080;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.button, .icon-button, .site-service-card, .choice-pills button, .site-template-toggle):focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: -4px;
+  box-shadow: none;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.site-service-field, .site-certificate-options, .site-inline-options) {
+  padding: 7px 9px 9px;
+  border: 1px solid;
+  border-color: #fff #808080 #808080 #fff;
+  border-radius: 0;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.site-service-field, .site-certificate-options, .site-inline-options) legend {
+  padding: 0 4px;
+  color: #000;
+  font-size: 12px;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card.is-active,
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .choice-pills button.is-active {
+  color: #fff;
+  background: #000080;
+  border-color: #fff #404040 #404040 #fff;
+  box-shadow: inset 1px 1px 0 #50509c;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card__content :is(small, em) {
+  color: inherit;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card__icon {
+  color: #000080;
+  background: #d4d0c8;
+  border: 1px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card.is-active .site-service-card__icon {
+  color: #000080;
+  background: #fff;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card__badge {
+  color: #000;
+  background: #d4d0c8;
+  border: 1px solid #808080;
+  border-radius: 0;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card.is-active .site-service-card__badge {
+  color: #000;
+  background: #fff;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .dns-guide {
+  background: #d4d0c8;
+  border: 1px solid;
+  border-color: #fff #808080 #808080 #fff;
+  border-radius: 0;
+}
+
+/* Preview card used by the shared wallpaper picker and Settings appearance page. */
+.desktop-shell-style-options__preview--win98 {
+  background: #78b6df url('/wallpapers/kpanel-desktop-win98.svg') center / cover;
+  border-color: #808080;
+  border-radius: 0;
+}
+
+.desktop-shell-style-options__preview--win98 .desktop-shell-style-options__window {
+  background: #d4d0c8;
+  border: 2px solid;
+  border-color: #fff #404040 #404040 #fff;
+  border-radius: 0;
+  box-shadow: 1px 1px 0 #000;
+}
+
+.desktop-shell-style-options__preview--win98 .desktop-shell-style-options__window b {
+  background: linear-gradient(90deg, #000080, #1084d0);
+  border-bottom: 1px solid #000040;
+}
+
+.desktop-shell-style-options__preview--win98 .desktop-shell-style-options__window em {
+  background: #fff;
+  border: 1px solid #808080;
+}
+
+.desktop-shell-style-options__preview--win98 .desktop-shell-style-options__taskbar {
+  height: 16%;
+  background: #c0c0c0;
+  border-top: 2px solid #fff;
+}
+
+.desktop-shell-style-options__preview--win98 .desktop-shell-style-options__taskbar b {
+  width: 16%;
+  background: #c0c0c0;
+  border-right: 2px solid #404040;
+}
+
+@media (max-width: 760px) {
+  .desktop[data-shell-style='win98'] .desktop__taskbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .desktop[data-shell-style='win98'] .desktop__taskbar-apps {
+    justify-content: flex-start;
+  }
+
+  .desktop[data-shell-style='win98'] .desktop__taskbar-item {
+    width: 42px;
+    padding: 0;
+  }
+
+  .desktop[data-shell-style='win98'] .desktop__taskbar-label {
+    display: none;
+  }
+
+  .desktop[data-shell-style='win98'] .desktop-start-menu {
+    bottom: 40px;
+    width: calc(100vw - 8px);
+    max-height: min(560px, calc(100dvh - 48px));
+  }
+
+  .desktop-shell-style-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .desktop[data-shell-style='win98'] .desktop__taskbar {
+    height: 38px;
+    grid-template-columns: 82px minmax(0, 1fr) auto;
+    gap: 2px;
+    padding-right: 3px;
+  }
+
+  .desktop[data-shell-style='win98'] .desktop__taskbar-brand .desktop__start-button {
+    width: 82px;
+    height: 30px;
+    padding-left: 5px;
+  }
+
+  .desktop[data-shell-style='win98'] .desktop__system-tray {
+    gap: 0;
+    padding-left: 1px;
+  }
+
+  .desktop[data-shell-style='win98'] .desktop__taskbar-apps {
+    gap: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop[data-shell-style='win98'] .desktop__taskbar-item {
+    transition: none;
+  }
+}

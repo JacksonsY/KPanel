@@ -551,7 +551,7 @@ describe('DesktopView', () => {
     const dialog = document.body.querySelector<HTMLElement>('.desktop-wallpaper-picker')
     const orbit = dialog?.querySelector<HTMLButtonElement>('[data-wallpaper-option="orbit"]')
     expect(dialog).not.toBeNull()
-    expect(dialog?.querySelectorAll('[data-wallpaper-option]')).toHaveLength(6)
+    expect(dialog?.querySelectorAll('[data-wallpaper-option]')).toHaveLength(8)
     expect(orbit?.getAttribute('aria-checked')).toBe('false')
 
     vi.useFakeTimers()

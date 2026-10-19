@@ -59,7 +59,7 @@ describe('DesktopStartMenu', () => {
     expect(activeKey()).toBe('nav:/overview')
   })
 
-  it('uses the XP two-column menu and expands its complete program list', async () => {
+  it('uses the XP two-column menu and shows every program in one layer', async () => {
     const extraSystemItems: DesktopStartMenuItem[] = Array.from({ length: 8 }, (_, index) => ({
       key: `nav:/xp-${index}`,
       section: 'system',
@@ -75,23 +75,30 @@ describe('DesktopStartMenu', () => {
 
     expect(wrapper.get('.desktop-start-menu--xp').text()).toContain('admin')
     expect(wrapper.findAll('.desktop-start-menu__option--tile')).toHaveLength(0)
-    expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-system"] [role="option"]')).toHaveLength(6)
-    expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-entries"] [role="option"]')).toHaveLength(6)
-    expect(wrapper.get('.desktop-start-menu__all-programs').text()).toContain('所有程序')
-    expect(document.activeElement).toBe(search().element)
-
-    await wrapper.get('.desktop-start-menu__all-programs').trigger('click')
-    expect(wrapper.get('.desktop-start-menu__all-programs').attributes('aria-expanded')).toBe('true')
     expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-system"] [role="option"]')).toHaveLength(11)
     expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-entries"] [role="option"]')).toHaveLength(10)
+    expect(wrapper.find('.desktop-start-menu__all-programs').exists()).toBe(false)
+    expect(document.activeElement).toBe(search().element)
 
-    await wrapper.get('.desktop-start-menu__all-programs').trigger('click')
-    expect(wrapper.get('.desktop-start-menu__all-programs').attributes('aria-expanded')).toBe('false')
-    expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-system"] [role="option"]')).toHaveLength(6)
-    expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-entries"] [role="option"]')).toHaveLength(6)
     await search().setValue('XP App 7')
     expect(wrapper.find('[data-start-menu-key="app:xp-7"]').exists()).toBe(true)
-    expect(wrapper.find('.desktop-start-menu__all-programs').exists()).toBe(false)
+  })
+
+  it('uses a single-level list in the Win98 menu and keeps every system item visible', async () => {
+    const extraSystemItems: DesktopStartMenuItem[] = Array.from({ length: 8 }, (_, index) => ({
+      key: `nav:/98-${index}`,
+      section: 'system',
+      label: `Win98 System ${index}`,
+    }))
+    await mountMenu({ win98: true, items: [...items, ...extraSystemItems] })
+
+    expect(wrapper.find('.desktop-start-menu--win98').exists()).toBe(true)
+    expect(wrapper.findAll('.desktop-start-menu__option--tile')).toHaveLength(0)
+    expect(wrapper.findAll('.desktop-start-menu__group[aria-labelledby$="-system"] [role="option"]')).toHaveLength(11)
+    expect(document.activeElement).toBe(search().element)
+
+    await search().setValue('Win98 System 7')
+    expect(wrapper.find('[data-start-menu-key="nav:/98-7"]').exists()).toBe(true)
   })
 
   it('filters across sections, reports no matches, and opens the highlighted result with Enter', async () => {

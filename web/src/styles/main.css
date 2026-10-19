@@ -1,6 +1,7 @@
 @import './desktop.css';
 @import './themes.css';
 @import './desktopXp.css';
+@import '/src/styles/desktopWin98.css';
 
 :root {
   font-family:

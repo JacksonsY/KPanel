@@ -192,6 +192,12 @@ let executionOpener: HTMLElement | undefined
 const documentFullscreen = useDocumentFullscreen()
 const theme = useTheme()
 const desktopShellStyle = useDesktopShellStyle()
+function syncDocumentShellStyle(style: 'modern' | 'xp' | 'win98'): void {
+  if (typeof document === 'undefined') return
+  if (style === 'modern') delete document.documentElement.dataset.desktopShellStyle
+  else document.documentElement.dataset.desktopShellStyle = style
+}
+watch(() => desktopShellStyle.preference.value, syncDocumentShellStyle, { immediate: true })
 // The translucent drag hint keeps the dark palette even over a light desktop.
 const desktopFileDropStyle = computed(() => {
   const tokens = deriveThemeTokens(theme.colors.value, 'dark')
@@ -4361,6 +4367,7 @@ onBeforeUnmount(() => {
   entriesSequence += 1
   syncLiveSceneFlag(false)
   document.documentElement.classList.remove('desktop-mode-open')
+  delete document.documentElement.dataset.desktopShellStyle
   document.body.classList.remove('desktop-mode-open')
   window.removeEventListener('pointerdown', onGlobalPointerDown)
   window.removeEventListener('keydown', onGlobalKeyDown)
@@ -5226,6 +5233,7 @@ function onViewportResize(): void {
       :entries-state="startMenuEntriesState"
       :user-name="startMenuUserName"
       :xp="desktopShellStyle.preference.value === 'xp'"
+      :win98="desktopShellStyle.preference.value === 'win98'"
       :signing-out="signingOut"
       :dark="theme.resolved.value === 'dark'"
       :opener="startButtonElement"
@@ -5257,14 +5265,14 @@ function onViewportResize(): void {
           aria-keyshortcuts="Control+K Meta+K"
           @click="toggleStartMenu"
         >
-          <template v-if="desktopShellStyle.preference.value === 'xp'">
-            <svg class="desktop__xp-start-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <template v-if="desktopShellStyle.preference.value === 'xp' || desktopShellStyle.preference.value === 'win98'">
+            <svg :class="desktopShellStyle.preference.value === 'win98' ? 'desktop__win98-start-mark' : 'desktop__xp-start-mark'" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M1.8 4.9c2.8-1 5.8-1.5 9-1.5v7.9c-3.1 0-6.1.5-9 1.5V4.9Z" fill="#ed5148" />
               <path d="M13.1 3.4c3.1.1 6.1.6 9.1 1.6v7.9c-2.9-1-5.9-1.5-9.1-1.6V3.4Z" fill="#70b940" />
               <path d="M1.8 14.1c2.8-1 5.8-1.5 9-1.5v7.9c-3.2 0-6.2.5-9 1.5v-7.9Z" fill="#438ee2" />
               <path d="M13.1 12.6c3.1.1 6.1.6 9.1 1.6v7.9c-3-1-6-1.5-9.1-1.6v-7.9Z" fill="#f0c53b" />
             </svg>
-            <span class="desktop__xp-start-label">{{ i18n.t('desktop.startMenuButton') }}</span>
+            <span :class="desktopShellStyle.preference.value === 'win98' ? 'desktop__win98-start-label' : 'desktop__xp-start-label'">{{ i18n.t('desktop.startMenuButton') }}</span>
           </template>
           <LogoMark v-else compact site />
         </button>
@@ -5356,7 +5364,7 @@ function onViewportResize(): void {
           <span>{{ i18n.t('desktop.switchClassic') }}</span>
         </button>
         <time
-          v-if="desktopShellStyle.preference.value === 'xp'"
+          v-if="desktopShellStyle.preference.value === 'xp' || desktopShellStyle.preference.value === 'win98'"
           class="desktop__taskbar-clock"
           :datetime="taskbarNow.toISOString()"
           :aria-label="i18n.t('desktop.taskbarClock')"
@@ -5373,6 +5381,7 @@ function onViewportResize(): void {
     >
       <DesktopWallpaperPicker
         :visible="wallpaperDialogOpen"
+        :show-shell-style="true"
         @select="selectDesktopWallpaper"
       />
     </ModalDialog>
