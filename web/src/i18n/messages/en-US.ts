@@ -566,6 +566,7 @@ export const enUSMessages = {
   'terminal.restoreWindow': 'Restore window',
   'terminal.inputPlaceholder': 'Compose a command, press Enter to send the whole line, ↑↓ for history',
   'terminal.send': 'Send',
+  'terminal.mobileKeys': 'Terminal keys',
   'terminal.inputFailed': 'Input failed to send. Reconnecting.',
   'terminal.inputCapacity': 'Input queue is full. This input was not added; wait for pending input to finish.',
   'terminal.inputUncertain': 'Input could not be confirmed safely. Further input is stopped; check the output and open a new terminal.',

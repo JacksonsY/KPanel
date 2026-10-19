@@ -25,13 +25,17 @@ const host = ref<HTMLElement>()
 const clipboardMenu = ref<InstanceType<typeof TerminalContextMenu>>()
 const composerInput = ref<HTMLInputElement>()
 const terminalHistory = useTerminalHistory()
+const mobileTerminalKeys = [
+  ['Esc', '\x1b'], ['Tab', '\t'], ['↑', '\x1b[A'], ['↓', '\x1b[B'], ['←', '\x1b[D'],
+  ['→', '\x1b[C'], ['Ctrl+C', '\x03'], ['Ctrl+D', '\x04'], ['Ctrl+Z', '\x1a'], ['Enter', '\r'],
+] as const
 let commandCapture: TerminalCommandCapture | undefined
 let historyIndex = -1
 let historyDraft = ''
 const adapter = computed(() => hostTerminalAdapter(props.sessionId))
 const {
   terminal, state, pendingLine, canInput,
-  focusTerminal, executeCommand, executePresentedCommand, scheduleResize, blockInput,
+  focusTerminal, executeCommand, executePresentedCommand, scheduleResize, blockInput, queueInput,
   containTerminalWheel, terminalTouchScroll, submitPendingLine, handlePendingLineEnter,
 } = useTerminalController({
   adapter: () => adapter.value, host, clipboardMenu,
@@ -82,6 +86,18 @@ function browseHistory(event: KeyboardEvent, step: 1 | -1): void {
   moveComposerCaretToEnd(false)
 }
 function editComposer(): void { historyIndex = -1 }
+function sendMobileTerminalKey(sequence: string): void {
+  if (!canInput.value) return
+  if (sequence === '\r') {
+    if (queueInput(`${pendingLine.value}\r`)) pendingLine.value = ''
+    return
+  }
+  if (sequence === '\t' && pendingLine.value) {
+    if (queueInput(`${pendingLine.value}${sequence}`)) pendingLine.value = ''
+    return
+  }
+  queueInput(sequence)
+}
 let closeRequest: Promise<void> | undefined
 let closeConfirmed = false
 let stopPageHideClose: (() => void) | undefined
@@ -141,6 +157,18 @@ defineExpose({ focusTerminal, executeCommand, executePresentedCommand, fillComma
       @paste.capture="clipboardMenu?.handlePaste($event)"
     >
     </div>
+    <div class="host-terminal__mobile-keys" role="group" :aria-label="t('terminal.mobileKeys')">
+      <button
+        v-for="([label, sequence]) in mobileTerminalKeys"
+        :key="label"
+        class="host-terminal__mobile-key"
+        type="button"
+        :aria-label="label"
+        :disabled="!canInput"
+        @pointerdown.prevent
+        @click="sendMobileTerminalKey(sequence)"
+      >{{ label }}</button>
+    </div>
     <form class="host-terminal__composer" @submit.prevent="submitPendingLine">
       <input
         ref="composerInput"
@@ -173,9 +201,17 @@ defineExpose({ focusTerminal, executeCommand, executePresentedCommand, fillComma
 .host-terminal__screen :deep(.xterm) { box-sizing:border-box; height:100%; padding:6px 8px 4px; touch-action:none; }
 .host-terminal__screen :deep(.xterm-viewport) { overflow-y:scroll !important; overscroll-behavior:contain; background:transparent; }
 .host-terminal__screen :deep(.xterm-scrollable-element) { overscroll-behavior:contain; }
+.host-terminal__mobile-keys { display:none; }
 .host-terminal__composer { position:relative; z-index:2; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:9px 10px; border-top:1px solid var(--terminal-shell-border,#29383a); background:var(--terminal-shell-panel,#111a1d); }
 .host-terminal__composer input { min-width:0; border:1px solid var(--terminal-shell-border,#29383a); border-radius:8px; padding:9px 11px; color:var(--terminal-shell-text,#d8dddc); background:var(--terminal-shell-background,#0b1214); font:14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 .host-terminal__composer button { border:0; border-radius:8px; padding:0 16px; color:var(--on-brand,#05251c); background:var(--brand-action,#35cba6); font-weight: 700; }
+@media (max-width: 900px) {
+  .host-terminal { grid-template-rows:minmax(0,1fr) auto auto; }
+  .host-terminal__mobile-keys { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; padding:8px 10px 0; }
+  .host-terminal__mobile-key { min-width:0; min-height:40px; border:1px solid var(--terminal-shell-border,#29383a); border-radius:var(--radius-sm,8px); padding:4px 2px; color:var(--terminal-shell-text,#d8dddc); background:var(--terminal-shell-background,#0b1214); font:600 12px ui-sans-serif,system-ui,sans-serif; cursor:pointer; touch-action:manipulation; }
+  .host-terminal__mobile-key:active:not(:disabled),.host-terminal__mobile-key:focus-visible { border-color:var(--brand,#35cba6); outline:2px solid var(--brand,#35cba6); outline-offset:1px; }
+  .host-terminal__mobile-key:disabled { cursor:not-allowed; opacity:.6; }
+}
 /* Workspace dialogs run the terminal to the window edges. */
 :global(.modal-panel--workspace .host-terminal) { border:0; border-radius:0; box-shadow:none; }
 </style>

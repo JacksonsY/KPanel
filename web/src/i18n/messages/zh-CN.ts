@@ -565,6 +565,7 @@ export const zhCNMessages = {
   'terminal.restoreWindow': '恢复窗口',
   'terminal.inputPlaceholder': '预输入命令，按 Enter 整行发送，↑↓ 翻历史',
   'terminal.send': '发送',
+  'terminal.mobileKeys': '终端辅助按键',
   'terminal.inputFailed': '输入发送失败，正在重连。',
   'terminal.inputCapacity': '输入队列已满，本次输入未加入；请等待待发输入完成。',
   'terminal.inputUncertain': '无法安全确认输入结果，已停止继续输入；请检查输出并新开终端。',
