@@ -46,6 +46,10 @@ function gradientColors(selector: string): string[] {
 }
 
 describe('desktop visual and interaction contract', () => {
+  it('anchors desktop shell style selection marks to their option cards', () => {
+    expect(cssRule(xpStyles, '.desktop-shell-style-options > button')).toContain('position: relative;')
+  })
+
   it('keeps the XP shell opt-in and scoped to desktop mode', () => {
     expect(desktopViewSource).toContain(':data-shell-style="desktopShellStyle.preference.value"')
     expect(xpStyles).toContain(".desktop[data-shell-style='xp'] .desktop-window__titlebar")

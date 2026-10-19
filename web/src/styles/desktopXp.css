@@ -1069,6 +1069,7 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 }
 
 .desktop-shell-style-options > button {
+  position: relative;
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(120px, .85fr) minmax(0, 1fr) auto;
