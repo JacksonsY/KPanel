@@ -152,8 +152,7 @@ html[data-desktop-shell-style='win98'] {
 }
 
 .desktop[data-shell-style='win98'] .desktop-window:focus-visible {
-  outline: 1px dotted var(--win98-window-frame);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .desktop[data-shell-style='win98'] .desktop-window--maximized,
