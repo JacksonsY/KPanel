@@ -454,7 +454,7 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
   height: 48px;
   grid-template-columns: minmax(112px, auto) minmax(0, 1fr) auto;
   gap: 5px;
-  padding: 2px 5px 2px 0;
+  padding: 0 5px 2px 0;
   color: #fff;
   background: var(--desktop-xp-titlebar-background);
   border: 0;
