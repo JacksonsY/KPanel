@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -225,8 +226,8 @@ func TestSelfSignedTLSListenerBoundsConcurrentClassifiers(t *testing.T) {
 	if err := third.client.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := third.client.Read(make([]byte, 1)); err == nil {
-		t.Fatal("connection over the classifier limit was not closed")
+	if _, err := third.client.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("connection over the classifier limit was not cleanly closed: %v", err)
 	}
 	if got := len(listener.classifierSlots); got != limit {
 		t.Fatalf("active classifiers after rejection = %d, want %d", got, limit)
