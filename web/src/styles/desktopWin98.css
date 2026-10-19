@@ -71,7 +71,7 @@ html[data-desktop-shell-style='win98'] {
 
 .desktop[data-shell-style='win98'] .desktop__icon-label {
   color: #fff;
-  background: transparent;
+  background: #008080;
   border-color: transparent;
   box-shadow: none;
   text-shadow: 0 1px 2px rgb(0 0 0 / 82%);
