@@ -2,8 +2,8 @@
 html[data-desktop-shell-style='xp'] {
   /* XP.css 0.2.6 Luna title-bar values; the taskbar reuses this blue ramp because XP.css has no taskbar component. */
   --desktop-xp-titlebar-background: linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #0066ff 93%, #005bff 95%, #003dd7 96%, #003dd7 100%);
-  --desktop-xp-taskbar-item-background: linear-gradient(180deg, #2a72c1 0%, #1b63b2 52%, #15519a 100%);
-  --desktop-xp-taskbar-item-active-background: linear-gradient(180deg, #1255a5 0%, #0d4b9b 60%, #1c5da8 100%);
+  --desktop-xp-taskbar-item-background: var(--desktop-xp-titlebar-background);
+  --desktop-xp-taskbar-item-active-background: linear-gradient(180deg, rgb(0 38 111 / 34%) 0%, rgb(0 38 111 / 25%) 52%, rgb(0 38 111 / 30%) 100%), var(--desktop-xp-titlebar-background);
   --desktop-xp-taskbar-item-active-shadow: inset 1px 1px 2px rgb(0 24 72 / 58%), inset -1px -1px 0 rgb(255 255 255 / 10%);
   --desktop-xp-window-inset: inset -1px -1px #00138c, inset 1px 1px #0831d9, inset -2px -2px #001ea0, inset 2px 2px #166aee, inset -3px -3px #003bda, inset 3px 3px #0855dd;
 }
