@@ -1020,7 +1020,7 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .dns-guide
 
 /* Preview card used by the shared wallpaper picker and Settings appearance page. */
 .desktop-shell-style-options__preview--win98 {
-  background: #78b6df url('/wallpapers/kpanel-desktop-win98.svg') center / cover;
+  background: #008080 url('/wallpapers/kpanel-desktop-win98-teal.svg') center / cover;
   border-color: #808080;
   border-radius: 0;
 }
