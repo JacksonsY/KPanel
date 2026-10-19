@@ -6,15 +6,30 @@
 > 产品验证与已证实漏洞处置要求继续有效。
 
 - 复核日期：`2026-10-19`
-- 基线提交：`3d4cc7435ba3ff6d1204c8eac3800e02a80bfb15`
+- 基线提交：`ec6dd8a8373deccfd75ff3eafeca2438f56c7cea`
 - 基线版本：`v1.26.0`
-- 当前公开预览：`v1.27.0-rc.12`，产品提交 `3d4cc7435ba3ff6d1204c8eac3800e02a80bfb15`；2026-10-18T19:13:36Z 已公开，prerelease=true、draft=false，生产未部署。正式发布 run 39154377686 的候选 CI、L3、主线 CI、Release、公开浏览器与隔离容器验收在仅重跑首次失败的 public-acceptance 后通过；详见 [RC12 验收](release-v1.27.0-rc.12-acceptance.md)。preview image index 为 `sha256:d2c2eac666f3dff33e5b4ae369c5a805f7de5d07a591b4a244dcba81da5130e2`。
+- 当前公开预览：`v1.27.0-rc.13`，产品提交 `ec6dd8a8373deccfd75ff3eafeca2438f56c7cea`；2026-10-19T08:57:16Z 已公开，prerelease=true、draft=false，生产未部署。候选 CI、L3、主线 CI、Release 和公开验收均通过；详见 [RC13 GitHub Release](https://github.com/kejilion/KPanel/releases/tag/v1.27.0-rc.13) 与仓外验收记录 `C:\GitHub\_release-docs\kpanel-v127-rc13\docs\release-v1.27.0-rc.13-acceptance.md`。preview image index 为 `sha256:cc196290944fcf3331de30e8950d3a2686a1ef6fb44386509f4c6fbeed16986d`。
 - 稳定版本及 Latest/latest：`v1.26.0`，候选提交 `247ff67d98700c9af56d55a807cb9389fc8eedc1`；2026-10-15T06:11:57Z 已公开，稳定镜像 `sha256:e0fc7776d1b55754e597d73aab25c519a70c8ef0402752e1e70896397f1e96f9`，未部署生产。发布时 L3/CF 降级事实保留；随后针对相同产品 SHA 完成完整 L3、公开资产复核、真实浏览器更新 API 与独立 WSL 的 systemd 更新/实例重启/故障冷备份回滚。CF 补审终态与未验证边界以 [v1.26.0 补验](release-v1.26.0-acceptance.md) 为准，不能将发布后结果倒写为发布前通过。上一稳定版 `v1.25.1`（镜像 `sha256:1894b5e3aa76edbd75efef2de1164f44d38734cb3a27dc11aa2f75c420c1b325`）仍为回滚点。
-- 预览 version/preview 双架构镜像：RC12 index `sha256:d2c2eac666f3dff33e5b4ae369c5a805f7de5d07a591b4a244dcba81da5130e2`；两架构身份及公开浏览器/隔离容器验收通过。上一预览回滚点为 RC11 index `sha256:ec869f3f8ed9d8f21ca2ff733f7ec4c59a886be52b2eed1b2a503bc1c7c7199b`，稳定 Latest/latest 仍为 v1.26.0。
+- 预览 version/preview 双架构镜像：RC13 index `sha256:cc196290944fcf3331de30e8950d3a2686a1ef6fb44386509f4c6fbeed16986d`；两架构身份及公开浏览器/隔离容器验收通过。上一预览回滚点为 RC12 index `sha256:d2c2eac666f3dff33e5b4ae369c5a805f7de5d07a591b4a244dcba81da5130e2`，稳定 Latest/latest 仍为 v1.26.0。
 - RC9 后续验收提交：`03650f985c4cf28b10c7949f91438c3af7c634b5`，发布证据见 [RC9 验收](release-v1.26.0-rc.9-acceptance.md)。该文档提交不属于 RC9 已发布产品字节。
 - 上一份完整复核：[product-quality-review-2026-08-13.md](product-quality-review-2026-08-13.md)。自动刷新门槛保持：基线后达到 50 个提交，或同时达到 20 个提交和 8 个正式版本；产品性质、业务真源、权限边界或核心旅程实质变化时立即复核。
 
 本文件是定位当前产品形态的事实入口；历史复核保留当时的证据和限制，不重复定义工程规范。
+
+### 2026-10-19 RC13 当前业务事实复核
+
+本次复核依据已公开 RC13 的精确候选验收记录与公开产物。RC13 公开 Release 与当时 main ref 指向 ec6dd8a8373deccfd75ff3eafeca2438f56c7cea；稳定版本仍为 v1.26.0。本节只记录 RC13 已验证事实与边界，不预先认定后续候选已发布。
+
+| 复核维度 | 当前事实 | 风险与未验证边界 |
+| --- | --- | --- |
+| 产品形态与业务真源 | KPanel 仍是轻量单管理员 Panel/Agent 控制面，宿主 Docker、系统配置、文件与 kejilion.sh 仍是真实资源来源。RC13 打磨 XP/Win98 桌面、增加 Win98 青绿色默认壁纸、修正退出复古桌面后的弹窗布局，并将 TLS 协议识别并发限制为 64；无应用市场或宿主资源契约变化。 | 预览功能不等于稳定能力；未纳入依赖尚未发布 kejilion/sh 提交的轻量节点候选。 |
+| 安全与权限边界 | RC13 未改变管理员权限模型。TLS 分类器对同时识别的连接设 64 个名额，超限连接关闭；发布说明披露同端口仍可通过明文 HTTP 访问 API，并建议使用 HTTPS 和可信网络。 | HTTP API 凭据暴露风险仍存在，backlog #44 目标于 2026-11-01 修复；15 个历史安全包组仍缺复核，当前差异审阅不代表全仓安全结论。 |
+| 稳定性与恢复 | 精确候选 CI、L3、主线 CI、Release 和公开验收均通过；公开验收 146 项检查、errors=0。预览回退点为 RC12，稳定回退点为 v1.26.0；生产未部署。 | 未在生产主机、OpenRC 或真实 systemd 主机执行更新，也未执行生产回滚。 |
+| 性能与资源 | TLS 协议识别并发有 64 个名额上限，超限连接关闭、空闲连接释放名额；候选测试覆盖超限关闭。 | 未做长期 soak、低配主机负载或 TLS 最大吞吐测量。 |
+| 界面与可访问性 | 本地浏览器核对 XP/Win98 外观、壁纸、键盘搜索与弹窗；公开更新弹窗在 1280/390/320 CSS 视口无水平溢出，页面错误为 0。 | 原生 200% 浏览器缩放、读屏器、实体手机未在本轮验证。 |
+| 数据、兼容与发布 | 无数据库 schema、备份格式或持久化配置迁移；GitHub 与 Docker preview 指向 RC13，stable、GitHub Latest 和 Docker latest 仍为 v1.26.0，生产未部署。 | 真实 NAS/大型图库和轻量节点混合版本未验收；RC12 固定镜像 digest 保留为上一预览回滚点。 |
+
+本次刷新只更新业务事实基线，不关闭已知安全待办、不扩大验证结论，也不调整自动刷新门槛。
 
 ### 2026-10-19 RC12 当前业务事实复核
 
