@@ -750,7 +750,7 @@ html[data-desktop-shell-style='win98'] .desktop .desktop-window__body .process-t
 }
 
 .desktop[data-shell-style='win98'] .desktop__context-menu {
-  padding: 3px;
+  padding: 4px;
   color: var(--win98-text-color);
   background: var(--win98-surface);
   border: 0;
@@ -759,15 +759,19 @@ html[data-desktop-shell-style='win98'] .desktop .desktop-window__body .process-t
 }
 
 .desktop[data-shell-style='win98'] .desktop__context-menu button {
+  min-height: 28px;
+  gap: 7px;
+  padding: 0 8px;
   color: var(--win98-text-color);
-  background: var(--win98-surface);
+  background: transparent;
   border: 0;
   border-radius: 0;
-  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
+  box-shadow: none;
 }
 
 .desktop[data-shell-style='win98'] .desktop__context-menu button:hover,
-.desktop[data-shell-style='win98'] .desktop__context-menu button:focus-visible {
+.desktop[data-shell-style='win98'] .desktop__context-menu button:focus-visible,
+.desktop[data-shell-style='win98'] .desktop__context-menu button[data-context-menu-active] {
   color: #fff;
   background: #000080;
   outline: 0;
@@ -778,6 +782,7 @@ html[data-desktop-shell-style='win98'] .desktop .desktop-window__body .process-t
 }
 
 .desktop[data-shell-style='win98'] .desktop__context-separator {
+  margin: 4px 6px;
   background: var(--win98-button-shadow);
 }
 
