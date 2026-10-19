@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1">
+      <stop stop-color="#327fbd" />
+      <stop offset=".38" stop-color="#69addb" />
+      <stop offset=".76" stop-color="#a9d2e9" />
+      <stop offset="1" stop-color="#d8e8ed" />
+    </linearGradient>
+    <radialGradient id="sunlit-sky" cx="72%" cy="69%" r="58%">
+      <stop stop-color="#fff" stop-opacity=".52" />
+      <stop offset="1" stop-color="#d8ecf7" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="cloud" x2="0" y2="1">
+      <stop stop-color="#fff" />
+      <stop offset=".46" stop-color="#f4f8fa" />
+      <stop offset="1" stop-color="#c5dbe8" />
+    </linearGradient>
+    <linearGradient id="cloud-shadow" x2="0" y2="1">
+      <stop stop-color="#9bbfd4" stop-opacity=".08" />
+      <stop offset="1" stop-color="#527f9e" stop-opacity=".48" />
+    </linearGradient>
+    <filter id="soft-cloud" x="-15%" y="-30%" width="130%" height="170%">
+      <feGaussianBlur stdDeviation="5" />
+    </filter>
+    <filter id="distant-cloud" x="-20%" y="-40%" width="140%" height="180%">
+      <feGaussianBlur stdDeviation="14" />
+    </filter>
+    <g id="cloud-bank">
+      <path d="M4 100c-30-28-1-68 43-61 8-42 62-51 88-18 24-45 91-39 103 8 47-22 87 13 69 53 45 3 47 49 4 59H35c-37-1-54-24-31-41Z" fill="url(#cloud-shadow)" transform="translate(0 13)" filter="url(#soft-cloud)" />
+      <path d="M4 100c-30-28-1-68 43-61 8-42 62-51 88-18 24-45 91-39 103 8 47-22 87 13 69 53 45 3 47 49 4 59H35c-37-1-54-24-31-41Z" fill="url(#cloud)" />
+      <path d="M25 93c8-21 28-29 50-24 12-38 49-46 73-17 25-36 73-31 84 9 27-10 53 2 58 25-31-12-42-5-66-8-29-5-52-20-79-10-25 9-48 25-79 24-17-1-30 4-41 1Z" fill="#fff" fill-opacity=".65" />
+    </g>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)" />
+  <rect width="1920" height="1080" fill="url(#sunlit-sky)" />
+
+  <g fill="#d9e9f1" opacity=".48" filter="url(#distant-cloud)">
+    <ellipse cx="280" cy="265" rx="330" ry="60" />
+    <ellipse cx="1490" cy="322" rx="410" ry="76" />
+    <ellipse cx="875" cy="700" rx="520" ry="52" />
+  </g>
+
+  <g opacity=".57" transform="translate(-235 82) scale(1.58)"><use href="#cloud-bank" /></g>
+  <g opacity=".75" transform="translate(420 -105) scale(1.34)"><use href="#cloud-bank" /></g>
+  <g opacity=".76" transform="translate(1320 84) scale(2.04)"><use href="#cloud-bank" /></g>
+  <g opacity=".48" transform="translate(206 400) scale(.94)"><use href="#cloud-bank" /></g>
+  <g opacity=".55" transform="translate(1080 525) scale(1.23)"><use href="#cloud-bank" /></g>
+  <g opacity=".35" transform="translate(-210 770) scale(1.56)"><use href="#cloud-bank" /></g>
+  <g opacity=".31" transform="translate(1250 875) scale(1.52)"><use href="#cloud-bank" /></g>
+  <path d="M0 906c360-54 620 44 960 2s630-47 960-4v176H0Z" fill="#e6f0f1" fill-opacity=".19" filter="url(#distant-cloud)" />
+</svg>

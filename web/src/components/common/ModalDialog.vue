@@ -3,6 +3,7 @@ import { isTextEntry, isTouchPrimary } from '../../lib/touchFocus'
 import { computed, nextTick, onBeforeUnmount, provide, ref, useId, watch } from 'vue'
 import { Maximize2, Minimize2, X } from '@lucide/vue'
 import { useI18n } from '@/i18n'
+import { useDesktopShellStyle } from '@/stores/desktopShellStyle'
 import { activateModal, deactivateModal, isTopModal } from './modalStack'
 import { modalWindowKey } from './modalWindow'
 import ModalWindowControls from './ModalWindowControls.vue'
@@ -44,7 +45,14 @@ const ariaBaseID = `modal-dialog-${useId()}`
 const titleID = `${ariaBaseID}-title`
 const descriptionID = `${ariaBaseID}-description`
 const i18n = useI18n()
+const desktopShellStyle = useDesktopShellStyle()
 const workspace = computed(() => props.variant === 'workspace')
+const descriptionInBody = computed(() => {
+  if (!props.open || !canUseDOM()) return false
+  const root = document.documentElement
+  const style = desktopShellStyle.preference.value
+  return style !== 'modern' && root.dataset.desktopShellStyle === style
+})
 const panelClass = computed(() => [
   workspace.value ? 'modal-panel--workspace' : `modal-panel--${props.size}`,
   {
@@ -245,7 +253,7 @@ onBeforeUnmount(() => {
           <div class="modal-panel__title">
             <span v-if="$slots.icon" class="modal-panel__glyph" aria-hidden="true"><slot name="icon" /></span>
             <h2 :id="titleID" :title="title">{{ title }}</h2>
-            <p v-if="description" :id="descriptionID" :title="description">{{ description }}</p>
+            <p v-if="description && !descriptionInBody" :id="descriptionID" :title="description">{{ description }}</p>
             <slot name="status" />
           </div>
           <div class="modal-panel__titlebar-end">
@@ -256,7 +264,7 @@ onBeforeUnmount(() => {
         <header v-else class="modal-panel__header">
           <div>
             <h2 :id="titleID">{{ title }}</h2>
-            <p v-if="description" :id="descriptionID">{{ description }}</p>
+            <p v-if="description && !descriptionInBody" :id="descriptionID">{{ description }}</p>
           </div>
           <div class="modal-panel__actions">
             <button
@@ -281,6 +289,11 @@ onBeforeUnmount(() => {
           </div>
         </header>
         <div class="modal-panel__body">
+          <p
+            v-if="description && descriptionInBody && !(workspace && headerless)"
+            :id="descriptionID"
+            class="modal-panel__description--body"
+          >{{ description }}</p>
           <slot />
         </div>
         <footer v-if="$slots.footer" class="modal-panel__footer">

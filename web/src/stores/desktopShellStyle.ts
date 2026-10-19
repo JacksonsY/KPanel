@@ -57,10 +57,10 @@ export function resetDesktopShellStyleForTest(): void {
 
 export function useDesktopShellStyle() {
   function setStyle(value: DesktopShellStyle): void {
-    const enteringXP = preference.value !== 'xp' && value === 'xp'
+    const enteringWindowsStyle = preference.value !== value && value !== 'modern'
     preference.value = value
     persistPreference(value)
-    if (enteringXP) useDesktopWallpaper().select('xp')
+    if (enteringWindowsStyle) useDesktopWallpaper().select(value === 'win98' ? 'win98-teal' : value)
   }
 
   return {

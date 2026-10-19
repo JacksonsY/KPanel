@@ -1540,6 +1540,7 @@ onBeforeUnmount(stopKPanelReleaseRequest)
       <div class="appearance-group">
         <DesktopWallpaperPicker
           :visible="isSettingsSectionVisible('wallpaper')"
+          :show-shell-style="false"
           @select="(id, pack) => desktopWallpaper.select(id, pack)"
         />
       </div>

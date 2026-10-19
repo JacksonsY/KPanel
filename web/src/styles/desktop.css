@@ -3303,6 +3303,10 @@ body.desktop-mode-open::-webkit-scrollbar {
   gap: 12px;
 }
 
+.desktop-wallpaper-shell-style {
+  margin-bottom: 22px;
+}
+
 .desktop-wallpaper-picker__option {
   position: relative;
   display: flex;

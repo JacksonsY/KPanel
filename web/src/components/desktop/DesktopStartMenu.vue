@@ -210,7 +210,7 @@ watch(query, () => {
   if (body.value) body.value.scrollTop = 0
 })
 
-watch(() => props.xp, () => {
+watch(() => [props.xp, props.win98], () => {
   allProgramsExpanded.value = false
   active.value = 0
 })
@@ -242,7 +242,7 @@ watch(() => visibleResults.value.length, (length) => {
         <strong class="desktop-start-menu__xp-user-name">{{ userName }}</strong>
       </div>
 
-      <label v-if="!xp" class="desktop-start-menu__search">
+      <label v-if="!xp && !win98" class="desktop-start-menu__search">
         <Search :size="18" aria-hidden="true" />
         <input
           ref="input"
@@ -354,9 +354,9 @@ watch(() => visibleResults.value.length, (length) => {
         </template>
       </div>
 
-      <div v-if="xp" class="desktop-start-menu__xp-controls" :class="{ 'desktop-start-menu__xp-controls--search-only': !canExpandPrograms }">
+      <div v-if="xp || win98" class="desktop-start-menu__xp-controls" :class="{ 'desktop-start-menu__xp-controls--search-only': win98 || !canExpandPrograms }">
         <button
-          v-if="canExpandPrograms"
+          v-if="xp && canExpandPrograms"
           type="button"
           class="desktop-start-menu__all-programs"
           :aria-expanded="allProgramsExpanded"

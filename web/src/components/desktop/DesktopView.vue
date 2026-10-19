@@ -192,6 +192,12 @@ let executionOpener: HTMLElement | undefined
 const documentFullscreen = useDocumentFullscreen()
 const theme = useTheme()
 const desktopShellStyle = useDesktopShellStyle()
+function syncDocumentShellStyle(style: 'modern' | 'xp' | 'win98'): void {
+  if (typeof document === 'undefined') return
+  if (style === 'modern') delete document.documentElement.dataset.desktopShellStyle
+  else document.documentElement.dataset.desktopShellStyle = style
+}
+watch(() => desktopShellStyle.preference.value, syncDocumentShellStyle, { immediate: true })
 // The translucent drag hint keeps the dark palette even over a light desktop.
 const desktopFileDropStyle = computed(() => {
   const tokens = deriveThemeTokens(theme.colors.value, 'dark')

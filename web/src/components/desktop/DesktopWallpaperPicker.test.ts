@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { api } from '@/lib/api'
-import { useDesktopWallpaper } from '@/lib/desktopWallpapers'
+import { DESKTOP_WALLPAPER_KEY, useDesktopWallpaper } from '@/lib/desktopWallpapers'
 import { resetSceneMotionPreferenceForTest } from '@/lib/desktopScenes/motionPreference'
+import { resetDesktopShellStyleForTest, useDesktopShellStyle } from '@/stores/desktopShellStyle'
 import type { ScenePack } from '@/lib/scenePacks'
 import type { CustomWallpaper, CustomWallpaperList } from '@/types/api'
 import DesktopScenePack from './DesktopScenePack.vue'
@@ -84,12 +85,43 @@ async function settle(): Promise<void> {
 describe('DesktopWallpaperPicker uploaded wallpapers', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    resetDesktopShellStyleForTest()
+    useDesktopWallpaper().select('classic')
     vi.spyOn(api.desktop, 'scenePacks').mockResolvedValue({ source: 'auto', sources: ['auto'], packs: [] })
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+    resetDesktopShellStyleForTest()
     document.body.innerHTML = ''
+  })
+
+  it('switches the shared desktop style from the wallpaper picker', async () => {
+    vi.spyOn(api.desktop, 'wallpapers').mockResolvedValue(list([]))
+    const wrapper = mount(DesktopWallpaperPicker, { props: { visible: true }, attachTo: document.body })
+    await settle()
+
+    const modern = wrapper.get('.desktop-shell-style-options [role="radio"][aria-checked="true"]')
+    expect(modern.text()).toContain('KPanel 原生')
+
+    await wrapper.get('.desktop-shell-style-options [role="radio"][aria-checked="false"]').trigger('click')
+    expect(useDesktopShellStyle().preference.value).toBe('xp')
+    expect(window.localStorage.getItem('kpanel:desktop-shell-style:v1')).toBe('xp')
+    expect(window.localStorage.getItem(DESKTOP_WALLPAPER_KEY)).toBe('xp')
+    expect(wrapper.find('.desktop-shell-style-options [aria-checked="true"]').text()).toContain('Windows XP 复古')
+
+    await wrapper.get('.desktop-shell-style-options [role="radio"]:nth-child(3)').trigger('click')
+    expect(useDesktopShellStyle().preference.value).toBe('win98')
+    expect(window.localStorage.getItem('kpanel:desktop-shell-style:v1')).toBe('win98')
+    expect(window.localStorage.getItem(DESKTOP_WALLPAPER_KEY)).toBe('win98-teal')
+    expect(wrapper.find('.desktop-shell-style-options [aria-checked="true"]').text()).toContain('Windows 98 经典')
+
+    await wrapper.get('.desktop-shell-style-options [role="radio"][aria-checked="false"]').trigger('click')
+    expect(useDesktopShellStyle().preference.value).toBe('modern')
+    expect(window.localStorage.getItem(DESKTOP_WALLPAPER_KEY)).toBe('win98-teal')
+    expect(wrapper.find('.desktop-shell-style-options [aria-checked="true"]').text()).toContain('KPanel 原生')
+
+    wrapper.unmount()
   })
 
   it('shows an empty collection with its limits and an upload tile', async () => {

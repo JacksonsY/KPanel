@@ -14,6 +14,8 @@ import {
 } from '@/lib/desktopWallpapers'
 import { WALLPAPER_ACCEPT } from '@/lib/wallpaperImage'
 import type { CustomWallpaper } from '@/types/api'
+import { moveRadioFocus } from '@/theme/radioGroup'
+import { useDesktopShellStyle, type DesktopShellStyle } from '@/stores/desktopShellStyle'
 import {
   formatPackSize,
   isOfficialScenePack,
@@ -29,10 +31,14 @@ import { useI18n } from '@/i18n'
  * Static wallpapers and 3D scene packs (download, update, apply, delete). Shared by the desktop
  * wallpaper dialog and Settings; the parent decides how a choice is applied.
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   /** Loads the pack list each time the picker is shown. */
   visible: boolean
-}>()
+  /** Shows the desktop shell selector inside the desktop wallpaper dialog. */
+  showShellStyle?: boolean
+}>(), {
+  showShellStyle: true,
+})
 
 const emit = defineEmits<{
   select: [id: DesktopWallpaperID, source?: ScenePack | CustomWallpaper]
@@ -41,6 +47,12 @@ const emit = defineEmits<{
 const i18n = useI18n()
 const uid = useId()
 const wallpaperChoice = useDesktopWallpaper()
+const desktopShellStyle = useDesktopShellStyle()
+const desktopShellStyleOptions = computed(() => [
+  { id: 'modern' as const, label: i18n.t('desktop.shellStyleModern'), description: i18n.t('desktop.shellStyleModernDescription') },
+  { id: 'xp' as const, label: i18n.t('desktop.shellStyleXP'), description: i18n.t('desktop.shellStyleXPDescription') },
+  { id: 'win98' as const, label: i18n.t('desktop.shellStyleWin98'), description: i18n.t('desktop.shellStyleWin98Description') },
+])
 const selectedID = computed(() => wallpaperChoice.id.value)
 const activeScenePack = computed(() => scenePackFromWallpaper(selectedID.value))
 const scenePacks = ref<ScenePack[]>([])
@@ -73,6 +85,10 @@ const customUploadFile = ref<File>()
 const customDragOver = ref(false)
 const customFileInput = ref<HTMLInputElement>()
 const customUploadButton = ref<HTMLButtonElement>()
+
+function setDesktopShellStyle(value: DesktopShellStyle): void {
+  desktopShellStyle.setStyle(value)
+}
 
 // A dropped picture opens the dialog without focusing anything; bring focus back to the tile.
 function closeCustomUpload(): void {
@@ -219,6 +235,40 @@ watch(() => props.visible, (visible) => {
 
 <template>
   <div class="desktop-wallpaper-chooser">
+    <section v-if="props.showShellStyle" class="desktop-wallpaper-shell-style" :aria-labelledby="`${uid}-shell-style`">
+      <div class="desktop-wallpaper-shell-style__header">
+        <h3 :id="`${uid}-shell-style`" class="desktop-wallpaper-section__title">
+          {{ i18n.t('desktop.shellStyleTitle') }}
+        </h3>
+        <p class="desktop-wallpaper-section__hint">{{ i18n.t('desktop.shellStyleDescription') }}</p>
+      </div>
+      <div class="desktop-shell-style-options" role="radiogroup" :aria-label="i18n.t('desktop.shellStyleTitle')">
+        <button
+          v-for="option in desktopShellStyleOptions"
+          :key="option.id"
+          type="button"
+          role="radio"
+          :tabindex="desktopShellStyle.preference.value === option.id ? 0 : -1"
+          :aria-checked="desktopShellStyle.preference.value === option.id"
+          :class="{ 'is-active': desktopShellStyle.preference.value === option.id }"
+          @keydown="moveRadioFocus"
+          @click="setDesktopShellStyle(option.id)"
+        >
+          <span class="desktop-shell-style-options__preview" :class="`desktop-shell-style-options__preview--${option.id}`" aria-hidden="true">
+            <i class="desktop-shell-style-options__window">
+              <b />
+              <em />
+            </i>
+            <i class="desktop-shell-style-options__taskbar"><b /></i>
+          </span>
+          <span class="desktop-shell-style-options__copy">
+            <strong>{{ option.label }}</strong>
+            <small>{{ option.description }}</small>
+          </span>
+          <Check v-if="desktopShellStyle.preference.value === option.id" class="theme-options__check" :size="17" aria-hidden="true" />
+        </button>
+      </div>
+    </section>
     <h3 :id="`${uid}-static`" class="desktop-wallpaper-section__title">
       {{ i18n.t('desktop.wallpaperStaticTitle') }}
     </h3>

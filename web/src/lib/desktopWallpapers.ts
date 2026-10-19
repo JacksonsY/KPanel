@@ -55,6 +55,20 @@ export const DESKTOP_WALLPAPERS = [
     descriptionKey: 'desktop.wallpaperXPDescription',
     themePreset: THEME_COLOR_PRESETS[1]!,
   },
+  {
+    id: 'win98',
+    src: '/wallpapers/kpanel-desktop-win98.svg',
+    nameKey: 'desktop.wallpaperWin98',
+    descriptionKey: 'desktop.wallpaperWin98Description',
+    themePreset: THEME_COLOR_PRESETS[1]!,
+  },
+  {
+    id: 'win98-teal',
+    src: '/wallpapers/kpanel-desktop-win98-teal.svg',
+    nameKey: 'desktop.wallpaperWin98Teal',
+    descriptionKey: 'desktop.wallpaperWin98TealDescription',
+    themePreset: THEME_COLOR_PRESETS[1]!,
+  },
 ] as const
 
 export type DesktopStaticWallpaperID = typeof DESKTOP_WALLPAPERS[number]['id']
