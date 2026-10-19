@@ -936,7 +936,7 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 .desktop[data-shell-style='xp'] .desktop__context-menu button:focus-visible,
 .desktop[data-shell-style='xp'] .desktop__context-menu button[data-context-menu-active] {
   color: #fff;
-  background: linear-gradient(180deg, #3b7fd0 0%, #286bc0 52%, #1c5cae 100%);
+  background: var(--desktop-xp-titlebar-background);
   outline: 0;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 28%);
 }
