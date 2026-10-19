@@ -39,7 +39,7 @@ html[data-desktop-shell-style='win98'] {
 }
 
 .desktop[data-shell-style='win98'] {
-  --desktop-window-client-background: var(--win98-surface);
+  --desktop-window-client-background: #d4d0c8;
   --desktop-group-surface: #fff;
   --desktop-group-border: #808080;
   --desktop-group-text: var(--win98-text-color);
@@ -279,27 +279,16 @@ html[data-desktop-shell-style='win98'] {
   --blue-soft: #d9e3f0;
   --control-border: var(--win98-button-shadow);
   --neutral-soft: var(--win98-button-face);
-  --surface-subtle: var(--win98-surface);
-  --surface: var(--win98-surface);
-  --surface-raised: var(--win98-button-face);
+  --surface-subtle: #d4d0c8;
+  --surface: #f6f5f1;
+  --surface-raised: #fff;
   --border: #808080;
-  --border-strong: var(--win98-window-frame);
+  --border-strong: #404040;
   --surface-muted: var(--surface-subtle);
   --surface-strong: var(--surface-raised);
   --line: var(--border);
   --line-soft: var(--border);
   --border-subtle: var(--border);
-  --radius-sm: 0;
-  --radius: 0;
-  --radius-md: 0;
-  --radius-lg: 0;
-  --shadow-xs: none;
-  --shadow-soft: none;
-  --shadow: none;
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-button: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
-  --shadow-feature: none;
   --page-ambient-background: var(--bg);
   --surface-gradient: var(--surface);
   --surface-gradient-muted: var(--surface-subtle);
@@ -308,47 +297,6 @@ html[data-desktop-shell-style='win98'] {
   color: var(--text);
   background: var(--bg);
   border-radius: 0;
-}
-
-.desktop[data-shell-style='win98'] .desktop-window__body :is(button, [role='button']) {
-  border: 0;
-  border-radius: 0;
-  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
-  transition: none;
-  transform: none;
-}
-
-.desktop[data-shell-style='win98'] .desktop-window__body :is(button, [role='button']):active:not(:disabled) {
-  box-shadow: var(--win98-border-sunken-outer), var(--win98-border-sunken-inner);
-}
-
-.desktop[data-shell-style='win98'] .desktop-window__body :is(button, [role='button']):focus-visible {
-  outline: 1px dotted var(--win98-window-frame);
-  outline-offset: -4px;
-}
-
-.desktop[data-shell-style='win98'] .desktop-window__body :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']), select, textarea) {
-  color: var(--win98-text-color);
-  background: #fff;
-  border: 0;
-  border-radius: 0;
-  box-shadow: var(--win98-border-field);
-}
-
-.desktop[data-shell-style='win98'] .desktop-window__body :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']), select, textarea):focus {
-  outline: 1px dotted var(--win98-window-frame);
-  outline-offset: -4px;
-}
-
-html[data-desktop-shell-style='win98'] .desktop .desktop-window__body .process-summary__card {
-  background: var(--win98-button-face);
-  border: 0;
-  border-radius: 0;
-  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
-}
-
-html[data-desktop-shell-style='win98'] .desktop .desktop-window__body .process-summary__card::after {
-  display: none;
 }
 
 html[data-desktop-shell-style='win98'] .desktop .desktop-window__body .process-table__metric {
