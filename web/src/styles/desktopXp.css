@@ -154,7 +154,7 @@ html[data-desktop-shell-style='xp'] {
 
 .desktop[data-shell-style='xp'] .desktop-window:not(.desktop-window--focused) .desktop-window__titlebar {
   color: #203954;
-  background: linear-gradient(180deg, #d5e1ee 0%, #b5c9df 55%, #98b1ce 100%);
+  background: linear-gradient(180deg, rgb(255 255 255 / 70%) 0%, rgb(255 255 255 / 70%) 100%), var(--desktop-xp-titlebar-background);
   border-top-color: #dce9f6;
   border-right-color: #8fa9c4;
   border-left-color: #dce9f6;
