@@ -46,15 +46,15 @@ html[data-desktop-shell-style='xp'] {
   --brand: #2468b6;
   --success: #25854c;
   --border: #adbed1;
-  --surface-subtle: #e5edf7;
+  --surface-subtle: #e8e5db;
   --desktop-label: #1b2c42;
   color: #1b2c42;
-  background: linear-gradient(180deg, #f9fbfe 0%, #eef3f9 100%);
+  background: linear-gradient(180deg, #fffef9 0%, #f1efe6 100%);
   border: 1px solid #9bb2cd;
   border-top-color: #fff;
   border-left-color: #fff;
   border-radius: 4px;
-  box-shadow: inset 1px 1px 0 rgb(255 255 255 / 85%), inset -1px -1px 0 #d5e0ec, 1px 2px 5px rgb(17 43 76 / 32%);
+  box-shadow: inset 1px 1px 0 rgb(255 255 255 / 85%), inset -1px -1px 0 #d7d2c4, 1px 2px 5px rgb(17 43 76 / 32%);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
