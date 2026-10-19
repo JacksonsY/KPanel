@@ -6,7 +6,7 @@ html[data-desktop-shell-style='xp'] {
 }
 
 .desktop[data-shell-style='xp'] {
-  --desktop-window-client-background: #eaf1f9;
+  --desktop-window-client-background: #f1efe6;
   --desktop-group-surface: #eff5fc;
   --desktop-group-border: #91afd2;
   --desktop-group-text: #17283d;
@@ -220,11 +220,11 @@ html[data-desktop-shell-style='xp'] {
 
 .desktop[data-shell-style='xp'] .desktop-window__body {
   --bg: var(--desktop-window-client-background);
-  --surface-subtle: #e2eaf4;
-  --surface: #f6f9fd;
-  --surface-raised: #fff;
-  --border: #b5c5d8;
-  --border-strong: #8fa8c4;
+  --surface-subtle: #e8e5db;
+  --surface: #f7f5ee;
+  --surface-raised: #fffef9;
+  --border: #c9c5b8;
+  --border-strong: #aba697;
   --surface-muted: var(--surface-subtle);
   --surface-strong: var(--surface-raised);
   --line: var(--border);
@@ -903,10 +903,10 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 .desktop[data-shell-style='xp'] .desktop__context-menu {
   padding: 3px;
   color: #17283d;
-  background: #fff;
+  background: #f1efe6;
   border: 1px solid #6f8eaf;
   border-radius: 1px;
-  box-shadow: inset 0 0 0 1px #e8f1fa, 2px 3px 7px rgb(20 35 55 / 32%);
+  box-shadow: inset 0 0 0 1px #fbfaf5, 2px 3px 7px rgb(20 35 55 / 32%);
 }
 
 .desktop[data-shell-style='xp'] .desktop__context-menu button {
@@ -947,8 +947,8 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 .desktop[data-shell-style='xp'] .desktop__context-separator {
   height: 1px;
   margin: 4px 6px 4px 30px;
-  background: #c4cfdb;
-  box-shadow: 0 1px 0 #fff;
+  background: #cbc7ba;
+  box-shadow: 0 1px 0 #fbfaf5;
 }
 
 .desktop-shell-style-options {
