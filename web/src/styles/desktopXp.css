@@ -765,6 +765,7 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
   min-height: 38px;
   align-items: center;
   gap: 7px;
+  color: #1b2e43;
   padding: 3px 5px;
   border-radius: 0;
 }
