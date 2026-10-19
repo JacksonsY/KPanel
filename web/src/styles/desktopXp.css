@@ -579,8 +579,12 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 }
 
 .desktop[data-shell-style='xp'] .desktop__system-tray {
+  box-sizing: border-box;
+  height: 34px;
   min-height: 34px;
-  gap: 1px;
+  align-self: center;
+  align-items: center;
+  gap: 0;
   padding: 0 3px;
   background: linear-gradient(180deg, #2473c2 0%, #1d6bb7 50%, #145ca8 100%);
   border: 1px solid #4c9dec;
@@ -592,6 +596,7 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 .desktop[data-shell-style='xp'] .desktop__taskbar-clock {
   display: inline-flex;
   min-width: 52px;
+  height: 32px;
   min-height: 32px;
   align-items: center;
   justify-content: center;
@@ -607,18 +612,34 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 
 .desktop[data-shell-style='xp'] .desktop__tray-button,
 .desktop[data-shell-style='xp'] .desktop__classic-button {
-  min-width: 28px;
-  min-height: 34px;
+  box-sizing: border-box;
+  display: inline-flex;
+  width: 30px;
+  height: 32px;
+  min-width: 30px;
+  min-height: 32px;
+  flex: 0 0 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
   color: #fff;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 2px;
+  transform: none;
 }
 
 .desktop[data-shell-style='xp'] .desktop__tray-button:hover,
 .desktop[data-shell-style='xp'] .desktop__classic-button:hover {
-  background: linear-gradient(180deg, #2b78c5, #125caf);
-  border-color: #96c3ef;
+  background: linear-gradient(180deg, #3a86d4 0%, #2474c5 55%, #1762b0 100%);
+  border-color: #a4d2ff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 52%), inset 0 -1px 0 rgb(0 50 126 / 28%);
+}
+
+.desktop[data-shell-style='xp'] .desktop__system-tray :is(.desktop__tray-button, .desktop__classic-button) svg {
+  display: block;
+  flex: 0 0 auto;
 }
 
 .desktop[data-shell-style='xp'] .desktop__classic-button span {
@@ -699,15 +720,20 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__results {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+  grid-template-columns: minmax(0, 54fr) minmax(0, 46fr);
   align-content: start;
-  gap: 0 10px;
+  gap: 0;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__results > .desktop-start-menu__group {
+  min-width: 0;
+  margin-top: 0;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-entries'] {
   grid-column: 1;
   grid-row: 1 / span 2;
-  padding: 0 10px 8px 0;
+  padding: 0 8px 8px 0;
   background: transparent;
 }
 
@@ -721,12 +747,13 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-actions'] {
   grid-column: 2;
   grid-row: 2;
+  margin-top: 4px;
   padding: 0 0 8px 8px;
   background: transparent;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__heading {
-  padding: 10px 6px 7px;
+  padding: 8px 6px 7px;
   color: #304a67;
   border-bottom: 1px solid #d0d9e3;
   font-size: 12px;
@@ -734,10 +761,18 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__option {
-  min-height: 36px;
+  box-sizing: border-box;
+  min-height: 38px;
+  align-items: center;
   gap: 7px;
   padding: 3px 5px;
   border-radius: 0;
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-system'] .desktop-start-menu__option,
+.desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-actions'] .desktop-start-menu__option {
+  min-height: 34px;
+  gap: 8px;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__option--active {
@@ -765,6 +800,12 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
   border: 1px solid #c0cbd9;
   border-radius: 2px;
   box-shadow: 1px 1px 2px rgb(21 46 75 / 18%);
+}
+
+.desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-system'] .desktop-start-menu__icon,
+.desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-actions'] .desktop-start-menu__icon {
+  width: 26px;
+  height: 26px;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__footer {
@@ -862,26 +903,52 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 .desktop[data-shell-style='xp'] .desktop__context-menu {
   padding: 3px;
   color: #17283d;
-  background: #f5f5f5;
-  border: 1px solid #879bb2;
-  border-radius: 2px;
-  box-shadow: 2px 3px 7px rgb(20 35 55 / 28%);
+  background: #fff;
+  border: 1px solid #6f8eaf;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px #e8f1fa, 2px 3px 7px rgb(20 35 55 / 32%);
 }
 
 .desktop[data-shell-style='xp'] .desktop__context-menu button {
+  box-sizing: border-box;
+  min-height: 30px;
+  gap: 8px;
+  padding: 0 8px;
   color: #1b2e43;
   border-radius: 1px;
+  font-family: Tahoma, 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  font-size: 13px;
 }
 
-.desktop[data-shell-style='xp'] .desktop__context-menu button:hover,
-.desktop[data-shell-style='xp'] .desktop__context-menu button:focus-visible {
+.desktop[data-shell-style='xp'] .desktop__context-menu button > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.desktop[data-shell-style='xp'] .desktop__context-menu button:hover:not(:disabled),
+.desktop[data-shell-style='xp'] .desktop__context-menu button:focus-visible,
+.desktop[data-shell-style='xp'] .desktop__context-menu button[data-context-menu-active] {
   color: #fff;
-  background: #1767bd;
+  background: linear-gradient(180deg, #3b7fd0 0%, #286bc0 52%, #1c5cae 100%);
   outline: 0;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 28%);
+}
+
+.desktop[data-shell-style='xp'] .desktop__context-menu button:active:not(:disabled) {
+  background: #1856a8;
+  box-shadow: inset 1px 1px 2px rgb(0 32 86 / 46%);
+}
+
+.desktop[data-shell-style='xp'] .desktop__context-menu button:disabled {
+  color: #8795a5;
 }
 
 .desktop[data-shell-style='xp'] .desktop__context-separator {
-  background: #c6c6c6;
+  height: 1px;
+  margin: 4px 6px 4px 30px;
+  background: #c4cfdb;
+  box-shadow: 0 1px 0 #fff;
 }
 
 .desktop-shell-style-options {
@@ -1034,6 +1101,20 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
+  .desktop[data-shell-style='xp'] .desktop__system-tray {
+    height: 46px;
+    min-height: 46px;
+  }
+
+  .desktop[data-shell-style='xp'] .desktop__tray-button,
+  .desktop[data-shell-style='xp'] .desktop__classic-button {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    flex-basis: 42px;
+  }
+
   .desktop[data-shell-style='xp'] .desktop__taskbar-apps {
     justify-content: flex-start;
   }
@@ -1055,6 +1136,16 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 
   .desktop[data-shell-style='xp'] .desktop-start-menu__xp-header {
     min-height: 50px;
+  }
+
+  .desktop[data-shell-style='xp'] .desktop-start-menu__option,
+  .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-system'] .desktop-start-menu__option,
+  .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-actions'] .desktop-start-menu__option {
+    min-height: 48px;
+  }
+
+  .desktop[data-shell-style='xp'] .desktop__context-menu button {
+    min-height: 44px;
   }
 
   .desktop-shell-style-options {
