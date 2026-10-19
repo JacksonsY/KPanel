@@ -26,8 +26,8 @@ const clipboardMenu = ref<InstanceType<typeof TerminalContextMenu>>()
 const composerInput = ref<HTMLInputElement>()
 const terminalHistory = useTerminalHistory()
 const mobileTerminalKeys = [
-  ['Esc', '\x1b'], ['Tab', '\t'], ['↑', '\x1b[A'], ['↓', '\x1b[B'], ['←', '\x1b[D'],
-  ['→', '\x1b[C'], ['Ctrl+C', '\x03'], ['Ctrl+D', '\x04'], ['Ctrl+Z', '\x1a'], ['Enter', '\r'],
+  ['Esc', '\x1b'], ['Tab', '\t'], ['↑', '\x1b[A'], ['↓', '\x1b[B'], ['←', '\x1b[D'], ['→', '\x1b[C'],
+  ['Space', ' '], ['Ctrl+C', '\x03'], ['Ctrl+D', '\x04'], ['Ctrl+Z', '\x1a'], ['Ctrl+L', '\x0c'], ['Enter', '\r'],
 ] as const
 let commandCapture: TerminalCommandCapture | undefined
 let historyIndex = -1
@@ -207,7 +207,7 @@ defineExpose({ focusTerminal, executeCommand, executePresentedCommand, fillComma
 .host-terminal__composer button { border:0; border-radius:8px; padding:0 16px; color:var(--on-brand,#05251c); background:var(--brand-action,#35cba6); font-weight: 700; }
 @media (max-width: 900px) {
   .host-terminal { grid-template-rows:minmax(0,1fr) auto auto; }
-  .host-terminal__mobile-keys { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; padding:8px 10px 0; }
+  .host-terminal__mobile-keys { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; padding:8px 10px 0; }
   .host-terminal__mobile-key { min-width:0; min-height:40px; border:1px solid var(--terminal-shell-border,#29383a); border-radius:var(--radius-sm,8px); padding:4px 2px; color:var(--terminal-shell-text,#d8dddc); background:var(--terminal-shell-background,#0b1214); font:600 12px ui-sans-serif,system-ui,sans-serif; cursor:pointer; touch-action:manipulation; }
   .host-terminal__mobile-key:active:not(:disabled),.host-terminal__mobile-key:focus-visible { border-color:var(--brand,#35cba6); outline:2px solid var(--brand,#35cba6); outline-offset:1px; }
   .host-terminal__mobile-key:disabled { cursor:not-allowed; opacity:.6; }
