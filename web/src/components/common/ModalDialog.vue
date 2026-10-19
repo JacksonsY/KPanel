@@ -51,7 +51,9 @@ const descriptionInBody = computed(() => {
   if (!props.open || !canUseDOM()) return false
   const root = document.documentElement
   const style = desktopShellStyle.preference.value
-  return style !== 'modern' && root.dataset.desktopShellStyle === style
+  return style !== 'modern' &&
+    root.classList.contains('desktop-mode-open') &&
+    root.dataset.desktopShellStyle === style
 })
 const panelClass = computed(() => [
   workspace.value ? 'modal-panel--workspace' : `modal-panel--${props.size}`,

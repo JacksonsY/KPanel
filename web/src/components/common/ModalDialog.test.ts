@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { h, nextTick } from 'vue'
+import { initializeDesktopShellStyle, resetDesktopShellStyleForTest } from '@/stores/desktopShellStyle'
 import ModalDialog from './ModalDialog.vue'
 import ModalWindowControls from './ModalWindowControls.vue'
 
@@ -42,6 +43,10 @@ function panelAt(index = 0): HTMLElement {
 afterEach(async () => {
   for (const wrapper of wrappers.splice(0).reverse()) wrapper.unmount()
   await nextTick()
+  resetDesktopShellStyleForTest()
+  window.localStorage.removeItem('kpanel:desktop-shell-style:v1')
+  document.documentElement.classList.remove('desktop-mode-open')
+  delete document.documentElement.dataset.desktopShellStyle
   document.body.innerHTML = ''
 })
 
@@ -56,6 +61,31 @@ describe('ModalDialog focus management', () => {
     const description = document.getElementById(dialog.getAttribute('aria-describedby') || '')
     expect(title?.textContent).toBe('Remote download')
     expect(description?.textContent).toBe('Save into /home.')
+  })
+
+  it('moves the description into the body only while a themed desktop is open', async () => {
+    window.localStorage.setItem('kpanel:desktop-shell-style:v1', 'xp')
+    initializeDesktopShellStyle()
+    document.documentElement.dataset.desktopShellStyle = 'xp'
+    const regularDialog = mountDialog({
+      props: { open: true, title: 'Remote download', description: 'Save into /home.' },
+    })
+
+    const dialog = panelAt()
+    expect(dialog.querySelector('.modal-panel__header p')?.textContent).toBe('Save into /home.')
+    expect(dialog.querySelector('.modal-panel__description--body')).toBeNull()
+    regularDialog.unmount()
+    wrappers.splice(wrappers.indexOf(regularDialog), 1)
+
+    document.documentElement.classList.add('desktop-mode-open')
+    const desktopDialog = mountDialog({
+      props: { open: true, title: 'Desktop dialog', description: 'A themed description.' },
+    })
+    const themedDialog = panelAt()
+    expect(themedDialog.querySelector('.modal-panel__header p')).toBeNull()
+    expect(themedDialog.querySelector('.modal-panel__description--body')?.textContent).toBe('A themed description.')
+    desktopDialog.unmount()
+    wrappers.splice(wrappers.indexOf(desktopDialog), 1)
   })
 
   it('focuses the first operable element when opened and restores its opener when closed', async () => {
