@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/kejilion/kejilion-panel/internal/terminal"
 )
 
 // jobChunkAgentStub serves fixed task terminal chunks keyed by offset and
@@ -80,5 +83,33 @@ func TestCoalesceJobTerminalSkipsLargeChunks(t *testing.T) {
 	large := jobTerminalChunk{DataBase64: encodedJobData(strings.Repeat("x", terminalStreamCoalesceBytes)), NextOffset: terminalStreamCoalesceBytes}
 	if got := server.coalesceJobTerminal(context.Background(), "/v1/app-jobs/", "job", large); got != large || len(stub.queries) != 0 {
 		t.Fatalf("large chunk was delayed or re-read: %#v queries=%d", got, len(stub.queries))
+	}
+}
+
+func TestCoalesceJobTerminalDoesNotExceedOutputLimit(t *testing.T) {
+	server, _ := newTestServer(t)
+	firstData := strings.Repeat("a", terminal.MaxOutputBytes/2)
+	moreData := strings.Repeat("b", terminal.MaxOutputBytes/2+1)
+	stub := &jobChunkAgentStub{chunks: map[string]jobTerminalChunk{
+		strconv.Itoa(len(firstData)): {DataBase64: encodedJobData(moreData), NextOffset: int64(len(firstData) + len(moreData))},
+	}}
+	server.agent = stub
+	first := jobTerminalChunk{DataBase64: encodedJobData(firstData), NextOffset: int64(len(firstData))}
+
+	got := server.coalesceJobTerminal(context.Background(), "/v1/app-jobs/", "job", first)
+	if got != first {
+		t.Fatalf("oversized combined chunk = %#v, want the original %#v", got, first)
+	}
+}
+
+func TestFetchJobTerminalRejectsOversizedOutput(t *testing.T) {
+	server, _ := newTestServer(t)
+	server.agent = &jobChunkAgentStub{chunks: map[string]jobTerminalChunk{
+		"0": {DataBase64: encodedJobData(strings.Repeat("x", terminal.MaxOutputBytes+1)), NextOffset: terminal.MaxOutputBytes + 1},
+	}}
+	server.hostOps = newHostOperationService(server)
+
+	if _, _, err := server.fetchJobTerminal(context.Background(), "/v1/app-jobs/", "job", 0, false, "0"); err == nil {
+		t.Fatal("oversized job terminal output was accepted")
 	}
 }

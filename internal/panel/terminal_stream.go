@@ -472,6 +472,13 @@ func (s *Server) fetchJobTerminal(ctx context.Context, prefix, id string, offset
 	if response.StatusCode < 200 || response.StatusCode >= 300 || json.Unmarshal(response.Body, &chunk) != nil {
 		return jobTerminalChunk{}, true, fmt.Errorf("job terminal returned %d", response.StatusCode)
 	}
+	if len(chunk.DataBase64) > base64.StdEncoding.EncodedLen(terminal.MaxOutputBytes) {
+		return jobTerminalChunk{}, true, errors.New("job terminal output exceeds the configured limit")
+	}
+	data, err := base64.StdEncoding.DecodeString(chunk.DataBase64)
+	if err != nil || len(data) > terminal.MaxOutputBytes {
+		return jobTerminalChunk{}, true, errors.New("job terminal output is invalid")
+	}
 	return chunk, true, nil
 }
 
@@ -504,8 +511,10 @@ func (s *Server) coalesceJobTerminal(ctx context.Context, prefix, id string, chu
 	if err != nil || more.NextOffset != chunk.NextOffset+int64(len(moreData)) {
 		return chunk
 	}
-	if len(moreData) > 0 {
+	if len(moreData) > 0 && len(data)+len(moreData) <= terminal.MaxOutputBytes {
 		chunk.DataBase64 = base64.StdEncoding.EncodeToString(append(data, moreData...))
+	} else if len(data)+len(moreData) > terminal.MaxOutputBytes {
+		return chunk
 	}
 	chunk.NextOffset, chunk.InputOpen, chunk.Finished = more.NextOffset, more.InputOpen, more.Finished
 	return chunk
