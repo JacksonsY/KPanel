@@ -10,7 +10,7 @@ html[data-desktop-shell-style='xp'] {
 
 .desktop[data-shell-style='xp'] {
   --desktop-window-client-background: #f1efe6;
-  --desktop-group-surface: #eff5fc;
+  --desktop-group-surface: #f1efe6;
   --desktop-group-border: #91afd2;
   --desktop-group-text: #17283d;
   --desktop-group-muted: #35506c;
@@ -22,6 +22,77 @@ html[data-desktop-shell-style='xp'] {
   color: #16283d;
   background: #53a5e8;
   font-family: Tahoma, 'Microsoft YaHei', 'PingFang SC', sans-serif;
+}
+
+/* Desktop groups use the same warm client surface and Luna blue accents as XP windows. */
+.desktop[data-shell-style='xp'] .desktop-group {
+  border: 1px solid #91afd2;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #fffef9 0%, #f1efe6 100%);
+  box-shadow: inset 1px 1px 0 #fff, 1px 2px 5px rgb(17 43 76 / 30%);
+}
+
+.desktop[data-shell-style='xp'] .desktop-group__header {
+  background: linear-gradient(180deg, #f8fbff 0%, #e4eef9 100%);
+  border-bottom: 1px solid #c2d2e5;
+  border-radius: 5px 5px 0 0;
+}
+
+.desktop[data-shell-style='xp'] .desktop-group__header button:hover {
+  color: #fff;
+  background: var(--desktop-xp-titlebar-background);
+}
+
+.desktop[data-shell-style='xp'] .desktop-group__count {
+  border: 1px solid #b7cde4;
+  border-radius: 3px;
+  background: #dceafa;
+  color: #284c76;
+}
+
+.desktop[data-shell-style='xp'] .desktop-group__cell {
+  border-radius: 3px;
+}
+
+.desktop[data-shell-style='xp'] .desktop-group__name-input {
+  border-color: #7f9db9;
+  border-radius: 2px;
+  background: #fffef9;
+  color: #17283d;
+}
+
+.desktop[data-shell-style='xp'] .desktop-group__actions,
+html[data-desktop-shell-style='xp'] .desktop-group__actions {
+  padding: 3px;
+  border: 1px solid #6f8eaf;
+  border-radius: 1px;
+  background: #f7f8fa;
+  color: #17283d;
+  box-shadow: inset 0 0 0 1px #fff, 2px 3px 7px rgb(20 35 55 / 32%);
+}
+
+.desktop[data-shell-style='xp'] .desktop-group__actions button,
+html[data-desktop-shell-style='xp'] .desktop-group__actions button {
+  min-height: 30px;
+  border-radius: 1px;
+}
+
+.desktop[data-shell-style='xp'] .desktop-group__actions button:hover,
+.desktop[data-shell-style='xp'] .desktop-group__actions button:focus-visible,
+html[data-desktop-shell-style='xp'] .desktop-group__actions button:hover,
+html[data-desktop-shell-style='xp'] .desktop-group__actions button:focus-visible {
+  color: #fff;
+  background: var(--desktop-xp-titlebar-background);
+  outline: 0;
+}
+
+.desktop[data-shell-style='xp'] .desktop-group__drop-label,
+html[data-desktop-shell-style='xp'] .desktop-group__drop-label {
+  border: 1px solid #91afd2;
+  border-radius: 3px;
+  background: #fffef9;
+  color: #17283d;
+  box-shadow: 1px 2px 5px rgb(17 43 76 / 30%);
 }
 
 .desktop[data-shell-style='xp'] .desktop__wallpaper-veil {

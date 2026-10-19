@@ -40,7 +40,7 @@ html[data-desktop-shell-style='win98'] {
 
 .desktop[data-shell-style='win98'] {
   --desktop-window-client-background: #d4d0c8;
-  --desktop-group-surface: #fff;
+  --desktop-group-surface: var(--win98-surface);
   --desktop-group-border: #808080;
   --desktop-group-text: var(--win98-text-color);
   --desktop-group-muted: #404040;
@@ -52,6 +52,94 @@ html[data-desktop-shell-style='win98'] {
   color: var(--win98-text-color);
   background: #008080;
   font-family: Tahoma, Arial, 'Microsoft YaHei', sans-serif;
+}
+
+/* Classic group panels share Win98's gray face and raised control edges. */
+.desktop[data-shell-style='win98'] .desktop-group {
+  border: 0;
+  border-radius: 0;
+  background: var(--win98-surface);
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__header {
+  border-bottom: 1px solid var(--win98-button-shadow);
+  border-radius: 0;
+  box-shadow: inset 0 -1px var(--win98-button-highlight);
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__header button {
+  border-radius: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__toggle,
+.desktop[data-shell-style='win98'] .desktop-group__menu {
+  background: var(--win98-button-face);
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__header button:hover {
+  color: #fff;
+  background: var(--win98-dialog-blue);
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__count {
+  border-radius: 0;
+  background: var(--win98-button-face);
+  color: var(--win98-text-color);
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__cell {
+  border-radius: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__cell--target {
+  border: 2px solid var(--win98-dialog-blue);
+  background: #b8c8df;
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__name-input {
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: var(--win98-text-color);
+  box-shadow: var(--win98-border-field);
+  outline: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__actions,
+html[data-desktop-shell-style='win98'] .desktop-group__actions {
+  padding: 4px;
+  border: 0;
+  border-radius: 0;
+  background: var(--win98-surface);
+  color: var(--win98-text-color);
+  box-shadow: var(--win98-border-window-outer), var(--win98-border-window-inner);
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__actions button,
+html[data-desktop-shell-style='win98'] .desktop-group__actions button {
+  min-height: 28px;
+  border-radius: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__actions button:hover,
+.desktop[data-shell-style='win98'] .desktop-group__actions button:focus-visible,
+html[data-desktop-shell-style='win98'] .desktop-group__actions button:hover,
+html[data-desktop-shell-style='win98'] .desktop-group__actions button:focus-visible {
+  color: #fff;
+  background: var(--win98-dialog-blue);
+  outline: 0;
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__drop-label,
+html[data-desktop-shell-style='win98'] .desktop-group__drop-label {
+  border: 0;
+  border-radius: 0;
+  background: var(--win98-surface);
+  color: var(--win98-text-color);
+  box-shadow: var(--win98-border-window-outer), var(--win98-border-window-inner);
 }
 
 .desktop[data-shell-style='win98'] :is(.desktop__wallpaper-veil, .desktop__aurora) {
