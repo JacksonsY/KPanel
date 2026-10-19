@@ -1,4 +1,10 @@
 /* Opt-in Windows XP Luna shell with a scoped client-area surface palette. */
+html[data-desktop-shell-style='xp'] {
+  /* XP.css 0.2.6 Luna title-bar values; the taskbar reuses this blue ramp because XP.css has no taskbar component. */
+  --desktop-xp-titlebar-background: linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #0066ff 93%, #005bff 95%, #003dd7 96%, #003dd7 100%);
+  --desktop-xp-window-inset: inset -1px -1px #00138c, inset 1px 1px #0831d9, inset -2px -2px #001ea0, inset 2px 2px #166aee, inset -3px -3px #003bda, inset 3px 3px #0855dd;
+}
+
 .desktop[data-shell-style='xp'] {
   --desktop-window-client-background: #eaf1f9;
   --desktop-group-surface: #eff5fc;
@@ -55,18 +61,19 @@
 }
 
 .desktop[data-shell-style='xp'] :is(.desktop-clock__header, .desktop-monitor__header, .desktop-service-status__header) {
-  min-height: 31px;
+  min-height: 28px;
   margin: 0 -14px 12px;
   padding: 0 11px;
   color: #fff;
-  background: linear-gradient(180deg, #2b6fca 0%, #176bd2 28%, #0755be 74%, #174da4 100%);
-  border-bottom: 1px solid #063778;
-  box-shadow: inset 0 1px 0 #a4d2ff, inset 0 -1px 0 rgb(0 42 121 / 50%);
-  font-size: 12px;
+  background: var(--desktop-xp-titlebar-background);
+  border-bottom: 1px solid #001ea0;
+  border-radius: 3px 3px 0 0;
+  box-shadow: inset 0 1px 0 #a4d2ff;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: normal;
   text-transform: none;
-  text-shadow: 0 1px 1px #153f72;
+  text-shadow: 1px 1px #0f1089;
 }
 
 .desktop[data-shell-style='xp'] :is(.desktop-clock__header > span svg, .desktop-monitor__header > svg, .desktop-service-status__header > span svg) {
@@ -98,19 +105,14 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop-window {
-  background: #f1f3f7;
-  border: 1px solid #0a3478;
-  border-top-color: #8fc6f7;
-  border-left-color: #78ace2;
-  border-radius: 7px 7px 0 0;
-  box-shadow: 1px 2px 5px rgb(0 22 68 / 34%), inset 1px 1px 0 #b7ddff;
+  background: #ece9d8;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  box-shadow: var(--desktop-xp-window-inset), 1px 2px 5px rgb(0 22 68 / 34%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window--focused {
-  border-color: #073a87;
-  border-top-color: #b5dcff;
-  border-left-color: #8ec2f1;
-  box-shadow: 1px 2px 6px rgb(0 22 68 / 48%), inset 1px 1px 0 #d6edff;
+  box-shadow: var(--desktop-xp-window-inset), 1px 2px 6px rgb(0 22 68 / 48%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window--maximized,
@@ -119,34 +121,44 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__titlebar {
-  height: 34px;
-  min-height: 34px;
-  padding-left: 7px;
+  box-sizing: border-box;
+  height: 28px;
+  min-height: 28px;
+  padding: 3px 5px 3px 3px;
   color: #fff;
-  background: linear-gradient(180deg, #2b6fca 0%, #1768c9 28%, #0753b8 74%, #174b9d 100%);
-  border-bottom: 1px solid #063778;
-  box-shadow: inset 0 1px 0 #a4d2ff, inset 0 -1px 0 rgb(0 42 121 / 50%);
-  text-shadow: 0 1px 1px #173d74;
+  background: var(--desktop-xp-titlebar-background);
+  border: 0;
+  border-top: 1px solid #0831d9;
+  border-right: 1px solid #001ea0;
+  border-left: 1px solid #0831d9;
+  border-radius: 8px 7px 0 0;
+  box-shadow: none;
+  font-family: 'Trebuchet MS', Tahoma, 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  font-size: 13px;
+  text-shadow: 1px 1px #0f1089;
 }
 
 .desktop[data-shell-style='xp'] .desktop-window--focused .desktop-window__titlebar {
   color: #fff;
-  background: linear-gradient(180deg, #2b6fca 0%, #176bd2 28%, #0755be 74%, #174da4 100%);
+  background: var(--desktop-xp-titlebar-background);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window:not(.desktop-window--focused) .desktop-window__titlebar {
   color: #203954;
   background: linear-gradient(180deg, #d5e1ee 0%, #b5c9df 55%, #98b1ce 100%);
-  border-bottom-color: #8fa9c4;
+  border-top-color: #dce9f6;
+  border-right-color: #8fa9c4;
+  border-left-color: #dce9f6;
   box-shadow: inset 0 1px 0 #edf5fc;
   text-shadow: none;
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__title {
   gap: 6px;
-  font-family: Tahoma, 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  font-family: 'Trebuchet MS', Tahoma, 'Microsoft YaHei', 'PingFang SC', sans-serif;
   font-size: 13px;
   font-weight: 700;
+  letter-spacing: 0;
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__app-glyph {
@@ -163,13 +175,13 @@
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__action {
-  width: 25px;
-  height: 22px;
+  width: 21px;
+  height: 21px;
   color: #fff;
-  background: linear-gradient(180deg, #78ade9, #2b6fc4 55%, #15509e);
-  border: 1px solid #9bc7ef;
+  background: linear-gradient(180deg, #4095ef 0%, #0757dc 58%, #0047b8 100%);
+  border: 1px solid #0831d9;
   border-radius: 3px;
-  box-shadow: 1px 1px 2px rgb(0 30 81 / 54%), inset 0 1px 0 #c2e1ff, inset 0 -1px 0 rgb(6 56 124 / 34%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 55%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__action svg {
@@ -180,7 +192,7 @@
 
 .desktop[data-shell-style='xp'] .desktop-window__action:hover {
   color: #fff;
-  background: linear-gradient(180deg, #397ec7, #2469b6 55%, #15549d);
+  background: linear-gradient(180deg, #6bb6ff 0%, #176be9 58%, #0752c8 100%);
 }
 
 .desktop[data-shell-style='xp'] .desktop-window__action--close {
@@ -283,17 +295,20 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel__header {
   align-items: center;
   padding: 9px 12px 9px 16px;
   color: #fff;
-  background: linear-gradient(180deg, #78b7f4 0%, #398ce5 20%, #176bce 60%, #0b55b4 100%);
-  border-bottom: 1px solid #0b4388;
+  background: var(--desktop-xp-titlebar-background);
+  border-top: 1px solid #0831d9;
+  border-right: 1px solid #001ea0;
+  border-bottom: 1px solid #001ea0;
+  border-left: 1px solid #0831d9;
   border-radius: 7px 7px 0 0;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 48%);
+  box-shadow: inset 0 1px 0 #a4d2ff;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel__header h2 {
   margin: 0;
   color: #fff;
   font-size: 15px;
-  text-shadow: 0 1px 1px #174b86;
+  text-shadow: 1px 1px #0f1089;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel__header p {
@@ -426,7 +441,7 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
   gap: 5px;
   padding: 2px 5px 2px 0;
   color: #fff;
-  background: linear-gradient(180deg, #2075d1 0%, #1671de 8%, #0b63d1 52%, #0752bd 100%);
+  background: var(--desktop-xp-titlebar-background);
   border: 0;
   border-top: 1px solid #9cc8f0;
   border-radius: 0;
@@ -453,7 +468,7 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
   border: 1px solid #a7d68d;
   border-left: 0;
   border-radius: 0 12px 12px 0;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 38%), inset 0 -2px 0 rgb(22 74 14 / 75%), 1px 0 2px rgb(0 27 75 / 38%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 48%), inset 0 -2px 0 rgb(22 74 14 / 75%), 1px 0 2px rgb(0 27 75 / 38%);
   font-size: 16px;
   font-style: italic;
   font-weight: 700;
