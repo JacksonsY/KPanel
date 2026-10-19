@@ -51,7 +51,8 @@ const descriptionInBody = computed(() => {
   if (!props.open || !canUseDOM()) return false
   const root = document.documentElement
   const style = desktopShellStyle.preference.value
-  return style !== 'modern' &&
+  return desktopShellStyle.desktopModeActive.value &&
+    style !== 'modern' &&
     root.classList.contains('desktop-mode-open') &&
     root.dataset.desktopShellStyle === style
 })

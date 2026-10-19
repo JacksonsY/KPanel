@@ -4342,6 +4342,7 @@ function onSideSplitKeyDown(event: KeyboardEvent): void {
 onMounted(() => {
   document.documentElement.classList.add('desktop-mode-open')
   document.body.classList.add('desktop-mode-open')
+  desktopShellStyle.setDesktopModeActive(true)
   taskbarClockTimer = window.setInterval(() => { taskbarNow.value = new Date() }, 30_000)
   window.addEventListener('pointerdown', onGlobalPointerDown)
   window.addEventListener('keydown', onGlobalKeyDown)
@@ -4366,6 +4367,7 @@ onBeforeUnmount(() => {
   if (taskbarClockTimer !== undefined) window.clearInterval(taskbarClockTimer)
   entriesSequence += 1
   syncLiveSceneFlag(false)
+  desktopShellStyle.setDesktopModeActive(false)
   document.documentElement.classList.remove('desktop-mode-open')
   document.body.classList.remove('desktop-mode-open')
   window.removeEventListener('pointerdown', onGlobalPointerDown)

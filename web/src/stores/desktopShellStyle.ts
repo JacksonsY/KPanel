@@ -5,6 +5,7 @@ export type DesktopShellStyle = 'modern' | 'xp' | 'win98'
 
 const STORAGE_KEY = 'kpanel:desktop-shell-style:v1'
 const preference = ref<DesktopShellStyle>('modern')
+const desktopModeActive = ref(false)
 let storageListenerAttached = false
 
 function isDesktopShellStyle(value: string | null): value is DesktopShellStyle {
@@ -53,9 +54,14 @@ export function resetDesktopShellStyleForTest(): void {
   }
   storageListenerAttached = false
   preference.value = 'modern'
+  desktopModeActive.value = false
 }
 
 export function useDesktopShellStyle() {
+  function setDesktopModeActive(active: boolean): void {
+    desktopModeActive.value = active
+  }
+
   function setStyle(value: DesktopShellStyle): void {
     const enteringWindowsStyle = preference.value !== value && value !== 'modern'
     preference.value = value
@@ -65,6 +71,8 @@ export function useDesktopShellStyle() {
 
   return {
     preference: computed(() => preference.value),
+    desktopModeActive: computed(() => desktopModeActive.value),
+    setDesktopModeActive,
     setStyle,
   }
 }

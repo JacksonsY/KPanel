@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { h, nextTick } from 'vue'
-import { initializeDesktopShellStyle, resetDesktopShellStyleForTest } from '@/stores/desktopShellStyle'
+import { initializeDesktopShellStyle, resetDesktopShellStyleForTest, useDesktopShellStyle } from '@/stores/desktopShellStyle'
 import ModalDialog from './ModalDialog.vue'
 import ModalWindowControls from './ModalWindowControls.vue'
 
@@ -67,6 +67,7 @@ describe('ModalDialog focus management', () => {
     window.localStorage.setItem('kpanel:desktop-shell-style:v1', 'xp')
     initializeDesktopShellStyle()
     document.documentElement.dataset.desktopShellStyle = 'xp'
+    const desktopShellStyle = useDesktopShellStyle()
     const regularDialog = mountDialog({
       props: { open: true, title: 'Remote download', description: 'Save into /home.' },
     })
@@ -78,12 +79,20 @@ describe('ModalDialog focus management', () => {
     wrappers.splice(wrappers.indexOf(regularDialog), 1)
 
     document.documentElement.classList.add('desktop-mode-open')
+    desktopShellStyle.setDesktopModeActive(true)
     const desktopDialog = mountDialog({
       props: { open: true, title: 'Desktop dialog', description: 'A themed description.' },
     })
     const themedDialog = panelAt()
     expect(themedDialog.querySelector('.modal-panel__header p')).toBeNull()
     expect(themedDialog.querySelector('.modal-panel__description--body')?.textContent).toBe('A themed description.')
+
+    desktopShellStyle.setDesktopModeActive(false)
+    document.documentElement.classList.remove('desktop-mode-open')
+    await nextTick()
+    expect(themedDialog.querySelector('.modal-panel__header p')?.textContent).toBe('A themed description.')
+    expect(themedDialog.querySelector('.modal-panel__description--body')).toBeNull()
+
     desktopDialog.unmount()
     wrappers.splice(wrappers.indexOf(desktopDialog), 1)
   })
