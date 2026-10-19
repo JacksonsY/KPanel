@@ -1155,6 +1155,12 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 }
 
 @media (max-width: 560px) {
+  .desktop[data-shell-style='xp'] .desktop-start-menu__body {
+    padding-right: 0;
+    padding-left: 0;
+    background: #fff;
+  }
+
   .desktop[data-shell-style='xp'] .desktop-start-menu__results {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1164,8 +1170,24 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
   .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-actions'] {
     grid-column: 1;
     grid-row: auto;
-    padding-right: 0;
-    padding-left: 0;
+    padding: 0 8px 8px;
+  }
+
+  .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-entries'] {
+    background: #fff;
+  }
+
+  .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-system'],
+  .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-actions'] {
+    background: #dbe9f8;
+  }
+
+  .desktop[data-shell-style='xp'] .desktop-start-menu__group[aria-labelledby$='-actions'] {
+    border-top: 1px solid #c6d8eb;
+  }
+
+  .desktop[data-shell-style='xp'] .desktop-start-menu__xp-controls {
+    background: #dbe9f8;
   }
 }
 
