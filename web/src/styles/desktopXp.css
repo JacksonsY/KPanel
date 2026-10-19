@@ -835,16 +835,12 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
   justify-content: center;
   gap: 6px;
   padding: 0 8px;
-  background: var(--desktop-xp-taskbar-item-background);
-  border: 1px solid #a6cdf2;
-  box-shadow: inset 1px 1px 0 rgb(255 255 255 / 32%), inset -1px -1px 0 rgb(0 36 100 / 35%);
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-}
-
-.desktop[data-shell-style='xp'] .desktop-start-menu__xp-logoff:hover:not(:disabled) {
-  filter: brightness(1.08);
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__xp-logoff:disabled {
