@@ -1,16 +1,55 @@
-/* Windows 98 shell with a scoped classic client-area surface palette. */
+/* Windows 98 shell tokens derived from 98.css (jdan/98.css). */
+html[data-desktop-shell-style='win98'] {
+  --win98-text-color: #222;
+  --win98-surface: #c0c0c0;
+  --win98-button-highlight: #fff;
+  --win98-button-face: #dfdfdf;
+  --win98-button-shadow: #808080;
+  --win98-window-frame: #0a0a0a;
+  --win98-dialog-blue: #000080;
+  --win98-dialog-blue-light: #1084d0;
+  --win98-dialog-gray: #808080;
+  --win98-dialog-gray-light: #b5b5b5;
+  --win98-border-raised-outer:
+    inset -1px -1px var(--win98-window-frame),
+    inset 1px 1px var(--win98-button-highlight);
+  --win98-border-raised-inner:
+    inset -2px -2px var(--win98-button-shadow),
+    inset 2px 2px var(--win98-button-face);
+  --win98-border-sunken-outer:
+    inset -1px -1px var(--win98-button-highlight),
+    inset 1px 1px var(--win98-window-frame);
+  --win98-border-sunken-inner:
+    inset -2px -2px var(--win98-button-face),
+    inset 2px 2px var(--win98-button-shadow);
+  --win98-border-window-outer:
+    inset -1px -1px var(--win98-window-frame),
+    inset 1px 1px var(--win98-button-face);
+  --win98-border-window-inner:
+    inset -2px -2px var(--win98-button-shadow),
+    inset 2px 2px var(--win98-button-highlight);
+  --win98-border-field:
+    inset -1px -1px var(--win98-button-highlight),
+    inset 1px 1px var(--win98-button-shadow),
+    inset -2px -2px var(--win98-button-face),
+    inset 2px 2px var(--win98-window-frame);
+  --desktop-titlebar-active: linear-gradient(90deg, var(--win98-dialog-blue), var(--win98-dialog-blue-light));
+  --desktop-titlebar-inactive: linear-gradient(90deg, var(--win98-dialog-gray), var(--win98-dialog-gray-light));
+  --desktop-window-shadow-active: var(--win98-border-window-outer), var(--win98-border-window-inner);
+}
+
 .desktop[data-shell-style='win98'] {
-  --desktop-window-client-background: #d4d0c8;
+  --desktop-window-client-background: var(--win98-surface);
   --desktop-group-surface: #fff;
   --desktop-group-border: #808080;
-  --desktop-group-text: #000;
+  --desktop-group-text: var(--win98-text-color);
   --desktop-group-muted: #404040;
-  --desktop-group-hover: #d6d6d6;
-  --desktop-group-focus: #000080;
-  --desktop-titlebar-active: linear-gradient(90deg, #000080, #1084d0);
-  --desktop-titlebar-inactive: linear-gradient(90deg, #808080, #b5b5b5);
-  --desktop-window-shadow-active: 1px 1px 0 #000;
-  color: #000;
+  --desktop-group-hover: #dfdfdf;
+  --desktop-group-focus: var(--win98-dialog-blue);
+  --desktop-titlebar-active: linear-gradient(90deg, var(--win98-dialog-blue), var(--win98-dialog-blue-light));
+  --desktop-titlebar-inactive: linear-gradient(90deg, var(--win98-dialog-gray), var(--win98-dialog-gray-light));
+  --desktop-window-shadow-active: var(--win98-border-window-outer), var(--win98-border-window-inner);
+  color: var(--win98-text-color);
   background: #008080;
   font-family: Tahoma, Arial, 'Microsoft YaHei', sans-serif;
 }
@@ -31,41 +70,43 @@
 }
 
 .desktop[data-shell-style='win98'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status) {
-  --text: #000;
+  --text: var(--win98-text-color);
   --text-soft: #202020;
   --muted: #404040;
-  --brand: #000080;
+  --brand: var(--win98-dialog-blue);
   --success: #008000;
   --border: #808080;
-  --surface-subtle: #d4d0c8;
+  --surface-subtle: var(--win98-surface);
   --desktop-label: #000;
-  color: #000;
-  background: #d4d0c8;
-  border: 2px solid;
-  border-color: #fff #404040 #404040 #fff;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 1px 1px 0 #dfdfdf, 1px 1px 0 #000;
+  box-shadow: var(--win98-border-window-outer), var(--win98-border-window-inner);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 
 .desktop[data-shell-style='win98'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status) {
-  padding: 0 10px 10px;
+  padding: 3px 10px 10px;
 }
 
 .desktop[data-shell-style='win98'] :is(.desktop-clock__header, .desktop-monitor__header, .desktop-service-status__header) {
-  min-height: 25px;
-  margin: 0 -10px 9px;
-  padding: 0 7px;
+  height: 20px;
+  min-height: 20px;
+  margin: 0 -7px 9px;
+  padding: 3px 2px 3px 3px;
   color: #fff;
-  background: linear-gradient(90deg, #000080, #1084d0);
-  border-bottom: 1px solid #000040;
-  box-shadow: inset 0 1px 0 #7bb9e7;
+  background: var(--desktop-titlebar-active);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: normal;
   text-transform: none;
-  text-shadow: 1px 1px 0 #000040;
+  text-shadow: none;
+  transition: none;
 }
 
 .desktop[data-shell-style='win98'] :is(.desktop-clock__header > span svg, .desktop-monitor__header > svg, .desktop-service-status__header > span svg) {
@@ -91,23 +132,28 @@
 }
 
 .desktop[data-shell-style='win98'] .desktop-clock__server-icon {
-  color: #000080;
-  background: #d4d0c8;
-  border: 1px solid #808080;
+  color: var(--win98-dialog-blue);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop-window {
-  background: #d4d0c8;
-  border: 2px solid;
-  border-color: #fff #404040 #404040 #fff;
+  padding: 3px;
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: 1px 1px 0 #000, inset 1px 1px 0 #dfdfdf;
+  box-shadow: var(--win98-border-window-outer), var(--win98-border-window-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop-window--focused {
-  border-color: #fff #404040 #404040 #fff;
-  box-shadow: 1px 1px 0 #000, inset 1px 1px 0 #dfdfdf;
+  box-shadow: var(--win98-border-window-outer), var(--win98-border-window-inner);
+}
+
+.desktop[data-shell-style='win98'] .desktop-window:focus-visible {
+  outline: 1px dotted var(--win98-window-frame);
+  outline-offset: 2px;
 }
 
 .desktop[data-shell-style='win98'] .desktop-window--maximized,
@@ -116,28 +162,28 @@
 }
 
 .desktop[data-shell-style='win98'] .desktop-window__titlebar {
-  height: 25px;
-  min-height: 25px;
-  padding-left: 4px;
+  height: 20px;
+  min-height: 20px;
+  padding: 3px 2px 3px 3px;
   color: #fff;
-  background: linear-gradient(90deg, #000080, #1084d0);
-  border-bottom: 1px solid #000040;
-  box-shadow: inset 0 1px 0 #7bb9e7;
-  text-shadow: 1px 1px 0 #000040;
+  background: var(--desktop-titlebar-active);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: none;
+  transition: none;
 }
 
 .desktop[data-shell-style='win98'] .desktop-window:not(.desktop-window--focused) .desktop-window__titlebar {
   color: #fff;
-  background: linear-gradient(90deg, #808080, #b5b5b5);
-  border-bottom-color: #404040;
-  box-shadow: inset 0 1px 0 #dfdfdf;
-  text-shadow: 1px 1px 0 #404040;
+  background: var(--desktop-titlebar-inactive);
 }
 
 .desktop[data-shell-style='win98'] .desktop-window__title {
-  gap: 5px;
+  gap: 4px;
   font-family: Tahoma, Arial, 'Microsoft YaHei', sans-serif;
   font-size: 12px;
+  line-height: 14px;
   font-weight: 700;
 }
 
@@ -151,46 +197,46 @@
 
 .desktop[data-shell-style='win98'] .desktop-window__actions {
   gap: 2px;
-  padding-right: 3px;
+  padding-right: 2px;
 }
 
 .desktop[data-shell-style='win98'] .desktop-window__action {
-  width: 18px;
-  height: 18px;
-  color: #000;
-  background: #d4d0c8;
-  border: 1px solid;
-  border-color: #fff #404040 #404040 #fff;
+  width: 16px;
+  height: 14px;
+  min-width: 16px;
+  min-height: 14px;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 1px 1px 0 #dfdfdf;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
+  transition: none;
 }
 
 .desktop[data-shell-style='win98'] .desktop-window__action svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 2.5px;
+  width: 9px;
+  height: 9px;
+  stroke-width: 2px;
 }
 
 .desktop[data-shell-style='win98'] .desktop-window__action:hover {
-  color: #000;
-  background: #e5e2da;
+  color: var(--win98-text-color);
+  background: var(--win98-button-face);
 }
 
 .desktop[data-shell-style='win98'] .desktop-window__action:active {
-  border-color: #404040 #fff #fff #404040;
-  box-shadow: inset 1px 1px 0 #808080;
+  box-shadow: var(--win98-border-sunken-outer), var(--win98-border-sunken-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop-window__action--close {
-  color: #000;
-  background: #d4d0c8;
-  border-color: #fff #404040 #404040 #fff;
-  box-shadow: inset 1px 1px 0 #dfdfdf;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop-window__action--close:hover {
-  color: #000;
-  background: #e5e2da;
+  color: var(--win98-text-color);
+  background: var(--win98-button-face);
 }
 
 .desktop[data-shell-style='win98'] :is(.desktop-window__action, .desktop__start-button, .desktop__taskbar-item, .desktop-start-menu :focus-visible) {
@@ -207,11 +253,16 @@
 
 .desktop[data-shell-style='win98'] .desktop-window__body {
   --bg: var(--desktop-window-client-background);
-  --surface-subtle: #d4d0c8;
-  --surface: #f6f5f1;
+  --text: var(--win98-text-color);
+  --text-soft: #404040;
+  --muted: #404040;
+  --brand: var(--win98-dialog-blue);
+  --brand-strong: var(--win98-dialog-blue);
+  --surface-subtle: var(--win98-surface);
+  --surface: var(--win98-surface);
   --surface-raised: #fff;
   --border: #808080;
-  --border-strong: #404040;
+  --border-strong: var(--win98-window-frame);
   --surface-muted: var(--surface-subtle);
   --surface-strong: var(--surface-raised);
   --line: var(--border);
@@ -227,18 +278,6 @@
   border-radius: 0;
 }
 
-:root[data-theme='dark'] .desktop[data-shell-style='win98'] .desktop-window__body {
-  --surface-subtle: #34373b;
-  --surface: #3d4146;
-  --surface-raised: #484c52;
-  --border: #62676d;
-  --border-strong: #858b92;
-}
-
-:root[data-theme='dark'] .desktop[data-shell-style='win98'] {
-  --desktop-window-client-background: #2d3035;
-}
-
 /* Classic gray taskbar and raised Start / application buttons. */
 .desktop[data-shell-style='win98'] .desktop__taskbar {
   right: 0;
@@ -248,12 +287,12 @@
   grid-template-columns: minmax(88px, auto) minmax(0, 1fr) auto;
   gap: 4px;
   padding: 3px 5px;
-  color: #000;
-  background: #c0c0c0;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
   border: 0;
-  border-top: 2px solid #fff;
+  border-top: 1px solid var(--win98-button-highlight);
   border-radius: 0;
-  box-shadow: inset 0 1px 0 #dfdfdf, 0 -1px 0 #808080;
+  box-shadow: inset 0 1px 0 var(--win98-button-face), 0 -1px 0 var(--win98-button-shadow);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -271,12 +310,11 @@
   justify-content: flex-start;
   gap: 5px;
   padding: 0 7px;
-  color: #000;
-  background: #c0c0c0;
-  border: 2px solid;
-  border-color: #fff #404040 #404040 #fff;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 1px 1px 0 #dfdfdf;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
   font-size: 13px;
   font-style: normal;
   font-weight: 700;
@@ -284,14 +322,13 @@
 }
 
 .desktop[data-shell-style='win98'] .desktop__taskbar-brand .desktop__start-button:hover {
-  color: #000;
-  background: #d4d0c8;
+  color: var(--win98-text-color);
+  background: var(--win98-button-face);
 }
 
 .desktop[data-shell-style='win98'] .desktop__taskbar-brand .desktop__start-button[aria-expanded='true'],
 .desktop[data-shell-style='win98'] .desktop__taskbar-brand .desktop__start-button:active {
-  border-color: #404040 #fff #fff #404040;
-  box-shadow: inset 1px 1px 0 #808080;
+  box-shadow: var(--win98-border-sunken-outer), var(--win98-border-sunken-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop__win98-start-mark {
@@ -314,13 +351,13 @@
   min-height: 30px;
   gap: 5px;
   padding: 0 7px;
-  color: #000;
+  color: var(--win98-text-color);
   border-left: 1px solid #808080;
   box-shadow: inset 1px 0 0 #fff;
 }
 
 .desktop[data-shell-style='win98'] :is(.desktop__taskbar-agent-status, .desktop__taskbar-agent-update) {
-  color: #000;
+  color: var(--win98-text-color);
   font-size: 12px;
 }
 
@@ -340,26 +377,23 @@
   justify-content: flex-start;
   gap: 5px;
   padding: 0 5px;
-  color: #000;
-  background: #c0c0c0;
-  border: 2px solid;
-  border-color: #fff #404040 #404040 #fff;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 1px 1px 0 #dfdfdf;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
   transition: none;
 }
 
 .desktop[data-shell-style='win98'] .desktop__taskbar-item:hover {
-  color: #000;
-  background: #d4d0c8;
-  border-color: #fff #404040 #404040 #fff;
+  color: var(--win98-text-color);
+  background: var(--win98-button-face);
   transform: none;
 }
 
 .desktop[data-shell-style='win98'] .desktop__taskbar-item--active {
-  background: #c0c0c0;
-  border-color: #404040 #fff #fff #404040;
-  box-shadow: inset 1px 1px 0 #808080;
+  background: var(--win98-surface);
+  box-shadow: var(--win98-border-sunken-outer), var(--win98-border-sunken-inner);
   transform: none;
 }
 
@@ -386,7 +420,7 @@
   flex: 1 1 auto;
   padding: 0;
   overflow: hidden;
-  color: #000;
+  color: var(--win98-text-color);
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -404,11 +438,10 @@
   min-height: 30px;
   gap: 1px;
   padding: 0 2px;
-  background: #c0c0c0;
-  border: 2px solid;
-  border-color: #808080 #fff #fff #808080;
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 1px 1px 0 #404040;
+  box-shadow: var(--win98-border-sunken-outer), var(--win98-border-sunken-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop__taskbar-clock {
@@ -418,7 +451,7 @@
   align-items: center;
   justify-content: center;
   padding: 0 5px;
-  color: #000;
+  color: var(--win98-text-color);
   border-left: 1px solid #808080;
   box-shadow: inset 1px 0 0 #fff;
   font-size: 12px;
@@ -431,17 +464,18 @@
 .desktop[data-shell-style='win98'] .desktop__classic-button {
   min-width: 25px;
   min-height: 26px;
-  color: #000;
-  background: #c0c0c0;
-  border: 1px solid transparent;
+  color: var(--win98-text-color);
+  background: transparent;
+  border: 0;
   border-radius: 0;
 }
 
 .desktop[data-shell-style='win98'] .desktop__tray-button:hover,
-.desktop[data-shell-style='win98'] .desktop__classic-button:hover {
-  background: #d4d0c8;
-  border: 1px solid;
-  border-color: #fff #404040 #404040 #fff;
+.desktop[data-shell-style='win98'] .desktop__classic-button:hover,
+.desktop[data-shell-style='win98'] .desktop__tray-button:focus-visible,
+.desktop[data-shell-style='win98'] .desktop__classic-button:focus-visible {
+  background: var(--win98-surface);
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop__classic-button span {
@@ -454,31 +488,30 @@
   left: 0;
   width: min(370px, calc(100vw - 8px));
   max-height: min(560px, calc(100dvh - 48px));
-  padding-left: 25px;
-  color: #000;
-  background: #c0c0c0;
-  border: 2px solid;
-  border-color: #fff #404040 #404040 #fff;
+  padding: 3px 3px 3px 29px;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: 1px 1px 0 #000;
+  box-shadow: var(--win98-border-window-outer), var(--win98-border-window-inner);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 
 .desktop[data-shell-style='win98'] .desktop-start-menu::before {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
   width: 23px;
   color: #fff;
-  background: linear-gradient(180deg, #000080, #1084d0);
+  background: linear-gradient(180deg, var(--win98-dialog-blue), var(--win98-dialog-blue-light));
   content: 'Windows 98';
   font-size: 15px;
   font-weight: 700;
   letter-spacing: .2px;
   line-height: 23px;
-  text-shadow: 1px 1px 0 #000040;
+  text-shadow: none;
   writing-mode: vertical-rl;
   transform: rotate(180deg);
 }
@@ -487,8 +520,8 @@
   min-height: 0;
   padding: 4px 5px;
   background: #fff;
-  border: 1px solid;
-  border-color: #808080 #fff #fff #808080;
+  border: 0;
+  box-shadow: var(--win98-border-field);
   scrollbar-gutter: stable;
 }
 
@@ -514,7 +547,7 @@
   min-height: 31px;
   gap: 7px;
   padding: 3px 5px;
-  color: #000;
+  color: var(--win98-text-color);
   border-radius: 0;
 }
 
@@ -540,16 +573,16 @@
 .desktop[data-shell-style='win98'] .desktop-start-menu__option--tile .desktop-start-menu__icon {
   width: 24px;
   height: 24px;
-  border: 1px solid #808080;
+  border: 0;
   border-radius: 0;
-  box-shadow: none;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop-start-menu__footer {
   min-height: 38px;
   padding: 3px 4px;
-  color: #000;
-  background: #c0c0c0;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
   border-top: 1px solid #808080;
 }
 
@@ -565,27 +598,32 @@
   min-height: 30px;
   gap: 6px;
   padding: 2px 5px;
-  background: #c0c0c0;
-  border: 2px solid;
-  border-color: #fff #404040 #404040 #fff;
+  background: var(--win98-surface);
+  border: 0;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop-start-menu__user:hover:not(:disabled),
 .desktop[data-shell-style='win98'] .desktop-start-menu__footer-button:hover,
 .desktop[data-shell-style='win98'] .desktop-start-menu .language-selector__trigger:hover,
 .desktop[data-shell-style='win98'] .desktop-start-menu__retry:hover {
-  color: #000;
-  background: #d4d0c8;
-  border-color: #fff #404040 #404040 #fff;
+  color: var(--win98-text-color);
+  background: var(--win98-button-face);
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
+}
+
+.desktop[data-shell-style='win98'] .desktop-start-menu :is(.desktop-start-menu__user, .desktop-start-menu__footer-button, .language-selector__trigger, .desktop-start-menu__retry):active:not(:disabled) {
+  box-shadow: var(--win98-border-sunken-outer), var(--win98-border-sunken-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop-start-menu__avatar {
   width: 24px;
   height: 24px;
-  color: #000080;
+  color: var(--win98-dialog-blue);
   background: #fff;
-  border: 1px solid #808080;
+  border: 0;
   border-radius: 0;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop-start-menu__user-text strong {
@@ -606,8 +644,9 @@
   width: 27px;
   height: 27px;
   min-height: 27px;
-  background: #c0c0c0;
-  border: 1px solid transparent;
+  background: var(--win98-surface);
+  border: 0;
+  box-shadow: none;
 }
 
 .desktop[data-shell-style='win98'] .desktop-start-menu__xp-controls {
@@ -623,12 +662,11 @@
   margin: 0;
   gap: 5px;
   padding: 0 6px;
-  color: #000;
+  color: var(--win98-text-color);
   background: #fff;
-  border: 1px solid;
-  border-color: #808080 #fff #fff #808080;
+  border: 0;
   border-radius: 0;
-  box-shadow: none;
+  box-shadow: var(--win98-border-field);
 }
 
 .desktop[data-shell-style='win98'] .desktop-start-menu__search svg {
@@ -643,25 +681,26 @@
 }
 
 .desktop[data-shell-style='win98'] .desktop-start-menu__search:focus-within {
-  border-color: #000080;
-  outline: 1px dotted #000;
+  outline: 1px dotted var(--win98-window-frame);
   outline-offset: 1px;
-  box-shadow: none;
+  box-shadow: var(--win98-border-field);
 }
 
 .desktop[data-shell-style='win98'] .desktop__context-menu {
-  padding: 2px;
-  color: #000;
-  background: #c0c0c0;
-  border: 2px solid;
-  border-color: #fff #404040 #404040 #fff;
+  padding: 3px;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: 1px 1px 0 #000;
+  box-shadow: var(--win98-border-window-outer), var(--win98-border-window-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop__context-menu button {
-  color: #000;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop__context-menu button:hover,
@@ -671,8 +710,12 @@
   outline: 0;
 }
 
+.desktop[data-shell-style='win98'] .desktop__context-menu button:active:not(:disabled) {
+  box-shadow: var(--win98-border-sunken-outer), var(--win98-border-sunken-inner);
+}
+
 .desktop[data-shell-style='win98'] .desktop__context-separator {
-  background: #808080;
+  background: var(--win98-button-shadow);
 }
 
 /* Teleported third-level business dialogs inherit the active classic shell. */
@@ -683,38 +726,39 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-backdrop {
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel {
-  --text: #000;
+  --text: var(--win98-text-color);
   --text-soft: #202020;
   --muted: #404040;
   --surface: #fff;
-  --surface-raised: #d4d0c8;
-  --surface-subtle: #d4d0c8;
+  --surface-raised: var(--win98-surface);
+  --surface-subtle: var(--win98-surface);
   --border: #808080;
-  --border-strong: #404040;
-  --brand: #000080;
-  --brand-strong: #000080;
+  --border-strong: var(--win98-window-frame);
+  --brand: var(--win98-dialog-blue);
+  --brand-strong: var(--win98-dialog-blue);
   --brand-soft: #d9e3f0;
-  --brand-action: #d4d0c8;
+  --brand-action: var(--win98-surface);
   --on-brand: #000;
   --danger: #a40000;
-  color: #000;
-  background: #d4d0c8;
-  border: 2px solid;
-  border-color: #fff #404040 #404040 #fff;
+  padding: 3px;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 1px 1px 0 #dfdfdf, 1px 1px 0 #000;
+  box-shadow: var(--win98-border-window-outer), var(--win98-border-window-inner);
   font-family: Tahoma, Arial, 'Microsoft YaHei', sans-serif;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__header {
   min-height: 34px;
   align-items: center;
-  padding: 5px 7px 5px 10px;
+  padding: 5px 5px 5px 6px;
   color: #fff;
-  background: linear-gradient(90deg, #000080, #1084d0);
-  border-bottom: 1px solid #000040;
+  background: var(--desktop-titlebar-active);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 0 1px 0 #7bb9e7;
+  box-shadow: none;
+  transition: none;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__header h2 {
@@ -722,34 +766,34 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__header h2
   color: #fff;
   font-size: 13px;
   font-weight: 700;
-  text-shadow: 1px 1px 0 #000040;
+  text-shadow: none;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__header p {
   color: #e5edff;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__actions .icon-button {
-  width: 24px;
-  height: 22px;
-  color: #000;
-  background: #d4d0c8;
-  border: 1px solid;
-  border-color: #fff #404040 #404040 #fff;
+  width: 18px;
+  height: 16px;
+  min-width: 18px;
+  min-height: 16px;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 1px 1px 0 #dfdfdf;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__actions .icon-button:last-child {
-  color: #fff;
-  background: #c75050;
-  border-color: #fff #681515 #681515 #fff;
-  text-shadow: 1px 1px 0 #681515;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  text-shadow: none;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__body {
-  background: #d4d0c8;
+  background: var(--win98-surface);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__description--body {
@@ -762,51 +806,48 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__descripti
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__footer {
-  background: #d4d0c8;
+  background: var(--win98-surface);
   border-top: 1px solid #808080;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.field input, .field select, .field textarea) {
-  color: #000;
+  color: var(--win98-text-color);
   background: #fff;
-  border: 2px solid;
-  border-color: #808080 #fff #fff #808080;
+  border: 0;
   border-radius: 0;
-  box-shadow: none;
+  box-shadow: var(--win98-border-field);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.field input, .field select, .field textarea):focus {
   outline: 1px dotted #000;
   outline-offset: -4px;
-  box-shadow: none;
+  box-shadow: var(--win98-border-field);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.button, .icon-button, .site-service-card, .choice-pills button, .site-template-toggle, .dns-guide nav a, .dns-guide__records button) {
-  color: #000;
-  background: #d4d0c8;
-  border: 1px solid;
-  border-color: #fff #404040 #404040 #fff;
+  color: var(--win98-text-color);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 1px 1px 0 #dfdfdf;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
   transition: none;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.button, .icon-button, .site-service-card, .choice-pills button, .site-template-toggle, .dns-guide nav a, .dns-guide__records button):active:not(:disabled) {
-  border-color: #404040 #fff #fff #404040;
-  box-shadow: inset 1px 1px 0 #808080;
+  box-shadow: var(--win98-border-sunken-outer), var(--win98-border-sunken-inner);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.button, .icon-button, .site-service-card, .choice-pills button, .site-template-toggle):focus-visible {
   outline: 1px dotted #000;
   outline-offset: -4px;
-  box-shadow: none;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.site-service-field, .site-certificate-options, .site-inline-options) {
   padding: 7px 9px 9px;
-  border: 1px solid;
-  border-color: #fff #808080 #808080 #fff;
+  border: 0;
   border-radius: 0;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.site-service-field, .site-certificate-options, .site-inline-options) legend {
@@ -818,9 +859,9 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel :is(.site-
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card.is-active,
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .choice-pills button.is-active {
   color: #fff;
-  background: #000080;
-  border-color: #fff #404040 #404040 #fff;
-  box-shadow: inset 1px 1px 0 #50509c;
+  background: var(--win98-dialog-blue);
+  border: 0;
+  box-shadow: var(--win98-border-sunken-outer), var(--win98-border-sunken-inner);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card__content :is(small, em) {
@@ -828,22 +869,22 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-serv
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card__icon {
-  color: #000080;
-  background: #d4d0c8;
-  border: 1px solid;
-  border-color: #fff #404040 #404040 #fff;
+  color: var(--win98-dialog-blue);
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card.is-active .site-service-card__icon {
-  color: #000080;
+  color: var(--win98-dialog-blue);
   background: #fff;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-service-card__badge {
-  color: #000;
-  background: #d4d0c8;
-  border: 1px solid #808080;
+  color: var(--win98-text-color);
+  background: var(--win98-button-face);
+  border: 1px solid var(--win98-button-shadow);
   border-radius: 0;
 }
 
@@ -853,10 +894,10 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .site-serv
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .dns-guide {
-  background: #d4d0c8;
-  border: 1px solid;
-  border-color: #fff #808080 #808080 #fff;
+  background: var(--win98-surface);
+  border: 0;
   border-radius: 0;
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
 }
 
 /* Preview card used by the shared wallpaper picker and Settings appearance page. */
@@ -867,16 +908,20 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .dns-guide
 }
 
 .desktop-shell-style-options__preview--win98 .desktop-shell-style-options__window {
-  background: #d4d0c8;
-  border: 2px solid;
-  border-color: #fff #404040 #404040 #fff;
+  padding: 3px;
+  background: #c0c0c0;
+  border: 0;
   border-radius: 0;
-  box-shadow: 1px 1px 0 #000;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #dfdfdf,
+    inset -2px -2px #808080,
+    inset 2px 2px #fff;
 }
 
 .desktop-shell-style-options__preview--win98 .desktop-shell-style-options__window b {
   background: linear-gradient(90deg, #000080, #1084d0);
-  border-bottom: 1px solid #000040;
+  border: 0;
 }
 
 .desktop-shell-style-options__preview--win98 .desktop-shell-style-options__window em {
@@ -887,13 +932,19 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel .dns-guide
 .desktop-shell-style-options__preview--win98 .desktop-shell-style-options__taskbar {
   height: 16%;
   background: #c0c0c0;
-  border-top: 2px solid #fff;
+  border-top: 1px solid #fff;
+  box-shadow: inset 0 1px 0 #dfdfdf, 0 -1px 0 #808080;
 }
 
 .desktop-shell-style-options__preview--win98 .desktop-shell-style-options__taskbar b {
   width: 16%;
   background: #c0c0c0;
-  border-right: 2px solid #404040;
+  border: 0;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px #808080,
+    inset 2px 2px #dfdfdf;
 }
 
 @media (max-width: 760px) {
