@@ -123,7 +123,10 @@ export function useTerminalController(options: Options) {
     getTerminal: () => terminal.value,
     getScreen: () => host.value?.querySelector<HTMLElement>('.xterm-screen') ?? host.value,
     getSelectionTerminal: () => terminal.value,
-    showSelectionMenu: (clientX, clientY) => clipboardMenu.value?.open(new MouseEvent('contextmenu', { clientX, clientY })),
+    onLongPress: (action, x, y) => { void clipboardMenu.value?.handleTouchHold(action, x, y) },
+    onTap: () => {
+      if (!disposed && canInput.value && options.visible?.() !== false) terminal.value?.focus()
+    },
   })
 
   function ensureInput(): TerminalDuplexInput {

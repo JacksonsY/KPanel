@@ -54,18 +54,37 @@ html[data-desktop-shell-style='win98'] {
   font-family: Tahoma, Arial, 'Microsoft YaHei', sans-serif;
 }
 
-/* Classic group panels share Win98's gray face and raised control edges. */
+html.desktop-mode-open[data-desktop-shell-style='win98'] body {
+  --scrollbar-size: 16px;
+  --scrollbar-track: #dfdfdf;
+  --scrollbar-thumb: #c0c0c0;
+  --scrollbar-thumb-hover: #d4d0c8;
+  --scrollbar-thumb-active: #b0b0b0;
+  --win-scrollbar-edge: #808080;
+  --win-scrollbar-radius: 0;
+  --win-scrollbar-relief: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
+  --win-group-title-height: 20px;
+  --win-group-control-height: 18px;
+}
+
+/* Group frames and inset titlebars match the desktop widgets. */
 .desktop[data-shell-style='win98'] .desktop-group {
   border: 0;
   border-radius: 0;
   background: var(--win98-surface);
-  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
+  box-shadow: var(--win98-border-window-outer), var(--win98-border-window-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop-group__header {
-  border-bottom: 1px solid var(--win98-button-shadow);
+  margin: 3px 3px 0;
+  background: var(--desktop-titlebar-active);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 0 -1px var(--win98-button-highlight);
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop-group--collapsed {
+  max-height: calc(var(--win-group-title-height) + 6px);
 }
 
 .desktop[data-shell-style='win98'] .desktop-group__header button {
@@ -211,7 +230,7 @@ html[data-desktop-shell-style='win98'] .desktop-group__drop-label {
   transition: none;
 }
 
-.desktop[data-shell-style='win98'] :is(.desktop-clock__header > span svg, .desktop-monitor__header > svg, .desktop-service-status__header > span svg) {
+.desktop[data-shell-style='win98'] :is(.desktop-clock__header > span svg, .desktop-monitor__header > svg, .desktop-service-status__header > svg, .desktop-service-status__header > span svg) {
   color: #fff;
 }
 
@@ -819,9 +838,8 @@ html[data-desktop-shell-style='win98'] .desktop .desktop-window__body .process-t
   box-shadow: none;
 }
 
-.desktop[data-shell-style='win98'] .desktop__context-menu button:hover,
-.desktop[data-shell-style='win98'] .desktop__context-menu button:focus-visible,
-.desktop[data-shell-style='win98'] .desktop__context-menu button[data-context-menu-active] {
+.desktop[data-shell-style='win98'] .desktop__context-menu:not([data-context-menu-focus='keyboard']) button:hover:not(:disabled),
+.desktop[data-shell-style='win98'] .desktop__context-menu[data-context-menu-focus='keyboard'] button[data-context-menu-active] {
   color: #fff;
   background: #000080;
   outline: 0;
@@ -868,9 +886,9 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel {
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__header {
-  min-height: 34px;
+  min-height: 28px;
   align-items: center;
-  padding: 5px 5px 5px 6px;
+  padding: 3px 4px 3px 6px;
   color: #fff;
   background: var(--desktop-titlebar-active);
   border: 0;

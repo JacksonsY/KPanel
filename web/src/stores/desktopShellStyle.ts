@@ -63,10 +63,10 @@ export function useDesktopShellStyle() {
   }
 
   function setStyle(value: DesktopShellStyle): void {
-    const enteringWindowsStyle = preference.value !== value && value !== 'modern'
+    const styleChanged = preference.value !== value
     preference.value = value
     persistPreference(value)
-    if (enteringWindowsStyle) useDesktopWallpaper().select(value === 'win98' ? 'win98-teal' : value)
+    if (styleChanged) useDesktopWallpaper().select(value === 'modern' ? 'classic' : value === 'win98' ? 'win98-teal' : value)
   }
 
   return {

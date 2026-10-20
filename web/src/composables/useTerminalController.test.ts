@@ -69,6 +69,25 @@ beforeEach(() => {
 afterEach(() => { for (const wrapper of wrappers.splice(0)) wrapper.unmount(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe.each(['session', 'task'] as const)('shared %s terminal controller', mode => {
+  it('allows explicit touch focus while suppressing automatic focus and blocked input', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }))
+    const f = fixture(mode)
+    const focus = vi.spyOn(f.core.terminal.value!, 'focus')
+    vi.spyOn(f.wrapper.element, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 800, bottom: 400, width: 800, height: 400,
+    } as DOMRect)
+    const touch = (type: string) => ({ type, touches: { length: 1, item: () => ({ clientX: 20, clientY: 20 }) }, preventDefault() {} }) as unknown as TouchEvent
+    f.core.focusTerminal()
+    expect(focus).not.toHaveBeenCalled()
+    f.core.terminalTouchScroll.start(touch('touchstart'))
+    f.core.terminalTouchScroll.end(touch('touchend'))
+    expect(focus).toHaveBeenCalledOnce()
+    f.core.blockInput()
+    f.core.terminalTouchScroll.start(touch('touchstart'))
+    f.core.terminalTouchScroll.end(touch('touchend'))
+    expect(focus).toHaveBeenCalledOnce()
+  })
+
   it('bounds a hung output read and retries after backoff', async () => {
     const f = fixture(mode)
     await vi.advanceTimersByTimeAsync(15000)

@@ -116,15 +116,17 @@ describe('desktop visual and interaction contract', () => {
     expect(xpStyles).not.toContain('.desktop-start-menu__all-programs')
   })
 
-  it('keeps XP desktop icon labels on the native KPanel light and dark surfaces', () => {
+  it('uses XP blue for selected icons while retaining native unselected labels', () => {
     const label = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__icon-label")
     const selectedLabel = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__icon--selected .desktop__icon-label")
     const nativeLabel = styles.match(/(?:^|\n)\.desktop__icon-label\s*\{[^}]*\}/)?.[0] ?? ''
     const nativeLightLabel = cssRule(styles, ':root:not([data-theme=\'dark\']) .desktop__icon-label')
 
     expect(label).toBe('')
-    expect(selectedLabel).toContain('color: var(--on-brand);')
-    expect(selectedLabel).toContain('background: var(--brand-action);')
+    expect(selectedLabel).toContain('color: #fff;')
+    expect(selectedLabel).toContain('background: var(--desktop-xp-menu-selection);')
+    expect(cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop__icon--selected"))
+      .not.toContain('var(--brand)')
     expect(nativeLabel).toContain('color: var(--desktop-label);')
     expect(nativeLabel).toContain('background: rgb(3 13 16 / 68%);')
     expect(nativeLightLabel).toContain('background: var(--material-panel-fill);')
@@ -158,7 +160,9 @@ describe('desktop visual and interaction contract', () => {
     expect(xpBody).toContain('--surface-subtle: #e8e5db;')
     expect(xpBody).toContain('--surface-raised: #fffef9;')
     expect(xpBody).toContain('background: var(--bg);')
-    expect(xpBody).not.toMatch(/--(?:brand|success|warning|danger)\s*:/)
+    expect(xpBody).toContain('--brand: var(--desktop-xp-menu-selection);')
+    expect(xpBody).toContain('--text: #1e3554;')
+    expect(xpBody).not.toMatch(/--(?:success|warning|danger)\s*:/)
 
     const win98Body = cssRule(win98Styles, ".desktop[data-shell-style='win98'] .desktop-window__body")
     expect(win98Body).toContain('--bg: var(--desktop-window-client-background);')
