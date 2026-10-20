@@ -364,7 +364,7 @@ body.desktop-mode-open::-webkit-scrollbar {
   background: var(--material-panel-fill);
   border: 1px solid var(--material-panel-edge);
   border-radius: var(--radius-lg);
-  box-shadow: none;
+  box-shadow: var(--shadow-md);
 }
 
 .desktop-clock {
@@ -1609,8 +1609,8 @@ body.desktop-mode-open::-webkit-scrollbar {
   cursor: grab;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
-  /* Match group frames: the widget surface fills the shared grid footprint. */
+  overflow: visible;
+  /* Keep the card shadow outside its shared grid footprint visible. */
   border: 0;
   border-radius: var(--radius-lg);
   outline: none;
