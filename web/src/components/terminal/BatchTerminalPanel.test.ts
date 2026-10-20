@@ -49,7 +49,10 @@ describe('server scheduled terminal batches', () => {
     mocks.batches.mockResolvedValue({ available: true, items: [saved] })
     const wrapper = mountPanel(); await flushPromises(); await wrapper.get('textarea').setValue('true')
     expect(wrapper.findAll('button').some(item => item.text().includes('执行命令'))).toBe(false)
-    mocks.stopBatch.mockImplementation(async () => { saved.results[0]!.error = '' })
+    mocks.stopBatch.mockImplementation(async () => {
+      const cleaned = structuredClone(saved); cleaned.results[0]!.error = ''; cleaned.results[0]!.state = 'stopped'
+      mocks.batches.mockResolvedValue({ available: true, items: [cleaned] })
+    })
     await button(wrapper, '终止执行').trigger('click'); await flushPromises()
     expect(mocks.stopBatch).toHaveBeenCalledWith(saved.id)
     expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
