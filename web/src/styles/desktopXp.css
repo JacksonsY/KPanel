@@ -179,10 +179,15 @@ html[data-desktop-shell-style='xp'] .desktop-group__drop-label {
   box-shadow: none;
 }
 
+.desktop[data-shell-style='xp'] .desktop__icon--selected {
+  background: color-mix(in srgb, var(--desktop-xp-menu-selection) 18%, rgb(255 255 255 / 10%));
+  border-color: color-mix(in srgb, var(--desktop-xp-menu-selection) 54%, rgb(255 255 255 / 26%));
+}
+
 .desktop[data-shell-style='xp'] .desktop__icon--selected .desktop__icon-label {
-  color: var(--on-brand);
-  background: var(--brand-action);
-  border-color: var(--brand-action);
+  color: #fff;
+  background: var(--desktop-xp-menu-selection);
+  border-color: var(--desktop-xp-menu-selection);
 }
 
 .desktop[data-shell-style='xp'] :is(.desktop-clock, .desktop-monitor, .desktop-service-status) {
