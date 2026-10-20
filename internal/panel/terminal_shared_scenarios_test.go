@@ -91,6 +91,15 @@ func TestSharedTerminalIdlePerformance(t *testing.T) {
 	if os.Getenv("KPANEL_SHARED_TERMINAL_BENCH") != "1" {
 		t.Skip("opt-in idle output comparison")
 	}
+	checkSharedTerminalIdle(t, os.Getenv("KPANEL_SHARED_EXPECT_BOUNDED") == "1")
+}
+
+func TestSharedTerminalIdlePollingBound(t *testing.T) {
+	checkSharedTerminalIdle(t, true)
+}
+
+func checkSharedTerminalIdle(t *testing.T, bounded bool) {
+	t.Helper()
 	for _, job := range []string{"", "app", "site", "diagnostic", "environment"} {
 		t.Run("job="+job, func(t *testing.T) {
 			a := &sharedOutputAgent{idle: true}
@@ -105,7 +114,7 @@ func TestSharedTerminalIdlePerformance(t *testing.T) {
 				s.pumpJobTerminal(ctx, stream, "key", terminalStreamSubscription{ID: "job", Job: job})
 			}
 			t.Logf("observation=250ms ignored_long_poll=true reads=%d mutations=%d", a.reads.Load(), a.writes.Load())
-			if os.Getenv("KPANEL_SHARED_EXPECT_BOUNDED") == "1" && a.reads.Load() > 5 {
+			if bounded && a.reads.Load() > 5 {
 				t.Fatal("idle backend is busy looping")
 			}
 		})
