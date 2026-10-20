@@ -526,8 +526,14 @@ func openStreamTerminal(ctx, parent context.Context, hostID string, dial streamT
 	if err != nil {
 		return nil, TerminalOpenResponse{}, err
 	}
+	if !retained && ready.Retained {
+		// A peer cannot turn an ordinary shell into a locally retained handle.
+		conn.close()
+		return nil, TerminalOpenResponse{}, ErrAuthentication
+	}
 	ctx, cancel := context.WithCancel(parent)
-	t := &streamTerminal{retained: ready.Retained, createdAt: ready.CreatedAt, hostID: hostID, sessionID: ready.SessionID, buffer: terminal.NewBuffer(terminal.DefaultBufferBytes, ready.Offset),
+	// Local resource expiry must never depend on an untrusted peer's clock.
+	t := &streamTerminal{retained: retained, createdAt: time.Now().UTC(), hostID: hostID, sessionID: ready.SessionID, buffer: terminal.NewBuffer(terminal.DefaultBufferBytes, ready.Offset),
 		dial: dial, fallback: fallback, ctx: ctx, cancel: cancel, pending: make(map[uint64]chan string), lastUsed: time.Now(), reliable: ready.InputProtocol == terminal.InputProtocol}
 	t.attach(conn)
 	if retained && !ready.Retained {
@@ -538,7 +544,7 @@ func openStreamTerminal(ctx, parent context.Context, hostID string, dial streamT
 		conn.close()
 		return nil, TerminalOpenResponse{}, ErrTerminalRetentionUnavailable
 	}
-	return t, TerminalOpenResponse{Retained: ready.Retained, SessionID: ready.SessionID, Offset: ready.Offset, CreatedAt: ready.CreatedAt}, nil
+	return t, TerminalOpenResponse{Retained: ready.Retained, SessionID: ready.SessionID, Offset: ready.Offset, CreatedAt: t.createdAt}, nil
 }
 
 func (t *streamTerminal) attach(conn *fileStreamConn) {

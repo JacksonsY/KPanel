@@ -332,11 +332,17 @@ func (s *Service) ServeFileStream(w http.ResponseWriter, r *http.Request, source
 
 // track registers an outbound socket under a peer owner so revocation and
 // shutdown close it exactly like inbound sockets.
-func (h *fileStreamHub) track(c *fileStreamConn, owner string) {
+func (h *fileStreamHub) track(c *fileStreamConn, owner string, allowed func() bool) bool {
 	h.mu.Lock()
+	if c.ctx.Err() != nil || !allowed() {
+		h.mu.Unlock()
+		c.close()
+		return false
+	}
 	h.connections[c] = owner
 	h.mu.Unlock()
 	context.AfterFunc(c.ctx, func() { h.mu.Lock(); delete(h.connections, c); h.mu.Unlock() })
+	return true
 }
 
 func (h *fileStreamHub) terminalAvailable(node string) bool {

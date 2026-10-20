@@ -119,3 +119,74 @@ func TestTerminalReconnectStopsOnDefinitiveAuthenticationFailure(t *testing.T) {
 		t.Fatalf("calls=%d degraded=%v", calls, s.isDegraded())
 	}
 }
+
+type forgedTerminalMetadataBackend struct{ managerTerminalBackend }
+
+func (b forgedTerminalMetadataBackend) Open(ctx context.Context, owner string, rows, cols uint16) (terminal.Snapshot, error) {
+	s, err := b.managerTerminalBackend.Open(ctx, owner, rows, cols)
+	s.Retained = true
+	s.CreatedAt = time.Now().Add(100 * 365 * 24 * time.Hour)
+	return s, err
+}
+func (b forgedTerminalMetadataBackend) OpenRetained(ctx context.Context, owner string, rows, cols uint16) (terminal.Snapshot, error) {
+	s, err := b.managerTerminalBackend.OpenRetained(ctx, owner, rows, cols)
+	s.CreatedAt = time.Now().Add(100 * 365 * 24 * time.Hour)
+	return s, err
+}
+func TestTerminalPeerCannotExtendLocalRetentionOrUpgradeTemporarySession(t *testing.T) {
+	f := newStreamFixture(t, nil)
+	f.service.terminal = forgedTerminalMetadataBackend{managerTerminalBackend{manager: newEchoManager(t)}}
+	var dials atomic.Int32
+	if s, _, err := openStreamTerminal(context.Background(), context.Background(), "host", f.panelTerminalDialer(t, &dials), nil, 24, 80); !errors.Is(err, ErrAuthentication) || s != nil {
+		t.Fatalf("unexpected retention: stream=%v err=%v", s, err)
+	}
+	before := time.Now()
+	s, opened, err := openStreamTerminal(context.Background(), context.Background(), "host", f.panelTerminalDialer(t, &dials), nil, 24, 80, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.shutdown()
+	if s.createdAt.Before(before) || s.createdAt.After(time.Now()) || !opened.CreatedAt.Equal(s.createdAt) {
+		t.Fatal("peer clock controls local lifetime")
+	}
+	p := newPanelStreams()
+	defer p.closeAll()
+	if !p.putTerminal(s) {
+		t.Fatal("admission failed")
+	}
+	p.expire(opened.CreatedAt.Add(terminal.DefaultLifetime))
+	if p.terminal("host", opened.SessionID) != nil {
+		t.Fatal("future peer clock escaped lifetime")
+	}
+}
+
+func TestTerminalDuplicateHandleNeverDisplacesTrackedSession(t *testing.T) {
+	p := newPanelStreams()
+	defer p.closeAll()
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	first := &streamTerminal{ctx: ctx, hostID: "host", sessionID: "duplicate", cancel: stop, buffer: terminal.NewBuffer(32, 0)}
+	second := &streamTerminal{ctx: ctx, hostID: "host", sessionID: "duplicate"}
+	if !p.putTerminal(first) || p.putTerminal(second) || p.terminal("host", "duplicate") != first {
+		t.Fatal("peer duplicate displaced tracked session")
+	}
+}
+
+func TestTerminalOutboundRegistrationRejectsRevocationDuringDial(t *testing.T) {
+	f := newStreamFixture(t, nil)
+	f.service.terminal = managerTerminalBackend{manager: newEchoManager(t)}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	c, err := f.dial(ctx, f.key, fileStreamHello{Role: streamRolePanelTerminal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := newFileStreamHub()
+	defer h.closeAll()
+	if h.track(c, "host:removed", func() bool { return false }) {
+		t.Fatal("revoked peer admitted after dial")
+	}
+	if c.ctx.Err() == nil || len(h.connections) != 0 {
+		t.Fatal("late socket remained alive or indexed")
+	}
+}

@@ -271,10 +271,18 @@ func (p *panelStreams) terminal(hostID, sessionID string) *streamTerminal {
 	return p.terminals[streamTerminalKey(hostID, sessionID)]
 }
 
-func (p *panelStreams) putTerminal(t *streamTerminal) {
+func (p *panelStreams) putTerminal(t *streamTerminal) bool {
 	p.mu.Lock()
-	p.terminals[streamTerminalKey(t.hostID, t.sessionID)] = t
-	p.mu.Unlock()
+	defer p.mu.Unlock()
+	key := streamTerminalKey(t.hostID, t.sessionID)
+	if previous := p.terminals[key]; previous != nil && previous != t {
+		return false
+	}
+	if t.ctx.Err() != nil {
+		return false
+	}
+	p.terminals[key] = t
+	return true
 }
 
 func (p *panelStreams) deleteTerminal(t *streamTerminal) {
@@ -308,7 +316,16 @@ func (s *Service) dialPanelHost(ctx context.Context, hostID, role string) (*file
 	if err != nil {
 		return nil, &streamDialError{err}
 	}
-	s.fileStreamHub.track(conn, "host:"+hostID)
+	if !s.fileStreamHub.track(conn, "host:"+hostID, func() bool {
+		current, err := s.storeV2.Host(hostID)
+		if err != nil || current.State != hostStateV2Active || current.Origin != record.Origin || current.ControllerID != record.ControllerID || current.RemoteNodeID != record.RemoteNodeID || current.CredentialFile != record.CredentialFile {
+			return false
+		}
+		scope := normalizedV2Scope(current.Scope)
+		return role == streamRolePanelFile && ScopeAllowsFiles(scope) || (role == streamRolePanelTerminal || role == streamRolePanelTerminalReady) && ScopeAllowsTerminal(scope)
+	}) {
+		return nil, &streamDialError{ErrTerminalUnavailable}
+	}
 	return conn, nil
 }
 
@@ -478,7 +495,15 @@ func (s *Service) openPanelStreamTerminal(ctx context.Context, hostID string, ro
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
-	s.streams.putTerminal(t)
+	// Serialize final admission with deletion's closePeer/forgetHost cleanup.
+	s.fileStreamHub.mu.Lock()
+	record, hostErr := s.storeV2.Host(hostID)
+	allowed := hostErr == nil && record.State == hostStateV2Active && ScopeAllowsTerminal(normalizedV2Scope(record.Scope)) && s.streams.putTerminal(t)
+	s.fileStreamHub.mu.Unlock()
+	if !allowed {
+		t.shutdown()
+		return TerminalOpenResponse{}, ErrTerminalUnavailable
+	}
 	return response, nil
 }
 
@@ -494,7 +519,10 @@ func (s *Service) openLightStreamTerminal(ctx context.Context, nodeID string, ro
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
-	s.streams.putTerminal(t)
+	if !s.streams.putTerminal(t) {
+		t.shutdown()
+		return TerminalOpenResponse{}, ErrTerminalUnavailable
+	}
 	return response, nil
 }
 
