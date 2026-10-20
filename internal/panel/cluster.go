@@ -99,6 +99,9 @@ func (s *Server) Close() error {
 		s.stopBackupSchedule()
 		s.backups.Close()
 	}
+	if s.terminalBatches != nil {
+		s.terminalBatches.Close()
+	}
 	s.closeRemoteDownloadJobs()
 	s.terminalStreams.closeAll()
 	s.closeTerminalSessions()

@@ -507,9 +507,8 @@ onMounted(() => {
       // Wait for a pending open so closing the window cannot orphan its PTY.
       await openingRequest?.catch(() => undefined)
       await nextTick()
-      if (batchRunning.value && !window.confirm(t('terminal.closeBatchExecutionConfirm'))) return false
       const activeCount = activeInteractiveSessionCount.value
-      if (!batchRunning.value && activeCount && !window.confirm(t('terminal.closeSessionsConfirm', { count: activeCount }))) return false
+      if (activeCount && !window.confirm(t('terminal.closeSessionsConfirm', { count: activeCount }))) return false
       const results = await Promise.all(sessions.value.map(item => closeSession(item.id)))
       return results.every(Boolean)
     } finally {
