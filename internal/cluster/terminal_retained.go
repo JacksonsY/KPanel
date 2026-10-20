@@ -10,6 +10,30 @@ import (
 
 var ErrTerminalRetentionUnavailable = errors.New("retained terminals are not supported")
 
+// TerminalCapabilities are queried at the actual PTY owner, never from telemetry.
+// Implementations may return both flags in one authenticated local request.
+type TerminalCapabilities struct {
+	Protocol string `json:"protocol"`
+	Retained bool   `json:"retained,omitempty"`
+}
+
+type TerminalCapabilityBackend interface {
+	TerminalCapabilities(context.Context) (TerminalCapabilities, error)
+}
+
+func terminalBackendCapabilities(ctx context.Context, b TerminalBackend) (TerminalCapabilities, error) {
+	if combined, ok := b.(TerminalCapabilityBackend); ok {
+		return combined.TerminalCapabilities(ctx)
+	}
+	var result TerminalCapabilities
+	if reliable, ok := b.(SequencedTerminalBackend); ok && reliable.SupportsSequencedInput(ctx) {
+		result.Protocol = terminal.InputProtocol
+	}
+	var err error
+	result.Retained, err = supportsRetainedTerminals(ctx, b)
+	return result, err
+}
+
 // RetainedTerminalBackend is optional: old nodes must reject rather than silently downgrade.
 type RetainedTerminalBackend interface {
 	OpenRetained(context.Context, string, uint16, uint16) (terminal.Snapshot, error)

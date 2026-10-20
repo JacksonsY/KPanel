@@ -324,8 +324,8 @@ func (s *Service) ServeFileStream(w http.ResponseWriter, r *http.Request, source
 			controller, err := s.storeV2.Controller(controllerID)
 			return err == nil && controller.State == controllerStateV2Active && ScopeAllowsFiles(normalizedV2Scope(controller.Scope))
 		})
-	case streamRolePanelTerminal:
-		result.SessionID = serveTerminalStream(c, s.terminal, "federation:"+envelope.ControllerID, nil)
+	case streamRolePanelTerminal, streamRolePanelTerminalReady:
+		result.SessionID = serveTerminalStreamReady(c, s.terminal, "federation:"+envelope.ControllerID, nil, hello.Role == streamRolePanelTerminalReady)
 	}
 	return
 }
@@ -442,7 +442,7 @@ func (s *Service) authorizeFileStream(envelope v2Envelope) (fileStreamHello, *no
 		if !panel || !ScopeAllowsFiles(normalizedV2Scope(controller.Scope)) || s.panelFileRelay == nil {
 			return fail()
 		}
-	case streamRolePanelTerminal:
+	case streamRolePanelTerminal, streamRolePanelTerminalReady:
 		if !panel || !ScopeAllowsTerminal(normalizedV2Scope(controller.Scope)) || s.terminal == nil {
 			return fail()
 		}

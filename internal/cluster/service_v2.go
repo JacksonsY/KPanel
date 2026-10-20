@@ -579,6 +579,7 @@ func (s *Service) pollV2Locked(ctx context.Context, id string) {
 				)
 				if err == nil {
 					s.streams.setCapable(record.ID, hasFederationCapability(capabilities, PanelStreamCapability))
+					s.streams.setTerminalReady(record.ID, hasFederationCapability(capabilities, PanelTerminalReadyCapability))
 				}
 			} else {
 				summary, err = s.remoteV2.SummaryV2(

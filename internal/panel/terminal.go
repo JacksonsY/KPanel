@@ -31,7 +31,11 @@ const (
 	panelTerminalLaunchTTL  = 5 * time.Minute
 )
 
-type clusterTerminalSource struct{ agent agentAPI }
+type clusterTerminalSource struct {
+	agent agentAPI
+	// Request-scoped only; never cached across Agent restarts or opens.
+	capabilities *cluster.TerminalCapabilities
+}
 
 type panelTerminalSession struct {
 	ID               string
@@ -147,30 +151,31 @@ func (s clusterTerminalSource) Input(ctx context.Context, owner, id string, data
 }
 
 func (s clusterTerminalSource) SupportsSequencedInput(ctx context.Context) bool {
-	response, err := s.agent.Do(ctx, http.MethodPost, "/v1/terminals/capabilities/input-protocol", "", newRequestID(), []byte("{}"))
-	var result struct {
-		Protocol string `json:"protocol"`
-		Retained bool   `json:"retained,omitempty"`
-	}
-	return decodeTerminalAgentResponse(response, err, &result) == nil && result.Protocol == terminal.InputProtocol
+	result, err := s.TerminalCapabilities(ctx)
+	return err == nil && result.Protocol == terminal.InputProtocol
 }
 
 func (s clusterTerminalSource) SupportsRetainedTerminals(ctx context.Context) (bool, error) {
+	result, err := s.TerminalCapabilities(ctx)
+	return result.Retained, err
+}
+
+func (s clusterTerminalSource) TerminalCapabilities(ctx context.Context) (cluster.TerminalCapabilities, error) {
+	if s.capabilities != nil {
+		return *s.capabilities, nil
+	}
 	response, err := s.agent.Do(ctx, http.MethodPost, "/v1/terminals/capabilities/input-protocol", "", newRequestID(), []byte("{}"))
 	if err != nil {
-		return false, err
+		return cluster.TerminalCapabilities{}, err
 	}
 	if response.StatusCode == http.StatusNotFound {
-		return false, nil
+		return cluster.TerminalCapabilities{}, nil
 	}
-	var result struct {
-		Protocol string `json:"protocol"`
-		Retained bool   `json:"retained,omitempty"`
-	}
+	var result cluster.TerminalCapabilities
 	if err := decodeTerminalAgentResponse(response, nil, &result); err != nil {
-		return false, err
+		return cluster.TerminalCapabilities{}, err
 	}
-	return result.Retained, nil
+	return result, nil
 }
 
 func (s clusterTerminalSource) InputSequenced(ctx context.Context, owner, id string, frame terminal.InputFrame) error {
@@ -421,15 +426,25 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 		auditType, auditTarget = "docker_container", input.ContainerID
 	}
 	var opened cluster.TerminalOpenResponse
+	var localReliable bool
 	if host.IsLocal {
+		source := clusterTerminalSource{agent: s.agent}
 		var snapshot terminal.Snapshot
 		var openErr error
 		if input.ContainerID != "" {
-			snapshot, openErr = (clusterTerminalSource{agent: s.agent}).OpenContainer(r.Context(), owner, input)
+			snapshot, openErr = source.OpenContainer(r.Context(), owner, input)
 		} else if input.Retained {
-			snapshot, openErr = (clusterTerminalSource{agent: s.agent}).OpenRetained(r.Context(), owner, input.Rows, input.Columns)
+			var capability cluster.TerminalCapabilities
+			capability, openErr = source.TerminalCapabilities(r.Context())
+			if openErr == nil {
+				source.capabilities = &capability
+				snapshot, openErr = source.OpenRetained(r.Context(), owner, input.Rows, input.Columns)
+			}
 		} else {
-			snapshot, openErr = (clusterTerminalSource{agent: s.agent}).Open(r.Context(), owner, input.Rows, input.Columns)
+			snapshot, openErr = source.Open(r.Context(), owner, input.Rows, input.Columns)
+		}
+		if openErr == nil {
+			localReliable = source.SupportsSequencedInput(r.Context())
 		}
 		err = openErr
 		opened = cluster.TerminalOpenResponse{SessionID: snapshot.ID, Offset: snapshot.Offset, CreatedAt: snapshot.CreatedAt, Retained: snapshot.Retained}
@@ -472,7 +487,7 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 	now := time.Now().UTC()
 	item := panelTerminalSession{ID: publicID, BackendSessionID: opened.SessionID, HostID: host.ID, UserID: userID, Owner: owner, CreatedAt: now, UpdatedAt: now, Retained: input.Retained, ShortcutID: input.ShortcutID, Purpose: input.Purpose, Title: launchTitle, LaunchUncertain: launchCommand != ""}
 	if host.IsLocal {
-		item.ReliableInput = (clusterTerminalSource{agent: s.agent}).SupportsSequencedInput(r.Context())
+		item.ReliableInput = localReliable
 	} else {
 		item.ReliableInput = s.cluster.TerminalSupportsSequencedInput(host.ID, opened.SessionID)
 	}

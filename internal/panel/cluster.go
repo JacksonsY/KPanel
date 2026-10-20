@@ -766,7 +766,7 @@ func (s *Server) handleFederationV2(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/api/v2/federation/summary" {
 		// Unauthenticated hint only: a forged value makes the controller try a
 		// stream whose Noise handshake fails closed, then fall back to v2.
-		w.Header().Set(cluster.FederationCapabilitiesHeader, cluster.PanelStreamCapability)
+		w.Header().Set(cluster.FederationCapabilitiesHeader, cluster.PanelStreamCapability+","+cluster.PanelTerminalReadyCapability)
 	}
 	s.writeJSON(w, status, response)
 }

@@ -41,21 +41,23 @@ func (streamResolver) LookupNetIP(context.Context, string, string) ([]net.IP, er
 }
 
 type fileStreamNodeOptions struct {
-	advertiseStream bool
-	rejectStream    bool
-	terminal        cluster.TerminalBackend
+	advertiseStream        bool
+	advertiseTerminalReady bool
+	rejectStream           bool
+	terminal               cluster.TerminalBackend
 	// latency delays each direction of the controller's outbound connections.
 	latency time.Duration
 }
 
 type fileStreamNode struct {
-	service *cluster.Service
-	server  *httptest.Server
-	root    string
-	manager *filemanager.Manager
-	origin  string
-	calls   atomic.Int32
-	legacy  atomic.Int32
+	service    *cluster.Service
+	server     *httptest.Server
+	root       string
+	manager    *filemanager.Manager
+	origin     string
+	calls      atomic.Int32
+	readyCalls atomic.Int32
+	legacy     atomic.Int32
 	// terminalLegacy counts v2 POST terminal requests.
 	terminalLegacy atomic.Int32
 }
@@ -83,7 +85,10 @@ func newFileStreamNodeWith(t *testing.T, options fileStreamNodeOptions) *fileStr
 				http.NotFound(w, r)
 				return
 			}
-			n.service.ServeFileStream(w, r, "198.51.100.20")
+			result := n.service.ServeFileStream(w, r, "198.51.100.20")
+			if result.Role == "panel-terminal-ready" {
+				n.readyCalls.Add(1)
+			}
 			return
 		}
 		if strings.Contains(r.URL.Path, "/files/") && r.URL.Path != "/api/v2/federation/files/link" {
@@ -108,6 +113,9 @@ func newFileStreamNodeWith(t *testing.T, options fileStreamNodeOptions) *fileStr
 		}
 		if options.advertiseStream && r.URL.Path == "/api/v2/federation/summary" {
 			w.Header().Set(cluster.FederationCapabilitiesHeader, cluster.PanelStreamCapability)
+			if options.advertiseTerminalReady {
+				w.Header().Set(cluster.FederationCapabilitiesHeader, cluster.PanelStreamCapability+",panel-terminal-ready-v1")
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(response)

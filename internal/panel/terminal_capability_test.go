@@ -63,3 +63,20 @@ func TestRetainedAgentPreflightKeepsNewAgentInputAndRetentionCompatible(t *testi
 		t.Fatalf("retained open = %#v, %v, opens=%d", opened, err, agent.opened)
 	}
 }
+
+func TestLocalRetainedOpenUsesOneFreshCapabilityProbePerRequest(t *testing.T) {
+	s, path := newTestServer(t)
+	a := &terminalConnectAgent{}
+	s.agent = a
+	cookie, csrf := bootstrapCookies(t, s, path)
+	body := []byte(`{"hostId":"local","rows":24,"columns":80,"retained":true}`)
+	first := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions", body, cookie, csrf, retainedHeaders(csrf))
+	if first.Code != http.StatusCreated || a.probes != 1 || a.opened != 1 {
+		t.Fatalf("status=%d probes=%d opens=%d", first.Code, a.probes, a.opened)
+	}
+	a.unsupported = true // Agent capabilities can change between connections.
+	second := authenticatedRequest(s, http.MethodPost, "/api/v1/terminal-sessions", body, cookie, csrf, retainedHeaders(csrf))
+	if second.Code != http.StatusConflict || a.probes != 2 || a.opened != 1 {
+		t.Fatalf("stale capability: status=%d probes=%d opens=%d", second.Code, a.probes, a.opened)
+	}
+}
