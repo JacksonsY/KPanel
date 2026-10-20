@@ -141,7 +141,6 @@ import {
 } from '@/lib/desktopIconLayout'
 import {
   deriveDesktopGridLayout,
-  reflowDesktopGridLayout,
   desktopGridPlacementRect,
   dropDesktopGridItem,
   moveDesktopGridItemByKeyboard,
@@ -432,7 +431,10 @@ const iconsElement = ref<HTMLElement>()
 const initialLayoutReady = ref(false)
 const initialLayoutTransitionsReady = ref(false)
 const viewportLayoutResizing = ref(false)
-const layoutBeforeResize = ref<{ bounds: DesktopIconBounds; order: string[] }>()
+const layoutBeforeResize = ref<{
+  bounds: DesktopIconBounds
+  placements: Array<Pick<DesktopGridPlacement, 'key' | 'position'>>
+}>()
 const desktopElement = ref<HTMLElement>()
 const iconBounds = ref<DesktopIconBounds>({ width: 90, height: 96 })
 const compactIconLayout = ref(window.innerWidth <= 760)
@@ -804,7 +806,7 @@ const savedPlacements = computed<Array<Pick<DesktopGridPlacement, 'key' | 'posit
 const renderedDesktopLayout = computed(() => layoutBeforeResize.value
   && (layoutBeforeResize.value.bounds.width !== iconBounds.value.width
     || layoutBeforeResize.value.bounds.height !== iconBounds.value.height)
-  ? reflowDesktopGridLayout(allDesktopLayoutItems.value, layoutBeforeResize.value.order, iconBounds.value, compactIconLayout.value)
+  ? deriveDesktopGridLayout(allDesktopLayoutItems.value, layoutBeforeResize.value.placements, iconBounds.value, compactIconLayout.value)
   : deriveDesktopGridLayout(
   allDesktopLayoutItems.value,
   savedPlacements.value,
@@ -1670,11 +1672,9 @@ function measureIconWorkArea(): void {
       const placements = renderedDesktopLayout.value.placements
       layoutBeforeResize.value = {
         bounds: { ...iconBounds.value },
-        order: [...placements].sort((left, right) => {
-          const a = desktopGridPlacementRect(left, iconBounds.value)
-          const b = desktopGridPlacementRect(right, iconBounds.value)
-          return a.left - b.left || a.top - b.top
-        }).map(item => item.key),
+        // Keep spatial anchors (including intentional gaps), not just reading order.
+        // Viewport adaptation must not turn a manual layout into auto-arrange.
+        placements: [...savedPlacements.value, ...placements].map(({ key, position }) => ({ key, position: { ...position } })),
       }
     }
     iconBounds.value = bounds

@@ -386,6 +386,77 @@ describe('DesktopView icon layout interaction', () => {
     wrapper.unmount()
   })
 
+  it.each([false, true])('preserves a moved icon when resizing with save pending=%s', async pending => {
+    const request = deferred<DesktopWorkspace>()
+    if (pending) updateWorkspace.mockReturnValueOnce(request.promise)
+    const wrapper = mount(DesktopView, { attachTo: document.body })
+    await flushPromises()
+    const slot = wrapper.get('[data-icon-key="nav:/overview"]')
+    slot.element.dispatchEvent(pointer('pointerdown', 30, 30))
+    window.dispatchEvent(pointer('pointermove', 695, 30))
+    window.dispatchEvent(pointer('pointerup', 695, 30))
+    await flushPromises()
+    const moved = slot.attributes('style')
+    expect(moved).toContain('translate3d(665px, 0px, 0)')
+    const body = updateWorkspace.mock.calls[0]![0]
+    try {
+      for (const width of [1270, 1280, 650, 1270, 1280]) {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
+        window.dispatchEvent(new Event('resize'))
+        await new Promise(resolve => setTimeout(resolve, 220))
+        await flushPromises()
+        if (width > 760) expect(slot.attributes('style')).toBe(moved)
+      }
+      if (pending) {
+        request.resolve(workspace({ positions: body.positions, widgetPositions: body.widgetPositions }))
+        await flushPromises()
+        expect(slot.attributes('style')).toBe(moved)
+      }
+      expect(updateWorkspace).toHaveBeenCalledTimes(1)
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('preserves a moved widget when resizing instead of resetting its default column', async () => {
+    const wrapper = mount(DesktopView, { attachTo: document.body })
+    await flushPromises()
+    const widget = wrapper.get('[aria-label="widget:clock"]')
+    widget.get('.desktop-widget__drag-handle').element.dispatchEvent(pointer('pointerdown', 900, 40))
+    window.dispatchEvent(pointer('pointermove', 760, 180))
+    window.dispatchEvent(pointer('pointerup', 760, 180))
+    await flushPromises()
+    const moved = widget.attributes('style')
+    try {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1270 })
+      window.dispatchEvent(new Event('resize'))
+      await new Promise(resolve => setTimeout(resolve, 220))
+      await flushPromises()
+      expect(widget.attributes('style')).toBe(moved)
+      expect(updateWorkspace).toHaveBeenCalledTimes(1)
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('restores saved widget anchors when widening an initially compact desktop', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 650 })
+    loadWorkspace.mockResolvedValueOnce(workspace({ widgetPositions: { 'widget:clock': { x: 0.5, y: 0 } } }))
+    const wrapper = mount(DesktopView, { attachTo: document.body })
+    await flushPromises()
+    try {
+      expect(wrapper.find('[aria-label="widget:clock"]').exists()).toBe(false)
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 })
+      window.dispatchEvent(new Event('resize'))
+      await new Promise(resolve => setTimeout(resolve, 220))
+      await flushPromises()
+      expect(wrapper.get('[aria-label="widget:clock"]').attributes('style')).toContain('left: 570px')
+      expect(updateWorkspace).not.toHaveBeenCalled()
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   it('persists a widget drop in widgetPositions and supports keyboard nudging', async () => {
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await flushPromises()
