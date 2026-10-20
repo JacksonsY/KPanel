@@ -838,9 +838,8 @@ html[data-desktop-shell-style='win98'] .desktop .desktop-window__body .process-t
   box-shadow: none;
 }
 
-.desktop[data-shell-style='win98'] .desktop__context-menu button:hover,
-.desktop[data-shell-style='win98'] .desktop__context-menu button:focus-visible,
-.desktop[data-shell-style='win98'] .desktop__context-menu button[data-context-menu-active] {
+.desktop[data-shell-style='win98'] .desktop__context-menu:not([data-context-menu-focus='keyboard']) button:hover:not(:disabled),
+.desktop[data-shell-style='win98'] .desktop__context-menu[data-context-menu-focus='keyboard'] button[data-context-menu-active] {
   color: #fff;
   background: #000080;
   outline: 0;

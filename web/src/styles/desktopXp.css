@@ -1140,9 +1140,12 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
   flex: 0 0 16px;
 }
 
-.desktop[data-shell-style='xp'] .desktop__context-menu button:hover:not(:disabled),
-.desktop[data-shell-style='xp'] .desktop__context-menu button:focus-visible,
-.desktop[data-shell-style='xp'] .desktop__context-menu button[data-context-menu-active] {
+.desktop:is([data-shell-style='xp'], [data-shell-style='win98']) .desktop__context-menu[data-context-menu-focus='keyboard'] button:hover:not([data-context-menu-active]) {
+  background: transparent;
+}
+
+.desktop[data-shell-style='xp'] .desktop__context-menu:not([data-context-menu-focus='keyboard']) button:hover:not(:disabled),
+.desktop[data-shell-style='xp'] .desktop__context-menu[data-context-menu-focus='keyboard'] button[data-context-menu-active] {
   color: #fff;
   background: var(--desktop-xp-menu-selection);
   outline: 0;
