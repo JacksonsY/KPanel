@@ -63,19 +63,22 @@ describe('desktop shell style preference', () => {
     expect(style.preference.value).toBe('modern')
   })
 
-  it('selects the matching classic wallpaper when entering Win98 and keeps it when returning to native', () => {
+  it.each(['xp', 'win98'] as const)('restores the native wallpaper when returning from %s', (windowsStyle) => {
     initializeDesktopShellStyle()
     const style = useDesktopShellStyle()
 
-    style.setStyle('win98')
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('win98')
-    expect(style.preference.value).toBe('win98')
+    style.setStyle(windowsStyle)
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(windowsStyle)
+    expect(style.preference.value).toBe(windowsStyle)
     expect(wallpaper.select).toHaveBeenCalledOnce()
-    expect(wallpaper.select).toHaveBeenCalledWith('win98-teal')
+    expect(wallpaper.select).toHaveBeenCalledWith(windowsStyle === 'win98' ? 'win98-teal' : 'xp')
 
     style.setStyle('modern')
     expect(style.preference.value).toBe('modern')
-    expect(wallpaper.select).toHaveBeenCalledOnce()
+    expect(wallpaper.select).toHaveBeenCalledTimes(2)
+    expect(wallpaper.select).toHaveBeenLastCalledWith('classic')
+    style.setStyle('modern')
+    expect(wallpaper.select).toHaveBeenCalledTimes(2)
   })
 
   it('does not reset a manually selected wallpaper when XP is already active', () => {

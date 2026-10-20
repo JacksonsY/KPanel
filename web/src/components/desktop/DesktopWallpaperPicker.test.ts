@@ -118,7 +118,7 @@ describe('DesktopWallpaperPicker uploaded wallpapers', () => {
 
     await wrapper.get('.desktop-shell-style-options [role="radio"][aria-checked="false"]').trigger('click')
     expect(useDesktopShellStyle().preference.value).toBe('modern')
-    expect(window.localStorage.getItem(DESKTOP_WALLPAPER_KEY)).toBe('win98-teal')
+    expect(window.localStorage.getItem(DESKTOP_WALLPAPER_KEY)).toBe('classic')
     expect(wrapper.find('.desktop-shell-style-options [aria-checked="true"]').text()).toContain('KPanel 原生')
 
     wrapper.unmount()
