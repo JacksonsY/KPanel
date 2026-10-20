@@ -19,12 +19,11 @@ import (
 )
 
 const (
-	MaxJobs         = 10
 	MaxHosts        = 64
 	MaxCommandBytes = 16 << 10
 	MaxOutputBytes  = 16 << 10
-	maxFileBytes    = 2 << 20
-	retention       = 7 * 24 * time.Hour
+	maxFileBytes    = 2 << 20 // Bound storage by bytes, without evicting unexpired batches by count.
+	retention       = 24 * time.Hour
 )
 
 var (
@@ -149,7 +148,7 @@ func Open(root string, driver Driver, options Options) (*Manager, error) {
 		return m, nil
 	}
 	var extra any
-	if dec.Decode(&extra) != io.EOF || disk.Version != 1 || len(disk.Jobs) > MaxJobs {
+	if dec.Decode(&extra) != io.EOF || disk.Version != 1 {
 		m.available = false
 		return m, nil
 	}
@@ -256,10 +255,6 @@ func (m *Manager) Create(user, id, command string, hosts []Host) (Job, error) {
 	previous := m.jobs
 	m.jobs = append([]Job{j}, m.jobs...)
 	m.pruneLocked(now)
-	if len(m.jobs) > MaxJobs {
-		m.jobs = previous
-		return Job{}, ErrBusy
-	}
 	if err := m.persistLocked(); err != nil {
 		m.jobs = previous
 		return Job{}, ErrUnavailable
@@ -387,19 +382,6 @@ func (m *Manager) pruneLocked(now time.Time) {
 		}
 	}
 	m.jobs = kept
-	for len(m.jobs) > MaxJobs {
-		removed := false
-		for i := len(m.jobs) - 1; i >= 0; i-- {
-			if m.jobs[i].State != "running" && len(m.cleanup[m.jobs[i].ID]) == 0 {
-				m.jobs = append(m.jobs[:i], m.jobs[i+1:]...)
-				removed = true
-				break
-			}
-		}
-		if !removed {
-			break
-		}
-	}
 }
 
 func (m *Manager) persistLocked() error {
