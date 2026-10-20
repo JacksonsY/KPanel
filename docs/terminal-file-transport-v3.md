@@ -190,6 +190,35 @@ v1.16.0 让普通 Panel 使用文件 WebSocket，并在升级后遇到 404/405/4
 
 ### 5.1 面板之间（`internal/cluster`）
 
+2026-10-20 终端连接增量（本地候选，发布状态以版本验收记录为准）：
+
+- 新目标额外声明 `panel-terminal-ready-v1`；中心使用 `panel-terminal-ready` 角色，在 Noise 认证与原有终端
+  scope 校验后接收主动推送的能力，再明确发送 open，省去一次能力探测往返。提示不作为授权依据；旧目标
+  继续使用 `panel-terminal` 与 probe，发出 open 后仍不因结果不确定而重试创建。
+- 实际 Agent 的输入/保留能力可在一次请求中返回；本机 retained open 只在当前请求内复用能力结果，
+  不跨连接或 Agent 重启缓存。远端 probe 同样复用当前连接已确认的输入协议。
+- 终端数据连接每次接收最多等待 45 秒；发送心跳不会延长这个接收期限。恢复采用有上限的随机退避，
+  明确身份拒绝停止重拨；可靠输入不降级到无法去重的 v2 写入。
+- 本地 stream 的寿命从本地创建时刻计算；远端不能将临时请求改为本地保留句柄。重复的 host/session ID
+  不覆盖已有句柄；握手后与最终注册时重新检查主机授权，并与删除连接的清理锁协调。
+
+同一 Linux 环境、相同测试夹具的源码 A/B（12 次远端 open、每次 5 次序号输入回显；本机每组 20 次 open）：
+
+| 条件 | 改前 open p50 / p95 | 改后 open p50 / p95 |
+| --- | --- | --- |
+| Panel 间 RTT 50 ms | 259.489 / 265.849 ms | 206.693 / 215.728 ms |
+| Panel 间 RTT 150 ms | 758.832 / 763.465 ms | 609.415 / 621.865 ms |
+| 本机 Agent 探测注入 5 ms | 14.828 / 15.572 ms | 9.510 / 10.195 ms |
+| 本机 Agent 探测注入 25 ms | 54.721 / 55.913 ms | 29.413 / 31.094 ms |
+
+远端是配对、真实 TLS/Noise 与 retained/sequenced 协议加内存模拟 PTY；本机是认证 Panel handler 加模拟 Agent。
+本机探测调用从每次 2 次降为 1 次。RTT 150 ms 下回显 p50 为 154.762 → 155.202 ms，未显示持续回显提速；
+零注入下本机 p50 为 4.014 → 4.157 ms，不主张零延迟环境加速。单向丢弃接收但 TCP 可写的模型中，旧连接
+49 秒观察期内未恢复，新连接约 45 秒开始恢复并验证同会话输入输出。以上不是公网、真实浏览器或低配主机
+长期负载成绩；复现入口为 `KPANEL_TERMINAL_CONNECT_BENCH=1 go test ./internal/cluster ./internal/panel
+-run 'TerminalConnectPerformance|TerminalHalfOpenPerformance' -count=1 -v`，候选可额外设置
+`KPANEL_TERMINAL_EXPECT_RECOVERY=1` 断言恢复。
+
 - 能力：目标在 v2 摘要响应头声明 `panel-stream-v3`（未认证提示，伪造只会导致握手失败后回退）；
   中心在摘要轮询中记录，删除主机或撤权时清除。
 - 角色：`panel-file`（`cluster.files.read`）、`panel-terminal`（`cluster.terminal.open`），仅限已激活控制端；
