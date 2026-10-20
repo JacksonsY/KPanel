@@ -2955,7 +2955,7 @@ createServer(async (request, response) => {
       if ([...mockBatchJobs.values()].some(job => job.state === 'running')) { send(response, 409, { code: 'batch_busy' }); return }
       const now = new Date().toISOString()
       const job = { id: input.id, command: input.command, state: 'running', createdAt: now, updatedAt: now,
-        results: input.hostIds.map((id, index) => ({ host: { id, name: id === 'local' ? '本机' : id, shell: 'posix' }, state: index < 4 ? 'running' : 'queued', error: index < 4 ? '' : 'waiting_for_capacity', output: index < 4 ? '模拟任务正在执行\n' : '', outputAvailable: true, truncated: false })) }
+        results: input.hostIds.map((id, index) => ({ host: { id, name: visualClusterHosts.find(host => host.id === id)?.name || id, shell: 'posix' }, state: index < 4 ? 'running' : 'queued', error: index < 4 ? '' : 'waiting_for_capacity', output: index < 4 ? '模拟任务正在执行\n' : '', outputAvailable: true, truncated: false })) }
       mockBatchJobs.set(job.id, job)
       // Simulated execution belongs to this mock API, not a browser component.
       const advance = () => {

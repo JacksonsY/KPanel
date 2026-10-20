@@ -124,6 +124,7 @@ const selectableBatchHosts = computed(() => hosts.value.filter((host) => host.te
 watch(hosts, () => { batchSelectionAnchor.value = '' })
 const activeInteractiveSessionCount = computed(() => sessions.value.filter((item) => item.state !== 'finished').length)
 const activeTerminalSessionCount = activeInteractiveSessionCount
+function restoreBatchSelection(ids: string[]) { selectedBatchHostIDs.value = new Set(ids) }
 const batchSessionCapacity = computed(() => Math.max(0, 4 - activeTerminalSessionCount.value))
 
 const hostOperatingSystemIdentity = (host: ClusterHost) =>
@@ -808,7 +809,7 @@ onBeforeUnmount(() => {
             @toggle-fullscreen="toggleWorkspaceFullscreen"
           />
         </div>
-        <BatchTerminalPanel :ref="setBatchPanelRef" class="batch-terminal-stage" :hosts="selectedBatchHosts" :session-capacity="batchSessionCapacity" @running-change="batchRunning = $event" />
+        <BatchTerminalPanel :ref="setBatchPanelRef" class="batch-terminal-stage" :hosts="selectedBatchHosts" :session-capacity="batchSessionCapacity" @running-change="batchRunning = $event" @restore-selection="restoreBatchSelection" />
         <TerminalQuickCommands
           mode="batch"
           :open="quickCommandsOpen && terminalMode === 'batch'"

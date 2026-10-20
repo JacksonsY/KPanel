@@ -12,7 +12,7 @@ import type { BatchState, TerminalBatch } from '@/types/terminalBatch'
 
 function phrase(value: string): string { phraseCatalogVersion.value; return translatePhrase(value) }
 const props = defineProps<{ hosts: ClusterHost[]; sessionCapacity: number }>()
-const emit = defineEmits<{ runningChange: [running: boolean] }>()
+const emit = defineEmits<{ runningChange: [running: boolean]; restoreSelection: [ids: string[]] }>()
 const command = ref('')
 const jobs = ref<TerminalBatch[]>([])
 const selectedID = ref('')
@@ -74,6 +74,7 @@ function errorLabel(code: string): string {
 let disposed = false
 let timer: ReturnType<typeof setTimeout> | undefined
 const controller = new AbortController()
+let restoredID = ''
 let revision = 0
 let pending: { id: string; command: string; hostIds: string[] } | undefined
 async function refresh(): Promise<void> {
@@ -94,6 +95,8 @@ async function refresh(): Promise<void> {
     storageWarning.value = !response.available ? phrase('批量记录不可用，请检查 Panel 数据目录。') : response.warning ? phrase('操作记录保存失败，当前进度可能无法在重启后保留。') : ''
     if (activeJob.value) selectedID.value = activeJob.value.id
     else if (!jobs.value.some(job => job.id === selectedID.value)) selectedID.value = jobs.value[0]?.id || ''
+    const restored = activeJob.value || (loading.value ? selectedJob.value : undefined)
+    if (restored && restored.id !== restoredID) { restoredID = restored.id; emit('restoreSelection', restored.results.map(result => result.host.id)) }
     if (pending && jobs.value.some(job => job.id === pending?.id)) pending = undefined
     await nextTick()
     following.forEach(scrollOutputToBottom)
@@ -281,7 +284,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
 .batch-result__pending { display: flex; min-height: 64px; align-items: center; justify-content: center; gap: 7px; color: var(--terminal-shell-muted, #8a9695); font-size: 14px; }
 .batch-result__notice, .batch-result__error { margin: 0; padding: 9px 13px; font-size: 13px; line-height: 1.45; }
 .batch-result__notice { color: var(--warning); }
-.batch-result__error { color: var(--danger); }
+.batch-result__error { color: var(--danger); font-size:14px; }
 
 @media (max-width: 720px) {
   .batch-command { padding: 14px; }

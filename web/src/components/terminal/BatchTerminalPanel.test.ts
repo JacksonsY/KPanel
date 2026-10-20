@@ -32,6 +32,7 @@ describe('server scheduled terminal batches', () => {
     expect(wrapper.text()).toContain('命令执行中'); expect(wrapper.text()).toContain('k 更新')
     await button(wrapper, '全部展开').trigger('click'); expect(wrapper.get('.batch-result__detail pre').text()).toBe('last output')
     expect(wrapper.get('textarea').element.value).toBe('')
+    expect(wrapper.emitted('restoreSelection')).toEqual([[['local']]])
     expect(mocks.startBatch).not.toHaveBeenCalled(); expect(mocks.open).not.toHaveBeenCalled()
     wrapper.unmount()
   })
