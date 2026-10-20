@@ -445,10 +445,7 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 			"checkedAt":       time.Now().UTC(),
 		})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/auth/bootstrap":
-		s.writeJSON(w, http.StatusOK, struct {
-			Required   bool             `json:"required"`
-			Appearance *loginAppearance `json:"appearance,omitempty"`
-		}{!s.auth.IsInitialized(), s.loginAppearance()})
+		s.handleAuthStatus(w, r)
 	case r.URL.Path == loginWallpaperPath || strings.HasPrefix(r.URL.Path, loginWallpaperPath+"/"):
 		s.handleLoginWallpaper(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/bootstrap":
@@ -1108,22 +1105,50 @@ func (s *Server) auditAuthFailure(r *http.Request, action string) {
 	_ = s.audit(r, "", action, "authentication", "", "failure", nil)
 }
 
-func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
-	sessionToken, session, ok := s.requireSession(w, r)
-	_ = sessionToken
-	if !ok {
-		return
+// The bootstrap status also carries the optional authenticated session, so a
+// fresh browser can resolve initialization and identity in one round trip.
+// Legacy clients continue to read required/appearance and use /auth/session.
+func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
+	response := struct {
+		Required      bool             `json:"required"`
+		Appearance    *loginAppearance `json:"appearance,omitempty"`
+		Authenticated bool             `json:"authenticated"`
+		Session       *authResponse    `json:"session,omitempty"`
+	}{Required: !s.auth.IsInitialized(), Appearance: s.loginAppearance()}
+	if !response.Required {
+		if cookie, err := r.Cookie(s.config.CookieName); err == nil && cookie.Value != "" {
+			if session, err := s.auth.Authenticate(cookie.Value); err == nil {
+				value := s.sessionResponse(r, session)
+				response.Authenticated = true
+				response.Session = &value
+			} else {
+				s.clearAuthCookies(w, r)
+			}
+		}
 	}
+	s.writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) sessionResponse(r *http.Request, session auth.Session) authResponse {
 	csrfToken := s.csrfCookieValue(r)
 	if err := s.auth.ValidateCSRF(session, csrfToken); err != nil {
 		// A stale/missing readable CSRF cookie does not invalidate the session,
 		// but the caller must log in again before any write operation.
 		csrfToken = ""
 	}
-	s.writeJSON(w, http.StatusOK, authResponse{
+	return authResponse{
 		Appearance: s.appearanceSnapshot(),
 		User:       session.User, CSRFToken: csrfToken, ExpiresAt: session.ExpiresAt,
-	})
+	}
+}
+
+func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
+	sessionToken, session, ok := s.requireSession(w, r)
+	_ = sessionToken
+	if !ok {
+		return
+	}
+	s.writeJSON(w, http.StatusOK, s.sessionResponse(r, session))
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {

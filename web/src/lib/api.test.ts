@@ -16,6 +16,36 @@ afterEach(() => {
 })
 
 describe('API client', () => {
+  it('restores the combined session and its CSRF token with one request', async () => {
+    const session = { user: { id: 'owner' }, csrfToken: 'combined-token', expiresAt: '2030-01-01T00:00:00Z' }
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ required: false, authenticated: true, session }))
+      .mockResolvedValueOnce(jsonResponse({}))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(api.auth.status()).resolves.toMatchObject({ authenticated: true, ...session })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await api.auth.logout()
+    expect((fetchMock.mock.calls[1]![1].headers as Headers).get('X-CSRF-Token')).toBe('combined-token')
+  })
+
+  it('resolves a guest from combined bootstrap without a session request', async () => {
+    const appearance = { theme: 'dark' }
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ required: false, authenticated: false, appearance }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(api.auth.status()).resolves.toEqual({ setupRequired: false, authenticated: false, loginAppearance: appearance })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears a previous write token when the combined session has no valid CSRF cookie', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ csrfToken: 'previous', user: { id: 'owner' } }))
+      .mockResolvedValueOnce(jsonResponse({ required: false, authenticated: true, session: { user: { id: 'owner' }, csrfToken: '' } }))
+      .mockResolvedValueOnce(jsonResponse({}))
+    vi.stubGlobal('fetch', fetchMock)
+    await api.auth.login({ username: 'admin', password: 'unused' })
+    await api.auth.status()
+    await api.auth.logout()
+    expect((fetchMock.mock.calls[2]![1].headers as Headers).has('X-CSRF-Token')).toBe(false)
+  })
+
   it('cancels a host-bound file text request through the real client adapter', async () => {
     const controller = new AbortController()
     const fetchMock = vi.fn((_url: string, options: RequestInit) => new Promise<Response>((_resolve, reject) => {

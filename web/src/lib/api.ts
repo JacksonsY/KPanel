@@ -1321,8 +1321,22 @@ export const api = {
       },
     },
     status: async (signal?: AbortSignal): Promise<AuthStatus> => {
-      const bootstrap = await request<{ required: boolean; appearance?: LoginAppearance }>('/auth/bootstrap', { signal })
+      const bootstrap = await request<{
+        required: boolean; appearance?: LoginAppearance; authenticated?: boolean; session?: AuthSession
+      }>('/auth/bootstrap', { signal })
       if (bootstrap.required) return { setupRequired: true, authenticated: false }
+      if (bootstrap.authenticated === false) {
+        return { setupRequired: false, authenticated: false, ...(bootstrap.appearance ? { loginAppearance: bootstrap.appearance } : {}) }
+      }
+      if (bootstrap.authenticated === true && bootstrap.session) {
+        const session = bootstrap.session
+        // The token is nested only in the combined status response. Never
+        // replace a missing/stale CSRF cookie with a newly issued write token.
+        pickCsrfToken(new Headers(), session)
+        return { setupRequired: false, authenticated: true, appearance: session.appearance,
+          user: session.user, csrfToken: session.csrfToken, expiresAt: session.expiresAt }
+      }
+      // Older panels do not include authenticated/session in bootstrap status.
       try {
         const session = await request<AuthSession>('/auth/session', { signal })
         return {

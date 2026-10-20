@@ -324,19 +324,25 @@ func (s *Service) ServeFileStream(w http.ResponseWriter, r *http.Request, source
 			controller, err := s.storeV2.Controller(controllerID)
 			return err == nil && controller.State == controllerStateV2Active && ScopeAllowsFiles(normalizedV2Scope(controller.Scope))
 		})
-	case streamRolePanelTerminal:
-		result.SessionID = serveTerminalStream(c, s.terminal, "federation:"+envelope.ControllerID, nil)
+	case streamRolePanelTerminal, streamRolePanelTerminalReady:
+		result.SessionID = serveTerminalStreamReady(c, s.terminal, "federation:"+envelope.ControllerID, nil, hello.Role == streamRolePanelTerminalReady)
 	}
 	return
 }
 
 // track registers an outbound socket under a peer owner so revocation and
 // shutdown close it exactly like inbound sockets.
-func (h *fileStreamHub) track(c *fileStreamConn, owner string) {
+func (h *fileStreamHub) track(c *fileStreamConn, owner string, allowed func() bool) bool {
 	h.mu.Lock()
+	if c.ctx.Err() != nil || !allowed() {
+		h.mu.Unlock()
+		c.close()
+		return false
+	}
 	h.connections[c] = owner
 	h.mu.Unlock()
 	context.AfterFunc(c.ctx, func() { h.mu.Lock(); delete(h.connections, c); h.mu.Unlock() })
+	return true
 }
 
 func (h *fileStreamHub) terminalAvailable(node string) bool {
@@ -442,7 +448,7 @@ func (s *Service) authorizeFileStream(envelope v2Envelope) (fileStreamHello, *no
 		if !panel || !ScopeAllowsFiles(normalizedV2Scope(controller.Scope)) || s.panelFileRelay == nil {
 			return fail()
 		}
-	case streamRolePanelTerminal:
+	case streamRolePanelTerminal, streamRolePanelTerminalReady:
 		if !panel || !ScopeAllowsTerminal(normalizedV2Scope(controller.Scope)) || s.terminal == nil {
 			return fail()
 		}

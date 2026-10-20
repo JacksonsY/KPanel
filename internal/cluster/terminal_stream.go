@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -199,26 +200,38 @@ func (a *terminalAttachments) detach(id string) {
 // serveTerminalStream runs on the PTY owner (target Panel or light node). It
 // returns the session ID it served, empty when opening or attaching failed.
 func serveTerminalStream(c *fileStreamConn, backend TerminalBackend, owner string, attachments *terminalAttachments) string {
+	return serveTerminalStreamReady(c, backend, owner, attachments, false)
+}
+
+func serveTerminalStreamReady(c *fileStreamConn, backend TerminalBackend, owner string, attachments *terminalAttachments, proactive bool) string {
 	defer c.close()
-	kind, payload, err := c.readControl()
-	if err != nil || backend == nil {
+	if backend == nil {
 		return ""
 	}
+	var kind byte
+	var payload []byte
+	var err error
+	if proactive {
+		kind, payload = termInputProbe, []byte("{}")
+	} else {
+		kind, payload, err = c.readControl()
+	}
+	if err != nil {
+		return ""
+	}
+	var negotiated *TerminalCapabilities
 	// Probe precedes any PTY creation. Old targets close this fresh socket;
 	// retrying an ordinary open is safe because no open was sent on it.
 	if kind == termInputProbe {
 		if string(payload) != "{}" {
 			return ""
 		}
-		protocol := ""
-		if reliable, ok := backend.(SequencedTerminalBackend); ok && reliable.SupportsSequencedInput(c.ctx) {
-			protocol = terminal.InputProtocol
-		}
-		retained, capabilityErr := supportsRetainedTerminals(c.ctx, backend)
+		capability, capabilityErr := terminalBackendCapabilities(c.ctx, backend)
 		if capabilityErr != nil {
 			return ""
 		}
-		if c.writeJSON(termInputProbe, terminalStreamReady{InputProtocol: protocol, Retained: retained}) != nil {
+		negotiated = &capability
+		if c.writeJSON(termInputProbe, terminalStreamReady{InputProtocol: capability.Protocol, Retained: capability.Retained}) != nil {
 			return ""
 		}
 		kind, payload, err = c.readControl()
@@ -231,6 +244,13 @@ func serveTerminalStream(c *fileStreamConn, backend TerminalBackend, owner strin
 	var inputProtocol string
 	var offset int64
 	var createdAt time.Time
+	validProtocol := func(protocol string) bool {
+		if negotiated != nil {
+			_, ok := backend.(SequencedTerminalBackend)
+			return ok && protocol == terminal.InputProtocol && negotiated.Protocol == protocol
+		}
+		return validTerminalInputProtocol(c.ctx, backend, protocol)
+	}
 	switch kind {
 	case termOpen:
 		var input terminalStreamOpen
@@ -238,7 +258,7 @@ func serveTerminalStream(c *fileStreamConn, backend TerminalBackend, owner strin
 			return ""
 		}
 		inputProtocol = input.InputProtocol
-		if inputProtocol != "" && !validTerminalInputProtocol(c.ctx, backend, inputProtocol) {
+		if inputProtocol != "" && !validProtocol(inputProtocol) {
 			return ""
 		}
 		snapshot, openErr := openTerminalBackend(c.ctx, backend, owner, input.Rows, input.Columns, input.Retained)
@@ -254,7 +274,7 @@ func serveTerminalStream(c *fileStreamConn, backend TerminalBackend, owner strin
 			return ""
 		}
 		inputProtocol = input.InputProtocol
-		if inputProtocol != "" && !validTerminalInputProtocol(c.ctx, backend, inputProtocol) {
+		if inputProtocol != "" && !validProtocol(inputProtocol) {
 			return ""
 		}
 		if _, probeErr := backend.Output(c.ctx, owner, input.SessionID, input.Offset, 0); probeErr != nil {
@@ -316,7 +336,9 @@ func serveTerminalStream(c *fileStreamConn, backend TerminalBackend, owner strin
 		}
 	}
 	for {
-		kind, data, err := c.read()
+		// Outbound heartbeats must not extend the receive deadline: a silent
+		// peer may still accept TCP writes while its return path is broken.
+		kind, data, err := c.readControl()
 		if err != nil {
 			return sessionID
 		}
@@ -504,8 +526,14 @@ func openStreamTerminal(ctx, parent context.Context, hostID string, dial streamT
 	if err != nil {
 		return nil, TerminalOpenResponse{}, err
 	}
+	if !retained && ready.Retained {
+		// A peer cannot turn an ordinary shell into a locally retained handle.
+		conn.close()
+		return nil, TerminalOpenResponse{}, ErrAuthentication
+	}
 	ctx, cancel := context.WithCancel(parent)
-	t := &streamTerminal{retained: ready.Retained, createdAt: ready.CreatedAt, hostID: hostID, sessionID: ready.SessionID, buffer: terminal.NewBuffer(terminal.DefaultBufferBytes, ready.Offset),
+	// Local resource expiry must never depend on an untrusted peer's clock.
+	t := &streamTerminal{retained: retained, createdAt: time.Now().UTC(), hostID: hostID, sessionID: ready.SessionID, buffer: terminal.NewBuffer(terminal.DefaultBufferBytes, ready.Offset),
 		dial: dial, fallback: fallback, ctx: ctx, cancel: cancel, pending: make(map[uint64]chan string), lastUsed: time.Now(), reliable: ready.InputProtocol == terminal.InputProtocol}
 	t.attach(conn)
 	if retained && !ready.Retained {
@@ -516,7 +544,7 @@ func openStreamTerminal(ctx, parent context.Context, hostID string, dial streamT
 		conn.close()
 		return nil, TerminalOpenResponse{}, ErrTerminalRetentionUnavailable
 	}
-	return t, TerminalOpenResponse{Retained: ready.Retained, SessionID: ready.SessionID, Offset: ready.Offset, CreatedAt: ready.CreatedAt}, nil
+	return t, TerminalOpenResponse{Retained: ready.Retained, SessionID: ready.SessionID, Offset: ready.Offset, CreatedAt: t.createdAt}, nil
 }
 
 func (t *streamTerminal) attach(conn *fileStreamConn) {
@@ -545,7 +573,7 @@ func (t *streamTerminal) ping(conn *fileStreamConn) {
 
 func (t *streamTerminal) read(conn *fileStreamConn) {
 	for {
-		kind, data, err := conn.read()
+		kind, data, err := conn.readControl()
 		if err != nil {
 			t.disconnected(conn)
 			return
@@ -651,7 +679,14 @@ func (t *streamTerminal) reconnect() {
 			t.buffer.Recover()
 			return
 		}
-		timer := time.NewTimer(delay)
+		if errors.Is(err, ErrAuthentication) {
+			// A definitive identity rejection is not a transient network error.
+			// Keep the original PTY subject to its lifetime, but stop redialing.
+			t.buffer.Fail(err)
+			return
+		}
+		// Equal jitter avoids synchronized retries while preserving the cap.
+		timer := time.NewTimer(terminalReconnectDelay(delay))
 		select {
 		case <-reconnectCtx.Done():
 			timer.Stop()
@@ -666,6 +701,10 @@ func (t *streamTerminal) reconnect() {
 		t.mu.Unlock()
 		t.buffer.Recover()
 	}
+}
+
+func terminalReconnectDelay(cap time.Duration) time.Duration {
+	return cap/2 + time.Duration(rand.Int64N(int64(cap-cap/2)+1))
 }
 
 func (t *streamTerminal) touch() {

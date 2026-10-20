@@ -18,10 +18,12 @@ import (
 )
 
 const (
-	PanelStreamCapability = "panel-stream-v3"
+	PanelStreamCapability        = "panel-stream-v3"
+	PanelTerminalReadyCapability = "panel-terminal-ready-v1"
 
 	streamRolePanelFile            = "panel-file"
 	streamRolePanelTerminal        = "panel-terminal"
+	streamRolePanelTerminalReady   = "panel-terminal-ready"
 	streamRoleLightTerminalControl = "light-terminal-control"
 	streamRoleLightTerminalData    = "light-terminal-data"
 
@@ -64,8 +66,9 @@ func (c *RemoteClient) dialPanelStream(ctx, parent context.Context, origin, cont
 }
 
 type streamHostState struct {
-	capable     bool
-	legacyUntil time.Time
+	capable       bool
+	terminalReady bool
+	legacyUntil   time.Time
 }
 
 type pooledStreamConn struct {
@@ -193,6 +196,20 @@ func (p *panelStreams) setCapable(hostID string, capable bool) {
 	p.hosts[hostID] = state
 }
 
+func (p *panelStreams) setTerminalReady(hostID string, ready bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	state := p.hosts[hostID]
+	state.terminalReady = ready
+	p.hosts[hostID] = state
+}
+
+func (p *panelStreams) terminalReady(hostID string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.hosts[hostID].terminalReady
+}
+
 func (p *panelStreams) usable(hostID string) bool {
 	if p == nil {
 		return false
@@ -254,10 +271,18 @@ func (p *panelStreams) terminal(hostID, sessionID string) *streamTerminal {
 	return p.terminals[streamTerminalKey(hostID, sessionID)]
 }
 
-func (p *panelStreams) putTerminal(t *streamTerminal) {
+func (p *panelStreams) putTerminal(t *streamTerminal) bool {
 	p.mu.Lock()
-	p.terminals[streamTerminalKey(t.hostID, t.sessionID)] = t
-	p.mu.Unlock()
+	defer p.mu.Unlock()
+	key := streamTerminalKey(t.hostID, t.sessionID)
+	if previous := p.terminals[key]; previous != nil && previous != t {
+		return false
+	}
+	if t.ctx.Err() != nil {
+		return false
+	}
+	p.terminals[key] = t
+	return true
 }
 
 func (p *panelStreams) deleteTerminal(t *streamTerminal) {
@@ -279,7 +304,7 @@ func (s *Service) dialPanelHost(ctx context.Context, hostID, role string) (*file
 		return nil, &streamDialError{ErrFileRelayUnavailable}
 	}
 	scope := normalizedV2Scope(record.Scope)
-	if (role == streamRolePanelFile && !ScopeAllowsFiles(scope)) || (role == streamRolePanelTerminal && !ScopeAllowsTerminal(scope)) {
+	if (role == streamRolePanelFile && !ScopeAllowsFiles(scope)) || ((role == streamRolePanelTerminal || role == streamRolePanelTerminalReady) && !ScopeAllowsTerminal(scope)) {
 		return nil, &streamDialError{ErrFileRelayUnavailable}
 	}
 	credential, err := s.secretsV2.ReadCredential(record.CredentialFile)
@@ -291,7 +316,16 @@ func (s *Service) dialPanelHost(ctx context.Context, hostID, role string) (*file
 	if err != nil {
 		return nil, &streamDialError{err}
 	}
-	s.fileStreamHub.track(conn, "host:"+hostID)
+	if !s.fileStreamHub.track(conn, "host:"+hostID, func() bool {
+		current, err := s.storeV2.Host(hostID)
+		if err != nil || current.State != hostStateV2Active || current.Origin != record.Origin || current.ControllerID != record.ControllerID || current.RemoteNodeID != record.RemoteNodeID || current.CredentialFile != record.CredentialFile {
+			return false
+		}
+		scope := normalizedV2Scope(current.Scope)
+		return role == streamRolePanelFile && ScopeAllowsFiles(scope) || (role == streamRolePanelTerminal || role == streamRolePanelTerminalReady) && ScopeAllowsTerminal(scope)
+	}) {
+		return nil, &streamDialError{ErrTerminalUnavailable}
+	}
 	return conn, nil
 }
 
@@ -354,6 +388,14 @@ func startTerminalStream(ctx context.Context, conn *fileStreamConn, first byte, 
 		// ambiguous PTY open through v2 and create a second session.
 		return nil, terminalStreamReady{}, err
 	}
+	return readTerminalStreamReady(ctx, conn, first)
+}
+
+// Also used by the ready role: its authenticated server pushes the capabilities
+// before any client record, saving one RTT without creating a PTY.
+func readTerminalStreamReady(ctx context.Context, conn *fileStreamConn, first byte) (*fileStreamConn, terminalStreamReady, error) {
+	stopCancel := context.AfterFunc(ctx, conn.close)
+	defer stopCancel()
 	// Opening a PTY is quick; do not let a stalled target hold the caller.
 	readCtx, cancel := context.WithTimeout(ctx, terminalStreamReadyTimeout)
 	defer cancel()
@@ -430,6 +472,19 @@ func (f panelTerminalFallback) Close(ctx context.Context, input TerminalCloseReq
 
 func (s *Service) openPanelStreamTerminal(ctx context.Context, hostID string, rows, columns uint16, keep ...bool) (TerminalOpenResponse, error) {
 	dial := func(ctx context.Context, first byte, payload any) (*fileStreamConn, terminalStreamReady, error) {
+		if first == termInputProbe && s.streams.terminalReady(hostID) {
+			conn, err := s.dialPanelHost(ctx, hostID, streamRolePanelTerminalReady)
+			if err == nil {
+				// After authenticated acceptance, a capability failure is final.
+				return readTerminalStreamReady(ctx, conn, first)
+			}
+			if ctx.Err() != nil || errors.Is(err, ErrAuthentication) {
+				return nil, terminalStreamReady{}, err
+			}
+			// No PTY record was sent. A stale/forged hint can only cost a dial;
+			// retry the established role and suppress this hint until discovery.
+			s.streams.setTerminalReady(hostID, false)
+		}
 		conn, err := s.dialPanelHost(ctx, hostID, streamRolePanelTerminal)
 		if err != nil {
 			return nil, terminalStreamReady{}, err
@@ -440,7 +495,15 @@ func (s *Service) openPanelStreamTerminal(ctx context.Context, hostID string, ro
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
-	s.streams.putTerminal(t)
+	// Serialize final admission with deletion's closePeer/forgetHost cleanup.
+	s.fileStreamHub.mu.Lock()
+	record, hostErr := s.storeV2.Host(hostID)
+	allowed := hostErr == nil && record.State == hostStateV2Active && ScopeAllowsTerminal(normalizedV2Scope(record.Scope)) && s.streams.putTerminal(t)
+	s.fileStreamHub.mu.Unlock()
+	if !allowed {
+		t.shutdown()
+		return TerminalOpenResponse{}, ErrTerminalUnavailable
+	}
 	return response, nil
 }
 
@@ -456,7 +519,10 @@ func (s *Service) openLightStreamTerminal(ctx context.Context, nodeID string, ro
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
-	s.streams.putTerminal(t)
+	if !s.streams.putTerminal(t) {
+		t.shutdown()
+		return TerminalOpenResponse{}, ErrTerminalUnavailable
+	}
 	return response, nil
 }
 

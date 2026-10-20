@@ -718,6 +718,23 @@ func (s *Store) PutSession(session Session) error {
 	return nil
 }
 
+// PutLoginSession commits the successful login budgets and session together.
+// A failed persistence operation must expose neither half of the login.
+func (s *Store) PutLoginSession(session Session, attempts []LoginAttempt, retainSince time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous := cloneDiskState(s.data)
+	if err := s.recordLoginAttemptsLocked(attempts, retainSince); err != nil {
+		return err
+	}
+	s.putSessionLocked(session)
+	if err := s.persistLocked(); err != nil {
+		s.data = previous
+		return err
+	}
+	return nil
+}
+
 func (s *Store) putSessionLocked(session Session) {
 	filtered := s.data.Sessions[:0]
 	for _, item := range s.data.Sessions {
@@ -812,6 +829,17 @@ func (s *Store) RecordLoginAttempts(attempts []LoginAttempt, retainSince time.Ti
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	previous := cloneDiskState(s.data)
+	if err := s.recordLoginAttemptsLocked(attempts, retainSince); err != nil {
+		return err
+	}
+	if err := s.persistLocked(); err != nil {
+		s.data = previous
+		return err
+	}
+	return nil
+}
+
+func (s *Store) recordLoginAttemptsLocked(attempts []LoginAttempt, retainSince time.Time) error {
 	filtered := make([]LoginAttempt, 0, len(s.data.LoginAttempts)+len(attempts))
 	userScoped, unauthenticated := 0, 0
 	count := func(item LoginAttempt) {
@@ -838,10 +866,6 @@ func (s *Store) RecordLoginAttempts(attempts []LoginAttempt, retainSince time.Ti
 	}
 	filtered = append(filtered, attempts...)
 	s.data.LoginAttempts = filtered
-	if err := s.persistLocked(); err != nil {
-		s.data = previous
-		return err
-	}
 	return nil
 }
 
