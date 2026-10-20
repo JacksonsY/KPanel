@@ -25,7 +25,18 @@ const historyStore = useTerminalHistory()
 const query = ref('')
 const loadError = ref('')
 const clearOpen = ref(false)
+const noticeStorageKey = 'kpanel:terminal:history-privacy-dismissed'
+const noticeDismissed = ref(readNoticeDismissed())
 let loadController: AbortController | undefined
+
+function readNoticeDismissed(): boolean {
+  try { return window.localStorage.getItem(noticeStorageKey) === '1' } catch { return false }
+}
+
+function dismissNotice(): void {
+  noticeDismissed.value = true
+  try { window.localStorage.setItem(noticeStorageKey, '1') } catch { /* Keep dismissal for this view when storage is unavailable. */ }
+}
 
 const snapshot = computed(() => historyStore.history.value)
 const items = computed(() => snapshot.value.items)
@@ -134,7 +145,16 @@ async function clearHistory(): Promise<void> {
         <Trash2 :size="16" />
       </button>
     </div>
-    <p class="terminal-command-history__notice">{{ t('terminal.historyPrivacy') }}</p>
+    <div v-if="!noticeDismissed" class="terminal-command-history__notice terminal-command-history__privacy">
+      <span>{{ t('terminal.historyPrivacy') }}</span>
+      <button
+        type="button"
+        class="terminal-command-history__dismiss"
+        :title="t('common.closeNotification')"
+        :aria-label="t('common.closeNotification')"
+        @click="dismissNotice"
+      ><X :size="14" aria-hidden="true" /></button>
+    </div>
     <p v-if="historyStore.syncFailed.value && snapshot.available" class="terminal-command-history__notice" role="status">
       {{ t('terminal.historySyncFailed') }}
     </p>
@@ -236,6 +256,9 @@ async function clearHistory(): Promise<void> {
 .terminal-command-history button:focus-visible { box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 20%,transparent); }
 .terminal-command-history button:disabled { cursor:not-allowed; opacity:.48; }
 .terminal-command-history__notice { margin:4px 8px 0; border:1px solid color-mix(in srgb,var(--warning,#d6a23c) 45%,transparent); border-radius:var(--radius-sm); padding:6px 9px; color:var(--terminal-shell-text,#d8dddc); background:color-mix(in srgb,var(--warning,#d6a23c) 10%,transparent); font-size:13px; line-height:1.45; }
+.terminal-command-history__privacy { display:flex; align-items:flex-start; gap:4px; }
+.terminal-command-history__privacy>span { min-width:0; flex:1; }
+.terminal-command-history__dismiss { display:grid; flex:0 0 auto; width:24px; height:24px; place-items:center; border:1px solid transparent; border-radius:var(--radius-sm); padding:0; color:var(--terminal-shell-muted,#8a9695); background:transparent; cursor:pointer; }
 .terminal-command-history__list { min-height:0; flex:1; overflow-y:auto; overscroll-behavior:contain; margin:0; padding:4px 8px 8px; list-style:none; scrollbar-color:var(--terminal-shell-scrollbar,#35474a) var(--terminal-shell-panel,#111a1d); scrollbar-width:thin; }
 .terminal-history-entry { display:flex; min-width:0; align-items:flex-start; gap:5px; margin-bottom:5px; border:1px solid transparent; border-radius:var(--radius-sm); padding:4px; }
 .terminal-history-entry:hover,.terminal-history-entry:focus-within { border-color:color-mix(in srgb,var(--brand) 24%,var(--terminal-shell-border,#29383a)); background:color-mix(in srgb,var(--brand) 6%,transparent); }
