@@ -18,7 +18,7 @@ vi.mock('vue-router', async (importOriginal) => ({
   useRoute: () => ({ query: {} }),
 }))
 
-vi.mock('@/lib/api', () => ({ api: { cluster: { hosts: mocks.hosts }, terminals: { list: mocks.list, open: mocks.open } }, ApiError: class extends Error {} }))
+vi.mock('@/lib/api', () => ({ api: { cluster: { hosts: mocks.hosts }, terminals: { batches: () => Promise.resolve({ available: true, items: [] }), list: mocks.list, open: mocks.open } }, ApiError: class extends Error {} }))
 vi.mock('@/components/terminal/HostTerminal.vue', () => ({ default: defineComponent({
   props: ['sessionId', 'hostName', 'initialOffset'],
   setup(_, { expose }) {

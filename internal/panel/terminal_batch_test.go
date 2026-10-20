@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/terminal"
 	"github.com/kejilion/kejilion-panel/internal/terminalbatch"
@@ -75,7 +76,7 @@ func TestBatchDriverSharesQuotaAndRetainsFailedCloseIdentity(t *testing.T) {
 	d := batchTerminalDriver{s}
 	ctx := context.Background()
 	for i := 0; i < 3; i++ {
-		s.terminalSessions[string(rune('a'+i))] = panelTerminalSession{ID: string(rune('a' + i)), UserID: "user", Purpose: "test"}
+		s.terminalSessions[string(rune('a'+i))] = panelTerminalSession{ID: string(rune('a' + i)), UserID: "user", Purpose: "test", UpdatedAt: time.Now().UTC()}
 	}
 	session, err := d.Open(ctx, "user", terminalbatch.Host{ID: "local", Shell: "posix"})
 	if err != nil {
@@ -89,6 +90,16 @@ func TestBatchDriverSharesQuotaAndRetainsFailedCloseIdentity(t *testing.T) {
 	}
 	if _, ok := s.terminalSessions[session.ID]; !ok {
 		t.Fatal("failed-close identity removed")
+	}
+	// A later ordinary open must not prune an unconfirmed batch close.
+	s.terminalMu.Lock()
+	stale := s.terminalSessions[session.ID]
+	stale.UpdatedAt = stale.UpdatedAt.Add(-time.Hour)
+	s.terminalSessions[session.ID] = stale
+	s.terminalMu.Unlock()
+	s.pruneTerminalSessions(time.Now().Add(-35 * time.Minute))
+	if _, exists := s.terminalSessions[session.ID]; !exists {
+		t.Fatal("pruning released unconfirmed batch quota")
 	}
 	if _, err = d.Open(ctx, "user", terminalbatch.Host{ID: "local", Shell: "posix"}); !errors.Is(err, terminal.ErrLimit) {
 		t.Fatal("failed close released quota")

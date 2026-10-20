@@ -9,12 +9,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
 
-	"github.com/kejilion/kejilion-panel/internal/redact"
 	"github.com/kejilion/kejilion-panel/internal/terminal"
 )
 
@@ -248,11 +248,7 @@ func (m *Manager) Create(user, id, command string, hosts []Host) (Job, error) {
 		return Job{}, ErrBusy
 	}
 	now := time.Now().UTC()
-	summary := redact.Text(command)
-	if strings.HasPrefix(command, " ") {
-		summary = "[excluded from command history]"
-	}
-	summary = tail(summary, MaxCommandBytes)
+	summary := commandSummary(command)
 	j := Job{ID: id, UserID: user, Command: summary, State: "running", CreatedAt: now, UpdatedAt: now, Results: make([]Result, len(hosts))}
 	for i, h := range hosts {
 		j.Results[i] = Result{Host: h, State: "queued", OutputAvailable: true}
@@ -273,6 +269,35 @@ func (m *Manager) Create(user, id, command string, hosts []Host) (Job, error) {
 	m.wg.Add(1)
 	go m.run(ctx, id, user, command)
 	return clone(j), nil
+}
+
+var summaryExecutable = regexp.MustCompile(`^[A-Za-z0-9_./-]{1,64}$`)
+
+// A history label is deliberately a command name, not a best-effort copy of
+// arguments: short flags, positional credentials and custom formats are not
+// reliably redactable. Only fixed, non-secret k action names may be included.
+func commandSummary(command string) string {
+	if strings.HasPrefix(command, " ") {
+		return "[excluded from command history]"
+	}
+	fields := strings.Fields(command)
+	if len(fields) == 0 || !summaryExecutable.MatchString(fields[0]) {
+		return "[custom command]"
+	}
+	name := fields[0]
+	if len(fields) == 1 {
+		return name
+	}
+	if name == "k" {
+		switch fields[1] {
+		case "更新", "update", "web", "docker", "清理", "系统信息":
+			if len(fields) == 2 {
+				return name + " " + fields[1]
+			}
+			return name + " " + fields[1] + " …"
+		}
+	}
+	return name + " …"
 }
 
 func clone(j Job) Job { j.Results = append([]Result(nil), j.Results...); return j }

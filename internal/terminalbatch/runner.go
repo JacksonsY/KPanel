@@ -18,7 +18,7 @@ import (
 )
 
 var ansi = regexp.MustCompile(`\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|[@-_][0-?]*[ -/]*[@-~])`)
-var prompt = regexp.MustCompile(`(?m)(?:[^\r\n]{0,64}@[^\r\n]{0,64}:[^\r\n]{0,80}[$#] ?|(?:bash|sh)-[\d.]+\$ ?|[$#] ?)$`)
+var prompt = regexp.MustCompile(`(?:^|\r?\n|\r)[^\r\n]{0,64}@[^\r\n]{0,64}:[^\r\n]{0,80}[$#] ?$|(?:^|\r?\n|\r)(?:bash|sh)-[\d.]+\$ ?$|(?:^|\r?\n|\r)[$#] ?$`)
 
 func (m *Manager) update(id string, index int, state, code, output string, truncated bool) {
 	m.mu.Lock()
@@ -189,17 +189,17 @@ func (m *Manager) execute(ctx context.Context, id, user, command string, index i
 	}
 	marker := "__KPANEL_DONE_" + hex.EncodeToString(nonce) + "_"
 	wrapped := wrap(command, marker, host.Shell)
-	if len(wrapped) > terminal.MaxInputBytes {
-		code = "terminal_command_too_large"
-		return
-	}
 	m.update(id, index, "running", "", "", false)
-	op, cancel := context.WithTimeout(ctx, 15*time.Second)
-	err := m.driver.Input(op, session, wrapped)
-	cancel()
-	if err != nil {
-		code = "terminal_input_uncertain"
-		return
+	for sent := 0; sent < len(wrapped); {
+		end := min(sent+terminal.MaxInputBytes, len(wrapped))
+		op, cancel := context.WithTimeout(ctx, 15*time.Second)
+		err := m.driver.Input(op, session, wrapped[sent:end])
+		cancel()
+		if err != nil {
+			code = "terminal_input_uncertain"
+			return
+		}
+		sent = end
 	}
 	offset := session.Offset
 	raw := ""
@@ -235,7 +235,11 @@ func (m *Manager) execute(ctx context.Context, id, user, command string, index i
 				return
 			}
 		}
-		raw = tail(raw, MaxOutputBytes*2)
+		// PTY frames may split a UTF-8 character. Retain raw bytes across frames;
+		// sanitize only the display copy so a later frame can complete the rune.
+		if len(raw) > MaxOutputBytes*2 {
+			raw = raw[len(raw)-MaxOutputBytes*2:]
+		}
 		output := display(raw, command, marker)
 		m.update(id, index, "running", "", output, chunk.Truncated || len(raw) > MaxOutputBytes)
 		if chunk.Closed || chunk.ExitedAt != nil {

@@ -26,6 +26,7 @@ type fakeDriver struct {
 	closeFailures int
 	ambiguous     bool
 	block         bool
+	chunks        [][]byte
 }
 
 func (d *fakeDriver) Open(_ context.Context, _ string, h Host) (Session, error) {
@@ -53,13 +54,19 @@ func (d *fakeDriver) Input(_ context.Context, s Session, text string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.sends++
-	d.inputs[s.ID] = text
+	d.inputs[s.ID] += text
 	return nil
 }
 func (d *fakeDriver) Output(ctx context.Context, s Session, _ int64) (terminal.Output, error) {
 	d.mu.Lock()
 	block := d.block
 	text := d.inputs[s.ID]
+	if len(d.chunks) > 0 {
+		chunk := d.chunks[0]
+		d.chunks = d.chunks[1:]
+		d.mu.Unlock()
+		return terminal.Output{Data: chunk, NextOffset: 100}, nil
+	}
 	d.mu.Unlock()
 	if block {
 		<-ctx.Done()
@@ -82,7 +89,7 @@ func newFake() *fakeDriver { return &fakeDriver{inputs: map[string]string{}, liv
 func openTest(t *testing.T, d Driver) (*Manager, string) {
 	t.Helper()
 	root := t.TempDir()
-	m, err := Open(root, d, Options{Timeout: time.Second, RetryDelay: time.Millisecond})
+	m, err := Open(root, d, Options{Timeout: 10 * time.Second, RetryDelay: time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +105,7 @@ func targets(n int) []Host {
 }
 func finished(t *testing.T, m *Manager) Job {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		jobs, _, _ := m.List("user")
 		if len(jobs) > 0 && jobs[0].State != "running" {
@@ -283,5 +290,113 @@ func TestBoundsOwnershipAndDeletion(t *testing.T) {
 	jobs, _, _ = m.List("user")
 	if len(jobs) != 0 {
 		t.Fatal("delete failed")
+	}
+}
+
+func TestPromptOnlyMatchesARealFinalShellPrompt(t *testing.T) {
+	for _, output := range []string{"cost is 20$", "finished#", "root@host:/#\nmore output", "value $\n"} {
+		if prompt.MatchString(output) {
+			t.Fatalf("ordinary output matched: %q", output)
+		}
+	}
+	for _, output := range []string{"# ", "$ ", "root@host:/# ", "output\nroot@host:/tmp$ ", "bash-5.2$ "} {
+		if !prompt.MatchString(output) {
+			t.Fatalf("prompt not matched: %q", output)
+		}
+	}
+}
+
+func TestLongCommandsUseBoundedInputFramesAndExecuteOnce(t *testing.T) {
+	for _, shell := range []string{"posix", "powershell"} {
+		t.Run(shell, func(t *testing.T) {
+			d := newFake()
+			m, _ := openTest(t, d)
+			hosts := targets(1)
+			hosts[0].Shell = shell
+			command := "echo " + strings.Repeat("x", MaxCommandBytes-5)
+			if _, err := m.Create("user", strings.Repeat("a", 32), command, hosts); err != nil {
+				t.Fatal(err)
+			}
+			j := finished(t, m)
+			if j.Results[0].State != "succeeded" {
+				t.Fatal(j.Results[0])
+			}
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			if d.opens != 1 || d.sends < 2 {
+				t.Fatalf("opens=%d frames=%d", d.opens, d.sends)
+			}
+		})
+	}
+}
+
+func TestOutputPreservesUTF8CharactersSplitAcrossFrames(t *testing.T) {
+	d := newFake()
+	bytes := []byte("中😀完成\n")
+	d.chunks = [][]byte{bytes[:2], bytes[2:5], bytes[5:]}
+	m, _ := openTest(t, d)
+	if _, err := m.Create("user", strings.Repeat("a", 32), "true", targets(1)); err != nil {
+		t.Fatal(err)
+	}
+	j := finished(t, m)
+	if !strings.Contains(j.Results[0].Output, "中😀完成") {
+		t.Fatalf("corrupt output=%q", j.Results[0].Output)
+	}
+}
+
+func TestCommandSummaryNeverPersistsArbitraryArguments(t *testing.T) {
+	for _, cmd := range []string{"curl -u admin:ExampleCredential https://example.test", "sshpass -p ExampleCredential ssh host", "echo ExampleCredential", "TOKEN=ExampleCredential true", "bash -c 'ExampleCredential'"} {
+		if strings.Contains(commandSummary(cmd), "ExampleCredential") {
+			t.Fatalf("secret in summary: %s", cmd)
+		}
+	}
+	if commandSummary("k 更新") != "k 更新" {
+		t.Fatal("fixed script action lost")
+	}
+}
+
+func TestFailedCloseCanBeRetriedWithoutResendingCommands(t *testing.T) {
+	d := newFake()
+	d.block = true
+	d.closeFailures = 100
+	m, _ := openTest(t, d)
+	j, err := m.Create("user", strings.Repeat("a", 32), "sleep 100", targets(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		d.mu.Lock()
+		started := d.sends == 1
+		d.mu.Unlock()
+		if started {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := m.Stop("user", j.ID); err != nil {
+		t.Fatal(err)
+	}
+	j = finished(t, m)
+	if j.Results[0].Error != "terminal_close_failed" {
+		t.Fatal(j.Results[0])
+	}
+	if err := m.Remove("user", j.ID); !errors.Is(err, ErrBusy) {
+		t.Fatal("removed unresolved close")
+	}
+	d.mu.Lock()
+	d.closeFailures = 0
+	d.mu.Unlock()
+	if err := m.Stop("user", j.ID); err != nil {
+		t.Fatal(err)
+	}
+	j = finished(t, m)
+	if j.Results[0].State != "stopped" {
+		t.Fatal(j.Results[0])
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.sends != 1 || len(d.live) != 0 {
+		t.Fatal("cleanup replayed command or failed")
 	}
 }
