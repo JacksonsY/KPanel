@@ -8,6 +8,70 @@ html[data-desktop-shell-style='xp'] {
   --desktop-xp-window-inset: inset -1px -1px #00138c, inset 1px 1px #0831d9, inset -2px -2px #001ea0, inset 2px 2px #166aee, inset -3px -3px #003bda, inset 3px 3px #0855dd;
 }
 
+html.desktop-mode-open[data-desktop-shell-style='xp'] {
+  --scrollbar-size: 16px;
+  --scrollbar-track: #f1efe6;
+  --scrollbar-thumb: #c4d7f5;
+  --scrollbar-thumb-hover: #a9c6f1;
+  --scrollbar-thumb-active: #86abe3;
+  --win-scrollbar-edge: #7f9db9;
+  --win-scrollbar-radius: 2px;
+  --win-scrollbar-relief: inset 1px 1px #fff, inset -1px -1px #a3bce0;
+  --win-group-title-height: 28px;
+  --win-group-control-height: 24px;
+}
+
+/* Low specificity preserves intentionally hidden scrollers and terminal overrides. */
+:where(html.desktop-mode-open:is([data-desktop-shell-style='xp'], [data-desktop-shell-style='win98'])) body * {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+@supports selector(::-webkit-scrollbar) {
+  :where(html.desktop-mode-open:is([data-desktop-shell-style='xp'], [data-desktop-shell-style='win98'])) body * {
+    scrollbar-color: auto;
+    scrollbar-width: auto;
+  }
+}
+
+:where(html.desktop-mode-open:is([data-desktop-shell-style='xp'], [data-desktop-shell-style='win98'])) body *::-webkit-scrollbar-thumb {
+  border: 1px solid var(--win-scrollbar-edge);
+  border-radius: var(--win-scrollbar-radius);
+  box-shadow: var(--win-scrollbar-relief);
+}
+
+:where(html.desktop-mode-open:is([data-desktop-shell-style='xp'], [data-desktop-shell-style='win98'])) body *::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+:is(.desktop[data-shell-style='xp'], .desktop[data-shell-style='win98']) .desktop-group .desktop-group__header {
+  height: var(--win-group-title-height);
+  min-height: var(--win-group-title-height);
+  gap: 4px;
+  padding: 0 4px;
+  color: #fff;
+}
+
+:is(.desktop[data-shell-style='xp'], .desktop[data-shell-style='win98']) .desktop-group__header :is(button, input) {
+  height: var(--win-group-control-height);
+  line-height: 1.2;
+}
+
+:is(.desktop[data-shell-style='xp'], .desktop[data-shell-style='win98']) .desktop-group__count {
+  padding: 0 3px;
+  line-height: 1.2;
+}
+
+:is(.desktop[data-shell-style='xp'], .desktop[data-shell-style='win98']) .desktop-group-preview-icon {
+  width: var(--win-group-control-height);
+  height: var(--win-group-control-height);
+  flex-basis: var(--win-group-control-height);
+}
+
+:is(.desktop[data-shell-style='xp'], .desktop[data-shell-style='win98']) .desktop-group--collapsed {
+  max-height: calc(var(--win-group-title-height) + 2px);
+}
+
 .desktop[data-shell-style='xp'] {
   --desktop-window-client-background: #f1efe6;
   --desktop-group-surface: #f1efe6;
@@ -33,9 +97,10 @@ html[data-desktop-shell-style='xp'] {
 }
 
 .desktop[data-shell-style='xp'] .desktop-group__header {
-  background: linear-gradient(180deg, #f8fbff 0%, #e4eef9 100%);
-  border-bottom: 1px solid #c2d2e5;
+  background: var(--desktop-xp-titlebar-background);
+  border-bottom: 1px solid #001ea0;
   border-radius: 5px 5px 0 0;
+  box-shadow: inset 0 1px 0 #a4d2ff;
 }
 
 .desktop[data-shell-style='xp'] .desktop-group__header button:hover {
@@ -156,7 +221,7 @@ html[data-desktop-shell-style='xp'] .desktop-group__drop-label {
   text-shadow: 1px 1px #0f1089;
 }
 
-.desktop[data-shell-style='xp'] :is(.desktop-clock__header > span svg, .desktop-monitor__header > svg, .desktop-service-status__header > span svg) {
+.desktop[data-shell-style='xp'] :is(.desktop-clock__header > span svg, .desktop-monitor__header > svg, .desktop-service-status__header > svg, .desktop-service-status__header > span svg) {
   color: #fff;
 }
 
