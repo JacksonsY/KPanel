@@ -298,11 +298,15 @@ func TestSharedTerminalOutputPerformance(t *testing.T) {
 	for _, scenario := range sharedOutputScenarios {
 		for _, delay := range []time.Duration{0, 5 * time.Millisecond, 25 * time.Millisecond} {
 			t.Run(fmt.Sprintf("%s/%s", scenario.name, delay), func(t *testing.T) {
+				for range 2 {
+					sharedFirstOutput(t, scenario.job, delay)
+				}
 				samples := make([]time.Duration, 12)
 				var probes int32
 				for i := range samples {
 					var n int32
 					samples[i], n = sharedFirstOutput(t, scenario.job, delay)
+					t.Logf("sample=%d duration_ns=%d speculative_reads=%d", i, samples[i].Nanoseconds(), n)
 					probes += n
 				}
 				sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })

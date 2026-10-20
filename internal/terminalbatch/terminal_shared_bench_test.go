@@ -38,6 +38,7 @@ func TestSharedTerminalBatchPerformance(t *testing.T) {
 		}
 		job := finished(t, m)
 		samples[i] = time.Since(start)
+		t.Logf("sample=%d total_ns=%d", i, samples[i].Nanoseconds())
 		for _, result := range job.Results {
 			if result.State != "succeeded" {
 				t.Fatalf("result=%#v", result)
