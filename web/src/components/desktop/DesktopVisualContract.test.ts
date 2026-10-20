@@ -160,7 +160,9 @@ describe('desktop visual and interaction contract', () => {
     expect(xpBody).toContain('--surface-subtle: #e8e5db;')
     expect(xpBody).toContain('--surface-raised: #fffef9;')
     expect(xpBody).toContain('background: var(--bg);')
-    expect(xpBody).not.toMatch(/--(?:brand|success|warning|danger)\s*:/)
+    expect(xpBody).toContain('--brand: var(--desktop-xp-menu-selection);')
+    expect(xpBody).toContain('--text: #1e3554;')
+    expect(xpBody).not.toMatch(/--(?:success|warning|danger)\s*:/)
 
     const win98Body = cssRule(win98Styles, ".desktop[data-shell-style='win98'] .desktop-window__body")
     expect(win98Body).toContain('--bg: var(--desktop-window-client-background);')

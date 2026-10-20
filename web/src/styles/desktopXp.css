@@ -374,6 +374,19 @@ html[data-desktop-shell-style='xp'] .desktop-group__drop-label {
 
 .desktop[data-shell-style='xp'] .desktop-window__body {
   --bg: var(--desktop-window-client-background);
+  --text: #1e3554;
+  --text-soft: #355474;
+  --muted: #656254;
+  --brand: var(--desktop-xp-menu-selection);
+  --brand-strong: #0044bf;
+  --brand-action: var(--desktop-xp-menu-selection);
+  --brand-soft: #dce8ff;
+  --brand-muted: #adc9f5;
+  --on-brand: #fff;
+  --blue: var(--desktop-xp-menu-selection);
+  --blue-soft: #dce8ff;
+  --control-border: #aba697;
+  --neutral-soft: #e8e5db;
   --surface-subtle: #e8e5db;
   --surface: #f7f5ee;
   --surface-raised: #fffef9;
@@ -394,12 +407,30 @@ html[data-desktop-shell-style='xp'] .desktop-group__drop-label {
   border-radius: 0;
 }
 
-:root[data-theme='dark'] .desktop[data-shell-style='xp'] .desktop-window__body {
-  --surface-subtle: #21364f;
-  --surface: #2a415b;
-  --surface-raised: #344e69;
-  --border: #4e6681;
-  --border-strong: #6b85a2;
+/* Windows controls keep local color aliases, including components using legacy tokens. */
+:is(.desktop[data-shell-style='xp'], .desktop[data-shell-style='win98']) .desktop-window__body,
+html.desktop-mode-open:is([data-desktop-shell-style='xp'], [data-desktop-shell-style='win98']) .modal-panel {
+  --primary: var(--brand);
+  --accent: var(--brand);
+  --accent-contrast: var(--on-brand);
+  --interaction-hover: color-mix(in srgb, var(--brand) 8%, transparent);
+  --text-primary: var(--text);
+  --text-secondary: var(--text-soft);
+  --text-tertiary: var(--muted);
+  --text-muted: var(--muted);
+  --text-subtle: var(--muted);
+}
+
+:is(.desktop[data-shell-style='xp'], .desktop[data-shell-style='win98']) .desktop-window__body .button--primary {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border-strong);
+  box-shadow: none;
+}
+
+:is(.desktop[data-shell-style='xp'], .desktop[data-shell-style='win98']) .desktop-window__body .button--primary:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-subtle);
 }
 
 :is(.desktop[data-shell-style='xp'], .desktop[data-shell-style='win98']) .desktop-window__body :is(.market-hero, .cluster-hero) {
@@ -409,10 +440,6 @@ html[data-desktop-shell-style='xp'] .desktop-group__drop-label {
 
 :is(.desktop[data-shell-style='xp'], .desktop[data-shell-style='win98']) .desktop-window__body :is(.market-hero, .cluster-hero)::before {
   display: none;
-}
-
-:root[data-theme='dark'] .desktop[data-shell-style='xp'] {
-  --desktop-window-client-background: #17283d;
 }
 
 /* Business dialogs teleport to body, outside the desktop root. */
@@ -451,10 +478,14 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel {
   --surface-subtle: #e8e5db;
   --border: #c9c5b8;
   --border-strong: #aba697;
-  --brand: #2868bd;
-  --brand-strong: #174f9c;
-  --brand-soft: #dbe9fa;
-  --brand-action: #2f71c8;
+  --brand: var(--desktop-xp-menu-selection);
+  --brand-strong: #0044bf;
+  --brand-soft: #dce8ff;
+  --brand-muted: #adc9f5;
+  --brand-action: var(--desktop-xp-menu-selection);
+  --blue: var(--desktop-xp-menu-selection);
+  --blue-soft: #dce8ff;
+  --control-border: #9eb1c8;
   --on-brand: #fff;
   color: var(--text);
   background: var(--bg);
@@ -549,27 +580,36 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel :is(.site-ser
 
 html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel :is(.button, .icon-button) {
   color: #1e3554;
-  background: linear-gradient(#fffef9, #e8e5db);
+  background: var(--surface);
   border: 1px solid #8ca9c9;
   border-radius: 4px;
   box-shadow: inset 0 1px 0 #fff, 0 1px 1px rgb(30 53 84 / 14%);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .button--primary {
-  color: #fff;
-  background: linear-gradient(#69adf3, #2873c9 55%, #1458aa);
-  border-color: #1556a0;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 65%), 0 1px 1px rgb(30 53 84 / 20%);
-  text-shadow: 0 1px 1px #174b86;
+  color: var(--text);
+  background: var(--surface);
+  border-color: #7f9db9;
+  font-weight: 700;
+  text-shadow: none;
 }
 
-html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel :is(.button, .icon-button):active:not(:disabled) {
-  background: linear-gradient(#c5d9ef, #e8f2fc);
+html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel :is(.modal-panel__body, .modal-panel__footer) :is(.button, .icon-button):hover:not(:disabled) {
+  background: var(--surface-raised);
+}
+
+html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel :is(.button, .icon-button):focus-visible {
+  outline: 2px solid var(--desktop-xp-menu-selection);
+  outline-offset: 2px;
+}
+
+html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel :is(.modal-panel__body, .modal-panel__footer) :is(.button, .icon-button):active:not(:disabled) {
+  background: var(--surface-subtle);
   box-shadow: inset 0 1px 2px rgb(30 53 84 / 24%);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .button--primary:active:not(:disabled) {
-  background: linear-gradient(#1458aa, #2873c9);
+  background: var(--surface-subtle);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel :is(.site-service-field, .site-certificate-options, .site-inline-options) {
@@ -586,19 +626,19 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel :is(.site-ser
 
 html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel :is(.site-service-card, .choice-pills button, .site-template-toggle):hover:not(:disabled) {
   border-color: #6f9fd4;
-  background: linear-gradient(#fff, #e4effb);
+  background: var(--surface-raised);
 }
 
 html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .site-service-card.is-active,
 html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .choice-pills button.is-active {
-  background: linear-gradient(#eef6ff, #d4e6fa);
+  background: #dce8ff;
   border-color: #2868bd;
   box-shadow: inset 0 1px 0 #fff, 0 0 0 1px #b8d4f2;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .site-service-card__icon {
   color: #2868bd;
-  background: linear-gradient(#edf6ff, #d2e3f5);
+  background: #e8effb;
   border: 1px solid #d1deec;
   border-radius: 5px;
 }
