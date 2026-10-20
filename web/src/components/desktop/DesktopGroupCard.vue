@@ -184,7 +184,7 @@ function keydown(event: KeyboardEvent) {
 </template>
 
 <style scoped>
-.desktop-group { position: absolute; box-sizing: border-box; container-type: inline-size; border: 1px solid var(--desktop-group-border); border-radius: var(--radius-lg); background: var(--desktop-group-surface); color: var(--desktop-group-text); box-shadow: var(--shadow-md); transition: transform var(--motion-duration-layout) var(--motion-ease-standard), height var(--motion-duration-base) var(--motion-ease-standard), border-color var(--motion-duration-fast) var(--motion-ease-fade); }
+.desktop-group { position: absolute; box-sizing: border-box; container-type: inline-size; border: 1px solid var(--desktop-group-border); border-radius: var(--radius-lg); background: var(--desktop-group-surface); color: var(--desktop-group-text); box-shadow: none; transition: transform var(--motion-duration-layout) var(--motion-ease-standard), height var(--motion-duration-base) var(--motion-ease-standard), border-color var(--motion-duration-fast) var(--motion-ease-fade); }
 .desktop-group__header { height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 10px; cursor: grab; touch-action: none; }
 .desktop-group__cell { position: absolute; box-sizing: border-box; border: 1px dashed transparent; border-radius: var(--radius); pointer-events: none; }
 .desktop-group:hover .desktop-group__cell--empty, .desktop-group--drop .desktop-group__cell--empty { border-color: var(--desktop-group-border); }

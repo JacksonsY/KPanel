@@ -606,7 +606,7 @@ describe('visual rhythm contract', () => {
     expect(desktop).not.toMatch(/\.desktop__menubar\s*\{[^}]*inset 0 1px 0 rgb\(255 255 255/)
     expect(desktop).not.toMatch(/\.desktop__taskbar\s*\{[^}]*inset 0 1px 0 rgb\(255 255 255/)
     const group = readFileSync(new URL('../components/desktop/DesktopGroupCard.vue', import.meta.url), 'utf8')
-    expect(group.match(/\.desktop-group\s*\{([^}]+)\}/)?.[1]).toContain('box-shadow: var(--shadow-md);')
+    expect(group.match(/\.desktop-group\s*\{([^}]+)\}/)?.[1]).toContain('box-shadow: none;')
   })
 
   it('routes the window close affordance through the danger pair', () => {

@@ -29,7 +29,7 @@ html[data-desktop-shell-style='xp'] {
   border: 1px solid #91afd2;
   border-radius: 6px;
   background: linear-gradient(180deg, #fffef9 0%, #f1efe6 100%);
-  box-shadow: inset 1px 1px 0 #fff, 1px 2px 5px rgb(17 43 76 / 30%);
+  box-shadow: inset 1px 1px 0 #fff;
 }
 
 .desktop[data-shell-style='xp'] .desktop-group__header {
@@ -131,7 +131,7 @@ html[data-desktop-shell-style='xp'] .desktop-group__drop-label {
   border-top-color: #fff;
   border-left-color: #fff;
   border-radius: 4px;
-  box-shadow: inset 1px 1px 0 rgb(255 255 255 / 85%), inset -1px -1px 0 #d7d2c4, 1px 2px 5px rgb(17 43 76 / 32%);
+  box-shadow: inset 1px 1px 0 rgb(255 255 255 / 85%), inset -1px -1px 0 #d7d2c4;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }

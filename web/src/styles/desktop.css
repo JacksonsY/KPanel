@@ -364,7 +364,7 @@ body.desktop-mode-open::-webkit-scrollbar {
   background: var(--material-panel-fill);
   border: 1px solid var(--material-panel-edge);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow: none;
 }
 
 .desktop-clock {
