@@ -868,9 +868,9 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel {
 }
 
 html.desktop-mode-open[data-desktop-shell-style='win98'] .modal-panel__header {
-  min-height: 34px;
+  min-height: 28px;
   align-items: center;
-  padding: 5px 5px 5px 6px;
+  padding: 3px 4px 3px 6px;
   color: #fff;
   background: var(--desktop-titlebar-active);
   border: 0;
