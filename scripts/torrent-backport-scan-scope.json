@@ -12,7 +12,7 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "7344df4f0fe019b97ab22062bbbec1b93c1b935943480e334e2c879270221db7",
-  "firstPartySourceSha256": "3849b371e9f050ac0819fa729a856d334830977d147452b756c667c4f900e6db",
+  "firstPartySourceSha256": "cc6591148c4b3fccb26032755c35e2da3b25eb297ab336303145d5d02f5cda59",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.2; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -47,7 +47,9 @@
     "rc8BusinessSourceObservationSha256": "769ef6d9c69eff2a6f4e775740ad4fb18b302c43aabf13552fb57773145a7541",
     "rc8VersionAssemblyEvidenceSha256": "c0edd73d16922a707dc2bb291eae4d2186501b89c07b7b5f97ed5de63a4865da",
     "rc8CVE202656851DispositionEvidenceSha256": "c2073288b3e771ba0f167478429e390ab2dbaf761a1d9dbc29058345d3ceca95",
-    "rc127RC9VersionAssemblyEvidenceSha256": "c712b2b704fb2fa1fc8216cc6c30c8d86dd3a409e21bdc64beb851eec58d36e4"
+    "rc127RC9VersionAssemblyEvidenceSha256": "c712b2b704fb2fa1fc8216cc6c30c8d86dd3a409e21bdc64beb851eec58d36e4",
+    "terminalConnectionSourceEvidenceSha256": "0a625ecf066e5ffd20b73e745ea2c4c1d108d7de0853c26acade2751dedcd9e7",
+    "notes": "Terminal connection candidate qualification: independently reviewed local capability reuse, authenticated ready-stream role, receive deadline, retry and peer resource admission changes. Four additional Go test files; no production Go filenames, third-party modules, release targets or vendored source changes. Canonical firstPartySources rebinds the content identity; actual/original six-platform closure qualification is required before delivery. Existing findings, dispositions and expiry remain unchanged; no scanner, CI, L3 or publication pass is implied."
   },
   "findings": [
     {
