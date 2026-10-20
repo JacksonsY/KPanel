@@ -122,6 +122,8 @@ export function useTerminalController(options: Options) {
   const terminalTouchScroll = createTerminalTouchScroll({
     getTerminal: () => terminal.value,
     getScreen: () => host.value?.querySelector<HTMLElement>('.xterm-screen') ?? host.value,
+    getSelectionTerminal: () => terminal.value,
+    showSelectionMenu: (clientX, clientY) => clipboardMenu.value?.open(new MouseEvent('contextmenu', { clientX, clientY })),
   })
 
   function ensureInput(): TerminalDuplexInput {
@@ -384,6 +386,7 @@ export function useTerminalController(options: Options) {
   }
 
   function resetTarget(): void {
+    terminalTouchScroll.end()
     targetGeneration++
     stopOutput(); dropInput(); finishPresentation(); writeFlow.reset(); normalizer.reset()
     adapter = options.adapter()
@@ -440,6 +443,7 @@ export function useTerminalController(options: Options) {
     startOutput(); warmInput()
   })
   onBeforeUnmount(() => {
+    terminalTouchScroll.end()
     disposed = true
     mounted = false
     targetGeneration++; resizeGeneration++
