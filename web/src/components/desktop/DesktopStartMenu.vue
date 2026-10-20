@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { focusTextInput } from '../../lib/touchFocus'
 import { computed, nextTick, ref, watch } from 'vue'
-import { ChevronLeft, ChevronRight, LayoutPanelLeft, LogOut, Moon, RotateCw, Search, Sun } from '@lucide/vue'
+import { LayoutPanelLeft, LogOut, Moon, RotateCw, Search, Sun } from '@lucide/vue'
 import LanguageSelector from '@/components/common/LanguageSelector.vue'
 import { useI18n } from '@/i18n'
 import {
@@ -43,7 +43,6 @@ const emit = defineEmits<{
 
 const MENU_ID = 'desktop-start-menu'
 const LIST_ID = `${MENU_ID}-results`
-const XP_PROGRAM_PREVIEW_LIMIT = 6
 
 const i18n = useI18n()
 const root = ref<HTMLElement>()
@@ -52,37 +51,24 @@ const gridElement = ref<HTMLElement>()
 const body = ref<HTMLElement>()
 const query = ref('')
 const active = ref(0)
-const allProgramsExpanded = ref(false)
 const failedIcons = ref(new Set<string>())
 const loadedIcons = ref(new Set<string>())
 
 const searching = computed(() => Boolean(query.value.trim()))
 const results = computed(() => searchDesktopStartMenu(props.items, query.value))
-const visibleResults = computed(() => {
-  if (!props.xp || searching.value || allProgramsExpanded.value) return results.value
-  const visibleCounts: Partial<Record<DesktopStartMenuSection, number>> = {}
-  return results.value.filter((item) => {
-    const count = visibleCounts[item.section] ?? 0
-    visibleCounts[item.section] = count + 1
-    return item.section !== 'actions' && count < XP_PROGRAM_PREVIEW_LIMIT
-  })
-})
 const gridCount = computed(() =>
-  searching.value || props.xp || props.win98 ? 0 : visibleResults.value.filter((item) => item.section === 'system').length)
+  searching.value || props.xp || props.win98 ? 0 : results.value.filter((item) => item.section === 'system').length)
 const groups = computed(() => DESKTOP_START_MENU_SECTIONS
   .map((section) => ({
     section,
     grid: section === 'system' && !searching.value && !props.xp && !props.win98,
-    options: visibleResults.value
+    options: results.value
       .map((item, index) => ({ item, index }))
       .filter((option) => option.item.section === section),
   }))
   .filter((group) => group.options.length))
-const systemCount = computed(() => props.items.filter((item) => item.section === 'system').length)
 const entryCount = computed(() => props.items.filter((item) => item.section === 'entries').length)
-const canExpandPrograms = computed(() => Boolean(props.xp && !searching.value
-  && (systemCount.value > XP_PROGRAM_PREVIEW_LIMIT || entryCount.value > XP_PROGRAM_PREVIEW_LIMIT)))
-const activeId = computed(() => visibleResults.value[active.value] ? optionId(active.value) : undefined)
+const activeId = computed(() => results.value[active.value] ? optionId(active.value) : undefined)
 const userInitial = computed(() => props.userName.trim().slice(0, 1).toLocaleUpperCase() || 'K')
 
 function optionId(index: number): string {
@@ -133,11 +119,6 @@ function setGridElement(element: unknown): void {
   gridElement.value = element instanceof HTMLElement ? element : undefined
 }
 
-function toggleAllPrograms(): void {
-  allProgramsExpanded.value = !allProgramsExpanded.value
-  active.value = 0
-}
-
 const NAVIGATION_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'] as const
 type NavigationKey = (typeof NAVIGATION_KEYS)[number]
 
@@ -158,7 +139,7 @@ function onSearchKeyDown(event: KeyboardEvent): void {
     // While typing, horizontal keys edit the query instead of moving the highlight.
     if (searching.value && event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
     event.preventDefault()
-    active.value = moveStartMenuIndex(active.value, event.key, visibleResults.value.length, {
+    active.value = moveStartMenuIndex(active.value, event.key, results.value.length, {
       count: gridCount.value,
       columns: gridColumns(),
     })
@@ -166,7 +147,7 @@ function onSearchKeyDown(event: KeyboardEvent): void {
     return
   }
   if (event.key !== 'Enter') return
-  const item = visibleResults.value[active.value]
+  const item = results.value[active.value]
   if (!item) return
   event.preventDefault()
   emit('select', item)
@@ -200,7 +181,6 @@ watch(() => props.open, async (open) => {
   if (!open) return
   query.value = ''
   active.value = 0
-  allProgramsExpanded.value = false
   await nextTick()
   focusTextInput(input.value, { preventScroll: true })
 }, { immediate: true })
@@ -211,11 +191,10 @@ watch(query, () => {
 })
 
 watch(() => [props.xp, props.win98], () => {
-  allProgramsExpanded.value = false
   active.value = 0
 })
 
-watch(() => visibleResults.value.length, (length) => {
+watch(() => results.value.length, (length) => {
   if (active.value >= length) active.value = length ? 0 : -1
   else if (active.value < 0 && length) active.value = 0
 })
@@ -354,19 +333,7 @@ watch(() => visibleResults.value.length, (length) => {
         </template>
       </div>
 
-      <div v-if="xp || win98" class="desktop-start-menu__xp-controls" :class="{ 'desktop-start-menu__xp-controls--search-only': win98 || !canExpandPrograms }">
-        <button
-          v-if="xp && canExpandPrograms"
-          type="button"
-          class="desktop-start-menu__all-programs"
-          :aria-expanded="allProgramsExpanded"
-          :aria-controls="LIST_ID"
-          @click="toggleAllPrograms"
-        >
-          <span>{{ i18n.t(allProgramsExpanded ? 'desktop.startMenuFewerPrograms' : 'desktop.startMenuAllPrograms') }}</span>
-          <ChevronLeft v-if="allProgramsExpanded" :size="16" aria-hidden="true" />
-          <ChevronRight v-else :size="16" aria-hidden="true" />
-        </button>
+      <div v-if="xp || win98" class="desktop-start-menu__xp-controls">
         <label class="desktop-start-menu__search">
           <Search :size="17" aria-hidden="true" />
           <input

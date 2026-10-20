@@ -112,10 +112,8 @@ describe('desktop visual and interaction contract', () => {
       .toContain('outline: 3px solid #ffe179;')
   })
 
-  it('keeps the XP All Programs control visibly styled', () => {
-    const allPrograms = cssRule(xpStyles, ".desktop[data-shell-style='xp'] .desktop-start-menu__all-programs")
-    expect(allPrograms).toContain('min-height: 32px;')
-    expect(allPrograms).toContain('background: linear-gradient(180deg, #fff, #edf2f7);')
+  it('keeps the XP start menu free of the reverted All Programs step', () => {
+    expect(xpStyles).not.toContain('.desktop-start-menu__all-programs')
   })
 
   it('keeps XP desktop icon labels on the native KPanel light and dark surfaces', () => {
