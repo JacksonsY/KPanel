@@ -83,11 +83,6 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] body {
   box-shadow: none;
 }
 
-.desktop[data-shell-style='win98'] .desktop-group__header strong {
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .desktop[data-shell-style='win98'] .desktop-group--collapsed {
   max-height: calc(var(--win-group-title-height) + 6px);
 }
