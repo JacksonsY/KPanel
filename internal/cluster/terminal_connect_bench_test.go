@@ -4,7 +4,6 @@ package cluster_test
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"sort"
@@ -13,7 +12,18 @@ import (
 	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/cluster"
+	"github.com/kejilion/kejilion-panel/internal/terminal"
 )
+
+type connectBenchBackend struct{ managerBackend }
+
+func (b connectBenchBackend) OpenRetained(_ context.Context, owner string, rows, cols uint16) (terminal.Snapshot, error) {
+	return b.manager.OpenRetained(owner, rows, cols)
+}
+func (b connectBenchBackend) SupportsSequencedInput(context.Context) bool { return true }
+func (b connectBenchBackend) InputSequenced(ctx context.Context, owner, id string, frame terminal.InputFrame) error {
+	return b.manager.InputSequencedContext(ctx, owner, id, frame)
+}
 
 // The same harness runs against the parent and candidate. Pairing and summary
 // discovery are excluded; each open creates a fresh TLS/Noise stream and PTY.
@@ -27,23 +37,34 @@ func TestTerminalConnectPerformance(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			center := newFileStreamNodeWith(t, fileStreamNodeOptions{latency: rtt / 2})
-			target := newFileStreamNodeWith(t, fileStreamNodeOptions{advertiseStream: true, advertiseTerminalReady: true, terminal: managerBackend{manager: newIntegrationEchoManager(t)}})
+			target := newFileStreamNodeWith(t, fileStreamNodeOptions{advertiseStream: true, advertiseTerminalReady: true, terminal: connectBenchBackend{managerBackend{manager: newIntegrationEchoManager(t)}}})
 			host := pairStreamNodes(t, ctx, center, target)
 			var opens, echoes []time.Duration
 			for sample := range 12 {
 				started := time.Now()
-				opened, err := center.service.TerminalOpen(ctx, host.ID, cluster.TerminalOpenRequest{Rows: 24, Columns: 80})
+				opened, err := center.service.TerminalOpen(ctx, host.ID, cluster.TerminalOpenRequest{Rows: 24, Columns: 80, Retained: true})
 				if err != nil {
 					t.Fatal(err)
 				}
 				opens = append(opens, time.Since(started))
+				if !opened.Retained || !center.service.TerminalSupportsSequencedInput(host.ID, opened.SessionID) {
+					t.Fatal("required retention/input protocol missing")
+				}
+				write := func(seq uint64, data []byte) {
+					wait, err := center.service.BeginTerminalInput(ctx, host.ID, opened.SessionID, terminal.InputFrame{Stream: "00000000000000000000000000000001", Seq: seq, Data: data})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := wait(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				write(0, nil)
 				offset := opened.Offset
 				for key := range 5 {
 					marker := fmt.Sprintf("sample-%d-key-%d", sample, key)
 					started = time.Now()
-					if err := center.service.TerminalInput(ctx, host.ID, cluster.TerminalInputRequest{SessionID: opened.SessionID, Data: base64.StdEncoding.EncodeToString([]byte(marker))}); err != nil {
-						t.Fatal(err)
-					}
+					write(uint64(key+1), []byte(marker))
 					var seen strings.Builder
 					for !strings.Contains(seen.String(), marker) {
 						output, err := center.service.TerminalOutput(ctx, host.ID, cluster.TerminalOutputRequest{SessionID: opened.SessionID, Offset: offset, Wait: 1000})
