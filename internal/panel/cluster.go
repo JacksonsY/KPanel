@@ -785,7 +785,7 @@ func (s *Server) handleFederationFileStream(w http.ResponseWriter, r *http.Reque
 	switch result.Role {
 	case "light-control", "light-terminal-control":
 		return
-	case "panel-terminal":
+	case "panel-terminal", "panel-terminal-ready":
 		// Terminal content is never audited; record only that a stream
 		// attached to a PTY on behalf of the controller.
 		status := "failure"
