@@ -1,5 +1,6 @@
 /* Opt-in Windows XP Luna shell with a scoped client-area surface palette. */
 html[data-desktop-shell-style='xp'] {
+  --desktop-xp-menu-selection: #316ac5;
   /* XP.css 0.2.6 Luna title-bar values; the taskbar reuses this blue ramp because XP.css has no taskbar component. */
   --desktop-xp-titlebar-background: linear-gradient(180deg, #0997ff 0%, #0053ee 8%, #0050ee 40%, #0066ff 88%, #0066ff 93%, #005bff 95%, #003dd7 96%, #003dd7 100%);
   --desktop-xp-taskbar-item-background: var(--desktop-xp-titlebar-background);
@@ -105,7 +106,7 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] body {
 
 .desktop[data-shell-style='xp'] .desktop-group__header button:hover {
   color: #fff;
-  background: var(--desktop-xp-titlebar-background);
+  background: var(--desktop-xp-menu-selection);
 }
 
 .desktop[data-shell-style='xp'] .desktop-group__count {
@@ -144,10 +145,13 @@ html[data-desktop-shell-style='xp'] .desktop-group__actions button {
 
 .desktop[data-shell-style='xp'] .desktop-group__actions button:hover,
 .desktop[data-shell-style='xp'] .desktop-group__actions button:focus-visible,
+.desktop[data-shell-style='xp'] .desktop-group__actions button:active:not(:disabled),
 html[data-desktop-shell-style='xp'] .desktop-group__actions button:hover,
-html[data-desktop-shell-style='xp'] .desktop-group__actions button:focus-visible {
+html[data-desktop-shell-style='xp'] .desktop-group__actions button:focus-visible,
+html[data-desktop-shell-style='xp'] .desktop-group__actions button:active:not(:disabled) {
   color: #fff;
-  background: var(--desktop-xp-titlebar-background);
+  background: var(--desktop-xp-menu-selection);
+  box-shadow: none;
   outline: 0;
 }
 
@@ -945,8 +949,8 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__option--active {
   color: #fff;
-  background: var(--desktop-xp-taskbar-item-active-background);
-  box-shadow: var(--desktop-xp-taskbar-item-active-shadow);
+  background: var(--desktop-xp-menu-selection);
+  box-shadow: none;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__option--active .desktop-start-menu__detail {
@@ -1043,9 +1047,9 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 .desktop[data-shell-style='xp'] .desktop-start-menu__footer-button:hover,
 .desktop[data-shell-style='xp'] .desktop-start-menu .language-selector__trigger:hover {
   color: #fff;
-  background: var(--desktop-xp-taskbar-item-active-background);
+  background: var(--desktop-xp-menu-selection);
   border-color: #8ec3f7;
-  box-shadow: var(--desktop-xp-taskbar-item-active-shadow);
+  box-shadow: none;
 }
 
 .desktop[data-shell-style='xp'] .desktop-start-menu__xp-controls {
@@ -1095,13 +1099,13 @@ html.desktop-mode-open[data-desktop-shell-style='xp'] .modal-panel .dns-guide {
 .desktop[data-shell-style='xp'] .desktop__context-menu button:focus-visible,
 .desktop[data-shell-style='xp'] .desktop__context-menu button[data-context-menu-active] {
   color: #fff;
-  background: #316ac5;
+  background: var(--desktop-xp-menu-selection);
   outline: 0;
   box-shadow: none;
 }
 
 .desktop[data-shell-style='xp'] .desktop__context-menu button:active:not(:disabled) {
-  background: #316ac5;
+  background: var(--desktop-xp-menu-selection);
   box-shadow: none;
 }
 
