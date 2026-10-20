@@ -16,7 +16,6 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const mockBatchJobs = new Map()
 const mockPort = Number.parseInt(process.env.KPANEL_MOCK_API_PORT || '8080', 10)
 if (!Number.isInteger(mockPort) || mockPort < 1024 || mockPort > 65535) {
   throw new Error('KPANEL_MOCK_API_PORT must be an integer between 1024 and 65535')
@@ -2946,42 +2945,6 @@ createServer(async (request, response) => {
       databaseDropped: false,
     })
     return
-  }
-  if (url.pathname === '/api/v1/terminal-batches') {
-    if (request.method === 'GET') { send(response, 200, { available: true, items: [...mockBatchJobs.values()].map(job => ({ ...job, results: job.results.map(result => ({ ...result, output: '' })) })) }); return }
-    if (request.method === 'POST') {
-      const input = await readJSON(request)
-      if (mockBatchJobs.has(input.id)) { send(response, 202, mockBatchJobs.get(input.id)); return }
-      if ([...mockBatchJobs.values()].some(job => job.state === 'running')) { send(response, 409, { code: 'batch_busy' }); return }
-      const now = new Date().toISOString()
-      const job = { id: input.id, command: input.command, state: 'running', createdAt: now, updatedAt: now,
-        results: input.hostIds.map((id, index) => ({ host: { id, name: visualClusterHosts.find(host => host.id === id)?.name || id, shell: 'posix' }, state: index < 4 ? 'running' : 'queued', error: index < 4 ? '' : 'waiting_for_capacity', output: index < 4 ? '模拟任务正在执行\n' : '', outputAvailable: true, truncated: false })) }
-      mockBatchJobs.set(job.id, job)
-      // Simulated execution belongs to this mock API, not a browser component.
-      const advance = () => {
-        if (job.state !== 'running') return
-        job.results.forEach(result => { if (result.state === 'running') { result.state = 'succeeded'; result.output += '模拟执行完成\n' } })
-        job.results.filter(result => result.state === 'queued').slice(0, 4).forEach(result => { result.state = 'running'; result.error = ''; result.output = '模拟任务正在执行\n' })
-        job.updatedAt = new Date().toISOString()
-        if (job.results.every(result => result.state === 'succeeded')) job.state = 'completed'
-        else setTimeout(advance, 8000).unref()
-      }
-      setTimeout(advance, 8000).unref()
-      send(response, 202, job); return
-    }
-  }
-  const batchMatch = url.pathname.match(/^\/api\/v1\/terminal-batches\/([a-f0-9]{32})(?:\/(stop|record))?$/)
-  if (batchMatch) {
-    const job = mockBatchJobs.get(batchMatch[1])
-    if (!job) { send(response, 404, { code: 'batch_not_found' }); return }
-    if (!batchMatch[2] && request.method === 'GET') { send(response, 200, job); return }
-    if (batchMatch[2] === 'stop' && request.method === 'POST') {
-      job.state = 'stopped'; job.updatedAt = new Date().toISOString()
-      job.results.forEach(result => { if (['queued', 'running'].includes(result.state)) { result.state = 'stopped'; result.error = '' } })
-      send(response, 200, { accepted: true }); return
-    }
-    if (batchMatch[2] === 'record' && request.method === 'DELETE' && job.state !== 'running') { mockBatchJobs.delete(job.id); send(response, 200, { accepted: true }); return }
-    send(response, 409, { code: 'batch_busy' }); return
   }
   if (request.method === 'GET' && url.pathname === '/api/v1/terminal-sessions') {
     send(response, 200, { items: [...mockTerminalSessions.values()].filter(session => session.metadata?.retained && !session.exitedAt).map(session => session.metadata) })
