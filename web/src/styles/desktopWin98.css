@@ -67,19 +67,29 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] body {
   --win-group-control-height: 18px;
 }
 
-/* Classic group panels share Win98's gray face and raised control edges. */
+/* Group frames and inset titlebars match the desktop widgets. */
 .desktop[data-shell-style='win98'] .desktop-group {
   border: 0;
   border-radius: 0;
   background: var(--win98-surface);
-  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
+  box-shadow: var(--win98-border-window-outer), var(--win98-border-window-inner);
 }
 
 .desktop[data-shell-style='win98'] .desktop-group__header {
+  margin: 3px 3px 0;
   background: var(--desktop-titlebar-active);
-  border-bottom: 1px solid var(--win98-button-shadow);
+  border: 0;
   border-radius: 0;
-  box-shadow: inset 0 -1px var(--win98-button-highlight);
+  box-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop-group__header strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.desktop[data-shell-style='win98'] .desktop-group--collapsed {
+  max-height: calc(var(--win-group-title-height) + 6px);
 }
 
 .desktop[data-shell-style='win98'] .desktop-group__header button {
