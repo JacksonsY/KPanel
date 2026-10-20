@@ -9,7 +9,8 @@ interface TerminalTouchScrollOptions {
   getTerminal: () => TerminalScrollTarget | undefined
   getScreen: () => HTMLElement | undefined
   getSelectionTerminal?: () => Terminal | undefined
-  showSelectionMenu?: (x: number, y: number) => void
+  onLongPress?: (action: 'copy' | 'paste' | 'menu', x: number, y: number) => void
+  onTap?: () => void
 }
 
 export function createTerminalTouchScroll(options: TerminalTouchScrollOptions) {
@@ -19,6 +20,8 @@ export function createTerminalTouchScroll(options: TerminalTouchScrollOptions) {
   let anchor: { start: number; end: number } | undefined
   let lastPoint: { x: number; y: number } | undefined
   let holdTimer: ReturnType<typeof setTimeout> | undefined
+  let held = false
+  let pasteOnHold = false
 
   function cancelHold(): void {
     clearTimeout(holdTimer)
@@ -41,6 +44,7 @@ export function createTerminalTouchScroll(options: TerminalTouchScrollOptions) {
 
   function selectWord(): void {
     holdTimer = undefined
+    held = true
     const terminal = options.getSelectionTerminal?.()
     if (!origin || !terminal) return
     const index = cellAt(origin.x, origin.y)
@@ -54,7 +58,7 @@ export function createTerminalTouchScroll(options: TerminalTouchScrollOptions) {
       const cell = line.getCell(column)
       return cell && (cell.getWidth() === 0 || /\S/u.test(cell.getChars()))
     }
-    if (!isText(start)) return
+    if (!isText(start)) { pasteOnHold = true; return }
     let end = start + 1
     while (start > 0 && isText(start - 1)) start--
     while (end < terminal.cols && isText(end)) end++
@@ -93,6 +97,13 @@ export function createTerminalTouchScroll(options: TerminalTouchScrollOptions) {
 
     const touch = event.touches.item(0)!
     lastPoint = { x: touch.clientX, y: touch.clientY }
+    if (held && !anchor) {
+      // A paste hold must remain stationary; dragging away cancels the action.
+      if (origin && Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) >= 8) end()
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     if (anchor) {
       const index = cellAt(touch.clientX, touch.clientY)
       if (index !== undefined) {
@@ -130,15 +141,24 @@ export function createTerminalTouchScroll(options: TerminalTouchScrollOptions) {
   }
 
   function end(event?: TouchEvent): void {
-    const point = anchor && lastPoint
+    const point = held && lastPoint
+    let action: 'copy' | 'paste' | 'menu' = 'menu'
+    if (pasteOnHold) action = 'paste'
+    else if (anchor) action = 'copy'
+    const tapped = origin && holdTimer !== undefined
     cancelHold()
     origin = anchor = lastPoint = undefined
+    held = pasteOnHold = false
     lastY = undefined
     remainder = 0
     if (event?.type === 'touchend' && point) {
       event.preventDefault()
       event.stopPropagation()
-      options.showSelectionMenu?.(point.x, point.y)
+      options.onLongPress?.(action, point.x, point.y)
+    } else if (event?.type === 'touchend' && tapped) {
+      // Explicit touch release is a user gesture, so mobile browsers may show the keyboard.
+      event.preventDefault()
+      options.onTap?.()
     }
   }
 

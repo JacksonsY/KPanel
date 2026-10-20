@@ -27,6 +27,7 @@ const top = ref(0)
 const selection = ref('')
 const feedback = ref<'copyFailed' | 'pasteBlocked'>()
 let contextMenuAnchor: Element | null = null
+let disposed = false
 
 function close(focusTerminal = false): void {
   visible.value = false
@@ -121,19 +122,44 @@ async function copySelection(): Promise<void> {
 
 async function pasteClipboard(): Promise<boolean> {
   if (!props.canPaste) return false
+  const target = props.getTerminal()
   if (navigator.clipboard?.readText) {
     try {
       const value = await navigator.clipboard.readText()
-      if (value) props.getTerminal()?.paste(value)
+      // Clipboard permission can resolve after input closes or the viewer is replaced.
+      if (disposed || !props.canPaste || props.getTerminal() !== target) return true
+      if (value) target?.paste(value)
       close(true)
       return true
     } catch {
       // Keep the menu open with a keyboard fallback when clipboard read is denied.
     }
   }
+  if (disposed || !props.canPaste || props.getTerminal() !== target) return true
   feedback.value = 'pasteBlocked'
   props.getTerminal()?.focus()
   return false
+}
+
+async function handleTouchHold(action: 'copy' | 'paste' | 'menu', x: number, y: number): Promise<void> {
+  const target = props.getTerminal()
+  const showMenu = () => open(new MouseEvent('contextmenu', { clientX: x, clientY: y }))
+  if (action === 'paste' && props.canPaste) {
+    if (await pasteClipboard()) return
+    if (disposed || props.getTerminal() !== target) return
+    showMenu()
+    feedback.value = 'pasteBlocked'
+    return
+  }
+  if (action === 'copy') {
+    const value = target?.getSelection() || ''
+    if (value && await writeClipboard(value)) return
+    if (disposed || props.getTerminal() !== target) return
+    showMenu()
+    if (value) feedback.value = 'copyFailed'
+    return
+  }
+  showMenu()
 }
 
 function selectAll(): void {
@@ -222,6 +248,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  disposed = true
   document.removeEventListener('mouseup', handleSelectionMouseUp)
   document.removeEventListener('pointerdown', handleDocumentPointer, true)
   document.removeEventListener('keydown', handleEscape, true)
@@ -232,7 +259,7 @@ onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener?.('scroll', handleViewportChange)
 })
 
-defineExpose({ open, handlePaste, handleKeyEvent, handleSelectionPointerDown })
+defineExpose({ open, handlePaste, handleKeyEvent, handleSelectionPointerDown, handleTouchHold })
 </script>
 
 <template>

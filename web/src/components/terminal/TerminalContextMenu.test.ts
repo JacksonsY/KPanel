@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TerminalContextMenu from './TerminalContextMenu.vue'
 
 interface ExposedMenu {
+  handleTouchHold: (action: 'copy' | 'paste' | 'menu', x: number, y: number) => Promise<void>
   open: (event: MouseEvent) => void
   handlePaste: (event: ClipboardEvent) => void
   handleKeyEvent: (event: KeyboardEvent) => boolean
@@ -117,6 +118,70 @@ describe('TerminalContextMenu', () => {
 
     expect(writeText).toHaveBeenCalledWith('selected output')
     expect(terminal.focus).toHaveBeenCalled()
+  })
+
+  it('automatically copies a completed touch selection without focusing or reading the clipboard', async () => {
+    await (wrapper.vm as unknown as ExposedMenu).handleTouchHold('copy', 40, 50)
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('selected output')
+    expect(readText).not.toHaveBeenCalled()
+    expect(terminal.focus).not.toHaveBeenCalled()
+    expect(document.body.querySelector('.terminal-context-menu')).toBeNull()
+  })
+
+  it('automatically pastes on a focused touch hold without overwriting the clipboard', async () => {
+    await (wrapper.vm as unknown as ExposedMenu).handleTouchHold('paste', 40, 50)
+    expect(readText).toHaveBeenCalledOnce()
+    expect(terminal.paste).toHaveBeenCalledExactlyOnceWith('pasted command')
+    expect(writeText).not.toHaveBeenCalled()
+    expect(document.body.querySelector('.terminal-context-menu')).toBeNull()
+  })
+
+  it('offers the clipboard menu for an unfocused blank hold', async () => {
+    await (wrapper.vm as unknown as ExposedMenu).handleTouchHold('menu', 40, 50)
+    expect(document.body.querySelector('.terminal-context-menu')).not.toBeNull()
+    expect(readText).not.toHaveBeenCalled()
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it('keeps the menu and fallback instructions when automatic paste is denied', async () => {
+    readText.mockRejectedValueOnce(new Error('denied'))
+    await (wrapper.vm as unknown as ExposedMenu).handleTouchHold('paste', 40, 50)
+    expect(terminal.paste).not.toHaveBeenCalled()
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain('Ctrl+V')
+  })
+
+  it('keeps manual copy available when automatic copy and the legacy fallback fail', async () => {
+    writeText.mockRejectedValueOnce(new Error('denied'))
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) })
+    await (wrapper.vm as unknown as ExposedMenu).handleTouchHold('copy', 40, 50)
+    expect(document.body.querySelector('.terminal-context-menu')).not.toBeNull()
+    expect(document.body.querySelector('[role="status"]')).not.toBeNull()
+    expect(terminal.focus).not.toHaveBeenCalled()
+  })
+
+  it('does not send input for an empty clipboard or read-only terminal', async () => {
+    readText.mockResolvedValueOnce('')
+    const menu = wrapper.vm as unknown as ExposedMenu
+    await menu.handleTouchHold('paste', 40, 50)
+    expect(terminal.paste).not.toHaveBeenCalled()
+    readText.mockClear()
+    await wrapper.setProps({ canPaste: false })
+    await menu.handleTouchHold('paste', 40, 50)
+    expect(readText).not.toHaveBeenCalled()
+    expect(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')[1]?.disabled).toBe(true)
+  })
+
+  it.each(['closed', 'replaced', 'unmounted'])('does not paste a permission result after the terminal is %s', async kind => {
+    let resolve!: (text: string) => void
+    readText.mockImplementationOnce(() => new Promise<string>(done => { resolve = done }))
+    const pending = (wrapper.vm as unknown as ExposedMenu).handleTouchHold('paste', 40, 50)
+    if (kind === 'closed') await wrapper.setProps({ canPaste: false })
+    if (kind === 'replaced') await wrapper.setProps({ getTerminal: () => undefined })
+    if (kind === 'unmounted') wrapper.unmount()
+    resolve('delayed command')
+    await pending
+    expect(terminal.paste).not.toHaveBeenCalled()
+    expect(terminal.focus).not.toHaveBeenCalled()
   })
 
   it('pastes clipboard text through xterm', async () => {
