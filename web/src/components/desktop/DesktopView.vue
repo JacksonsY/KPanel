@@ -433,7 +433,7 @@ const initialLayoutTransitionsReady = ref(false)
 const viewportLayoutResizing = ref(false)
 const layoutBeforeResize = ref<{
   bounds: DesktopIconBounds
-  placements: Array<Pick<DesktopGridPlacement, 'key' | 'position'>>
+  placements: DesktopGridPlacement[]
 }>()
 const desktopElement = ref<HTMLElement>()
 const iconBounds = ref<DesktopIconBounds>({ width: 90, height: 96 })
@@ -803,19 +803,32 @@ const savedPlacements = computed<Array<Pick<DesktopGridPlacement, 'key' | 'posit
   ...Object.entries(localWidgetPositions.value).map(([key, position]) => ({ key, position })),
 ])
 
-const renderedDesktopLayout = computed(() => layoutBeforeResize.value
-  && (layoutBeforeResize.value.bounds.width !== iconBounds.value.width
-    || layoutBeforeResize.value.bounds.height !== iconBounds.value.height)
-  ? deriveDesktopGridLayout(allDesktopLayoutItems.value, layoutBeforeResize.value.placements, iconBounds.value, compactIconLayout.value)
-  : deriveDesktopGridLayout(
-  allDesktopLayoutItems.value,
-  savedPlacements.value,
-  iconBounds.value,
-  compactIconLayout.value,
-))
+const renderedDesktopLayout = computed(() => {
+  const before = layoutBeforeResize.value
+  const anchors = before?.placements.map(placement => {
+    const rect = desktopGridPlacementRect(placement, before.bounds)
+    // Keep rows and icon columns fixed instead of scaling their gaps with the viewport.
+    // Widgets on the right retain their inset from that edge as the desktop grows.
+    const rightAnchored = desktopWidgetKeys.has(placement.key)
+      && rect.left + rect.width / 2 > before.bounds.width / 2
+    return {
+      key: placement.key,
+      position: desktopIconPixelsToPosition({
+        left: rect.left + (rightAnchored ? iconBounds.value.width - before.bounds.width : 0),
+        top: rect.top,
+      }, iconBounds.value),
+    }
+  }) || []
+  return deriveDesktopGridLayout(
+    allDesktopLayoutItems.value,
+    [...savedPlacements.value, ...anchors],
+    iconBounds.value,
+    compactIconLayout.value,
+  )
+})
 
 // A user edit or a new server snapshot becomes the new layout to preserve.
-watch([localPositions, localWidgetPositions, localGroups], () => {
+watch(() => JSON.stringify([localPositions.value, localWidgetPositions.value, localGroups.value]), () => {
   layoutBeforeResize.value = undefined
   entryLoadAnchors.value = {}
 }, { flush: 'sync' })
@@ -1672,9 +1685,8 @@ function measureIconWorkArea(): void {
       const placements = renderedDesktopLayout.value.placements
       layoutBeforeResize.value = {
         bounds: { ...iconBounds.value },
-        // Keep spatial anchors (including intentional gaps), not just reading order.
-        // Viewport adaptation must not turn a manual layout into auto-arrange.
-        placements: [...savedPlacements.value, ...placements].map(({ key, position }) => ({ key, position: { ...position } })),
+        // Snapshot visible geometry; hidden items keep their saved anchors until shown.
+        placements: placements.map(placement => ({ ...placement, position: { ...placement.position } })),
       }
     }
     iconBounds.value = bounds
