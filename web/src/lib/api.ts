@@ -1,3 +1,4 @@
+import type { TerminalBatch, TerminalBatchList } from '@/types/terminalBatch'
 import type { DockerImageUpdateResult } from '@/lib/dockerImageUpdate'
 import { TerminalStreamClient } from '@/lib/terminalStream'
 import { uploadFileInSession, type FileReceiveSession } from '@/lib/fileReceiveUpload'
@@ -1945,6 +1946,11 @@ export const api = {
     },
   },
   terminals: {
+    batches: (signal?: AbortSignal): Promise<TerminalBatchList> => request('/terminal-batches', { signal }),
+    getBatch: (id: string, signal?: AbortSignal): Promise<TerminalBatch> => request('/terminal-batches/' + encodeURIComponent(id), { signal }),
+    startBatch: (body: { id: string; command: string; hostIds: string[] }): Promise<TerminalBatch> => request('/terminal-batches', { method: 'POST', body }),
+    stopBatch: (id: string): Promise<{ accepted: boolean }> => request('/terminal-batches/' + encodeURIComponent(id) + '/stop', { method: 'POST', body: {} }),
+    removeBatch: (id: string): Promise<{ accepted: boolean }> => request('/terminal-batches/' + encodeURIComponent(id) + '/record', { method: 'DELETE' }),
     list: (signal?: AbortSignal): Promise<{ items: TerminalSession[] }> =>
       request<{ items: TerminalSession[] }>('/terminal-sessions', { signal }),
 	inputBatch: (sessionId: string, frames: Array<{ stream: string; seq: number; data: string }>, signal?: AbortSignal): Promise<{ acked: number }> =>

@@ -1,419 +1,152 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import { CheckCircle2, ChevronDown, LoaderCircle, Play, TerminalSquare, XCircle } from '@lucide/vue'
 import StatusBadge from '@/components/feedback/StatusBadge.vue'
 import OperatingSystemIcon from '@/components/overview/OperatingSystemIcon.vue'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import { ApiError, api } from '@/lib/api'
 import { detectOperatingSystemIdentity } from '@/lib/operatingSystem'
-import { batchExitCode, createBatchMarker, stripBatchWrapper, wrapBatchCommand } from '@/lib/batchCompletion'
-import { drainTerminalInputQueue, TerminalInputQueue } from '@/lib/terminalInput'
-import { createTerminalOutputReader, type TerminalOutputReader } from '@/lib/terminalOutputReader'
-import { closeTerminalsOnPageHide } from '@/lib/terminalPageHide'
 import { useTerminalHistory } from '@/stores/terminalHistory'
 import type { ClusterHost } from '@/types/api'
+import type { BatchState, TerminalBatch } from '@/types/terminalBatch'
 
-function phrase(value: string): string {
-  phraseCatalogVersion.value
-  return translatePhrase(value)
-}
-
-const props = defineProps<{
-  hosts: ClusterHost[]
-  sessionCapacity: number
-}>()
-const emit = defineEmits<{ runningChange: [running: boolean] }>()
-
-type ExecutionState = 'queued' | 'connecting' | 'running' | 'succeeded' | 'failed' | 'timed_out' | 'stopped'
-
-interface BatchExecutionResult {
-  host: ClusterHost
-  state: ExecutionState
-  output: string
-  rawOutput: string
-  truncated: boolean
-  error: string
-}
-
-const MAX_CONCURRENCY = 4
-const MAX_COMMAND_BYTES = 16 * 1024
-const MAX_CAPTURE_CHARACTERS = 128 * 1024
-const EXECUTION_TIMEOUT_MS = 4 * 60 * 60 * 1000
-// Transient output-poll failures are retried with backoff instead of failing the host.
-const OUTPUT_RETRY_LIMIT = 5
-const OUTPUT_RETRY_BASE_DELAY_MS = 500
-// A PTY input queue has no recipient: whoever reads first consumes the bytes,
-// so a trailing `exit` sent blind lands in menus or `read` loops instead of
-// the shell. Send only the command, then wait for a steady shell prompt — at
-// that point the queue is clear and a follow-up `exit` reliably reaches bash,
-// whose exit status inherits the last command's (real success/failure for
-// menu scripts too). Nested wrappers swallow early attempts; each prompt
-// reappearance retries, and exhaustion falls back to closing the session.
-const PROMPT_STABLE_MS = 3000
-const PROMPT_POLL_IDLE_MS = 300
-const MAX_EXIT_ATTEMPTS = 3
-// Three prompt shapes: a full user@host:path marker, version-stamped
-// bash/sh banners, and the bare `# ` / `$ ` that a root /bin/sh -l fallback
-// prints when the fixed agent environment leaves PS1 unset. The bare branch
-// requires the marker to be alone on its line, so command output that merely
-// ends in a dollar sign is not mistaken for a prompt.
-const promptPattern = /(?:^|\r?\n|\r)[^\r\n]{0,64}@[^\r\n]{0,64}:[^\r\n]{0,80}[$#] ?$|(?:^|\r?\n|\r)(?:bash|sh)-[\d.]+\$ ?$|(?:^|\r?\n|\r)[$#] ?$/
-const encoder = new TextEncoder()
-
+function phrase(value: string): string { phraseCatalogVersion.value; return translatePhrase(value) }
+const props = defineProps<{ hosts: ClusterHost[]; sessionCapacity: number }>()
+const emit = defineEmits<{ runningChange: [running: boolean]; restoreSelection: [ids: string[]] }>()
 const command = ref('')
-const terminalHistory = useTerminalHistory()
-const results = ref<BatchExecutionResult[]>([])
-const executing = ref(false)
+const jobs = ref<TerminalBatch[]>([])
+const selectedID = ref('')
+const loading = ref(true)
+const submitting = ref(false)
+const stopping = ref(false)
+const available = ref(false)
+const error = ref('')
+const storageWarning = ref('')
+const syncError = ref('')
+const selectedJob = computed(() => jobs.value.find(job => job.id === selectedID.value))
+const activeJob = computed(() => jobs.value.find(job => job.state === 'running'))
+const executing = computed(() => Boolean(activeJob.value))
+const results = computed(() => (selectedJob.value?.results || []).map(result => ({ ...result, output: result.output || '', error: errorLabel(result.error || '') })))
 const expandedHosts = ref<Set<string>>(new Set())
-const activeSessions = new Map<string, string>()
-const outputDecoders = new Map<string, TextDecoder>()
-let runController: AbortController | undefined
-let runIdentity = 0
+const terminalHistory = useTerminalHistory()
+const commandInput = ref<HTMLTextAreaElement>()
+const commandBytes = computed(() => new TextEncoder().encode(command.value).byteLength)
+const commandError = computed(() => commandBytes.value > 16 * 1024 ? phrase('命令不能超过 16 KiB。') : '')
+const canExecute = computed(() => !loading.value && available.value && !executing.value && !submitting.value && Boolean(command.value.trim()) && !commandError.value && props.hosts.length > 0)
+const completedCount = computed(() => results.value.filter(item => ['succeeded', 'failed', 'timed_out', 'stopped', 'interrupted'].includes(item.state)).length)
+const succeededCount = computed(() => results.value.filter(item => item.state === 'succeeded').length)
+const failedCount = computed(() => results.value.filter(item => ['failed', 'timed_out', 'interrupted'].includes(item.state)).length)
+const allExpanded = computed(() => results.value.length > 0 && results.value.every(item => expandedHosts.value.has(item.host.id)))
+watch(executing, value => emit('runningChange', value), { immediate: true })
 
-const commandBytes = computed(() => encoder.encode(command.value).byteLength)
-const commandError = computed(() => commandBytes.value > MAX_COMMAND_BYTES
-  ? phrase('命令不能超过 16 KiB。')
-  : '')
-const canExecute = computed(() => !executing.value
-  && command.value.trim().length > 0
-  && !commandError.value
-  && props.hosts.length > 0
-  && props.sessionCapacity > 0)
-const completedCount = computed(() => results.value.filter((item) =>
-  item.state === 'succeeded' || item.state === 'failed' || item.state === 'timed_out' || item.state === 'stopped').length)
-const succeededCount = computed(() => results.value.filter((item) => item.state === 'succeeded').length)
-const failedCount = computed(() => results.value.filter((item) => item.state === 'failed' || item.state === 'timed_out').length)
-
-watch(executing, (value) => emit('runningChange', value), { immediate: true })
-
-function operatingSystemIdentity(host: ClusterHost) {
-  return detectOperatingSystemIdentity(host.lastSnapshot?.telemetry)
-}
-
+function operatingSystemIdentity(host: { id: string }) { return detectOperatingSystemIdentity(props.hosts.find(item => item.id === host.id)?.lastSnapshot?.telemetry) }
 const outputPreElements = new Map<string, HTMLPreElement>()
-
-function setOutputPre(hostID: string, element: Element | ComponentPublicInstance | null): void {
-  if (element instanceof HTMLPreElement) outputPreElements.set(hostID, element)
-  else outputPreElements.delete(hostID)
+function setOutputPre(id: string, element: Element | ComponentPublicInstance | null) { if (element instanceof HTMLPreElement) outputPreElements.set(id, element); else outputPreElements.delete(id) }
+function scrollOutputToBottom(id: string) { const pre = outputPreElements.get(id); if (pre) pre.scrollTop = pre.scrollHeight }
+function toggleExpanded(id: string) { const next = new Set(expandedHosts.value); if (next.has(id)) next.delete(id); else { next.add(id); void nextTick(() => scrollOutputToBottom(id)) }; expandedHosts.value = next }
+function expandAll() { expandedHosts.value = new Set(results.value.map(item => item.host.id)); void nextTick(() => results.value.forEach(item => scrollOutputToBottom(item.host.id))) }
+function collapseAll() { expandedHosts.value = new Set() }
+function selectRecord() { revision++; collapseAll(); void refresh() }
+function setCommandInput(element: Element | ComponentPublicInstance | null) { commandInput.value = element instanceof HTMLTextAreaElement ? element : undefined }
+function applyQuickCommand(value: string) { if (executing.value || submitting.value) return; command.value = value; void nextTick(() => commandInput.value?.focus()) }
+function executionLabel(state: BatchState): string {
+  return phrase(({ queued: '等待执行', connecting: '正在连接', running: '命令执行中', closing: '正在释放会话', succeeded: '执行成功', failed: '执行失败', timed_out: '执行超时', stopped: '已手动终止', interrupted: '执行已中断' })[state])
 }
-
-function isScrolledToBottom(hostID: string): boolean {
-  const pre = outputPreElements.get(hostID)
-  if (!pre) return true
-  return pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8
-}
-
-function scrollOutputToBottom(hostID: string): void {
-  const pre = outputPreElements.get(hostID)
-  if (pre) pre.scrollTop = pre.scrollHeight
-}
-
-function toggleExpanded(hostID: string): void {
-  const next = new Set(expandedHosts.value)
-  if (next.has(hostID)) next.delete(hostID)
-  else next.add(hostID)
-  expandedHosts.value = next
-  if (next.has(hostID)) void nextTick(() => scrollOutputToBottom(hostID))
-}
-
-function expandAll(): void {
-  expandedHosts.value = new Set(results.value.map((item) => item.host.id))
-  void nextTick(() => {
-    for (const hostID of expandedHosts.value) scrollOutputToBottom(hostID)
-  })
-}
-
-function collapseAll(): void {
-  expandedHosts.value = new Set()
-}
-
-let commandInput: HTMLTextAreaElement | undefined
-
-function setCommandInput(element: Element | ComponentPublicInstance | null): void {
-  commandInput = element instanceof HTMLTextAreaElement ? element : undefined
-}
-
-function applyQuickCommand(value: string): void {
-  if (executing.value || !value.trim()) return
-  command.value = value.replace(/\r\n?/g, '\n').replace(/\s+$/, '')
-  commandInput?.focus()
-}
-
-const allExpanded = computed(() => results.value.length > 0 && results.value.every((item) => expandedHosts.value.has(item.host.id)))
-
-function executionLabel(state: ExecutionState): string {
-  return phrase({
-    queued: '等待执行', connecting: '正在连接', running: '命令执行中', succeeded: '执行成功',
-    failed: '执行失败', timed_out: '执行超时', stopped: '已手动终止',
-  }[state])
-}
-
-function badgeStatus(state: ExecutionState): string {
-  if (state === 'succeeded') return 'succeeded'
-  if (state === 'failed') return 'failed'
-  if (state === 'timed_out') return 'expired'
-  if (state === 'stopped') return 'expired'
-  if (state === 'running') return 'running_job'
-  return 'queued'
-}
-
-function encodeBase64(value: string): string {
-  const bytes = encoder.encode(value)
-  let binary = ''
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+function badgeStatus(state: BatchState): string { if (state === 'succeeded' || state === 'failed') return state; if (['timed_out', 'stopped', 'interrupted'].includes(state)) return 'expired'; return state === 'running' || state === 'closing' ? 'running_job' : 'queued' }
+function errorLabel(code: string): string {
+  const messages: Record<string, string> = {
+    waiting_for_capacity: '等待终端名额，释放后自动继续。',
+    terminal_close_failed: '会话释放未确认，名额仍保留，请检查目标主机连接。',
+    terminal_open_failed: '连接失败，请检查目标主机后单独重试。',
+    terminal_input_uncertain: '命令发送结果不确定，请检查目标主机，避免重复执行。',
+    terminal_output_failed: '无法继续读取输出，请检查目标主机上的实际执行结果。',
+    terminal_execution_failed: '命令执行未完成。',
+    terminal_exit_failed: '终端异常退出，请检查输出。',
+    terminal_completion_unknown: '无法确认命令完成，请检查输出。',
+    terminal_command_too_large: '命令包装后超过终端输入上限。',
+    terminal_marker_failed: '无法准备终端完成标记。',
+    batch_timeout: '超过 4 小时，任务已停止。',
+    panel_restarted: 'Panel 已重启，未完成命令未自动重放。',
+    panel_stopped: 'Panel 已停止，未完成命令未自动重放。',
   }
-  return btoa(binary)
+  return messages[code] ? phrase(messages[code]) : code
 }
-
-function decodeBase64(value: string): Uint8Array {
-  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-  const binary = atob(padded)
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0))
-}
-
-function plainTerminalOutput(value: string): string {
-  return value
-    .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '')
-    .replace(/\x1B(?:\[[0-?]*[ -/]*[@-~]|[@-_][0-?]*[ -/]*[@-~])/g, '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
-    .trimEnd()
-}
-
-function appendOutput(result: BatchExecutionResult, hostID: string, data: string, final = false): void {
-  const wasFollowing = expandedHosts.value.has(hostID) && isScrolledToBottom(hostID)
-  const decoder = outputDecoders.get(hostID) || new TextDecoder()
-  outputDecoders.set(hostID, decoder)
-  if (data) result.rawOutput += decoder.decode(decodeBase64(data), { stream: !final })
-  if (final) result.rawOutput += decoder.decode()
-  if (result.rawOutput.length > MAX_CAPTURE_CHARACTERS) {
-    result.rawOutput = result.rawOutput.slice(-MAX_CAPTURE_CHARACTERS)
-    result.truncated = true
-  }
-  result.output = plainTerminalOutput(result.rawOutput)
-  if (wasFollowing) void nextTick(() => scrollOutputToBottom(hostID))
-}
-
-async function sendTerminalText(sessionID: string, value: string, signal: AbortSignal): Promise<void> {
-  const queue = new TerminalInputQueue()
-  queue.append(value)
-  await drainTerminalInputQueue(
-    queue,
-    () => !signal.aborted,
-    (chunk) => api.terminals.input(sessionID, encodeBase64(chunk)).then(() => undefined),
-  )
-  if (signal.aborted) throw new Error('batch terminal execution aborted')
-}
-
-function retryDelay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(new Error('batch terminal execution aborted'))
-      return
-    }
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort)
-      resolve()
-    }, ms)
-    function onAbort(): void {
-      clearTimeout(timer)
-      reject(new Error('batch terminal execution aborted'))
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-  })
-}
-
-function friendlyExecutionError(reason: unknown): string {
-  if (reason instanceof ApiError) {
-    if (reason.code === 'terminal_limit') return phrase('终端会话已满，请关闭其他终端后重试。')
-    if (reason.code === 'terminal_unavailable') return phrase('目标主机的终端当前不可用。')
-    if (reason.code === 'terminal_not_found') return phrase('目标终端连接已中断。')
-  }
-  return phrase('连接或执行失败，请重试。')
-}
-
-async function closeSession(hostID: string, sessionID: string): Promise<void> {
-  if (activeSessions.get(hostID) !== sessionID) return
-  activeSessions.delete(hostID)
-  await api.terminals.close(sessionID).catch(() => undefined)
-}
-
-async function executeHost(hostID: string, submittedCommand: string, identity: number, signal: AbortSignal): Promise<void> {
-  const result = results.value.find((item) => item.host.id === hostID)
-  if (!result || identity !== runIdentity || signal.aborted) return
-  result.state = 'connecting'
-  let sessionID = ''
-  let exited = false
-  let reader: TerminalOutputReader | undefined
-  const marker = createBatchMarker()
+let disposed = false
+let timer: ReturnType<typeof setTimeout> | undefined
+const controller = new AbortController()
+let restoredID = ''
+let revision = 0
+let pending: { id: string; command: string; hostIds: string[] } | undefined
+async function refresh(): Promise<void> {
   try {
-    const opened = await api.terminals.open(hostID, 30, 120)
-    sessionID = opened.sessionId
-    activeSessions.set(hostID, sessionID)
-    if (identity !== runIdentity || signal.aborted) {
-      await closeSession(hostID, sessionID)
-      return
+    const before = revision
+    const response = await api.terminals.batches(controller.signal)
+    if (disposed || revision !== before) return
+    const following = [...outputPreElements].filter(([, pre]) => pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8).map(([id]) => id)
+    const selection = response.items.find(job => job.state === 'running')?.id || response.items.find(job => job.id === selectedID.value)?.id || response.items[0]?.id
+    if (selection) {
+      const detail = await api.terminals.getBatch(selection, controller.signal)
+      if (disposed || revision !== before) return
+      response.items = response.items.map(job => job.id === detail.id ? detail : job)
     }
-    result.state = 'running'
-    reader = createTerminalOutputReader(sessionID, opened.offset)
-    // The completion marker reports the real exit status as soon as the
-    // command ends; the steady-prompt path below stays as the fallback when
-    // the marker never prints (for example a syntax error in the command).
-    await sendTerminalText(sessionID, wrapBatchCommand(submittedCommand, marker, result.host.terminalShell), signal)
-
-    let offset = opened.offset
-    let pollFailures = 0
-    let promptSince = 0
-    let exitAttempts = 0
-    const deadline = Date.now() + EXECUTION_TIMEOUT_MS
-    while (!signal.aborted && identity === runIdentity) {
-      if (Date.now() >= deadline) {
-        result.state = 'timed_out'
-        result.error = phrase('超过 4 小时，终端会话已停止。')
-        await closeSession(hostID, sessionID)
-        return
-      }
-      let chunk
-      try {
-        chunk = await reader.next(signal)
-        pollFailures = 0
-      } catch (reason) {
-        if (identity !== runIdentity || signal.aborted) return
-        if (reason instanceof ApiError && reason.code === 'terminal_not_found') throw reason
-        // Hard 4xx (auth, CSRF, bad request) never recover by retrying; only
-        // 429 and transport-level failures (status 0) may still come good.
-        if (reason instanceof ApiError && reason.status >= 400 && reason.status < 500 && reason.status !== 429) throw reason
-        pollFailures += 1
-        if (pollFailures > OUTPUT_RETRY_LIMIT) throw reason
-        await retryDelay(OUTPUT_RETRY_BASE_DELAY_MS * 2 ** (pollFailures - 1), signal)
-        continue
-      }
-      if (!chunk) {
-        // No output within the idle window: the same as an empty long-poll.
-        chunk = { data: '', offset, nextOffset: offset, truncated: false, closed: false }
-      }
-      const receivedNew = chunk.nextOffset > offset
-      offset = chunk.nextOffset
-      result.truncated = result.truncated || chunk.truncated
-      const finished = Boolean(chunk.exitedAt || chunk.closed)
-      appendOutput(result, hostID, chunk.data, finished)
-      const exitCode = batchExitCode(result.rawOutput, marker, result.host.terminalShell)
-      if (exitCode !== null) {
-        result.output = stripBatchWrapper(result.output, submittedCommand, marker)
-        result.state = exitCode === 0 ? 'succeeded' : 'failed'
-        result.error = exitCode === 0 ? '' : `exit status ${exitCode}`
-        await closeSession(hostID, sessionID)
-        exited = true
-        return
-      }
-      result.output = stripBatchWrapper(result.output, submittedCommand, marker)
-      if (finished) {
-        exited = true
-        activeSessions.delete(hostID)
-        if (chunk.exitError) {
-          result.state = 'failed'
-          result.error = chunk.exitError
-        } else {
-          result.state = 'succeeded'
-        }
-        return
-      }
-      if (receivedNew) promptSince = 0
-      else if (!promptSince && promptPattern.test(result.output)) promptSince = Date.now()
-      if (promptSince && Date.now() - promptSince >= PROMPT_STABLE_MS) {
-        // The prompt is steady: the input queue is empty, so an `exit` sent
-        // now reaches the shell itself and reports the real exit status
-        // instead of being swallowed by a menu. Nested wrappers consume the
-        // earlier attempts; retry a bounded number of times, then fall back
-        // to closing the session.
-        if (exitAttempts < MAX_EXIT_ATTEMPTS) {
-          exitAttempts += 1
-          promptSince = 0
-          try {
-            await sendTerminalText(sessionID, 'exit\r', signal)
-          } catch {
-            // A failed send falls through to the close fallback below.
-          }
-          continue
-        }
-        exited = false
-        await closeSession(hostID, sessionID)
-        result.state = 'succeeded'
-        return
-      }
-      if (!receivedNew) await new Promise((resolve) => setTimeout(resolve, PROMPT_POLL_IDLE_MS))
-    }
-  } catch (reason) {
-    if (identity !== runIdentity || signal.aborted) return
-    result.state = 'failed'
-    result.error = friendlyExecutionError(reason)
-  } finally {
-    reader?.close()
-    outputDecoders.delete(hostID)
-    if (sessionID && !exited && activeSessions.get(hostID) === sessionID) {
-      await closeSession(hostID, sessionID)
-    }
-  }
+    syncError.value = ''
+    jobs.value = response.items
+    available.value = response.available
+    storageWarning.value = !response.available ? phrase('批量记录不可用，请检查 Panel 数据目录。') : response.warning ? phrase('操作记录保存失败，当前进度可能无法在重启后保留。') : ''
+    if (activeJob.value) selectedID.value = activeJob.value.id
+    else if (!jobs.value.some(job => job.id === selectedID.value)) selectedID.value = jobs.value[0]?.id || ''
+    const restored = activeJob.value || (loading.value ? selectedJob.value : undefined)
+    if (restored && restored.id !== restoredID) { restoredID = restored.id; emit('restoreSelection', restored.results.map(result => result.host.id)) }
+    if (pending && jobs.value.some(job => job.id === pending?.id)) pending = undefined
+    await nextTick()
+    following.forEach(scrollOutputToBottom)
+  } catch {
+    if (!disposed) syncError.value = phrase('无法同步批量进度，后台任务可能仍在执行，请刷新重连。')
+  } finally { if (!disposed) loading.value = false }
 }
-
+async function poll(): Promise<void> {
+  await refresh()
+  if (!disposed) timer = setTimeout(() => void poll(), executing.value ? 1000 : 4000)
+}
 async function execute(): Promise<void> {
   if (!canExecute.value) return
-  const targets = [...props.hosts]
-  const submittedCommand = command.value
-  // Batch runs join the shared history without a host; the run itself is unaffected.
-  terminalHistory.record(submittedCommand, '')
-  const identity = ++runIdentity
-  runController?.abort()
-  const current = new AbortController()
-  runController = current
-  executing.value = true
-  results.value = targets.map((host) => ({
-    host, state: 'queued', output: '', rawOutput: '', truncated: false, error: '',
-  }))
-  expandedHosts.value = new Set()
-  const queue = targets.map((host) => host.id)
-  const worker = async () => {
-    while (!current.signal.aborted && identity === runIdentity) {
-      const hostID = queue.shift()
-      if (!hostID) return
-      await executeHost(hostID, submittedCommand, identity, current.signal)
-    }
+  submitting.value = true; error.value = ''
+  const hostIds = props.hosts.map(host => host.id)
+  if (!pending || pending.command !== command.value || JSON.stringify(pending.hostIds) !== JSON.stringify(hostIds)) {
+    const nonce = crypto.getRandomValues(new Uint8Array(16))
+    pending = { id: Array.from(nonce, byte => byte.toString(16).padStart(2, '0')).join(''), command: command.value, hostIds }
   }
   try {
-    const concurrency = Math.min(MAX_CONCURRENCY, props.sessionCapacity, queue.length)
-    await Promise.all(Array.from({ length: concurrency }, () => worker()))
-  } finally {
-    if (identity === runIdentity) executing.value = false
-  }
+    const job = await api.terminals.startBatch(pending)
+    if (disposed) return
+    revision++
+    jobs.value = [job, ...jobs.value.filter(item => item.id !== job.id)]
+    selectedID.value = job.id; expandedHosts.value = new Set()
+    terminalHistory.record(command.value, '')
+    pending = undefined
+  } catch (reason) {
+    if (disposed) return
+    error.value = reason instanceof ApiError && reason.code === 'batch_busy' ? phrase('已有批量任务正在后台执行，请先查看当前进度。') : phrase('提交结果未确认，请同步进度后再重试，避免重复执行。')
+    await refresh()
+  } finally { if (!disposed) submitting.value = false }
 }
-
-function stopExecution(): void {
-  if (!executing.value) return
-  runController?.abort()
-  for (const item of results.value) {
-    if (item.state === 'queued' || item.state === 'connecting' || item.state === 'running') {
-      item.state = 'stopped'
-    }
-  }
-  for (const [hostID, sessionID] of activeSessions) void closeSession(hostID, sessionID)
-  executing.value = false
+async function stopExecution(): Promise<void> {
+  const id = activeJob.value?.id || selectedJob.value?.id
+  if (!id || stopping.value) return
+  stopping.value = true; error.value = ''
+  try { await api.terminals.stopBatch(id); await refresh() }
+  catch { if (!disposed) error.value = phrase('停止请求未确认，任务可能仍在执行，请重试。') }
+  finally { if (!disposed) stopping.value = false }
 }
-
+async function removeRecord(): Promise<void> {
+  const job = selectedJob.value
+  if (!job || job.state === 'running') return
+  try { await api.terminals.removeBatch(job.id); await refresh() }
+  catch { if (!disposed) error.value = phrase('删除记录失败，请重试。') }
+}
 defineExpose({ applyQuickCommand })
-
-const stopPageHideClose = closeTerminalsOnPageHide(() => [...activeSessions.values()])
-
-onBeforeUnmount(() => {
-  stopPageHideClose()
-  outputPreElements.clear()
-  runController?.abort()
-  runIdentity += 1
-  for (const [hostID, sessionID] of activeSessions) void closeSession(hostID, sessionID)
-  emit('runningChange', false)
-})
+onMounted(() => void poll())
+onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer); outputPreElements.clear(); emit('runningChange', false) })
 </script>
 
 <template>
@@ -428,9 +161,8 @@ onBeforeUnmount(() => {
       </label>
       <footer>
         <p v-if="commandError" class="batch-command__error" role="alert">{{ commandError }}</p>
-        <p v-else-if="sessionCapacity < 1" class="batch-command__error" role="alert">{{ phrase('请先关闭至少一个交互终端。') }}</p>
-        <p v-else>{{ phrase('页面关闭会终止仍在执行的命令。') }}</p>
-        <button v-if="executing" class="button button--danger" type="button" @click="stopExecution">
+        <p v-else>{{ phrase('关闭浏览器后仍在后台执行，重新打开可查看进度。') }}</p>
+        <button v-if="executing" class="button button--danger" type="button" :disabled="stopping" @click="stopExecution">
           <XCircle :size="18" aria-hidden="true" />
           {{ phrase('终止执行') }}
         </button>
@@ -439,6 +171,19 @@ onBeforeUnmount(() => {
           {{ phrase('执行命令') }}
         </button>
       </footer>
+      <p class="batch-result__notice">{{ phrase('最近 10 次操作保留 7 天；命令摘要会脱敏，输出仅保留在内存。Panel 重启后未完成操作不自动重放。') }}</p>
+      <p v-if="error" class="batch-result__error" role="alert">{{ error }}</p>
+      <p v-if="syncError" class="batch-result__error" role="alert">{{ syncError }}</p>
+      <p v-if="storageWarning" class="batch-result__error" role="alert">{{ storageWarning }}</p>
+      <div v-if="jobs.length" class="batch-records">
+        <label for="batch-record-select">{{ phrase('最近操作') }}</label>
+        <select id="batch-record-select" v-model="selectedID" :disabled="executing || submitting" @change="selectRecord">
+          <option v-for="job in jobs" :key="job.id" :value="job.id">{{ new Date(job.createdAt).toLocaleString() }} · {{ job.results.length }} {{ phrase('台主机') }} · {{ phrase(job.state === 'running' ? '后台执行中' : job.state === 'interrupted' ? '执行已中断' : '已结束') }}</option>
+        </select>
+        <button class="button button--secondary" type="button" :disabled="selectedJob?.state === 'running'" @click="removeRecord">{{ phrase('删除记录') }}</button>
+      </div>
+      <button v-if="!executing && results.some(result => result.error === errorLabel('terminal_close_failed'))" class="button button--secondary" type="button" :disabled="stopping" @click="stopExecution">{{ phrase('重试释放会话') }}</button>
+      <pre v-if="selectedJob" class="batch-record-command" data-i18n-ignore>{{ selectedJob.command }}</pre>
     </div>
 
     <div class="batch-status">
@@ -477,6 +222,7 @@ onBeforeUnmount(() => {
           <div :id="`batch-result-detail-${result.host.id}`" v-show="expandedHosts.has(result.host.id)" class="batch-result__detail">
             <pre v-if="result.output" :ref="(element) => setOutputPre(result.host.id, element)" data-i18n-ignore>{{ result.output }}</pre>
             <div v-else-if="result.state === 'queued' || result.state === 'connecting' || result.state === 'running'" class="batch-result__pending"><LoaderCircle class="spin" :size="16" aria-hidden="true" /> {{ executionLabel(result.state) }}</div>
+            <p v-if="!result.outputAvailable" class="batch-result__notice">{{ phrase('Panel 重启后仅保留操作记录，原终端输出已释放。') }}</p>
             <p v-if="result.truncated" class="batch-result__notice">{{ phrase('输出已截断，仅保留最后一部分。') }}</p>
             <p v-if="result.error" class="batch-result__error" role="alert"><span data-i18n-ignore>{{ result.error }}</span></p>
           </div>
@@ -487,6 +233,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.batch-records { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; font-size:14px; }
+.batch-records select { min-width:0; max-width:100%; flex:1; padding:8px; color:inherit; background:var(--terminal-shell-panel,#111a1d); border:1px solid var(--terminal-shell-border,#29383a); border-radius:var(--radius-sm); font-size:14px; }
+.batch-record-command { max-height:5em; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; margin:8px 0 0; }
 .batch-terminal-panel { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto minmax(0, 1fr); color: var(--terminal-shell-text, #d8dddc); background: var(--terminal-shell-background, #0b1214); }
 .batch-command { padding: 18px; border-bottom: 1px solid var(--terminal-shell-border, #29383a); background: var(--terminal-shell-panel, #111a1d); }
 .batch-command > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
@@ -535,7 +284,7 @@ onBeforeUnmount(() => {
 .batch-result__pending { display: flex; min-height: 64px; align-items: center; justify-content: center; gap: 7px; color: var(--terminal-shell-muted, #8a9695); font-size: 14px; }
 .batch-result__notice, .batch-result__error { margin: 0; padding: 9px 13px; font-size: 13px; line-height: 1.45; }
 .batch-result__notice { color: var(--warning); }
-.batch-result__error { color: var(--danger); }
+.batch-result__error { color: var(--danger); font-size:14px; }
 
 @media (max-width: 720px) {
   .batch-command { padding: 14px; }

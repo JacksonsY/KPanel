@@ -40,6 +40,7 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/remotedownload"
 	"github.com/kejilion/kejilion-panel/internal/scenepacks"
 	"github.com/kejilion/kejilion-panel/internal/store"
+	"github.com/kejilion/kejilion-panel/internal/terminalbatch"
 	"github.com/kejilion/kejilion-panel/internal/terminalcommands"
 	"github.com/kejilion/kejilion-panel/internal/terminalhistory"
 	"github.com/kejilion/kejilion-panel/internal/version"
@@ -137,6 +138,7 @@ type Server struct {
 	scenePackStreamQueue    chan struct{}
 	terminalCommands        *terminalcommands.Store
 	terminalHistory         *terminalhistory.Store
+	terminalBatches         *terminalbatch.Manager
 	mcp                     *mcpService
 	selfTLS                 *selfSignedTLS
 	domainCheckClient       *http.Client
@@ -284,6 +286,10 @@ func NewServer(config Config, authService *auth.Service, storage *store.Store, a
 		remoteDownloadJobs:      remoteDownloadJobs,
 		remoteDownloadCancels:   make(map[string]context.CancelCauseFunc),
 		offers:                  offers.Open(filepath.Join(config.DataDir, "offers"), nil),
+	}
+	server.terminalBatches, err = terminalbatch.Open(filepath.Join(config.DataDir, "terminal-batches"), batchTerminalDriver{server}, terminalbatch.Options{})
+	if err != nil {
+		return nil, fmt.Errorf("initialize terminal batches: %w", err)
 	}
 	server.hostOps = newHostOperationService(server)
 	downloadClient := remotedownload.NewClient(remotedownload.Config{MaxConnections: 4})
@@ -509,6 +515,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleMonitoringChecks(w, r)
 	case r.URL.Path == trafficInterfacesPath:
 		s.handleTrafficInterfaces(w, r)
+	case r.URL.Path == "/api/v1/terminal-batches" || strings.HasPrefix(r.URL.Path, "/api/v1/terminal-batches/"):
+		s.handleTerminalBatch(w, r)
 	case r.URL.Path == "/api/v1/terminal-sessions" ||
 		strings.HasPrefix(r.URL.Path, "/api/v1/terminal-sessions/"):
 		s.handleTerminalSession(w, r)

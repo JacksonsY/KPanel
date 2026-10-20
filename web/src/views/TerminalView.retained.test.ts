@@ -7,7 +7,7 @@ import { ApiError } from '@/lib/api'
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), open: vi.fn(), hosts: vi.fn(), close: vi.fn(), closeOnUnload: vi.fn() }))
 vi.mock('vue-router', async (original) => ({ ...await original<typeof import('vue-router')>(), useRoute: () => ({ path: '/terminal', query: {} }) }))
-vi.mock('@/lib/api', () => ({ api: { cluster: { hosts: mocks.hosts }, terminals: { list: mocks.list, open: mocks.open, close: mocks.close, closeOnUnload: mocks.closeOnUnload } }, ApiError: class extends Error { code = '' } }))
+vi.mock('@/lib/api', () => ({ api: { cluster: { hosts: mocks.hosts }, terminals: { batches: () => Promise.resolve({ available: true, items: [] }), list: mocks.list, open: mocks.open, close: mocks.close, closeOnUnload: mocks.closeOnUnload } }, ApiError: class extends Error { code = '' } }))
 vi.mock('@/components/terminal/HostTerminal.vue', () => ({ default: defineComponent({
   name: 'HostTerminalStub', props: ['sessionId', 'retained', 'initialOffset'],
   setup(_, { expose }) { expose({ closeSession: async () => {}, focusTerminal() {}, executeCommand() { return true }, scheduleResize() {} }); return () => null },

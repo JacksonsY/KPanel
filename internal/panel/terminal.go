@@ -785,6 +785,17 @@ func (s *Server) pruneTerminalSessions(before time.Time) []panelTerminalSession 
 	defer s.terminalMu.Unlock()
 	stale := make([]panelTerminalSession, 0)
 	for id, item := range s.terminalSessions {
+		// Batch workers own these identities. A stale/failed close must not
+		// silently free their shared quota before the target confirms cleanup.
+		if item.Purpose == "batch" {
+			if item.UpdatedAt.After(before) {
+				continue
+			}
+			item.CloseRequested = true
+			s.terminalSessions[id] = item
+			stale = append(stale, item)
+			continue
+		}
 		if item.Retained {
 			if item.CreatedAt.Add(terminal.DefaultLifetime).After(before.Add(panelTerminalIdleTTL)) {
 				continue
