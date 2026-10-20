@@ -298,31 +298,51 @@ func (s *Server) updateTerminalStreamSubscriptions(w http.ResponseWriter, r *htt
 		s.writeProblem(w, r, http.StatusNotFound, "terminal_stream_not_found", "Terminal stream not found", "")
 		return
 	}
+	seen := make(map[string]bool, len(input.Add))
 	for _, item := range input.Add {
-		if !s.validTerminalStreamSubscription(item, userID) {
+		key := terminalStreamKey(item)
+		if seen[key] || !s.validTerminalStreamSubscription(item, userID) {
 			s.writeValidationProblem(w, r, "add", "invalid terminal subscription")
 			return
 		}
+		seen[key] = true
 	}
 	stream.mu.Lock()
+	// Capacity rejection must not stop existing viewers or start a partial batch.
+	// The browser cannot know which additions a failed request applied.
+	proposed := make(map[string]struct{}, len(stream.subs)+len(input.Add))
+	for key := range stream.subs {
+		proposed[key] = struct{}{}
+	}
+	for _, key := range input.Remove {
+		delete(proposed, key)
+	}
+	for _, item := range input.Add {
+		proposed[terminalStreamKey(item)] = struct{}{}
+	}
+	if stream.ctx.Err() != nil || r.Context().Err() != nil {
+		stream.mu.Unlock()
+		s.writeProblem(w, r, http.StatusNotFound, "terminal_stream_not_found", "Terminal stream not found", "")
+		return
+	}
+	if len(proposed) > maxTerminalStreamSubscriptions {
+		stream.mu.Unlock()
+		s.writeProblem(w, r, http.StatusTooManyRequests, "terminal_stream_limit", "Terminal subscription limit reached", "")
+		return
+	}
 	for _, key := range input.Remove {
 		if cancel := stream.subs[key]; cancel != nil {
 			cancel()
 			delete(stream.subs, key)
 		}
 	}
-	added := 0
 	for _, item := range input.Add {
 		key := terminalStreamKey(item)
-		if _, exists := stream.subs[key]; !exists && len(stream.subs) >= maxTerminalStreamSubscriptions {
-			break
-		}
 		if cancel := stream.subs[key]; cancel != nil {
 			cancel()
 		}
 		ctx, cancel := context.WithCancel(stream.ctx)
 		stream.subs[key] = cancel
-		added++
 		if item.Kind == "job" {
 			go s.pumpJobTerminal(ctx, stream, key, item)
 		} else {
@@ -330,10 +350,6 @@ func (s *Server) updateTerminalStreamSubscriptions(w http.ResponseWriter, r *htt
 		}
 	}
 	stream.mu.Unlock()
-	if added < len(input.Add) {
-		s.writeProblem(w, r, http.StatusTooManyRequests, "terminal_stream_limit", "Terminal subscription limit reached", "")
-		return
-	}
 	s.writeJSON(w, http.StatusOK, map[string]bool{"accepted": true})
 }
 
@@ -384,11 +400,47 @@ func waitTerminalStreamBackoff(ctx context.Context, failures int) bool {
 	}
 }
 
+// Send the first bytes immediately, then coalesce only a continuing burst.
+// A quiet terminal should not pay a timer and another Agent round trip per echo.
+type terminalOutputBurst struct{ last time.Time }
+
+func (b *terminalOutputBurst) continuing(hasData bool) bool {
+	if !hasData {
+		return false
+	}
+	now := time.Now()
+	continuing := !b.last.IsZero() && now.Sub(b.last) < 4*terminalStreamCoalesceDelay
+	b.last = now
+	return continuing
+}
+
+// Older backends may ignore wait. Bound empty polling without delaying data or
+// adding another timer when the backend already performed its long poll.
+func waitTerminalOutputIdle(ctx context.Context, started time.Time, changed bool) bool {
+	if changed {
+		return ctx.Err() == nil
+	}
+	delay := 100*time.Millisecond - time.Since(started)
+	if delay <= 0 {
+		return ctx.Err() == nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
 func (s *Server) pumpHostTerminal(ctx context.Context, stream *terminalStream, key string, item terminalStreamSubscription) {
 	offset := item.Offset
 	failures := 0
 	var sentExit, sentClosed bool
+	var burst terminalOutputBurst
 	for ctx.Err() == nil {
+		readStarted := time.Now()
 		session, ok := s.touchTerminalSession(item.ID, stream.userID)
 		if !ok {
 			stream.emit(ctx, terminalStreamEvent{Key: key, Error: "terminal_not_found"})
@@ -418,7 +470,7 @@ func (s *Server) pumpHostTerminal(ctx context.Context, stream *terminalStream, k
 		recovered := failures > 0
 		failures = 0
 		finished := output.Closed || output.ExitedAt != nil
-		if len(output.Data) > 0 && len(output.Data) < terminalStreamCoalesceBytes && !finished {
+		if burst.continuing(len(output.Data) > 0) && len(output.Data) < terminalStreamCoalesceBytes && !finished {
 			timer := time.NewTimer(terminalStreamCoalesceDelay)
 			select {
 			case <-ctx.Done():
@@ -452,6 +504,9 @@ func (s *Server) pumpHostTerminal(ctx context.Context, stream *terminalStream, k
 		offset = output.NextOffset
 		if finished && len(output.Data) == 0 {
 			s.deleteFinishedTerminalSession(item.ID)
+			return
+		}
+		if !waitTerminalOutputIdle(ctx, readStarted, changed) {
 			return
 		}
 	}
@@ -525,7 +580,9 @@ func (s *Server) pumpJobTerminal(ctx context.Context, stream *terminalStream, ke
 	offset, inputOpen := item.Offset, item.InputOpen
 	first := true
 	failures := 0
+	var burst terminalOutputBurst
 	for ctx.Err() == nil {
+		readStarted := time.Now()
 		chunk, found, err := s.fetchJobTerminal(ctx, prefix, item.ID, offset, inputOpen, "1000")
 		if err == nil && !found {
 			stream.emit(ctx, terminalStreamEvent{Key: key, Error: "terminal_not_found"})
@@ -544,11 +601,13 @@ func (s *Server) pumpJobTerminal(ctx context.Context, stream *terminalStream, ke
 			}
 			continue
 		}
+		recovered := failures > 0
 		failures = 0
-		if chunk.DataBase64 != "" && !chunk.Finished {
+		if burst.continuing(chunk.DataBase64 != "") && !chunk.Finished {
 			chunk = s.coalesceJobTerminal(ctx, prefix, item.ID, chunk)
 		}
-		if first || chunk.DataBase64 != "" || chunk.InputOpen != inputOpen || chunk.Finished || chunk.NextOffset != offset {
+		changed := first || recovered || chunk.DataBase64 != "" || chunk.InputOpen != inputOpen || chunk.Finished || chunk.NextOffset != offset
+		if changed {
 			value := chunk
 			if !stream.emit(ctx, terminalStreamEvent{Key: key, Job: &value}) {
 				return
@@ -557,6 +616,9 @@ func (s *Server) pumpJobTerminal(ctx context.Context, stream *terminalStream, ke
 		first = false
 		offset, inputOpen = chunk.NextOffset, chunk.InputOpen
 		if chunk.Finished {
+			return
+		}
+		if !waitTerminalOutputIdle(ctx, readStarted, changed) {
 			return
 		}
 	}
