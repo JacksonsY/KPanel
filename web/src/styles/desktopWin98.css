@@ -54,7 +54,7 @@ html[data-desktop-shell-style='win98'] {
   font-family: Tahoma, Arial, 'Microsoft YaHei', sans-serif;
 }
 
-html.desktop-mode-open[data-desktop-shell-style='win98'] {
+html.desktop-mode-open[data-desktop-shell-style='win98'] body {
   --scrollbar-size: 16px;
   --scrollbar-track: #dfdfdf;
   --scrollbar-thumb: #c0c0c0;
