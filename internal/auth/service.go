@@ -313,10 +313,17 @@ func (s *Service) Login(ip, username, password, secondFactor string) (Credential
 			return Credentials{}, ErrInvalidSecondFactor
 		}
 	}
-	if err := s.recordLoginAttempt(ipKey, accountKey, now, true); err != nil {
+	credentials, session, err := s.newSession(user)
+	if err != nil {
 		return Credentials{}, err
 	}
-	return s.createSession(user)
+	if err := s.store.PutLoginSession(session, []store.LoginAttempt{
+		{Key: ipKey, OccurredAt: now, Success: true},
+		{Key: accountKey, OccurredAt: now, Success: true},
+	}, now.Add(-s.config.LoginWindow)); err != nil {
+		return Credentials{}, err
+	}
+	return credentials, nil
 }
 
 func (s *Service) TOTPStatus(userID string) (TOTPStatus, error) {

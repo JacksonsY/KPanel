@@ -85,17 +85,18 @@ async function load(sync: Sync): Promise<void> {
       if (!server.locale) migration.locale = sync.initial.locale
       if (!server.desktop) migration.desktop = sync.initial.desktop
       sync.loaded = true
-      await save(sync, migration)
-      if (current !== sync) return
       const locale = sync.pending.locale ?? sync.server?.locale ?? migration.locale
       if (locale) await applySyncedLocale(locale)
       if (current !== sync) return
-      const desktop = sync.pending.desktop ?? sync.server?.desktop
+      const desktop = sync.pending.desktop ?? sync.server?.desktop ?? migration.desktop
       if (sync.hydrating && desktop) applyDesktopPreferences(desktop)
-      if (sync.loaded && !Object.keys(sync.pending).length) {
+      if (!Object.keys(migration).length && !Object.keys(sync.pending).length) {
         sync.retries = 0
         sync.notified = false
       }
+      // Restore before mounting, but do not hold navigation for disk writes or
+      // conflict retries. save() keeps the same bounded, versioned retry path.
+      void save(sync, migration)
     } catch {
       failed(sync)
     } finally { sync.loading = undefined }

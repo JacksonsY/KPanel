@@ -75,13 +75,61 @@ it('retries only the edited section after another browser updates the server', a
   expect(useDesktopMode().windows.value).toHaveLength(0)
 })
 
-it('drops legacy migration when a competing browser configures the server', async () => {
+it('drops conflicting legacy migration without remounting live windows; next refresh restores the server', async () => {
   mocks.get.mockResolvedValueOnce({ resourceVersion: 'empty' }).mockResolvedValueOnce(remote())
   mocks.update.mockRejectedValueOnce(new ApiError('conflict', 409))
   await startPreferencesSync('admin')
+  await flush()
   expect(mocks.update).toHaveBeenCalledTimes(1)
+  expect(getLocale()).toBe('zh-CN')
+  expect(useDesktopMode().mode.value).toBe('classic')
+  stopPreferencesSync()
+  await startPreferencesSync('admin')
   expect(getLocale()).toBe('zh-TW')
   expect(useDesktopMode().mode.value).toBe('desktop')
+})
+
+it('restores initial preferences without waiting for a slow migration write', async () => {
+  mocks.get.mockResolvedValue({ resourceVersion: 'empty' })
+  let finish!: (value: UserPreferences) => void
+  mocks.update.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  useDesktopMode().enterDesktop()
+  await startPreferencesSync('admin')
+  expect(useDesktopMode().mode.value).toBe('desktop')
+  expect(mocks.update).toHaveBeenCalledTimes(1)
+  finish({ ...remote(), locale: 'zh-CN', resourceVersion: 'saved' })
+  await flush()
+  expect(mocks.update).toHaveBeenCalledTimes(1)
+})
+
+it('restores pending explicit preferences before their background save finishes', async () => {
+  sessionStorage.setItem('kpanel:preferences-pending:v1', JSON.stringify({ owner: 'admin', patch: { locale: 'en-US' } }))
+  let finish!: (value: UserPreferences) => void
+  mocks.update.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  await startPreferencesSync('admin')
+  expect(getLocale()).toBe('en-US')
+  expect(sessionStorage.getItem('kpanel:preferences-pending:v1')).toContain('en-US')
+  finish({ ...remote(), locale: 'en-US', resourceVersion: 'saved' })
+  await flush()
+  expect(sessionStorage.getItem('kpanel:preferences-pending:v1')).toBeNull()
+})
+
+it('ignores a completed background write from the account that logged out', async () => {
+  let finish!: (value: UserPreferences) => void
+  sessionStorage.setItem('kpanel:preferences-pending:v1', JSON.stringify({ owner: 'old', patch: { locale: 'en-US' } }))
+  mocks.update.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  await startPreferencesSync('old')
+  stopPreferencesSync()
+  sessionStorage.setItem('kpanel:preferences-pending:v1', JSON.stringify({ owner: 'new', patch: { locale: 'zh-CN' } }))
+  let finishNew!: (value: UserPreferences) => void
+  mocks.update.mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve }))
+  await startPreferencesSync('new')
+  finish({ ...remote(), locale: 'en-US', resourceVersion: 'old' })
+  await flush()
+  expect(getLocale()).toBe('zh-CN')
+  expect(sessionStorage.getItem('kpanel:preferences-pending:v1')).toContain('"owner":"new"')
+  finishNew({ ...remote(), locale: 'zh-CN', resourceVersion: 'new' })
+  await flush()
 })
 
 it('keeps edits made during an in-flight save and serializes the next update', async () => {
