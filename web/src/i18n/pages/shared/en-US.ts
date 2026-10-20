@@ -1773,13 +1773,7 @@ export default [
   ["已有批量任务正在后台执行，请先查看当前进度。","A batch is already running in the background. Check its progress first."],
   ["提交结果未确认，请同步进度后再重试，避免重复执行。","Submission is unconfirmed. Sync progress before retrying to avoid duplicate execution."],
   ["停止请求未确认，任务可能仍在执行，请重试。","The stop request is unconfirmed. Work may still be running; retry stopping it."],
-  ["删除记录失败，请重试。","Unable to delete the record. Try again."],
-  ["关闭浏览器后仍在后台执行，重新打开可查看进度。","Execution continues after closing the browser. Reopen to view progress."],
-  ["最近 10 次操作保留 7 天；命令摘要会脱敏，输出仅保留在内存。Panel 重启后未完成操作不自动重放。","The last 10 operations are kept for 7 days. Command summaries are redacted; output stays in memory. Unfinished operations are not replayed after Panel restarts."],
-  ["最近操作","Recent operations"],
   ["台主机","hosts"],
-  ["后台执行中","Running in background"],
   ["已结束","Finished"],
-  ["重试释放会话","Retry session cleanup"],
   ["Panel 重启后仅保留操作记录，原终端输出已释放。","Only operation records remain after Panel restarts. Original terminal output has been released."],
 ] as const satisfies PhraseCatalog
