@@ -147,9 +147,12 @@ test('release workflow publishes isolated stable and preview channels', () => {
   assert.match(workflow, /channel_tag=latest/);
   assert.match(workflow, /--prerelease/);
   assert.match(workflow, /--latest=false/);
-  assert.match(workflow, /if: steps\.release\.outputs\.stable == 'true'/);
-  assert.match(workflow, /node scripts\/archive-release-candidate\.mjs/);
-  assert.match(workflow, /--tag "\$RELEASE_TAG" --release-sha "\$RELEASE_SHA" --apply/);
+  const stableCompletion = workflow.slice(workflow.indexOf('\n  stable-completion:'));
+  assert.match(stableCompletion, /needs: \[release, public-acceptance\]/);
+  assert.match(stableCompletion, /needs\.public-acceptance\.result == 'success'.*needs\.release\.outputs\.stable == 'true'/);
+  assert.match(stableCompletion, /node scripts\/archive-release-candidate\.mjs/);
+  assert.match(stableCompletion, /--tag "\$RELEASE_TAG" --release-sha "\$RELEASE_SHA" --apply/);
+  assert.ok(workflow.indexOf('\n  public-acceptance:') < workflow.indexOf('name: Archive published candidate branch'));
   assert.doesNotMatch(workflow, /gh api --method DELETE/);
 });
 
