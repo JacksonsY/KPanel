@@ -19,6 +19,14 @@ on:
         description: "Frozen before-publication stable and previous-preview JSON"
         required: true
         type: string
+      publication-run-id:
+        description: "Original release workflow run ID containing the frozen snapshot artifact"
+        required: false
+        type: string
+      publication-attempt:
+        description: "Exact original release workflow attempt containing the frozen snapshot artifact"
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       candidate:

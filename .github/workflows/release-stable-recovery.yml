@@ -1,0 +1,280 @@
+name: Recover stable release publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Publish the exact frozen draft or restore only Docker latest"
+        required: true
+        type: choice
+        options:
+          - publish-draft
+          - restore-latest
+      publication-run-id:
+        description: "Original failed release run ID"
+        required: true
+        type: string
+      publication-attempt:
+        description: "Exact original release run attempt"
+        required: true
+        type: string
+      candidate:
+        description: "Exact stable source commit SHA"
+        required: true
+        type: string
+      version:
+        description: "Exact stable version without v"
+        required: true
+        type: string
+      digest:
+        description: "Exact immutable version image sha256 digest"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: kpanel-image-publication
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      plan: ${{ steps.inspect.outputs.plan }}
+      snapshot: ${{ steps.inspect.outputs.snapshot }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RECOVERY_OPERATION: ${{ inputs.operation }}
+      PUBLICATION_RUN_ID: ${{ inputs['publication-run-id'] }}
+      PUBLICATION_ATTEMPT: ${{ inputs['publication-attempt'] }}
+      EXPECTED_SHA: ${{ inputs.candidate }}
+      EXPECTED_VERSION: ${{ inputs.version }}
+      IMAGE_DIGEST: ${{ inputs.digest }}
+      SNAPSHOT_ARTIFACT_DIR: ${{ runner.temp }}/kpanel-stable-recovery/snapshot
+      PUBLICATION_ARTIFACT_DIR: ${{ runner.temp }}/kpanel-stable-recovery/publication
+    steps:
+      - name: Check out the dispatching main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: true
+      - name: Validate exact main, tag and release identity before artifact download
+        run: node scripts/stable-release-recovery.mjs validate-inputs
+      - name: Download exact original snapshot artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.0
+        with:
+          name: snapshot-${{ inputs['publication-run-id'] }}-${{ inputs['publication-attempt'] }}
+          path: ${{ runner.temp }}/kpanel-stable-recovery/snapshot
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs['publication-run-id'] }}
+      - name: Download exact original publication artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.0
+        with:
+          name: publication-${{ inputs['publication-run-id'] }}-${{ inputs['publication-attempt'] }}
+          path: ${{ runner.temp }}/kpanel-stable-recovery/publication
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs['publication-run-id'] }}
+      - name: Revalidate original run, artifacts, tag, release and public digests
+        id: inspect
+        run: node scripts/stable-release-recovery.mjs inspect
+      - name: Validate the original final release notes
+        env:
+          NOTES_PATH: ${{ steps.inspect.outputs.notes_path }}
+          VERSION: ${{ inputs.version }}
+          IMAGE: docker.io/kjlion/kejilion-panel
+          IMAGE_DIGEST: ${{ inputs.digest }}
+        run: bash scripts/check-release-notes.sh "$VERSION" "$IMAGE" "$IMAGE_DIGEST" "$NOTES_PATH"
+
+  publish_draft:
+    needs: preflight
+    if: ${{ inputs.operation == 'publish-draft' && needs.preflight.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RECOVERY_OPERATION: ${{ inputs.operation }}
+      PUBLICATION_RUN_ID: ${{ inputs['publication-run-id'] }}
+      PUBLICATION_ATTEMPT: ${{ inputs['publication-attempt'] }}
+      EXPECTED_SHA: ${{ inputs.candidate }}
+      EXPECTED_VERSION: ${{ inputs.version }}
+      IMAGE_DIGEST: ${{ inputs.digest }}
+      SNAPSHOT_ARTIFACT_DIR: ${{ runner.temp }}/kpanel-stable-recovery/snapshot
+      PUBLICATION_ARTIFACT_DIR: ${{ runner.temp }}/kpanel-stable-recovery/publication
+    steps:
+      - name: Check out the dispatching main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: true
+      - name: Validate exact main, tag and release identity before artifact download
+        run: node scripts/stable-release-recovery.mjs validate-inputs
+      - name: Download exact original snapshot artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.0
+        with:
+          name: snapshot-${{ inputs['publication-run-id'] }}-${{ inputs['publication-attempt'] }}
+          path: ${{ runner.temp }}/kpanel-stable-recovery/snapshot
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs['publication-run-id'] }}
+      - name: Download exact original publication artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.0
+        with:
+          name: publication-${{ inputs['publication-run-id'] }}-${{ inputs['publication-attempt'] }}
+          path: ${{ runner.temp }}/kpanel-stable-recovery/publication
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs['publication-run-id'] }}
+      - name: Revalidate immediately before publishing
+        id: inspect
+        run: node scripts/stable-release-recovery.mjs inspect
+      - name: Validate the original final release notes
+        if: steps.inspect.outputs.plan == 'publish'
+        env:
+          NOTES_PATH: ${{ steps.inspect.outputs.notes_path }}
+          VERSION: ${{ inputs.version }}
+          IMAGE: docker.io/kjlion/kejilion-panel
+          IMAGE_DIGEST: ${{ inputs.digest }}
+        run: bash scripts/check-release-notes.sh "$VERSION" "$IMAGE" "$IMAGE_DIGEST" "$NOTES_PATH"
+      - name: Revalidate immediately before the GitHub write
+        id: final-inspect
+        run: node scripts/stable-release-recovery.mjs inspect
+      - name: Publish the existing frozen draft
+        if: steps.final-inspect.outputs.plan == 'publish'
+        env:
+          RELEASE_NOTES: ${{ steps.inspect.outputs.notes_path }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release edit "v$VERSION" \
+            --draft=false \
+            --prerelease=false \
+            --latest \
+            --title "KPanel $VERSION" \
+            --notes-file "$RELEASE_NOTES"
+
+  restore_latest:
+    needs: preflight
+    if: ${{ inputs.operation == 'restore-latest' && needs.preflight.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RECOVERY_OPERATION: ${{ inputs.operation }}
+      PUBLICATION_RUN_ID: ${{ inputs['publication-run-id'] }}
+      PUBLICATION_ATTEMPT: ${{ inputs['publication-attempt'] }}
+      EXPECTED_SHA: ${{ inputs.candidate }}
+      EXPECTED_VERSION: ${{ inputs.version }}
+      IMAGE_DIGEST: ${{ inputs.digest }}
+      SNAPSHOT_ARTIFACT_DIR: ${{ runner.temp }}/kpanel-stable-recovery/snapshot
+      PUBLICATION_ARTIFACT_DIR: ${{ runner.temp }}/kpanel-stable-recovery/publication
+    steps:
+      - name: Check out the dispatching main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+      - name: Validate exact main, tag and release identity before artifact download
+        run: node scripts/stable-release-recovery.mjs validate-inputs
+      - name: Download exact original snapshot artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.0
+        with:
+          name: snapshot-${{ inputs['publication-run-id'] }}-${{ inputs['publication-attempt'] }}
+          path: ${{ runner.temp }}/kpanel-stable-recovery/snapshot
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs['publication-run-id'] }}
+      - name: Download exact original publication artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.0
+        with:
+          name: publication-${{ inputs['publication-run-id'] }}-${{ inputs['publication-attempt'] }}
+          path: ${{ runner.temp }}/kpanel-stable-recovery/publication
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs['publication-run-id'] }}
+      - name: Revalidate immediately before restoring latest
+        id: inspect
+        run: node scripts/stable-release-recovery.mjs inspect
+      - name: Set up Docker Buildx
+        if: steps.inspect.outputs.plan == 'restore-latest'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: v0.34.1
+      - name: Log in to Docker Hub for the exact latest-tag repair
+        if: steps.inspect.outputs.plan == 'restore-latest'
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME || 'kjlion' }}
+        run: printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+      - name: Revalidate immediately before the Docker write
+        id: final-inspect
+        run: node scripts/stable-release-recovery.mjs inspect
+      - name: Restore only the frozen Docker latest digest
+        if: steps.final-inspect.outputs.plan == 'restore-latest'
+        env:
+          PREVIOUS_DIGEST: ${{ fromJSON(needs.preflight.outputs.snapshot).digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --tag docker.io/kjlion/kejilion-panel:latest \
+            "docker.io/kjlion/kejilion-panel@$PREVIOUS_DIGEST"
+      - name: Confirm latest is restored and the draft is still unpublished
+        id: verify-restored
+        run: node scripts/stable-release-recovery.mjs inspect
+      - name: Log out of Docker Hub
+        if: always()
+        run: docker logout docker.io || true
+
+  public-acceptance:
+    needs: [preflight, publish_draft]
+    if: ${{ !failure() && !cancelled() && inputs.operation == 'publish-draft' && needs.publish_draft.result == 'success' }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/release-public-verify.yml
+    with:
+      candidate: ${{ inputs.candidate }}
+      version: ${{ inputs.version }}
+      digest: ${{ inputs.digest }}
+      stable-snapshot: ${{ needs.preflight.outputs.snapshot }}
+      publication-run-id: ${{ inputs['publication-run-id'] }}
+      publication-attempt: ${{ inputs['publication-attempt'] }}

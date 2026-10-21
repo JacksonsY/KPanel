@@ -8,6 +8,8 @@ import { createHash } from 'node:crypto';
 import { resolveBash } from '../run-repo-bash.mjs';
 import { validateGitHubRun } from '../github-release-l3.mjs';
 import { checkEnvironment, loadPolicy } from '../check-environment-policy.mjs';
+import { classifyRecoveryState, createReleaseAssetManifest, expectedReleaseAssetNames, validateFailedPublication,
+  freezeReleaseAssets, validatePublicationArtifacts, validateRecoveryInputs, validateReleaseAssetInventory } from '../stable-release-recovery.mjs';
 
 const valid = { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', GITHUB_REPOSITORY: 'kejilion/KPanel',
   GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', GITHUB_SHA: 'a'.repeat(40) };
@@ -22,16 +24,23 @@ const workflowStep = (workflow, name) => {
 
 test('preview recovery inputs are preserved before publication and bind original snapshot bytes', () => {
   const workflow = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8');
-  const start = workflow.indexOf('      - name: Preserve frozen preview recovery inputs before publication');
-  assert.ok(start > workflow.indexOf('run: node scripts/verify-github-public-release.mjs snapshot'));
-  assert.ok(start < workflow.indexOf('      - name: Build and push multi-architecture image'));
-  const upload = workflow.slice(start, workflow.indexOf('\n      - ', start + 1));
-  assert.match(upload, /if: steps.snapshot.outcome == 'success'/);
+  const start = workflow.indexOf('      - name: Freeze exact release asset identity before channel promotion');
+  const promote = workflow.indexOf('      - name: Promote image to its release channel');
+  assert.ok(start > workflow.indexOf('      - name: Validate final release notes'));
+  assert.ok(start < promote);
+  assert.match(workflow.slice(start, promote), /node scripts\/stable-release-recovery\.mjs freeze-assets/);
+  assert.match(workflow.slice(start, promote), /asset identity before channel promotion/);
+  const artifactStart = workflow.indexOf('      - name: Preserve exact publication recovery inputs before channel promotion');
+  assert.ok(artifactStart > start && artifactStart < promote);
+  const upload = workflow.slice(artifactStart, promote);
   assert.match(upload, /if-no-files-found: error/);
   assert.match(upload, /snapshot-\$\{\{ github.run_id \}\}-\$\{\{ github.run_attempt \}\}/);
   assert.match(upload, /stable-before.json/);
   assert.match(upload, /publication-identity.json/);
+  assert.match(upload, /\$\{\{ env\.PUBLIC_EVIDENCE \}\}\/release-assets\.json/);
   assert.doesNotMatch(upload, /continue-on-error/);
+  assert.match(workflow.slice(workflow.indexOf('      - name: Preserve release metadata including failures')),
+    /\$\{\{ env\.PUBLIC_EVIDENCE \}\}\/release-assets\.json/);
   const root = mkdtempSync(join(tmpdir(), 'kpanel-frozen-snapshot-')).replaceAll('\\', '/');
   try {
     const moduleUrl = new URL('../verify-github-public-release.mjs', import.meta.url).href;
@@ -238,6 +247,202 @@ esac
     assert.ifError(result.error);
     assert.equal(result.status, expected, result.stderr);
   }
+});
+
+test('stable recovery requires an exact main dispatch identity and stable release inputs', () => {
+  const input = { RECOVERY_OPERATION: 'publish-draft', PUBLICATION_RUN_ID: '123', PUBLICATION_ATTEMPT: '2',
+    EXPECTED_SHA: 'a'.repeat(40), EXPECTED_VERSION: '1.27.0', IMAGE_DIGEST: 'sha256:' + 'b'.repeat(64),
+    GITHUB_REF: 'refs/heads/main' };
+  assert.deepEqual(validateRecoveryInputs(input), { operation: 'publish-draft', runId: '123', attempt: '2',
+    candidate: 'a'.repeat(40), version: '1.27.0', digest: 'sha256:' + 'b'.repeat(64) });
+  for (const [field, value] of [['GITHUB_REF', 'refs/heads/feature/recovery'], ['RECOVERY_OPERATION', 'rebuild-image'],
+    ['PUBLICATION_ATTEMPT', '0'], ['EXPECTED_VERSION', '1.27.0-rc.23'], ['IMAGE_DIGEST', 'latest']]) {
+    assert.throws(() => validateRecoveryInputs({ ...input, [field]: value }));
+  }
+});
+
+test('stable recovery accepts only the exact image-promoted and GitHub-publish-failed attempt', () => {
+  const expected = { runId: '123', attempt: '2', candidate: 'a'.repeat(40), repository: 'kejilion/KPanel' };
+  const controllerSha = 'c'.repeat(40);
+  const identity = { controllerSha };
+  const workflow = { id: 456, path: '.github/workflows/preview-release.yml', state: 'active' };
+  const run = { id: 123, run_attempt: 2, event: 'workflow_dispatch', status: 'completed', conclusion: 'failure',
+    head_sha: controllerSha, head_branch: 'main', display_title: 'Publish preview from ' + expected.candidate,
+    path: workflow.path, workflow_id: workflow.id, referenced_workflows: [{
+      path: expected.repository + '/.github/workflows/release.yml@' + controllerSha,
+      sha: controllerSha, ref: 'refs/heads/main',
+    }] };
+  const jobs = { jobs: [{ name: 'publish / release', conclusion: 'failure', steps: [
+    { name: 'Promote image to its release channel', conclusion: 'success' },
+    { name: 'Publish GitHub release', conclusion: 'failure' },
+  ] }] };
+  assert.doesNotThrow(() => validateFailedPublication({ run, workflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run: { ...run, run_attempt: 1 }, workflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run: { ...run, event: 'push' }, workflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run: { ...run, head_sha: expected.candidate }, workflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run: { ...run, display_title: 'Publish preview from ' + 'd'.repeat(40) }, workflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run: { ...run, referenced_workflows: [] }, workflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run, workflow, jobs: { jobs: [{ ...jobs.jobs[0], name: 'release' }] }, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run, workflow, jobs: { jobs: [{ ...jobs.jobs[0], steps: [
+    { name: 'Promote image to its release channel', conclusion: 'failure' },
+    { name: 'Publish GitHub release', conclusion: 'failure' },
+  ] }] }, expected, identity }));
+});
+
+test('original release asset inventory binds every uploaded name, byte digest and size', () => {
+  const root = mkdtempSync(join(tmpdir(), 'kpanel-release-assets-'));
+  const version = '1.27.0';
+  const expected = { candidate: 'a'.repeat(40), version, digest: 'sha256:' + 'b'.repeat(64), runId: '123', attempt: '2' };
+  const controllerSha = 'c'.repeat(40), snapshotSha256 = 'd'.repeat(64);
+  try {
+    for (const name of expectedReleaseAssetNames(version)) writeFileSync(join(root, name), Buffer.from('original:' + name));
+    const manifest = createReleaseAssetManifest({ releaseDirectory: root, expected, controllerSha, snapshotSha256 });
+    assert.equal(manifest.assets.length, 15);
+    assert.equal(manifest.imageDigest, expected.digest);
+    const release = { tag_name: 'v' + version, draft: true, prerelease: false,
+      assets: manifest.assets.map(asset => ({ ...asset, state: 'uploaded' })) };
+    assert.doesNotThrow(() => validateReleaseAssetInventory(release, manifest));
+    assert.throws(() => validateReleaseAssetInventory({ ...release, assets: release.assets.slice(1) }, manifest));
+    assert.throws(() => validateReleaseAssetInventory({ ...release, assets: release.assets.map((asset, i) => i
+      ? asset : { ...asset, size: asset.size + 1 }) }, manifest));
+    assert.throws(() => createReleaseAssetManifest({ releaseDirectory: root, expected, controllerSha, snapshotSha256: 'bad' }));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('freeze-assets binds the original uploaded release inventory before writing the shared identity', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kpanel-freeze-release-assets-'));
+  const evidence = join(root, 'evidence'), releaseDirectory = join(root, 'release');
+  mkdirSync(evidence); mkdirSync(releaseDirectory);
+  const candidate = 'a'.repeat(40), controllerSha = 'c'.repeat(40), digest = 'sha256:' + 'b'.repeat(64);
+  const version = '1.27.0', runId = '123', attempt = '2';
+  const snapshotBytes = Buffer.from('{"tag":"v1.26.0"}\n');
+  const expected = { candidate, version, digest, runId, attempt };
+  for (const name of expectedReleaseAssetNames(version)) writeFileSync(join(releaseDirectory, name), Buffer.from('original:' + name));
+  writeFileSync(join(evidence, 'stable-before.json'), snapshotBytes);
+  writeFileSync(join(evidence, 'publication-identity.json'), JSON.stringify({ schemaVersion: 1,
+    phase: 'before-publication', candidate, version, runId, attempt, controllerSha,
+    snapshotSha256: createHash('sha256').update(snapshotBytes).digest('hex') }, null, 2) + '\n');
+  const localManifest = createReleaseAssetManifest({ releaseDirectory, expected, controllerSha,
+    snapshotSha256: createHash('sha256').update(snapshotBytes).digest('hex') });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    assert.match(String(url), /releases\/tags\/v1\.27\.0$/);
+    return Response.json({ tag_name: 'v1.27.0', draft: true, prerelease: false,
+      assets: localManifest.assets.map(asset => ({ ...asset, state: 'uploaded' })) });
+  };
+  try {
+    const manifest = await freezeReleaseAssets({ GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'kejilion/KPanel',
+      GITHUB_SHA: controllerSha, GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: attempt,
+      EXPECTED_SHA: candidate, VERSION: version, IMAGE_DIGEST: digest, GH_TOKEN: 'fixture',
+      GITHUB_API_URL: 'https://api.example.test', PUBLIC_EVIDENCE: evidence, ASSET_DIRECTORY: releaseDirectory });
+    assert.equal(manifest.assets.length, 15);
+    const rawManifest = readFileSync(join(evidence, 'release-assets.json'));
+    const identity = JSON.parse(readFileSync(join(evidence, 'publication-identity.json'), 'utf8'));
+    assert.equal(identity.assetManifestSha256, createHash('sha256').update(rawManifest).digest('hex'));
+    await assert.rejects(freezeReleaseAssets({ GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'kejilion/KPanel',
+      GITHUB_SHA: controllerSha, GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: attempt,
+      EXPECTED_SHA: candidate, VERSION: version, IMAGE_DIGEST: digest, GH_TOKEN: 'fixture',
+      GITHUB_API_URL: 'https://api.example.test', PUBLIC_EVIDENCE: evidence, ASSET_DIRECTORY: releaseDirectory }));
+  } finally {
+    globalThis.fetch = originalFetch;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('stable recovery validates both original artifact copies and their exact byte identity', () => {
+  const root = mkdtempSync(join(tmpdir(), 'kpanel-stable-recovery-'));
+  const snapshotDirectory = join(root, 'snapshot');
+  const publicationDirectory = join(root, 'publication');
+  const nested = join(publicationDirectory, 'KPanel', 'KPanel', 'release');
+  const evidence = join(publicationDirectory, '_temp', 'kpanel-public-123-2');
+  const candidate = 'a'.repeat(40), imageDigest = 'sha256:' + 'b'.repeat(64);
+  const expected = { runId: '123', attempt: '2', candidate, version: '1.27.0', digest: imageDigest };
+  const controllerSha = 'e'.repeat(40);
+  const snapshotBytes = Buffer.from(JSON.stringify({ tag: 'v1.26.0', digest: 'sha256:' + 'c'.repeat(64),
+    previousPreview: { version: '1.27.0-rc.23', digest: 'sha256:' + 'd'.repeat(64) } }, null, 2) + '\n');
+  const notes = Buffer.from(`### 版本更新内容\n- image ${imageDigest}\n`);
+  const components = Buffer.from('{"schemaVersion":1}\n');
+  const componentDigest = createHash('sha256').update(components).digest('hex');
+  const assetManifest = { schemaVersion: 1, phase: 'before-channel-promotion', candidate, version: expected.version,
+    runId: expected.runId, attempt: expected.attempt, controllerSha, imageDigest,
+    snapshotSha256: createHash('sha256').update(snapshotBytes).digest('hex'),
+    assets: expectedReleaseAssetNames(expected.version).map((name, index) => ({ name,
+      size: name === 'KPANEL_MODIFIED_COMPONENTS.json' ? components.length : 100 + index,
+      digest: name === 'KPANEL_MODIFIED_COMPONENTS.json' ? 'sha256:' + componentDigest : 'sha256:' + String(index + 1).padStart(64, '0'),
+    })) };
+  const manifestBytes = Buffer.from(JSON.stringify(assetManifest, null, 2) + '\n');
+  const identityBytes = Buffer.from(JSON.stringify({ schemaVersion: 1, candidate, version: expected.version,
+    controllerSha, runId: expected.runId, attempt: expected.attempt,
+    snapshotSha256: createHash('sha256').update(snapshotBytes).digest('hex'),
+    assetManifestSha256: createHash('sha256').update(manifestBytes).digest('hex'), phase: 'before-publication' }, null, 2) + '\n');
+  const write = (path, bytes) => { mkdirSync(join(path, '..'), { recursive: true }); writeFileSync(path, bytes); };
+  try {
+    write(join(snapshotDirectory, 'stable-before.json'), snapshotBytes);
+    write(join(snapshotDirectory, 'publication-identity.json'), identityBytes);
+    write(join(snapshotDirectory, 'release-assets.json'), manifestBytes);
+    write(join(evidence, 'stable-before.json'), snapshotBytes);
+    write(join(evidence, 'publication-identity.json'), identityBytes);
+    write(join(nested, 'release-assets.json'), manifestBytes);
+    write(join(nested, 'RELEASE_NOTES.md'), notes);
+    write(join(nested, 'KPANEL_MODIFIED_COMPONENTS.json'), components);
+    const valid = validatePublicationArtifacts({ snapshotDirectory, publicationDirectory, expected });
+    assert.equal(valid.snapshot.tag, 'v1.26.0');
+    assert.equal(valid.identity.controllerSha, controllerSha);
+    assert.equal(valid.assetManifest.assets.length, 15);
+    assert.equal(valid.notesSha256, createHash('sha256').update(notes).digest('hex'));
+    write(join(evidence, 'stable-before.json'), Buffer.from('tampered'));
+    assert.throws(() => validatePublicationArtifacts({ snapshotDirectory, publicationDirectory, expected }));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('stable recovery only publishes the frozen draft or restores the exact prior latest digest', () => {
+  const snapshot = { tag: 'v1.26.0', digest: 'sha256:' + 'c'.repeat(64),
+    previousPreview: { version: '1.27.0-rc.23', digest: 'sha256:' + 'd'.repeat(64) } };
+  const expectedDigest = 'sha256:' + 'b'.repeat(64), componentDigest = createHash('sha256').update('{"schemaVersion":1}\n').digest('hex');
+  const assets = expectedReleaseAssetNames('1.27.0').map((name, i) => ({ name, size: name === 'KPANEL_MODIFIED_COMPONENTS.json' ? 19 : 100 + i,
+    digest: name === 'KPANEL_MODIFIED_COMPONENTS.json' ? 'sha256:' + componentDigest : 'sha256:' + String(i + 1).padStart(64, '0') }));
+  const assetManifest = { version: '1.27.0', assets };
+  const release = { tag_name: 'v1.27.0', draft: true, prerelease: false, expectedDigest,
+    assets: assets.map(asset => ({ ...asset, state: 'uploaded' })) };
+  const state = { snapshot, release, assetManifest, version: '1.27.0', expectedDigest, latestReleaseTag: snapshot.tag, latestDigest: expectedDigest,
+    versionDigest: expectedDigest, previewDigest: snapshot.previousPreview.digest, componentDigest };
+  assert.equal(classifyRecoveryState({ ...state, operation: 'publish-draft' }), 'publish');
+  assert.equal(classifyRecoveryState({ ...state, operation: 'restore-latest' }), 'restore-latest');
+  assert.equal(classifyRecoveryState({ ...state, operation: 'restore-latest', latestDigest: snapshot.digest }), 'already-restored');
+  assert.equal(classifyRecoveryState({ ...state, operation: 'publish-draft', release: { ...release, draft: false },
+    latestReleaseTag: release.tag_name }), 'already-published');
+  assert.throws(() => classifyRecoveryState({ ...state, operation: 'restore-latest', release: { ...release, draft: false } }));
+  assert.throws(() => classifyRecoveryState({ ...state, operation: 'publish-draft', previewDigest: expectedDigest }));
+  assert.throws(() => classifyRecoveryState({ ...state, operation: 'restore-latest', latestDigest: 'sha256:' + '9'.repeat(64) }));
+  assert.throws(() => classifyRecoveryState({ ...state, release: { ...release, assets: release.assets.map((asset, i) => i ? asset : { ...asset, digest: 'sha256:' + 'f'.repeat(64) }) } }));
+});
+
+test('stable recovery workflow separates the read-only check, draft writer and Docker-only rollback', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/release-stable-recovery.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+  const recovery = readFileSync(new URL('../stable-release-recovery.mjs', import.meta.url), 'utf8');
+  assert.match(workflow, /group: kpanel-image-publication/);
+  assert.match(workflow, /contents: read\s+actions: read/);
+  assert.match(workflow, /publish_draft:\s+needs: preflight[\s\S]*?contents: write\s+actions: read/);
+  assert.match(workflow, /restore_latest:\s+needs: preflight[\s\S]*?contents: read\s+actions: read/);
+  assert.match(recovery, /Promote image to its release channel/);
+  assert.match(recovery, /Publish GitHub release/);
+  assert.match(workflow, /snapshot-\$\{\{ inputs\['publication-run-id'\] \}\}-\$\{\{ inputs\['publication-attempt'\] \}\}/);
+  assert.match(workflow, /publication-\$\{\{ inputs\['publication-run-id'\] \}\}-\$\{\{ inputs\['publication-attempt'\] \}\}/);
+  assert.ok(workflow.indexOf('Validate exact main, tag and release identity before artifact download')
+    < workflow.indexOf('Download exact original snapshot artifact'));
+  const publish = workflow.split('  publish_draft:')[1].split('  restore_latest:')[0];
+  const rollback = workflow.split('  restore_latest:')[1].split('  public-acceptance:')[0];
+  assert.doesNotMatch(publish, /DOCKERHUB_TOKEN|docker login|imagetools create/);
+  assert.doesNotMatch(rollback, /contents: write|gh release edit/);
+  assert.ok(publish.indexOf('Revalidate immediately before the GitHub write') < publish.indexOf('Publish the existing frozen draft'));
+  assert.ok(rollback.indexOf('Revalidate immediately before the Docker write') < rollback.indexOf('Restore only the frozen Docker latest digest'));
+  const verifier = readFileSync(new URL('../../.github/workflows/release-public-verify.yml', import.meta.url), 'utf8');
+  assert.match(verifier, /publication-run-id:[\s\S]*?required: false/);
+  assert.match(verifier, /publication-attempt:[\s\S]*?required: false/);
 });
 
 test('public recovery binds only the trusted controller runner recipe and rejects changed product identities', () => {
