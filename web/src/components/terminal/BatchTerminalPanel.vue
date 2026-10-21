@@ -138,7 +138,7 @@ async function execute(): Promise<void> {
 }
 async function stopExecution(): Promise<void> {
   const id = activeJob.value?.id || cleanupJob.value?.id
-  if (!id || stopping.value || cleaningUp.value || submitting.value) return
+  if (!id || stopping.value || (!executing.value && cleaningUp.value) || submitting.value) return
   stopping.value = true; error.value = ''
   revision++
   try { await api.terminals.stopBatch(id); if (!disposed) { revision++; await refresh() } }
@@ -162,7 +162,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
       </label>
       <footer>
         <p v-if="commandError" class="batch-command__error" role="alert">{{ commandError }}</p>
-        <button v-if="executing || cleanupJob" class="button button--danger" type="button" :disabled="stopping || cleaningUp || submitting" @click="stopExecution">
+        <button v-if="executing || cleanupJob" class="button button--danger" type="button" :disabled="stopping || (!executing && cleaningUp) || submitting" @click="stopExecution">
           <XCircle :size="18" aria-hidden="true" />
           {{ phrase(executing ? '终止执行' : stopping || cleaningUp ? '正在释放会话' : '重试释放会话') }}
         </button>

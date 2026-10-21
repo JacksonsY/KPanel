@@ -234,4 +234,15 @@ describe('server scheduled terminal batches', () => {
     expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
+  it('can stop the active batch while another tab retries cleanup of an older batch', async () => {
+    const older = job('stopped'); older.id = 'b'.repeat(32)
+    older.cleanupPending = true; older.cleanupRunning = true
+    const active = job()
+    mocks.batches.mockResolvedValue({ available: true, items: [active, older] })
+    const wrapper = mountPanel(); await flushPromises()
+    expect(button(wrapper, '终止执行').attributes('disabled')).toBeUndefined()
+    await button(wrapper, '终止执行').trigger('click'); await flushPromises()
+    expect(mocks.stopBatch).toHaveBeenCalledWith(active.id)
+    wrapper.unmount()
+  })
 })
