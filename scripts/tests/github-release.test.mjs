@@ -262,27 +262,26 @@ test('stable recovery requires an exact main dispatch identity and stable releas
 });
 
 test('stable recovery accepts only the exact image-promoted and GitHub-publish-failed attempt', () => {
-  const expected = { runId: '123', attempt: '2', candidate: 'a'.repeat(40), repository: 'kejilion/KPanel' };
-  const controllerSha = 'c'.repeat(40);
+  const expected = { runId: '123', attempt: '2', candidate: 'a'.repeat(40), version: '1.27.0', repository: 'kejilion/KPanel' };
+  const controllerSha = expected.candidate;
   const identity = { controllerSha };
-  const workflow = { id: 456, path: '.github/workflows/preview-release.yml', state: 'active' };
-  const run = { id: 123, run_attempt: 2, event: 'workflow_dispatch', status: 'completed', conclusion: 'failure',
-    head_sha: controllerSha, head_branch: 'main', display_title: 'Publish preview from ' + expected.candidate,
-    path: workflow.path, workflow_id: workflow.id, referenced_workflows: [{
-      path: expected.repository + '/.github/workflows/release.yml@' + controllerSha,
-      sha: controllerSha, ref: 'refs/heads/main',
-    }] };
-  const jobs = { jobs: [{ name: 'publish / release', conclusion: 'failure', steps: [
+  const workflow = { id: 456, path: '.github/workflows/release.yml', state: 'active' };
+  const run = { id: 123, run_attempt: 2, event: 'push', status: 'completed', conclusion: 'failure',
+    head_sha: controllerSha, head_branch: 'v1.27.0', path: workflow.path, workflow_id: workflow.id };
+  const jobs = { jobs: [{ name: 'release', conclusion: 'failure', steps: [
     { name: 'Promote image to its release channel', conclusion: 'success' },
     { name: 'Publish GitHub release', conclusion: 'failure' },
   ] }] };
   assert.doesNotThrow(() => validateFailedPublication({ run, workflow, jobs, expected, identity }));
   assert.throws(() => validateFailedPublication({ run: { ...run, run_attempt: 1 }, workflow, jobs, expected, identity }));
-  assert.throws(() => validateFailedPublication({ run: { ...run, event: 'push' }, workflow, jobs, expected, identity }));
-  assert.throws(() => validateFailedPublication({ run: { ...run, head_sha: expected.candidate }, workflow, jobs, expected, identity }));
-  assert.throws(() => validateFailedPublication({ run: { ...run, display_title: 'Publish preview from ' + 'd'.repeat(40) }, workflow, jobs, expected, identity }));
-  assert.throws(() => validateFailedPublication({ run: { ...run, referenced_workflows: [] }, workflow, jobs, expected, identity }));
-  assert.throws(() => validateFailedPublication({ run, workflow, jobs: { jobs: [{ ...jobs.jobs[0], name: 'release' }] }, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run: { ...run, event: 'workflow_dispatch' }, workflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run: { ...run, head_sha: 'd'.repeat(40) }, workflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run: { ...run, head_branch: 'main' }, workflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run: { ...run, head_branch: 'v1.27.0-rc.23' }, workflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run, workflow, jobs, expected, identity: { controllerSha: 'c'.repeat(40) } }));
+  const previewWorkflow = { ...workflow, path: '.github/workflows/preview-release.yml' };
+  assert.throws(() => validateFailedPublication({ run: { ...run, path: previewWorkflow.path, event: 'workflow_dispatch' }, workflow: previewWorkflow, jobs, expected, identity }));
+  assert.throws(() => validateFailedPublication({ run, workflow, jobs: { jobs: [{ ...jobs.jobs[0], name: 'publish / release' }] }, expected, identity }));
   assert.throws(() => validateFailedPublication({ run, workflow, jobs: { jobs: [{ ...jobs.jobs[0], steps: [
     { name: 'Promote image to its release channel', conclusion: 'failure' },
     { name: 'Publish GitHub release', conclusion: 'failure' },

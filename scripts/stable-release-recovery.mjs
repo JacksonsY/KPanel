@@ -199,18 +199,16 @@ export function validatePublicationArtifacts({ snapshotDirectory, publicationDir
 }
 
 export function validateFailedPublication({ run, workflow, jobs, expected, identity }) {
-  const releaseWorkflowRef = `${expected.repository}/.github/workflows/release.yml@${identity?.controllerSha}`;
-  const referencedRelease = (run?.referenced_workflows ?? []).some(item => item.path === releaseWorkflowRef
-    && item.sha === identity?.controllerSha && item.ref === 'refs/heads/main');
-  if (workflow?.path !== '.github/workflows/preview-release.yml' || workflow?.state !== 'active'
-    || run?.workflow_id !== workflow.id || run?.path !== '.github/workflows/preview-release.yml'
+  // Stable releases enter through the annotated tag push; preview dispatch rejects stable versions.
+  if (workflow?.path !== '.github/workflows/release.yml' || workflow?.state !== 'active'
+    || run?.workflow_id !== workflow.id || run?.path !== '.github/workflows/release.yml'
     || run?.id !== Number(expected.runId) || run?.run_attempt !== Number(expected.attempt)
-    || run?.event !== 'workflow_dispatch' || run?.status !== 'completed' || run?.conclusion !== 'failure'
-    || run?.head_branch !== 'main' || run?.head_sha !== identity?.controllerSha
-    || run?.display_title !== 'Publish preview from ' + expected.candidate || !referencedRelease) {
-    fail('Original run is not the exact failed preview-release controller attempt');
+    || run?.event !== 'push' || run?.status !== 'completed' || run?.conclusion !== 'failure'
+    || run?.head_branch !== 'v' + expected.version || run?.head_sha !== expected.candidate
+    || identity?.controllerSha !== expected.candidate) {
+    fail('Original run is not the exact failed stable-tag release attempt');
   }
-  const releaseJobs = (jobs?.jobs ?? []).filter(job => job.name === 'publish / release');
+  const releaseJobs = (jobs?.jobs ?? []).filter(job => job.name === 'release');
   if (releaseJobs.length !== 1 || releaseJobs[0].conclusion !== 'failure') fail('Original release job did not fail exactly once');
   const steps = releaseJobs[0].steps ?? [];
   const promoted = steps.filter(step => step.name === 'Promote image to its release channel');
@@ -330,8 +328,7 @@ function validateMainCandidate(expected, env, controllerSha) {
     || git('rev-parse', `refs/tags/v${expected.version}^{commit}`) !== expected.candidate) fail('Stable tag or controller source does not match exact recovery inputs');
   execFileSync('git', ['merge-base', '--is-ancestor', expected.candidate, 'origin/main'], { stdio: 'ignore', timeout: 20_000 });
   if (controllerSha !== undefined) {
-    if (!sha.test(controllerSha)) fail('Original preview controller SHA is invalid');
-    execFileSync('git', ['merge-base', '--is-ancestor', controllerSha, expected.candidate], { stdio: 'ignore', timeout: 20_000 });
+    if (controllerSha !== expected.candidate) fail('Original stable-tag controller must be the exact candidate');
   }
 }
 
@@ -346,7 +343,7 @@ async function inspect(env) {
     'X-GitHub-Api-Version': '2022-11-28' };
   const api = env.GITHUB_API_URL || 'https://api.github.com';
   const [workflow, run, jobs, latestRelease, release, snapshotData] = await Promise.all([
-    requestJson(`${api}/repos/${repository}/actions/workflows/preview-release.yml`, githubHeaders),
+    requestJson(`${api}/repos/${repository}/actions/workflows/release.yml`, githubHeaders),
     requestJson(`${api}/repos/${repository}/actions/runs/${expected.runId}/attempts/${expected.attempt}`, githubHeaders),
     requestJson(`${api}/repos/${repository}/actions/runs/${expected.runId}/attempts/${expected.attempt}/jobs`, githubHeaders),
     requestJson(`${api}/repos/${repository}/releases/latest`, githubHeaders),

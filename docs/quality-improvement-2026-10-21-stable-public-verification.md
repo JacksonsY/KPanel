@@ -21,7 +21,7 @@ RC23 另有旧 MCP 测试要求100ms内直接返回终态，与接口允许返�
 - 两种通道均保存原始发布前快照，核对候选、版本、双架构、15附件、11校验项和公开浏览器。
 - 稳定升级从上一RC的真实后端按默认 stable 通道发现正式版，保留 opt-in/退出、失败安装及未自动安装断言。
 - 不修改产品权限、默认安装、依赖或Docker配方；不重建或覆盖不可变版本镜像。
-- 增加仅限 `main` 的人工恢复入口，必须绑定原始发布 `run-id/attempt`、候选SHA、稳定版本及不可变镜像摘要。它核验 `preview-release.yml` 的精确 `workflow_dispatch` caller、该次运行引用的 `release.yml`、候选输入与稳定标签；只接受“镜像提升成功、GitHub Release 发布步骤失败”这一故障组合。
+- 增加仅限 `main` 的人工恢复入口，必须绑定原始发布 `run-id/attempt`、候选SHA、稳定版本及不可变镜像摘要。它核验 `release.yml` 的精确稳定标签 `push`、标签名及与候选相同的控制器SHA；预览版dispatch不接受稳定版本，不属于本恢复入口。只接受“镜像提升成功、GitHub Release 发布步骤失败”这一故障组合。
 - 在通道提升前冻结全部15个Release附件的名称、大小和SHA-256，并将清单摘要写入原始发布身份工件；恢复时逐项比对公开草稿，确保完整附件集与原运行一致。
 - `publish-draft` 只发布原始运行已创建的同一草稿，且仅在 `latest` 仍指向目标摘要、GitHub Latest 仍是快照版本、`preview` 未改变时执行；已完整发布时只重跑只读公开验收。
 - `restore-latest` 只可在 Release 仍为草稿且 GitHub Latest 未改变时，将 Docker `latest` 恢复到冻结快照的既有摘要；不改动版本镜像、Release草稿或其他标签。任何身份或公开状态不确定均失败关闭。
