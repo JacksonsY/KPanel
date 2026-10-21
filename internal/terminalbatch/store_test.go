@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -40,8 +41,11 @@ func TestRetainsEveryRecentBatchAndHostOrderAcrossRestart(t *testing.T) {
 				if result.Host != hosts[index] || result.State != "succeeded" {
 					t.Fatalf("missing/reordered host %d: %+v", index, result)
 				}
-				if restored && result.OutputAvailable {
-					t.Fatal("restart claimed to retain in-memory output")
+				if !restored && round < maxOutputJobs && (!result.OutputAvailable || !strings.Contains(result.Output, "private-output")) {
+					t.Fatal("recent output was released prematurely")
+				}
+				if (restored || round >= maxOutputJobs) && (result.OutputAvailable || result.Output != "") {
+					t.Fatal("released output was still reported as available")
 				}
 			}
 		}

@@ -205,7 +205,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
           <div :id="`batch-result-detail-${result.host.id}`" v-show="expandedHosts.has(result.host.id)" class="batch-result__detail">
             <pre v-if="result.output" :ref="(element) => setOutputPre(result.host.id, element)" data-i18n-ignore>{{ result.output }}</pre>
             <div v-else-if="result.state === 'queued' || result.state === 'connecting' || result.state === 'running'" class="batch-result__pending"><LoaderCircle class="spin" :size="16" aria-hidden="true" /> {{ executionLabel(result.state) }}</div>
-            <p v-if="!result.outputAvailable" class="batch-result__notice">{{ phrase('Panel 重启后仅保留操作记录，原终端输出已释放。') }}</p>
+            <p v-if="!result.outputAvailable" class="batch-result__notice">{{ phrase('操作记录已保留，原终端输出已释放。') }}</p>
             <p v-if="result.truncated" class="batch-result__notice">{{ phrase('输出已截断，仅保留最后一部分。') }}</p>
             <p v-if="result.error" class="batch-result__error" role="alert"><span data-i18n-ignore>{{ result.error }}</span></p>
           </div>

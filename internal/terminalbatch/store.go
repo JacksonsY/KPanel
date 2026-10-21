@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	maxOutputJobs   = 10 // Metadata outlives the bounded in-memory PTY output window.
 	MaxHosts        = 64
 	MaxCommandBytes = 16 << 10
 	MaxOutputBytes  = 16 << 10
@@ -258,6 +259,14 @@ func (m *Manager) Create(user, id, command string, hosts []Host) (Job, error) {
 	if err := m.persistLocked(); err != nil {
 		m.jobs = previous
 		return Job{}, ErrUnavailable
+	}
+	// Release only old output after durable admission; retain every job and host
+	// record. Admission is serialized and only one batch may produce output.
+	for n := maxOutputJobs; n < len(m.jobs); n++ {
+		for i := range m.jobs[n].Results {
+			m.jobs[n].Results[i].Output = ""
+			m.jobs[n].Results[i].OutputAvailable = false
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), m.options.Timeout)
 	m.active[id] = cancel

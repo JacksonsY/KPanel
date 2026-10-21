@@ -1775,5 +1775,5 @@ export default [
   ["停止请求未确认，任务可能仍在执行，请重试。","The stop request is unconfirmed. Work may still be running; retry stopping it."],
   ["台主机","hosts"],
   ["已结束","Finished"],
-  ["Panel 重启后仅保留操作记录，原终端输出已释放。","Only operation records remain after Panel restarts. Original terminal output has been released."],
+  ["操作记录已保留，原终端输出已释放。","Operation records remain. Original terminal output has been released."],
 ] as const satisfies PhraseCatalog
