@@ -245,4 +245,19 @@ describe('server scheduled terminal batches', () => {
     expect(mocks.stopBatch).toHaveBeenCalledWith(active.id)
     wrapper.unmount()
   })
+  it('retries all retained batches even if one request fails instead of hiding older cleanup', async () => {
+    const latest = job('stopped'); latest.cleanupPending = true
+    const older = job('completed'); older.id = 'b'.repeat(32); older.cleanupPending = true
+    mocks.batches.mockResolvedValue({ available: true, items: [latest, older] })
+    mocks.stopBatch.mockImplementation(async (id: string) => {
+      if (id === latest.id) throw new Error('unavailable')
+      mocks.batches.mockResolvedValue({ available: true, items: [latest, { ...older, cleanupPending: false }] })
+    })
+    const wrapper = mountPanel(); await flushPromises()
+    await button(wrapper, '重试释放会话').trigger('click'); await flushPromises()
+    expect(mocks.stopBatch.mock.calls.map(call => call[0])).toEqual([latest.id, older.id])
+    expect(wrapper.text()).toContain('停止请求未确认')
+    expect(button(wrapper, '重试释放会话').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
 })

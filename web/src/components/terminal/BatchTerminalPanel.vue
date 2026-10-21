@@ -27,7 +27,9 @@ const syncError = ref('')
 const selectedJob = computed(() => jobs.value.find(job => job.id === selectedID.value))
 const activeJob = computed(() => jobs.value.find(job => job.state === 'running'))
 const executing = computed(() => Boolean(activeJob.value))
-const cleanupJob = computed(() => jobs.value.find(job => job.cleanupPending || job.cleanupRunning))
+const cleanupJobs = computed(() => jobs.value.filter(job => job.cleanupPending || job.cleanupRunning))
+const needsCleanup = computed(() => cleanupJobs.value.length > 0)
+const cleanupHosts = computed(() => [...new Set(cleanupJobs.value.flatMap(job => job.results.filter(result => result.error === 'terminal_close_failed').map(result => result.host.name)))].join('、'))
 const cleaningUp = computed(() => jobs.value.some(job => job.cleanupRunning))
 const results = computed(() => (submitting.value ? [] : selectedJob.value?.results || []).map(result => ({ ...result, output: result.output || '', error: errorLabel(result.error || '') })))
 const expandedHosts = ref<Set<string>>(new Set())
@@ -137,13 +139,18 @@ async function execute(): Promise<void> {
   } finally { if (!disposed) submitting.value = false }
 }
 async function stopExecution(): Promise<void> {
-  const id = activeJob.value?.id || cleanupJob.value?.id
-  if (!id || stopping.value || (!executing.value && cleaningUp.value) || submitting.value) return
+  const ids = activeJob.value ? [activeJob.value.id] : cleanupJobs.value.map(job => job.id)
+  if (!ids.length || stopping.value || (!executing.value && cleaningUp.value) || submitting.value) return
   stopping.value = true; error.value = ''
   revision++
-  try { await api.terminals.stopBatch(id); if (!disposed) { revision++; await refresh() } }
-  catch { if (!disposed) error.value = phrase('停止请求未确认，任务可能仍在执行，请重试。') }
-  finally { if (!disposed) stopping.value = false }
+  try {
+    // Retry every retained job so one offline host cannot hide older cleanup.
+    const responses = await Promise.allSettled(ids.map(id => api.terminals.stopBatch(id)))
+    if (disposed) return
+    if (responses.some(response => response.status === 'rejected')) error.value = phrase('停止请求未确认，任务可能仍在执行，请重试。')
+    revision++
+    await refresh()
+  } finally { if (!disposed) stopping.value = false }
 }
 defineExpose({ applyQuickCommand })
 onMounted(() => void poll())
@@ -162,7 +169,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
       </label>
       <footer>
         <p v-if="commandError" class="batch-command__error" role="alert">{{ commandError }}</p>
-        <button v-if="executing || cleanupJob" class="button button--danger" type="button" :disabled="stopping || (!executing && cleaningUp) || submitting" @click="stopExecution">
+        <button v-if="executing || needsCleanup" class="button button--danger" type="button" :disabled="stopping || (!executing && cleaningUp) || submitting" @click="stopExecution">
           <XCircle :size="18" aria-hidden="true" />
           {{ phrase(executing ? '终止执行' : stopping || cleaningUp ? '正在释放会话' : '重试释放会话') }}
         </button>
@@ -174,7 +181,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
       <p v-if="error" class="batch-result__error" role="alert">{{ error }}</p>
       <p v-if="syncError" class="batch-result__error" role="alert">{{ syncError }}</p>
       <p v-if="storageWarning" class="batch-result__error" role="alert">{{ storageWarning }}</p>
-      <p v-if="cleanupJob && !executing" class="batch-result__error" role="status">{{ phrase('会话释放未确认，名额仍保留，请检查目标主机连接。') }} <span data-i18n-ignore>{{ cleanupJob.results.filter(result => result.error === 'terminal_close_failed').map(result => result.host.name).join('、') }}</span></p>
+      <p v-if="needsCleanup && !executing" class="batch-result__error" role="status">{{ phrase('会话释放未确认，名额仍保留，请检查目标主机连接。') }} <span data-i18n-ignore>{{ cleanupHosts }}</span></p>
     </div>
 
     <div class="batch-status" :aria-busy="submitting">
