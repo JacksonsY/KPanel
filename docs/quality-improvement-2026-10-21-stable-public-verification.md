@@ -1,6 +1,6 @@
 # 稳定版公开产物验收补齐
 
-- 提案状态：正常发布路径已验证（v1.27.1稳定发布及公开验收成功；受限恢复尚未实演，跟进项保留）
+- 提案状态：试行（v1.27.1正常稳定发布及公开验收已验证；受限恢复尚未实演，跟进项保留）
 - 提案日期：2026-10-21
 - 负责人：本次稳定发布维护者
 - 适用业务域：公开 Release、镜像身份及真实浏览器验收
@@ -56,6 +56,6 @@ RC23 另有旧 MCP 测试要求100ms内直接返回终态，与接口允许返�
 
 ## 独立复核
 
-- 复核状态：完整组合候选 `a778135cb286e0c8956cae3f1bb648bffc654f81` 为 `PASS WITH FOLLOW-UP`，与最终 `ee73500f9511006aad79ef38af7bb9a4dad60a5a` tree相同；同SHA候选/主线CI及原始发布39646965427 attempt1的L3、release、public-acceptance、stable-completion全部success。正常发布路径的实际结果见 `release-v1.27.1-acceptance.md`。
-- 复核提供商 / 实现提供商：codex / codex；其他提供商无可用非交互入口，使用与实现任务分离的只读复核。
+- 复核状态：通过（完整组合候选 `a778135cb286e0c8956cae3f1bb648bffc654f81` 为 `PASS WITH FOLLOW-UP`，与最终 `ee73500f9511006aad79ef38af7bb9a4dad60a5a` tree相同；同SHA候选及主线CI、原始发布39646965427 attempt1的L3、release、public-acceptance、stable-completion全部success。正常发布路径的实际结果见 `release-v1.27.1-acceptance.md`。）
+- 复核提供商 / 实现提供商：codex / codex（其他提供商不可用：没有可用非交互入口，使用与实现任务分离的只读复核）
 - 实现、候选CI、独立复核及采纳范围：正常稳定公开验收已实际完成；受限恢复没有真实故障注入证据，Workflows权限及恢复后人工归档限制继续保留，不宣称任意后续main均可恢复。
