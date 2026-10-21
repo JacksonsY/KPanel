@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import type { GalleryMonthGroup } from '@/lib/gallery'
 import { galleryViewport, layoutGallery, type GalleryLayoutCell } from '@/lib/galleryLayout'
+import { createGalleryRenderPolicy, galleryRenderPolicyKey, GALLERY_RENDER_LIMITS } from '@/lib/galleryRenderPolicy'
 
 const props = withDefaults(defineProps<{
   groups: GalleryMonthGroup[]
@@ -11,8 +12,8 @@ const props = withDefaults(defineProps<{
   resetKey: string
   active?: boolean
 }>(), { active: true })
-const emit = defineEmits<{ scrolling: [value: boolean]; fastScrolling: [value: boolean] }>()
-const SETTLE_MS = 160
+const sharedPolicy = inject(galleryRenderPolicyKey, undefined)
+const policy = sharedPolicy ?? createGalleryRenderPolicy(computed(() => props.active !== false))
 const root = ref<HTMLElement>()
 const width = ref(0)
 const minimum = ref(168)
@@ -20,14 +21,10 @@ const gap = ref(6)
 const cells = shallowRef<GalleryLayoutCell[]>([])
 // Keep recent image elements and their decoded pixels alive across short backtracks.
 const retained = new Map<string, GalleryLayoutCell>()
-const RETAINED_CELLS = 240
-const moving = ref(false)
-let fast = false
-let sampledTop = 0
-let sampledAt = 0
+const moving = computed(() => policy.phase.value !== 'idle')
 let observer: ResizeObserver | undefined
 let frame: number | undefined
-let settleTimer: ReturnType<typeof setTimeout> | undefined
+let cancelMount: (() => void) | undefined
 let scrollTarget: HTMLElement | Window | undefined
 let geometryDirty = true
 let contentTop = 0
@@ -56,69 +53,48 @@ function measureGeometry(): void {
 }
 function updateViewport(): void {
   frame = undefined
+  cancelMount?.()
+  cancelMount = undefined
   if (!enabled()) return
   // Already mounted, prefetched photos remain available during a fling.
   // Do not create new media subtrees until the scroll slows down.
-  if (fast) return
+  if (policy.deferImages.value) return
   if (geometryDirty) measureGeometry()
   const top = viewportTop()
   // Warm two screens ahead, with a pixel cap for large desktop windows.
-  const buffer = Math.min(1600, viewportHeight * 2)
+  const buffer = Math.min(GALLERY_RENDER_LIMITS.overscanPx, viewportHeight * GALLERY_RENDER_LIMITS.overscanScreens)
   const near = galleryViewport(layout.value.cells, top - buffer, top + viewportHeight + buffer, layout.value.maxCellHeight)
   const pinned = focused && layout.value.cells.find((cell) => cell.key === focused)
   if (pinned && !near.includes(pinned)) near.push(pinned)
   const required = new Set(near.map(cell => cell.key))
+  // Mount the visible destination first; fill the offscreen buffer in small batches.
+  const newcomers = near.filter(cell => !retained.has(cell.key))
+    .sort((a, b) => Math.abs(a.top + a.height / 2 - top - viewportHeight / 2)
+      - Math.abs(b.top + b.height / 2 - top - viewportHeight / 2))
+  const admitted = new Set(newcomers.slice(0, GALLERY_RENDER_LIMITS.mountBatch).map(cell => cell.key))
   for (const cell of near) {
+    if (!retained.has(cell.key) && !admitted.has(cell.key)) continue
     retained.delete(cell.key)
     retained.set(cell.key, cell)
   }
   for (const key of retained.keys()) {
-    if (retained.size <= Math.max(RETAINED_CELLS, near.length)) break
+    if (retained.size <= Math.max(GALLERY_RENDER_LIMITS.retainedCells, near.length)) break
     if (!required.has(key)) retained.delete(key)
   }
   const next = [...retained.values()].sort((a, b) => a.top - b.top || a.left - b.left)
   if (!same(cells.value, next)) cells.value = next
+  if (newcomers.length > admitted.size) cancelMount = policy.enqueue(updateViewport)
 }
 function schedule(): void {
   if (frame === undefined && enabled()) frame = requestAnimationFrame(updateViewport)
 }
-function setMoving(value: boolean): void {
-  if (moving.value === value) return
-  moving.value = value
-  emit('scrolling', value)
-}
-function setFast(value: boolean): void {
-  if (fast === value) return
-  fast = value
-  emit('fastScrolling', value)
-}
-function resetSpeed(): void {
-  setFast(false)
-  sampledTop = scrollPosition()
-  sampledAt = performance.now()
-}
 function settle(): void {
-  clearTimeout(settleTimer)
-  settleTimer = undefined
-  setMoving(false)
-  resetSpeed()
+  policy.reset(scrollPosition())
   updateViewport()
 }
 function interact(): void {
   if (!enabled()) return
-  const top = scrollPosition()
-  const now = performance.now()
-  if (top !== sampledTop) {
-    // Clamp idle gaps so a scrollbar jump is treated like fast movement too.
-    const speed = Math.abs(top - sampledTop) / Math.max(16, Math.min(80, now - sampledAt))
-    // Hysteresis prevents repeated pause/resume around a single threshold.
-    setFast(speed >= (fast ? 0.45 : 1))
-    sampledTop = top
-    sampledAt = now
-  }
-  setMoving(true)
-  clearTimeout(settleTimer)
-  settleTimer = setTimeout(settle, SETTLE_MS)
+  policy.interact(scrollPosition())
   schedule()
 }
 function resize(): void {
@@ -130,10 +106,10 @@ function bindScroll(): void {
   scrollTarget?.removeEventListener('wheel', interact)
   scrollTarget = props.scrollRoot ?? window
   scrollTarget.addEventListener('scroll', interact, { passive: true })
-  // Pause pending media before the browser dispatches the following scroll event.
+  // Video previews yield as soon as wheel activity starts.
   scrollTarget.addEventListener('wheel', interact, { passive: true })
   geometryDirty = true
-  resetSpeed()
+  policy.reset(scrollPosition())
   schedule()
 }
 function reveal(path: string): void {
@@ -147,9 +123,7 @@ function reveal(path: string): void {
     else window.scrollBy({ top: delta * scale, behavior: 'instant' })
   }
   // Returning from the viewer needs the destination mounted before focus restoration.
-  clearTimeout(settleTimer)
-  setMoving(false)
-  resetSpeed()
+  policy.reset(scrollPosition())
   measureGeometry()
   updateViewport()
 }
@@ -158,15 +132,14 @@ function focusChanged(): void {
   focused = tile && root.value?.contains(tile) ? tile.dataset.galleryPath ?? '' : ''
 }
 function activityChanged(): void {
-  clearTimeout(settleTimer)
   if (frame !== undefined) cancelAnimationFrame(frame)
   frame = undefined
-  setMoving(false)
-  resetSpeed()
+  policy.reset(scrollPosition())
   geometryDirty = true
   schedule()
 }
 defineExpose({ reveal })
+watch(policy.phase, () => { if (!policy.deferImages.value) schedule() }, { flush: 'post' })
 watch(() => props.scrollRoot, (next, previous) => {
   if (previous) observer?.unobserve(previous)
   if (next) observer?.observe(next)
@@ -215,9 +188,9 @@ onMounted(() => {
   document.addEventListener('visibilitychange', activityChanged)
 })
 onBeforeUnmount(() => {
-  setMoving(false)
-  resetSpeed()
-  clearTimeout(settleTimer)
+  cancelMount?.()
+  policy.reset(scrollPosition())
+  if (!sharedPolicy) policy.dispose()
   observer?.disconnect()
   scrollTarget?.removeEventListener('scroll', interact)
   scrollTarget?.removeEventListener('wheel', interact)

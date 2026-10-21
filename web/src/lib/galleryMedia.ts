@@ -1,6 +1,6 @@
 import type { InjectionKey, Ref } from 'vue'
 
-/** A gallery window's interaction state; the viewer overrides it for its own media. */
+/** Hard inactivity only. Scroll admission is owned by the surface's render policy. */
 export const galleryMediaPausedKey: InjectionKey<Readonly<Ref<boolean>>> = Symbol('gallery-media-paused')
 
 /** Shared across gallery windows: leave file-service capacity for the active viewer. */

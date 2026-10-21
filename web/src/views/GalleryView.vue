@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue'
-import { galleryMediaPausedKey } from '@/lib/galleryMedia'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { provideGalleryRenderPolicy } from '@/lib/galleryRenderPolicy'
 import { useRoute, useRouter } from 'vue-router'
 import { createGalleryTouchSelection } from '@/lib/galleryTouchSelection'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
@@ -173,9 +173,6 @@ const showHostSwitcher = computed(() => hosts.value.length > 1 || Boolean(hostId
 
 const snapshot = shallowRef<GalleryFolderSnapshot>()
 const folderCache = new GalleryFolderCache()
-const scrolling = ref(false)
-const fastScrolling = ref(false)
-provide(galleryMediaPausedKey, computed(() => fastScrolling.value || !foreground.value || !desktopWindowActive.value || Boolean(viewerPath.value)))
 const loading = ref(true)
 const loadError = ref('')
 let loadController: AbortController | undefined
@@ -196,6 +193,7 @@ let selectionBase = new Set<string>()
 let selectionAdds = true
 
 const viewerPath = ref<string>()
+provideGalleryRenderPolicy(computed(() => foreground.value && desktopWindowActive.value && !viewerPath.value))
 const coverPicking = ref(false)
 const coverBusy = ref(false)
 const dragging = ref(false)
@@ -1454,7 +1452,6 @@ onBeforeUnmount(() => {
                     v-else-if="album.cover && tileUrls(album.cover).video"
                     :src="tileUrls(album.cover).video!"
                     :poster-key="galleryPosterKey(album.cover.entry, tileUrls(album.cover).video)"
-                    :suspended="scrolling || Boolean(viewerPath) || !desktopWindowActive"
                   />
                   <span v-else class="album-card__placeholder"><Images :size="28" :stroke-width="1.6" /></span>
                 </span>
@@ -1588,8 +1585,6 @@ onBeforeUnmount(() => {
         <GalleryTimeline
           ref="timeline"
           :active="desktopWindowActive && foreground && !viewerPath"
-          @scrolling="scrolling = $event"
-          @fast-scrolling="fastScrolling = $event"
           :groups="groups"
           :density="preferences.density"
           :featured="preferences.density !== 'compact' && preferences.sort !== 'name'"
@@ -1610,7 +1605,6 @@ onBeforeUnmount(() => {
               :image-url="tileUrls(item).image"
               :fallback-url="tileUrls(item).fallback"
               :video-url="tileUrls(item).video"
-              :suspended="scrolling || Boolean(viewerPath) || !desktopWindowActive"
               :featured="featured"
               :selecting="selecting"
               :selected="selected.has(item.entry.path)"

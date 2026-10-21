@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { fetchGalleryImage, GalleryImageError, galleryIntersectionRoot, galleryMediaPausedKey } from '@/lib/galleryMedia'
+import { galleryRenderPolicyKey } from '@/lib/galleryRenderPolicy'
 
 const props = defineProps<{ src: string; fallback?: string; eager?: boolean; version?: string }>()
 const emit = defineEmits<{ load: [event: Event]; error: [] }>()
 const paused = inject(galleryMediaPausedKey, computed(() => false))
+const policy = inject(galleryRenderPolicyKey, undefined)
 const element = ref<HTMLImageElement>()
 const source = ref<string>()
 let observer: IntersectionObserver | undefined
@@ -16,6 +18,17 @@ let loaded = false
 let recovering = false
 let fallbackUsed = false
 let pendingLoad: Event | undefined
+let cancelWork: (() => void) | undefined
+
+function schedule(work: () => void): void {
+  cancelWork?.()
+  const run = () => {
+    cancelWork = undefined
+    if (!paused.value && !stopped) work()
+  }
+  if (policy) cancelWork = policy.enqueue(run)
+  else run()
+}
 
 function releaseRecovery(): void {
   recovery?.abort()
@@ -24,17 +37,19 @@ function releaseRecovery(): void {
   recoveryUrl = undefined
 }
 function start(): void {
-  if (visible && !paused.value && !stopped && !source.value) source.value = fallbackUsed ? props.fallback : props.src
+  if (visible && !paused.value && !stopped && !source.value) {
+    schedule(() => { source.value = fallbackUsed ? props.fallback : props.src })
+  }
 }
 function fallback(): void {
   releaseRecovery()
   recovering = false
   if (props.fallback && !fallbackUsed) {
     fallbackUsed = true
-    source.value = props.fallback
+    schedule(() => { source.value = props.fallback })
   } else emit('error')
 }
-async function onError(): Promise<void> {
+async function recover(): Promise<void> {
   if (paused.value || stopped || !source.value) return
   if (fallbackUsed) { emit('error'); return }
   if (recoveryUrl) { fallback(); return }
@@ -48,23 +63,31 @@ async function onError(): Promise<void> {
     const blob = await fetchGalleryImage(props.src, current.signal)
     if (current.signal.aborted || paused.value || stopped || recovery !== current) return
     recoveryUrl = URL.createObjectURL(blob)
-    source.value = recoveryUrl
+    schedule(() => { source.value = recoveryUrl })
   } catch (error) {
     if (current.signal.aborted || paused.value || stopped || recovery !== current) return
     if (error instanceof GalleryImageError && [413, 422].includes(error.status)) fallback()
-    else emit('error')
+    else schedule(() => emit('error'))
   } finally {
     if (recovery === current) recovering = false
   }
 }
+function onError(): void { schedule(() => { void recover() }) }
+function notifyLoad(): void {
+  if (pendingLoad) schedule(() => {
+    if (pendingLoad) emit('load', pendingLoad)
+    pendingLoad = undefined
+  })
+}
 function onLoad(event: Event): void {
   if (!source.value || stopped) return
   loaded = true
-  if (paused.value) pendingLoad = event
-  else emit('load', event)
+  pendingLoad = event
+  if (!paused.value) notifyLoad()
 }
 watch([() => props.src, () => props.version], () => {
   releaseRecovery()
+  cancelWork?.()
   source.value = undefined
   loaded = false
   recovering = false
@@ -74,10 +97,11 @@ watch([() => props.src, () => props.version], () => {
 })
 watch(paused, (value) => {
   if (value) {
-    // Keep already displayed pixels; cancel only work that has not produced a photo.
+    // Only hard inactivity cancels work; fast scrolling is handled by admission.
+    cancelWork?.()
     if (!loaded) { releaseRecovery(); recovering = false; source.value = undefined }
   } else {
-    if (pendingLoad) { emit('load', pendingLoad); pendingLoad = undefined }
+    notifyLoad()
     start()
   }
 }, { flush: 'sync' })
@@ -92,7 +116,7 @@ onMounted(() => {
   }, { root: galleryIntersectionRoot(element.value), rootMargin: '160px 0px' })
   if (element.value) observer.observe(element.value)
 })
-onBeforeUnmount(() => { stopped = true; observer?.disconnect(); releaseRecovery() })
+onBeforeUnmount(() => { stopped = true; cancelWork?.(); observer?.disconnect(); releaseRecovery() })
 </script>
 
 <template>

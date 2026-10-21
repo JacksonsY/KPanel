@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Check,
   ChevronLeft,
@@ -29,7 +29,8 @@ import {
   type GalleryItem,
 } from '@/lib/gallery'
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
-import { fetchGalleryImage, galleryAllowsPrefetch, galleryMediaPausedKey } from '@/lib/galleryMedia'
+import { fetchGalleryImage, galleryAllowsPrefetch } from '@/lib/galleryMedia'
+import { provideGalleryRenderPolicy } from '@/lib/galleryRenderPolicy'
 import { desktopWindowActiveKey } from '@/lib/desktopRouteKeys'
 import { GalleryImageCache, type GalleryImageLease } from '@/lib/galleryImageCache'
 import GalleryImage from './GalleryImage.vue'
@@ -37,7 +38,7 @@ import GalleryImage from './GalleryImage.vue'
 const windowActive = inject(desktopWindowActiveKey, computed(() => true))
 const foreground = ref(document.visibilityState !== 'hidden')
 function syncVisibility(): void { foreground.value = document.visibilityState !== 'hidden' }
-provide(galleryMediaPausedKey, computed(() => !windowActive.value || !foreground.value))
+provideGalleryRenderPolicy(computed(() => windowActive.value && foreground.value))
 
 function phrase(value: string): string {
   phraseCatalogVersion.value

@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GalleryImage from './GalleryImage.vue'
 import { galleryMediaPausedKey } from '@/lib/galleryMedia'
+import { createGalleryRenderPolicy, galleryRenderPolicyKey } from '@/lib/galleryRenderPolicy'
 
 const NativeURL = URL
 beforeEach(() => {
@@ -16,6 +17,40 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('native gallery image loading', () => {
+  it('keeps an in-flight native URL during a fling and defers completion without restarting the request', async () => {
+    vi.useFakeTimers()
+    const policy = createGalleryRenderPolicy()
+    policy.reset(0, 0)
+    const view = mount(GalleryImage, { props: { src: '/thumbnail', eager: true }, global: { provide: { [galleryRenderPolicyKey as symbol]: policy } } })
+    await vi.advanceTimersByTimeAsync(32)
+    expect(view.attributes('src')).toBe('/thumbnail')
+    policy.interact(100, 40)
+    await view.trigger('load')
+    await vi.advanceTimersByTimeAsync(40)
+    expect(view.attributes('src')).toBe('/thumbnail')
+    expect(view.emitted('load')).toBeUndefined()
+    policy.interact(102, 100)
+    await vi.advanceTimersByTimeAsync(32)
+    expect(view.attributes('src')).toBe('/thumbnail')
+    expect(view.emitted('load')).toHaveLength(1)
+    view.unmount(); policy.dispose()
+  })
+
+  it('does not start a queued stale image after its version changes or it unmounts', async () => {
+    vi.useFakeTimers()
+    const policy = createGalleryRenderPolicy()
+    policy.reset(0, 0); policy.interact(100, 20)
+    const options = { props: { src: '/thumbnail?v=1', version: '1' }, global: { provide: { [galleryRenderPolicyKey as symbol]: policy } } }
+    const stale = mount(GalleryImage, options)
+    const current = mount(GalleryImage, options)
+    await current.setProps({ src: '/thumbnail?v=2', version: '2' })
+    stale.unmount()
+    policy.reset()
+    await vi.advanceTimersByTimeAsync(32)
+    expect(current.attributes('src')).toBe('/thumbnail?v=2')
+    expect(stale.attributes('src')).toBeUndefined()
+    current.unmount(); policy.dispose()
+  })
   it('lets the browser load and reuse versioned URLs without a JS body reader or Blob cache', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
     const options = { props: { src: '/thumbnail?version=v1', version: 'v1' } }

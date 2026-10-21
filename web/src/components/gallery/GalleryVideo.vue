@@ -2,10 +2,12 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { loadGalleryPoster, readGalleryPoster } from '@/lib/galleryPosters'
 import { galleryIntersectionRoot, galleryMediaPausedKey } from '@/lib/galleryMedia'
+import { galleryRenderPolicyKey } from '@/lib/galleryRenderPolicy'
 
 const props = defineProps<{ src: string; posterKey: string; preview?: boolean; suspended?: boolean }>()
 const mediaPaused = inject(galleryMediaPausedKey, computed(() => false))
-const paused = computed(() => props.suspended || mediaPaused.value)
+const policy = inject(galleryRenderPolicyKey, undefined)
+const paused = computed(() => props.suspended || mediaPaused.value || policy?.pauseVideos.value)
 const emit = defineEmits<{ load: []; error: [] }>()
 const root = ref<HTMLElement>()
 const poster = computed(() => readGalleryPoster(props.posterKey)?.poster)
