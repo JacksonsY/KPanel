@@ -110,6 +110,8 @@ run 下载 `snapshot-<run ID>-<attempt>` artifact，并核对候选、版本、r
 `publish-draft` 只公开原冻结草稿；`restore-latest` 只在该 Release 仍为草稿且 GitHub Latest 未变化时，
 把 Docker `latest` 恢复到原快照摘要。任何不确定状态均停止，不重建镜像、不改写版本标签或预览通道。
 Release 已公开而验收失败时，继续使用上述只读 `Verify published release`，不使用发布恢复重发产物。
+受限恢复工作流在公开验收后终止，不自动执行稳定候选归档；恢复负责人还须按发布工作流手册调用既有唯一归档入口，
+核对原tag/candidate和公开验收成功后保存精确tip并移除活跃候选。不能将恢复验收成功直接称为全部归档收尾完成。
 
 公开验收的产品始终绑定原 tag/SHA/digest；测试 runner 的 Dockerfile 则取当前可信控制面
 `GITHUB_SHA` 的固定路径，要求该提交已纳入 main。只允许覆盖这一个测试配方，不改变版本、

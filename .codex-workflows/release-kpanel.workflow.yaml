@@ -117,6 +117,8 @@ GitHub 仍可能因目标tag与后续默认分支的工作流差异要求额外 
 
 记录候选 CI、L3、主线 CI、Release、公开产物各层事实，按 `docs/release-acceptance-template.md` 追加验收，
 执行 `node scripts/report-release-metrics.mjs --validate-acceptance <file>`。安全盲审补漏结果引用 quality-audit 记录，未执行如实写 not-run。
+受限恢复工作流不自动归档；恢复负责人须先核对公开验收成功，再调用唯一入口
+`node scripts/archive-release-candidate.mjs --tag <原稳定tag> --release-sha <原candidate> --apply`，并回读远端精确tip。
 流程异常保留 fingerprint/次数/原日志，不以成功重试抹去失败。生产未部署写不适用。
 按 project-management 10.2 保留 RC 列车，归档已完成治理候选；13.1 仅回收本任务拥有且已有恢复点的资源。
 回滚保留 `${{previous_version}}` tag 与不可变 digest；退出 preview 不自动降级。
