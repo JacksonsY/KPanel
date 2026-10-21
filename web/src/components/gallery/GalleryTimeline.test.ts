@@ -37,10 +37,13 @@ it('mounts a bounded range, reveals a distant photo and updates geometry on dens
   vi.stubGlobal('getComputedStyle', styleReads)
   const initial = view.findAll('button').map(button => button.attributes('data-gallery-path'))
   const first = view.get('[data-gallery-path="/p0"]').element
-  scroller.scrollTop = 600
-  scroller.dispatchEvent(new Event('scroll'))
-  await vi.advanceTimersByTimeAsync(80)
+  for (let top = 10; top <= 600; top += 20) {
+    scroller.scrollTop = top
+    scroller.dispatchEvent(new Event('scroll'))
+    await vi.advanceTimersByTimeAsync(80)
+  }
   expect(view.get('[data-gallery-path="/p0"]').element).toBe(first)
+  const beforeFling = view.findAll('button').map(button => button.attributes('data-gallery-path'))
   expect(view.findAll('button').length).toBeGreaterThan(initial.length)
   scroller.scrollTop = 0
   scroller.dispatchEvent(new Event('scroll'))
@@ -49,9 +52,14 @@ it('mounts a bounded range, reveals a distant photo and updates geometry on dens
   scroller.scrollTop = 10000
   scroller.dispatchEvent(new Event('scroll'))
   await vi.advanceTimersByTimeAsync(80)
-  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).not.toEqual(initial)
+  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).toEqual(beforeFling)
   expect(view.findAll('.gallery-timeline__placeholder')).toHaveLength(0)
   expect(view.findAll('button').length).toBeLessThanOrEqual(240)
+  // A fling can resume loading as it decelerates, before the settle timeout.
+  scroller.scrollTop = 10010
+  scroller.dispatchEvent(new Event('scroll'))
+  await vi.advanceTimersByTimeAsync(80)
+  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).not.toEqual(beforeFling)
   scroller.scrollTop = 12000
   scroller.dispatchEvent(new Event('scroll'))
   await vi.advanceTimersByTimeAsync(159)
@@ -61,6 +69,7 @@ it('mounts a bounded range, reveals a distant photo and updates geometry on dens
   expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).not.toEqual(initial)
   expect(view.findAll('.gallery-timeline__placeholder')).toHaveLength(0)
   expect(view.emitted('scrolling')).toEqual([[true], [false]])
+  expect(view.emitted('fastScrolling')).toEqual([[true], [false], [true], [false]])
   // An inactive desktop window neither mounts new cards nor starts another scroll cycle.
   await view.setProps({ active: false })
   const inactive = view.findAll('button').map(button => button.attributes('data-gallery-path'))

@@ -174,7 +174,8 @@ const showHostSwitcher = computed(() => hosts.value.length > 1 || Boolean(hostId
 const snapshot = shallowRef<GalleryFolderSnapshot>()
 const folderCache = new GalleryFolderCache()
 const scrolling = ref(false)
-provide(galleryMediaPausedKey, computed(() => !foreground.value || !desktopWindowActive.value || Boolean(viewerPath.value)))
+const fastScrolling = ref(false)
+provide(galleryMediaPausedKey, computed(() => fastScrolling.value || !foreground.value || !desktopWindowActive.value || Boolean(viewerPath.value)))
 const loading = ref(true)
 const loadError = ref('')
 let loadController: AbortController | undefined
@@ -1588,6 +1589,7 @@ onBeforeUnmount(() => {
           ref="timeline"
           :active="desktopWindowActive && foreground && !viewerPath"
           @scrolling="scrolling = $event"
+          @fast-scrolling="fastScrolling = $event"
           :groups="groups"
           :density="preferences.density"
           :featured="preferences.density !== 'compact' && preferences.sort !== 'name'"

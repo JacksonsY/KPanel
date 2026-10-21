@@ -11,7 +11,7 @@ const props = withDefaults(defineProps<{
   resetKey: string
   active?: boolean
 }>(), { active: true })
-const emit = defineEmits<{ scrolling: [value: boolean] }>()
+const emit = defineEmits<{ scrolling: [value: boolean]; fastScrolling: [value: boolean] }>()
 const SETTLE_MS = 160
 const root = ref<HTMLElement>()
 const width = ref(0)
@@ -22,6 +22,9 @@ const cells = shallowRef<GalleryLayoutCell[]>([])
 const retained = new Map<string, GalleryLayoutCell>()
 const RETAINED_CELLS = 240
 const moving = ref(false)
+let fast = false
+let sampledTop = 0
+let sampledAt = 0
 let observer: ResizeObserver | undefined
 let frame: number | undefined
 let settleTimer: ReturnType<typeof setTimeout> | undefined
@@ -54,6 +57,9 @@ function measureGeometry(): void {
 function updateViewport(): void {
   frame = undefined
   if (!enabled()) return
+  // Already mounted, prefetched photos remain available during a fling.
+  // Do not create new media subtrees until the scroll slows down.
+  if (fast) return
   if (geometryDirty) measureGeometry()
   const top = viewportTop()
   // Warm two screens ahead, with a pixel cap for large desktop windows.
@@ -81,14 +87,35 @@ function setMoving(value: boolean): void {
   moving.value = value
   emit('scrolling', value)
 }
+function setFast(value: boolean): void {
+  if (fast === value) return
+  fast = value
+  emit('fastScrolling', value)
+}
+function resetSpeed(): void {
+  setFast(false)
+  sampledTop = scrollPosition()
+  sampledAt = performance.now()
+}
 function settle(): void {
   clearTimeout(settleTimer)
   settleTimer = undefined
   setMoving(false)
+  resetSpeed()
   updateViewport()
 }
 function interact(): void {
   if (!enabled()) return
+  const top = scrollPosition()
+  const now = performance.now()
+  if (top !== sampledTop) {
+    // Clamp idle gaps so a scrollbar jump is treated like fast movement too.
+    const speed = Math.abs(top - sampledTop) / Math.max(16, Math.min(80, now - sampledAt))
+    // Hysteresis prevents repeated pause/resume around a single threshold.
+    setFast(speed >= (fast ? 0.45 : 1))
+    sampledTop = top
+    sampledAt = now
+  }
   setMoving(true)
   clearTimeout(settleTimer)
   settleTimer = setTimeout(settle, SETTLE_MS)
@@ -106,6 +133,7 @@ function bindScroll(): void {
   // Pause pending media before the browser dispatches the following scroll event.
   scrollTarget.addEventListener('wheel', interact, { passive: true })
   geometryDirty = true
+  resetSpeed()
   schedule()
 }
 function reveal(path: string): void {
@@ -121,6 +149,7 @@ function reveal(path: string): void {
   // Returning from the viewer needs the destination mounted before focus restoration.
   clearTimeout(settleTimer)
   setMoving(false)
+  resetSpeed()
   measureGeometry()
   updateViewport()
 }
@@ -133,6 +162,7 @@ function activityChanged(): void {
   if (frame !== undefined) cancelAnimationFrame(frame)
   frame = undefined
   setMoving(false)
+  resetSpeed()
   geometryDirty = true
   schedule()
 }
@@ -185,6 +215,8 @@ onMounted(() => {
   document.addEventListener('visibilitychange', activityChanged)
 })
 onBeforeUnmount(() => {
+  setMoving(false)
+  resetSpeed()
   clearTimeout(settleTimer)
   observer?.disconnect()
   scrollTarget?.removeEventListener('scroll', interact)
