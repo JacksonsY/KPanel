@@ -240,7 +240,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
 .batch-command footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 .batch-command footer p { margin: 0; color: var(--terminal-shell-muted, #8a9695); font-size: 13px; line-height: 1.45; }
 .batch-command footer p.batch-command__error { flex: 1; color: var(--danger); }
-.batch-results-enter-active, .batch-results-leave-active { transition: opacity .12s ease; }
+.batch-results-enter-active, .batch-results-leave-active { transition: opacity var(--motion-duration-fast) var(--motion-ease-fade); }
 .batch-results-enter-from, .batch-results-leave-to { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
   .batch-results-enter-active, .batch-results-leave-active { transition: none; }
