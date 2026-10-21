@@ -828,6 +828,21 @@ EOF
 		"$TEST_DIR/preview-update-output.txt" >/dev/null
 	test "$(/home/docker/kpanel/bin/kejilion-agent version)" = "10.0.0-rc.2 v1alpha1"
 
+	# A capability-negative lifecycle models releases that only recognize links.
+	local legacy_lifecycle="$TEST_DIR/legacy-kpanel.conf"
+	sed '/^# KPanel systemd unit copies: v1$/d' "$PROJECT_DIR/packaging/kejilion-app/kpanel.conf" >"$legacy_lifecycle"
+	KPANEL_MOCK_LIFECYCLE_SOURCE="$legacy_lifecycle" docker_app_update >/dev/null
+	assert_legacy_systemd_units
+	rm -f "$MOCK_STATE/rollback-tagged" "$MOCK_STATE/image-tag"
+	if KPANEL_MOCK_UPDATE_HEALTH_FAIL=1 docker_app_update >"$TEST_DIR/legacy-rollback-output.txt" 2>&1; then
+		echo "failed upgrade from a legacy lifecycle unexpectedly succeeded" >&2
+		return 1
+	fi
+	assert_legacy_systemd_units
+	# Upgrading again migrates all three definitions to system-owned copies.
+	docker_app_update >/dev/null
+	assert_systemd_unit_copies
+
 	docker_app_uninstall
 	[ ! -e /home/docker/kpanel ]
 	for unit_name in kejilion-agent.service kejilion-panel-update.service kejilion-panel-update.timer; do
@@ -835,6 +850,15 @@ EOF
 	done
 	rm -f /etc/systemd/system/multi-user.target.wants/kejilion-agent.service \
 		/etc/systemd/system/timers.target.wants/kejilion-panel-update.timer
+}
+
+assert_legacy_systemd_units() {
+	local unit_name=""
+	for unit_name in kejilion-agent.service kejilion-panel-update.service kejilion-panel-update.timer; do
+		test -L "/etc/systemd/system/$unit_name"
+		test "$(readlink -f "/etc/systemd/system/$unit_name")" = \
+			"$(readlink -f "/home/docker/kpanel/$unit_name")"
+	done
 }
 
 assert_systemd_unit_copies() {
