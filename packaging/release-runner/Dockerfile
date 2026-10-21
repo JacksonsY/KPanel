@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS node-runtime
+FROM node:24.22.1-alpine@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d AS node-runtime
 
 FROM golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd
 
@@ -8,7 +8,7 @@ LABEL org.opencontainers.image.title="KPanel release gate runner" \
       org.opencontainers.image.description="Fixed Linux release gate runner for KPanel" \
       org.opencontainers.image.source="https://github.com/kejilion/KPanel" \
       org.opencontainers.image.base.golang="golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd" \
-      org.opencontainers.image.base.node="node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1"
+      org.opencontainers.image.base.node="node:24.22.1-alpine@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d"
 
 RUN --mount=type=secret,id=https_proxy,required=false \
     sh -eu -c 'if [ -f /run/secrets/https_proxy ]; then \
@@ -31,7 +31,7 @@ COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
     && go version | grep -F 'go1.27.3' \
-    && node --version | grep -Fx 'v24.21.0' \
+    && node --version | grep -Fx 'v24.22.1' \
     && npm --version \
     && npx --version \
     && gcc --version >/dev/null \

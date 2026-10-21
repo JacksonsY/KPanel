@@ -19,6 +19,7 @@
 ### Security
 
 - 更新 Go 证书信任修复及 Markdown 解析依赖；加强自签名 TLS 资源限制、凭据遮蔽、文件权限和恢复边界。
+- 更新 DOMPurify 至 3.4.17；Node.js 构建基座更新至 24.22.1，并配套更新 Vite 8.3.5、Vitest 5.0.5 与官方场景打包产物。
 
 ### Fixed
 

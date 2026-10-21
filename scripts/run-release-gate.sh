@@ -10,7 +10,7 @@ if [ "${1:-}" = --github-hosted ]; then
   test -z "$(git status --short --untracked-files=all)"
   git merge-base --is-ancestor "$3" HEAD
   go version | grep -F 'go1.27.3 '
-  test "$(node --version)" = v24.21.0
+  test "$(node --version)" = v24.22.1
   export VERIFY_BASE_REF="$3"
   make verify-release
   docker run --rm -e KPANEL_APP_CONF_TEST_ROOTFS=1 -v "$PWD:/src:ro" \

@@ -4,7 +4,7 @@
     {
       "schema": 1,
       "id": "neon-city",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "runtime": "kpanel-scene-pack@1",
       "name": {
         "zh-CN": "霓虹都市",
@@ -93,7 +93,7 @@
         {
           "path": "manifest.json",
           "size": 1458,
-          "sha256": "6f61b01db228e0b7033095b4e868e74a53ba00ae1f777b435e40035b80454736"
+          "sha256": "b4de039c8bf5446b6d5363965ca974d3838672c8459b6f0a5a4fe92910e11e31"
         },
         {
           "path": "poster.webp",
@@ -102,8 +102,8 @@
         },
         {
           "path": "scene.js",
-          "size": 717750,
-          "sha256": "e9471dbf8052fe349419934fa319c17c348fef3163b6e58c7d5c432199442832"
+          "size": 717616,
+          "sha256": "520f2bafaacc186d5a35ba44187d0bb0effcd89f2fd25c3ff4c7adc260469a17"
         },
         {
           "path": "thumb.webp",
@@ -111,12 +111,12 @@
           "sha256": "c6b49c11e03e4dd52fbde68a291c818b846ad8a4a06a299e0969cbbeb90018b7"
         }
       ],
-      "sizeBytes": 1145715
+      "sizeBytes": 1145581
     },
     {
       "schema": 1,
       "id": "orbital-station",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "runtime": "kpanel-scene-pack@1",
       "name": {
         "zh-CN": "星港轨道",
@@ -334,7 +334,7 @@
         {
           "path": "manifest.json",
           "size": 1467,
-          "sha256": "a8af8732fa8395436a0b5a7348c0ed5b6b2dfbb089904186c4b4b7d5ae26fbc7"
+          "sha256": "d0da2649ff0b86d1fc9cf884770ab26cf4b0184a1f0d831ae1e716a88c6ce606"
         },
         {
           "path": "poster.webp",
@@ -343,8 +343,8 @@
         },
         {
           "path": "scene.js",
-          "size": 660042,
-          "sha256": "f7bc398f9bca9fc7de75fef9063a14a3caf4c58b87be049c07d84e29944f9569"
+          "size": 659908,
+          "sha256": "5328231348ce7161f56689bfe60c36aa7b1d0c2952c35977e158dd8143d583ba"
         },
         {
           "path": "thumb.webp",
@@ -352,12 +352,12 @@
           "sha256": "c805c9a29f28220c76d36770b29bd60ab26597ec10cde9e434c7e27536fe30d1"
         }
       ],
-      "sizeBytes": 4089284
+      "sizeBytes": 4089150
     },
     {
       "schema": 1,
       "id": "sea-and-sky",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "runtime": "kpanel-scene-pack@1",
       "name": {
         "zh-CN": "海天日月",
@@ -565,7 +565,7 @@
         {
           "path": "manifest.json",
           "size": 1715,
-          "sha256": "452ee5dceb5dcde8c6ed9cf0fc2bef8e0e68768ee1867e2d7a10a544b0930147"
+          "sha256": "8a5cc47eb28a960c1f389068062769e4e0fb2d3ae3fa5c67d74c5b3c87b1e718"
         },
         {
           "path": "poster.webp",
@@ -574,8 +574,8 @@
         },
         {
           "path": "scene.js",
-          "size": 696124,
-          "sha256": "09885dc0f2123842359ccd49e2b78bdc0e011b2572218ecdba23580021d57b49"
+          "size": 695979,
+          "sha256": "208bc17e3c130f3153f037ae6209c6b159e5b17051359dd464ff89e37a154ec8"
         },
         {
           "path": "thumb.webp",
@@ -583,7 +583,7 @@
           "sha256": "fe7f03eaa11606e0fa2c3d9524e3b1d810f92175117dca0dcc7f08ea7f0f516c"
         }
       ],
-      "sizeBytes": 5967638
+      "sizeBytes": 5967493
     }
   ]
 }
