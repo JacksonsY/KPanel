@@ -17,7 +17,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('native gallery image loading', () => {
-  it('keeps an in-flight native URL during a fling and defers completion without restarting the request', async () => {
+  it('shows a decoded image immediately during a fling without restarting the request', async () => {
     vi.useFakeTimers()
     const policy = createGalleryRenderPolicy()
     policy.reset(0, 0)
@@ -28,11 +28,43 @@ describe('native gallery image loading', () => {
     await view.trigger('load')
     await vi.advanceTimersByTimeAsync(40)
     expect(view.attributes('src')).toBe('/thumbnail')
-    expect(view.emitted('load')).toBeUndefined()
+    expect(view.emitted('load')).toHaveLength(1)
     policy.interact(102, 100)
     await vi.advanceTimersByTimeAsync(32)
     expect(view.attributes('src')).toBe('/thumbnail')
     expect(view.emitted('load')).toHaveLength(1)
+    view.unmount(); policy.dispose()
+  })
+
+  it('starts a queued offscreen image when it becomes visible, without waiting for the fling to end', async () => {
+    vi.useFakeTimers()
+    const policy = createGalleryRenderPolicy()
+    policy.reset(0, 0); policy.interact(100, 20)
+    const view = mount(GalleryImage, { props: { src: '/visible', priority: false }, global: { provide: { [galleryRenderPolicyKey as symbol]: policy } } })
+    await vi.advanceTimersByTimeAsync(80)
+    expect(view.attributes('src')).toBeUndefined()
+    policy.interact(200, 100)
+    await view.setProps({ priority: true })
+    await vi.advanceTimersByTimeAsync(80)
+    expect(policy.phase.value).toBe('fast')
+    expect(view.attributes('src')).toBe('/visible')
+    view.unmount(); policy.dispose()
+  })
+
+  it('keeps an out-of-view in-flight transfer accounted for until completion and retains decoded photos', async () => {
+    vi.useFakeTimers()
+    const policy = createGalleryRenderPolicy()
+    const view = mount(GalleryImage, { props: { src: '/visible', priority: true }, global: { provide: { [galleryRenderPolicyKey as symbol]: policy } } })
+    await vi.advanceTimersByTimeAsync(32)
+    expect(view.attributes('src')).toBe('/visible')
+    policy.reset(0, 0); policy.interact(100, 20)
+    await view.setProps({ priority: false })
+    expect(view.attributes('src')).toBe('/visible')
+    await view.setProps({ priority: true })
+    await vi.advanceTimersByTimeAsync(80)
+    await view.trigger('load')
+    await view.setProps({ priority: false })
+    expect(view.attributes('src')).toBe('/visible')
     view.unmount(); policy.dispose()
   })
 

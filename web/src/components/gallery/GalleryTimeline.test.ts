@@ -27,7 +27,7 @@ it('mounts a bounded range, reveals a distant photo and updates geometry on dens
   const items = Array.from({ length: 5000 }, (_, index) => ({ entry: { path: `/p${index}` } }) as GalleryItem)
   const view = mount(GalleryTimeline, {
     props: { groups: [{ key: 'all', items }], featured: true, density: 'comfortable', resetKey: 'all', scrollRoot: scroller },
-    slots: { default: '<button :data-gallery-path="params.item.entry.path">{{ params.item.entry.path }}</button>' },
+    slots: { default: '<button :data-gallery-path="params.item.entry.path" :data-priority="params.priority">{{ params.item.entry.path }}</button>' },
     attachTo: scroller,
     global: { provide: { [galleryRenderPolicyKey as symbol]: policy } },
   })
@@ -55,7 +55,8 @@ it('mounts a bounded range, reveals a distant photo and updates geometry on dens
   scroller.scrollTop = 10000
   scroller.dispatchEvent(new Event('scroll'))
   await vi.advanceTimersByTimeAsync(80)
-  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).toEqual(beforeFling)
+  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).not.toEqual(beforeFling)
+  expect(view.findAll('[data-priority="true"]').length).toBeGreaterThan(0)
   expect(view.findAll('.gallery-timeline__placeholder')).toHaveLength(0)
   expect(view.findAll('button').length).toBeLessThanOrEqual(240)
   // A fling can resume loading as it decelerates, before the settle timeout.

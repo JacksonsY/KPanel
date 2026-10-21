@@ -21,6 +21,7 @@ const props = defineProps<{
   featured?: boolean
   selecting?: boolean
   selected?: boolean
+  priority?: boolean
   /** Lets the tile be dragged onto an album; the page decides what the drag carries. */
   draggable?: boolean
 }>()
@@ -131,6 +132,7 @@ onBeforeUnmount(() => {
         :key="item.entry.resourceVersion"
         :version="item.entry.resourceVersion"
         eager
+        :priority="priority"
         class="gallery-tile__media"
         :src="source!"
         :fallback="fallbackUrl"
