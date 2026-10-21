@@ -26,13 +26,14 @@ const syncError = ref('')
 const selectedJob = computed(() => jobs.value.find(job => job.id === selectedID.value))
 const activeJob = computed(() => jobs.value.find(job => job.state === 'running'))
 const executing = computed(() => Boolean(activeJob.value))
+const needsCleanup = computed(() => selectedJob.value?.results.some(result => result.error === 'terminal_close_failed') || false)
 const results = computed(() => (selectedJob.value?.results || []).map(result => ({ ...result, output: result.output || '', error: errorLabel(result.error || '') })))
 const expandedHosts = ref<Set<string>>(new Set())
 const terminalHistory = useTerminalHistory()
 const commandInput = ref<HTMLTextAreaElement>()
 const commandBytes = computed(() => new TextEncoder().encode(command.value).byteLength)
 const commandError = computed(() => commandBytes.value > 16 * 1024 ? phrase('命令不能超过 16 KiB。') : '')
-const canExecute = computed(() => !loading.value && available.value && !executing.value && !submitting.value && Boolean(command.value.trim()) && !commandError.value && props.hosts.length > 0)
+const canExecute = computed(() => !loading.value && available.value && !executing.value && !needsCleanup.value && !submitting.value && Boolean(command.value.trim()) && !commandError.value && props.hosts.length > 0)
 const completedCount = computed(() => results.value.filter(item => ['succeeded', 'failed', 'timed_out', 'stopped', 'interrupted'].includes(item.state)).length)
 const succeededCount = computed(() => results.value.filter(item => item.state === 'succeeded').length)
 const failedCount = computed(() => results.value.filter(item => ['failed', 'timed_out', 'interrupted'].includes(item.state)).length)
@@ -46,7 +47,6 @@ function scrollOutputToBottom(id: string) { const pre = outputPreElements.get(id
 function toggleExpanded(id: string) { const next = new Set(expandedHosts.value); if (next.has(id)) next.delete(id); else { next.add(id); void nextTick(() => scrollOutputToBottom(id)) }; expandedHosts.value = next }
 function expandAll() { expandedHosts.value = new Set(results.value.map(item => item.host.id)); void nextTick(() => results.value.forEach(item => scrollOutputToBottom(item.host.id))) }
 function collapseAll() { expandedHosts.value = new Set() }
-function selectRecord() { revision++; collapseAll(); void refresh() }
 function setCommandInput(element: Element | ComponentPublicInstance | null) { commandInput.value = element instanceof HTMLTextAreaElement ? element : undefined }
 function applyQuickCommand(value: string) { if (executing.value || submitting.value) return; command.value = value; void nextTick(() => commandInput.value?.focus()) }
 function executionLabel(state: BatchState): string {
@@ -138,12 +138,6 @@ async function stopExecution(): Promise<void> {
   catch { if (!disposed) error.value = phrase('停止请求未确认，任务可能仍在执行，请重试。') }
   finally { if (!disposed) stopping.value = false }
 }
-async function removeRecord(): Promise<void> {
-  const job = selectedJob.value
-  if (!job || job.state === 'running') return
-  try { await api.terminals.removeBatch(job.id); await refresh() }
-  catch { if (!disposed) error.value = phrase('删除记录失败，请重试。') }
-}
 defineExpose({ applyQuickCommand })
 onMounted(() => void poll())
 onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer); outputPreElements.clear(); emit('runningChange', false) })
@@ -161,8 +155,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
       </label>
       <footer>
         <p v-if="commandError" class="batch-command__error" role="alert">{{ commandError }}</p>
-        <p v-else>{{ phrase('关闭浏览器后仍在后台执行，重新打开可查看进度。') }}</p>
-        <button v-if="executing" class="button button--danger" type="button" :disabled="stopping" @click="stopExecution">
+        <button v-if="executing || needsCleanup" class="button button--danger" type="button" :disabled="stopping" @click="stopExecution">
           <XCircle :size="18" aria-hidden="true" />
           {{ phrase('终止执行') }}
         </button>
@@ -171,19 +164,9 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
           {{ phrase('执行命令') }}
         </button>
       </footer>
-      <p class="batch-result__notice">{{ phrase('最近 10 次操作保留 7 天；命令摘要会脱敏，输出仅保留在内存。Panel 重启后未完成操作不自动重放。') }}</p>
       <p v-if="error" class="batch-result__error" role="alert">{{ error }}</p>
       <p v-if="syncError" class="batch-result__error" role="alert">{{ syncError }}</p>
       <p v-if="storageWarning" class="batch-result__error" role="alert">{{ storageWarning }}</p>
-      <div v-if="jobs.length" class="batch-records">
-        <label for="batch-record-select">{{ phrase('最近操作') }}</label>
-        <select id="batch-record-select" v-model="selectedID" :disabled="executing || submitting" @change="selectRecord">
-          <option v-for="job in jobs" :key="job.id" :value="job.id">{{ new Date(job.createdAt).toLocaleString() }} · {{ job.results.length }} {{ phrase('台主机') }} · {{ phrase(job.state === 'running' ? '后台执行中' : job.state === 'interrupted' ? '执行已中断' : '已结束') }}</option>
-        </select>
-        <button class="button button--secondary" type="button" :disabled="selectedJob?.state === 'running'" @click="removeRecord">{{ phrase('删除记录') }}</button>
-      </div>
-      <button v-if="!executing && results.some(result => result.error === errorLabel('terminal_close_failed'))" class="button button--secondary" type="button" :disabled="stopping" @click="stopExecution">{{ phrase('重试释放会话') }}</button>
-      <pre v-if="selectedJob" class="batch-record-command" data-i18n-ignore>{{ selectedJob.command }}</pre>
     </div>
 
     <div class="batch-status">
@@ -233,9 +216,6 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
 </template>
 
 <style scoped>
-.batch-records { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; font-size:14px; }
-.batch-records select { min-width:0; max-width:100%; flex:1; padding:8px; color:inherit; background:var(--terminal-shell-panel,#111a1d); border:1px solid var(--terminal-shell-border,#29383a); border-radius:var(--radius-sm); font-size:14px; }
-.batch-record-command { max-height:5em; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; margin:8px 0 0; }
 .batch-terminal-panel { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto minmax(0, 1fr); color: var(--terminal-shell-text, #d8dddc); background: var(--terminal-shell-background, #0b1214); }
 .batch-command { padding: 18px; border-bottom: 1px solid var(--terminal-shell-border, #29383a); background: var(--terminal-shell-panel, #111a1d); }
 .batch-command > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
@@ -249,9 +229,9 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
 .batch-command textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 18%, transparent); }
 .batch-command textarea:disabled { cursor: wait; opacity: .72; }
 .batch-command textarea::placeholder { color: var(--terminal-shell-muted, #8a9695); }
-.batch-command footer { display: flex; min-height: 42px; align-items: end; justify-content: space-between; gap: 16px; margin-top: 10px; }
+.batch-command footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 .batch-command footer p { margin: 0; color: var(--terminal-shell-muted, #8a9695); font-size: 13px; line-height: 1.45; }
-.batch-command footer p.batch-command__error { color: var(--danger); }
+.batch-command footer p.batch-command__error { flex: 1; color: var(--danger); }
 .batch-status { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
 .batch-status > header { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--terminal-shell-border, #29383a); }
 .batch-status > header > div:first-child { display: grid; gap: 2px; }
