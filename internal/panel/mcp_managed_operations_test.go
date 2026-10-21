@@ -13,8 +13,9 @@ import (
 )
 
 type managedTestAgent struct {
-	calls *atomic.Int32
-	fail  bool
+	calls   *atomic.Int32
+	fail    bool
+	release <-chan struct{}
 }
 
 func (a managedTestAgent) Get(context.Context, string, string, string) (AgentResponse, error) {
@@ -22,6 +23,9 @@ func (a managedTestAgent) Get(context.Context, string, string, string) (AgentRes
 }
 func (a managedTestAgent) Do(_ context.Context, method, path, query, id string, body []byte) (AgentResponse, error) {
 	a.calls.Add(1)
+	if a.release != nil {
+		<-a.release
+	}
 	if a.fail {
 		return AgentResponse{}, errors.New("lost receipt")
 	}
@@ -58,6 +62,19 @@ func managedCall(s *Server, token, name string, args any) map[string]any {
 	return response.Result.Data
 }
 
+func awaitManagedTerminal(t *testing.T, s *Server, token, id string, result map[string]any) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(8 * time.Second)
+	for result["state"] == "executing" || result["state"] == "submitted" {
+		if time.Now().After(deadline) {
+			t.Fatalf("operation did not reach terminal state: %#v", result)
+		}
+		time.Sleep(20 * time.Millisecond)
+		result = managedCall(s, token, "operation_status", map[string]any{"operationId": id})
+	}
+	return result
+}
+
 func TestMCPManagedApprovalAndIdempotentExecution(t *testing.T) {
 	s, path := newTestServerWithPublicURL(t, "https://panel.test")
 	bootstrapCookiesForOrigin(t, s, path, "https://panel.test")
@@ -85,7 +102,7 @@ func TestMCPManagedApprovalAndIdempotentExecution(t *testing.T) {
 	if _, err := s.mcp.operations.Decide(id, digest, "admin", true); err != nil {
 		t.Fatal(err)
 	}
-	if got := managedCall(s, token, "operation_execute", execArgs); got["state"] != "succeeded" {
+	if got := awaitManagedTerminal(t, s, token, id, managedCall(s, token, "operation_execute", execArgs)); got["state"] != "succeeded" {
 		t.Fatalf("execution: %#v", got)
 	}
 	managedCall(s, token, "operation_execute", execArgs)
@@ -111,12 +128,45 @@ func TestMCPManagedLostReceiptDoesNotRetry(t *testing.T) {
 	id, digest := planned["operationId"].(string), planned["digest"].(string)
 	_, _ = s.mcp.operations.Decide(id, digest, "admin", true)
 	args := map[string]any{"operationId": id, "digest": digest}
-	if result := managedCall(s, token, "operation_execute", args); result["state"] != "unknown" {
+	if result := awaitManagedTerminal(t, s, token, id, managedCall(s, token, "operation_execute", args)); result["state"] != "unknown" {
 		t.Fatalf("receipt loss called failure: %#v", result)
 	}
 	managedCall(s, token, "operation_execute", args)
 	if calls.Load() != 1 {
 		t.Fatal("repeated ambiguous write")
+	}
+}
+
+func TestMCPManagedLostReceiptAfterAsynchronousWaitDoesNotRetry(t *testing.T) {
+	s, path := newTestServerWithPublicURL(t, "https://panel.test")
+	bootstrapCookiesForOrigin(t, s, path, "https://panel.test")
+	_, token := managedTestClient(t, s, true)
+	var calls atomic.Int32
+	release := make(chan struct{})
+	defer func() {
+		if release != nil {
+			close(release)
+		}
+	}()
+	s.agent = managedTestAgent{calls: &calls, fail: true, release: release}
+	plan := managedCall(s, token, "host_app_action", map[string]any{"hostId": "local", "requestKey": "async-receipt", "appId": "builtin-nginx", "action": "restart", "resourceVersion": "sha256:" + strings.Repeat("a", 64)})
+	id, digest := plan["operationId"].(string), plan["digest"].(string)
+	if _, err := s.mcp.operations.Decide(id, digest, "admin", true); err != nil {
+		t.Fatal(err)
+	}
+	args := map[string]any{"operationId": id, "digest": digest}
+	result := managedCall(s, token, "operation_execute", args)
+	if result["state"] != "executing" {
+		t.Fatalf("blocked dispatch must remain executing: %#v", result)
+	}
+	close(release)
+	release = nil
+	result = awaitManagedTerminal(t, s, token, id, result)
+	if result["state"] != "unknown" {
+		t.Fatalf("lost receipt must be unknown: %#v", result)
+	}
+	if repeated := managedCall(s, token, "operation_execute", args); repeated["state"] != "unknown" || calls.Load() != 1 {
+		t.Fatalf("ambiguous operation replayed: %#v calls=%d", repeated, calls.Load())
 	}
 }
 

@@ -1,45 +1,58 @@
-name: Verify published preview
+name: Verify published release
 
 on:
   workflow_call:
     inputs:
       candidate:
-        description: "Published preview full source SHA"
+        description: "Published release full source SHA"
         required: true
         type: string
       version:
-        description: "Published preview version without v"
+        description: "Published release version without v"
         required: true
         type: string
       digest:
-        description: "Already published immutable image index sha256 digest"
+        description: "Published immutable image index sha256 digest"
         required: true
         type: string
       stable-snapshot:
         description: "Frozen before-publication stable and previous-preview JSON"
         required: true
+        type: string
+      publication-run-id:
+        description: "Original release workflow run ID containing the frozen snapshot artifact"
+        required: false
+        type: string
+      publication-attempt:
+        description: "Exact original release workflow attempt containing the frozen snapshot artifact"
+        required: false
         type: string
   workflow_dispatch:
     inputs:
       candidate:
-        description: "Published preview full source SHA"
+        description: "Published release full source SHA"
         required: true
         type: string
       version:
-        description: "Published preview version without v"
+        description: "Published release version without v"
         required: true
         type: string
       digest:
-        description: "Already published immutable image index sha256 digest"
+        description: "Published immutable image index sha256 digest"
         required: true
         type: string
-      stable-snapshot:
-        description: "Frozen before-publication stable and previous-preview JSON"
+      publication-run-id:
+        description: "Original release workflow run ID containing the frozen snapshot artifact"
+        required: true
+        type: string
+      publication-attempt:
+        description: "Original release workflow run attempt containing the frozen snapshot artifact"
         required: true
         type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: kpanel-public-verification-${{ inputs.candidate }}
@@ -52,11 +65,14 @@ jobs:
     timeout-minutes: 50
     permissions:
       contents: read
+      actions: read
     env:
       EXPECTED_VERSION: ${{ inputs.version }}
       EXPECTED_SHA: ${{ inputs.candidate }}
       IMAGE_DIGEST: ${{ inputs.digest }}
       STABLE_SNAPSHOT: ${{ inputs['stable-snapshot'] }}
+      PUBLICATION_RUN_ID: ${{ inputs['publication-run-id'] }}
+      PUBLICATION_ATTEMPT: ${{ inputs['publication-attempt'] }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -67,11 +83,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$EXPECTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
           [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]]
           [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
           if [[ "$GITHUB_EVENT_NAME" = workflow_dispatch ]]; then
             test "$GITHUB_REF" = refs/heads/main
+            [[ "$PUBLICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+            [[ "$PUBLICATION_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
           fi
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test "$(tr -d '\r\n' < VERSION)" = "$EXPECTED_VERSION"
@@ -84,8 +102,25 @@ jobs:
       - name: Restore frozen publication identity
         run: |
           echo "PUBLIC_EVIDENCE=$RUNNER_TEMP/kpanel-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
-      - run: node scripts/verify-github-public-release.mjs restore-snapshot
-      - name: Verify public preview assets and multiarchitecture identity
+          echo "SNAPSHOT_ARTIFACT_DIR=$RUNNER_TEMP/kpanel-publication-snapshot" >> "$GITHUB_ENV"
+      - name: Download original publication snapshot
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.0
+        with:
+          name: snapshot-${{ inputs['publication-run-id'] }}-${{ inputs['publication-attempt'] }}
+          path: ${{ runner.temp }}/kpanel-publication-snapshot
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs['publication-run-id'] }}
+      - name: Restore frozen publication identity
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" = workflow_dispatch ]]; then
+            node scripts/verify-github-public-release.mjs restore-artifact
+          else
+            node scripts/verify-github-public-release.mjs restore-snapshot
+          fi
+      - name: Verify public release assets and multiarchitecture identity
         run: node scripts/verify-github-public-release.mjs verify
 
       - name: Bind controller-owned test runner recipe
@@ -124,7 +159,7 @@ jobs:
           }, null, 2) + '\n', { flag: 'wx' });
           NODE
 
-      - name: Verify public preview in real browsers and isolated containers
+      - name: Verify public release in real browsers and isolated containers
         run: bash packaging/tests/release-browser/run.sh
 
       - name: Preserve public acceptance including failures
