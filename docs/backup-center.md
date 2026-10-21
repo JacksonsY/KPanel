@@ -30,7 +30,7 @@ Panel 存储于 `<DataDir>/backups/<id>`，Agent 为 `<StateDir>/backup-center/<
 
 ## 远程存储与自动备份
 
-备份区块提供“导出备份、导入恢复、自动备份、远程存储”四个入口，复用现有类别和 `.kpb` 格式。最多连接 8 个 S3 兼容存储或 WebDAV；连接配置仅用于此区块。S3 填写服务 Endpoint、Bucket、Access Key、Secret，按提供商要求设置 Region 与 Path style；R2 通常使用 `auto` Region，OSS 使用虚拟主机寻址。WebDAV 地址应指向已存在的服务根目录，面板创建其下的备份目录，需要 PUT、GET、HEAD、PROPFIND、MKCOL、MOVE、DELETE 权限。测试连接使用临时小文件验证读写、列出及删除，最后清理。
+备份区块提供“导出备份、导入恢复、自动备份、远程存储”四个入口，复用现有类别和 `.kpb` 格式。最多连接 8 个 S3 兼容存储、WebDAV 或 OneDrive；连接配置仅用于此区块。S3 填写服务 Endpoint、Bucket、Access Key、Secret，按提供商要求设置 Region 与 Path style；R2 通常使用 `auto` Region，OSS 使用虚拟主机寻址。WebDAV 地址应指向已存在的服务根目录，面板创建其下的备份目录，需要 PUT、GET、HEAD、PROPFIND、MKCOL、MOVE、DELETE 权限。测试连接使用临时小文件验证读写、列出及删除，最后清理。
 
 导出可选本机或一个远程目标，后台先生成完整加密包再传输。上传失败保留本地包，可下载或对同一份文件重试，不再停止服务重新备份。S3 使用官方 Go SDK 的分片上传；WebDAV 使用临时文件后 MOVE，失败尽力清理临时文件。关闭浏览器不终止后台任务；面板重启将未完成任务标记中断，支持本地完整包重新上传，不承诺断点续传。远程列表只读取配置目录下的 `.kpb`，最多检查 1000 项；取回后必须通过原有解密、检查和恢复确认，传输成功不等于恢复验证成功。
 
