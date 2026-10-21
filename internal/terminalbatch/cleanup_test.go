@@ -1,0 +1,206 @@
+package terminalbatch
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+)
+
+func settledBatch(t *testing.T, m *Manager, id string) Job {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		m.mu.Lock()
+		active := m.active[id] != nil
+		m.mu.Unlock()
+		job, err := m.Get("user", id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !active && job.State != "running" {
+			return job
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("batch or cleanup did not settle within the bounded deadline")
+	return Job{}
+}
+
+func TestFailedCleanupHasIndependentDeadlineAndRetainsReservation(t *testing.T) {
+	d := newFake()
+	d.closeFailures = 1 << 20
+	m, err := Open(t.TempDir(), d, Options{Timeout: time.Hour, CleanupTimeout: 40 * time.Millisecond, RetryDelay: time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	job, err := m.Create("user", strings.Repeat("a", 32), "true", targets(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	job = settledBatch(t, m, job.ID)
+	if job.State != "completed" || job.Results[0].State != "failed" || job.Results[0].Error != "terminal_close_failed" || !strings.Contains(job.Results[0].Output, "private-output") {
+		t.Fatalf("wrong terminal result: %+v", job)
+	}
+	m.mu.Lock()
+	pending := len(m.cleanup[job.ID])
+	m.mu.Unlock()
+	d.mu.Lock()
+	live, sends := len(d.live), d.sends
+	d.mu.Unlock()
+	if pending != 1 || live != 1 || sends != 1 {
+		t.Fatalf("pending=%d live=%d sends=%d", pending, live, sends)
+	}
+	if err := m.Remove("user", job.ID); !errors.Is(err, ErrBusy) {
+		t.Fatal("unconfirmed reservation was discarded")
+	}
+}
+
+type failingHostCleanupDriver struct {
+	*fakeDriver
+	hostID string
+}
+
+func (d *failingHostCleanupDriver) Close(ctx context.Context, session Session) error {
+	if session.ID == d.hostID {
+		return errors.New("lost close acknowledgement")
+	}
+	return d.fakeDriver.Close(ctx, session)
+}
+
+func TestStopWakesCleanupBackoffAndPreservesSuccessfulHosts(t *testing.T) {
+	hosts := targets(14)
+	d := &failingHostCleanupDriver{fakeDriver: newFake(), hostID: hosts[13].ID}
+	m, err := Open(t.TempDir(), d, Options{Timeout: time.Hour, CleanupTimeout: time.Hour, RetryDelay: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	job, err := m.Create("user", strings.Repeat("c", 32), "true", hosts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	ready := false
+	for time.Now().Before(deadline) {
+		job, _ = m.Get("user", job.ID)
+		succeeded := 0
+		for _, result := range job.Results {
+			if result.State == "succeeded" {
+				succeeded++
+			}
+		}
+		ready = succeeded == 13 && job.Results[13].Error == "terminal_close_failed"
+		if ready {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if !ready {
+		t.Fatal("13/14 cleanup stall was not reached")
+	}
+	if err = m.Stop("user", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	job = settledBatch(t, m, job.ID)
+	if job.State != "stopped" || job.Results[13].State != "failed" {
+		t.Fatalf("stop did not settle: %+v", job)
+	}
+	for i, result := range job.Results {
+		if result.Host != hosts[i] || result.Output == "" {
+			t.Fatal("result/order/output was lost")
+		}
+		if i < 13 && result.State != "succeeded" {
+			t.Fatal("successful host changed state")
+		}
+	}
+}
+
+type blockingCleanupDriver struct {
+	*fakeDriver
+	entered chan context.Context
+	release chan struct{}
+}
+
+func (d *blockingCleanupDriver) Close(ctx context.Context, session Session) error {
+	select {
+	case d.entered <- ctx:
+	default:
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-d.release:
+		return d.fakeDriver.Close(ctx, session)
+	}
+}
+
+func TestRetryCleanupDoesNotResurrectBatchOrCancelAnExistingRetry(t *testing.T) {
+	d := &blockingCleanupDriver{fakeDriver: newFake(), entered: make(chan context.Context, 1), release: make(chan struct{})}
+	m, err := Open(t.TempDir(), d, Options{CleanupTimeout: time.Second, RetryDelay: time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	id := strings.Repeat("d", 32)
+	now := time.Now().UTC()
+	m.mu.Lock()
+	m.jobs = []Job{{ID: id, UserID: "user", Command: "true", State: "stopped", CreatedAt: now, UpdatedAt: now, Results: []Result{{Host: targets(1)[0], State: "failed", Error: "terminal_close_failed", Output: "preserved output", OutputAvailable: true}}}}
+	m.cleanup[id] = map[int]Session{0: {ID: "a"}}
+	m.mu.Unlock()
+	d.mu.Lock()
+	d.live["a"] = true
+	d.mu.Unlock()
+	if err = m.Stop("user", id); err != nil {
+		t.Fatal(err)
+	}
+	var retry context.Context
+	select {
+	case retry = <-d.entered:
+	case <-time.After(time.Second):
+		t.Fatal("retry did not start")
+	}
+	for range 5 {
+		if err = m.Stop("user", id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job, _ := m.Get("user", id)
+	if job.State != "stopped" || job.Results[0].State != "failed" || retry.Err() != nil {
+		t.Fatalf("retry reset or cancelled: job=%+v error=%v", job, retry.Err())
+	}
+	close(d.release)
+	job = settledBatch(t, m, id)
+	if job.Results[0].Error != "" || job.Results[0].Output != "preserved output" {
+		t.Fatal(job)
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.sends != 0 || len(d.live) != 0 {
+		t.Fatal("cleanup replayed commands or failed to release")
+	}
+}
+
+func TestCleanupDeadlineCancelsAStalledClose(t *testing.T) {
+	d := &blockingCleanupDriver{fakeDriver: newFake(), entered: make(chan context.Context, 1), release: make(chan struct{})}
+	m, err := Open(t.TempDir(), d, Options{Timeout: time.Hour, CleanupTimeout: 40 * time.Millisecond, RetryDelay: time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	job, err := m.Create("user", strings.Repeat("e", 32), "true", targets(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	job = settledBatch(t, m, job.ID)
+	if job.Results[0].Error != "terminal_close_failed" || job.Results[0].State != "failed" {
+		t.Fatal(job)
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.live) != 1 {
+		t.Fatal("unconfirmed close lost its reservation")
+	}
+}

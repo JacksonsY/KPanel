@@ -1776,4 +1776,5 @@ export default [
   ["台主机","hosts"],
   ["已结束","Finished"],
   ["Panel 重启后仅保留操作记录，原终端输出已释放。","Only operation records remain after Panel restarts. Original terminal output has been released."],
+  ["重试释放会话","Retry session cleanup"],
 ] as const satisfies PhraseCatalog

@@ -11,9 +11,10 @@ import type { ClusterHost } from '@/types/api'
 import type { BatchState, TerminalBatch } from '@/types/terminalBatch'
 
 function phrase(value: string): string { phraseCatalogVersion.value; return translatePhrase(value) }
-const props = defineProps<{ hosts: ClusterHost[]; sessionCapacity: number }>()
+const props = defineProps<{ hosts: ClusterHost[]; hostInventory?: ClusterHost[]; sessionCapacity: number }>()
 const emit = defineEmits<{ runningChange: [running: boolean]; restoreSelection: [ids: string[]] }>()
 const command = ref('')
+const panelElement = ref<HTMLElement>()
 const jobs = ref<TerminalBatch[]>([])
 const selectedID = ref('')
 const loading = ref(true)
@@ -27,7 +28,7 @@ const selectedJob = computed(() => jobs.value.find(job => job.id === selectedID.
 const activeJob = computed(() => jobs.value.find(job => job.state === 'running'))
 const executing = computed(() => Boolean(activeJob.value))
 const needsCleanup = computed(() => selectedJob.value?.results.some(result => result.error === 'terminal_close_failed') || false)
-const results = computed(() => (selectedJob.value?.results || []).map(result => ({ ...result, output: result.output || '', error: errorLabel(result.error || '') })))
+const results = computed(() => (submitting.value ? [] : selectedJob.value?.results || []).map(result => ({ ...result, output: result.output || '', error: errorLabel(result.error || '') })))
 const expandedHosts = ref<Set<string>>(new Set())
 const terminalHistory = useTerminalHistory()
 const commandInput = ref<HTMLTextAreaElement>()
@@ -40,7 +41,7 @@ const failedCount = computed(() => results.value.filter(item => ['failed', 'time
 const allExpanded = computed(() => results.value.length > 0 && results.value.every(item => expandedHosts.value.has(item.host.id)))
 watch(executing, value => emit('runningChange', value), { immediate: true })
 
-function operatingSystemIdentity(host: { id: string }) { return detectOperatingSystemIdentity(props.hosts.find(item => item.id === host.id)?.lastSnapshot?.telemetry) }
+function operatingSystemIdentity(host: { id: string }) { return detectOperatingSystemIdentity((props.hostInventory || props.hosts).find(item => item.id === host.id)?.lastSnapshot?.telemetry) }
 const outputPreElements = new Map<string, HTMLPreElement>()
 function setOutputPre(id: string, element: Element | ComponentPublicInstance | null) { if (element instanceof HTMLPreElement) outputPreElements.set(id, element); else outputPreElements.delete(id) }
 function scrollOutputToBottom(id: string) { const pre = outputPreElements.get(id); if (pre) pre.scrollTop = pre.scrollHeight }
@@ -111,6 +112,7 @@ async function poll(): Promise<void> {
 async function execute(): Promise<void> {
   if (!canExecute.value) return
   submitting.value = true; error.value = ''
+  if (panelElement.value) panelElement.value.scrollTop = 0
   const hostIds = props.hosts.map(host => host.id)
   if (!pending || pending.command !== command.value || JSON.stringify(pending.hostIds) !== JSON.stringify(hostIds)) {
     const nonce = crypto.getRandomValues(new Uint8Array(16))
@@ -144,7 +146,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
 </script>
 
 <template>
-  <section class="batch-terminal-panel" aria-label="批量执行">
+  <section ref="panelElement" class="batch-terminal-panel" aria-label="批量执行">
     <div class="batch-command" :class="{ 'is-executing': executing }">
       <header>
         <div><TerminalSquare :size="19" aria-hidden="true" /><span><strong>{{ phrase('自定义命令') }}</strong><small>{{ phrase(`已选择 ${hosts.length} 台主机`) }}</small></span></div>
@@ -157,7 +159,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
         <p v-if="commandError" class="batch-command__error" role="alert">{{ commandError }}</p>
         <button v-if="executing || needsCleanup" class="button button--danger" type="button" :disabled="stopping" @click="stopExecution">
           <XCircle :size="18" aria-hidden="true" />
-          {{ phrase('终止执行') }}
+          {{ phrase(executing ? '终止执行' : '重试释放会话') }}
         </button>
         <button v-else class="button button--primary" type="button" :disabled="!canExecute" @click="execute">
           <Play :size="18" aria-hidden="true" />
@@ -169,7 +171,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
       <p v-if="storageWarning" class="batch-result__error" role="alert">{{ storageWarning }}</p>
     </div>
 
-    <div class="batch-status">
+    <div class="batch-status" :aria-busy="submitting">
       <header>
         <div><strong>{{ phrase('执行情况') }}</strong><small v-if="results.length">{{ phrase(`已完成 ${completedCount} / ${results.length} 台`) }}</small></div>
         <div v-if="results.length" class="batch-status__actions">
@@ -182,12 +184,13 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
           </button>
         </div>
       </header>
-      <div v-if="!results.length" class="batch-status__empty">
-        <span><TerminalSquare :size="28" aria-hidden="true" /></span>
-        <strong>{{ phrase('等待执行') }}</strong>
-        <p>{{ phrase('在左侧选择主机，输入命令后开始执行。') }}</p>
+      <Transition name="batch-results" mode="out-in">
+      <div v-if="submitting || !results.length" :key="submitting ? 'submitting' : 'empty'" class="batch-status__empty">
+        <span><LoaderCircle v-if="submitting" class="spin" :size="28" aria-hidden="true" /><TerminalSquare v-else :size="28" aria-hidden="true" /></span>
+        <strong>{{ phrase(submitting ? '正在提交…' : '等待执行') }}</strong>
+        <p v-if="!submitting">{{ phrase('在左侧选择主机，输入命令后开始执行。') }}</p>
       </div>
-      <div v-else class="batch-result-list">
+      <div v-else :key="selectedID" class="batch-result-list">
         <article v-for="result in results" :key="result.host.id" class="batch-result" :class="{ 'is-expanded': expandedHosts.has(result.host.id) }">
           <button
             type="button"
@@ -211,6 +214,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
           </div>
         </article>
       </div>
+      </Transition>
     </div>
   </section>
 </template>
@@ -236,6 +240,11 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
 .batch-command footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 .batch-command footer p { margin: 0; color: var(--terminal-shell-muted, #8a9695); font-size: 13px; line-height: 1.45; }
 .batch-command footer p.batch-command__error { flex: 1; color: var(--danger); }
+.batch-results-enter-active, .batch-results-leave-active { transition: opacity .12s ease; }
+.batch-results-enter-from, .batch-results-leave-to { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .batch-results-enter-active, .batch-results-leave-active { transition: none; }
+}
 .batch-status { display: flex; flex: 1 0 auto; flex-direction: column; }
 .batch-status > header { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--terminal-shell-border, #29383a); }
 .batch-status > header > div:first-child { display: grid; gap: 2px; }
