@@ -90,12 +90,22 @@ Latest/prerelease 状态、版本镜像和通道标签 digest、候选分支处�
 
 ## GitHub 发布执行与恢复
 
-发布入口为 main 的 `Publish preview`，候选 CI 与完整 L3 并行，均成功后才原子提升 main/tag；
-主线 CI 通过后才运行 Release、Docker Hub 与公开浏览器验收。并行不减少任何检查或变更权限。
+预览版入口为 main 的 `Publish preview`，候选 CI 与完整 L3 并行，均成功后才原子提升 main/tag；
+主线 CI 通过后才运行 Release、Docker Hub 与公开浏览器验收。稳定版先通过同 SHA 候选/主线 CI，
+再由 annotated 稳定 tag 的 `push` 触发 `release.yml`，执行完整 L3、Release 与公开验收；
+预览版 dispatch 不接受稳定版本。两条路线均须先把已审查的发布自动化集成 main。
 发布前的 stable/previous-preview 快照和源码身份先保存为 `snapshot-<run ID>-<attempt>` artifact。
 公开后的验收恢复使用 main 的 `Verify published release` 只读入口，输入原发布 run ID/attempt；入口从该
 run 下载 `snapshot-<run ID>-<attempt>` artifact，并核对候选、版本、run/attempt 与快照 SHA256。禁止手工
 提交快照 JSON，不重建或覆盖已发布的版本镜像。新业务变更必须递增 RC 序号，不能复用已公开的版本/tag。
+
+稳定版若在 Docker `latest` 提升成功后、GitHub Release 发布步骤失败，从 main 的
+`Recover stable release publication` 输入原发布 run ID/attempt、精确 candidate/version/digest，
+选择 `publish-draft` 或 `restore-latest`。入口只接受原稳定 tag `push`，核验两份原始 artifact、
+15 个附件的名称/大小/SHA-256、不可变版本镜像与未改变的公开通道状态；写入前再次核验。
+`publish-draft` 只公开原冻结草稿；`restore-latest` 只在该 Release 仍为草稿且 GitHub Latest 未变化时，
+把 Docker `latest` 恢复到原快照摘要。任何不确定状态均停止，不重建镜像、不改写版本标签或预览通道。
+Release 已公开而验收失败时，继续使用上述只读 `Verify published release`，不使用发布恢复重发产物。
 
 公开验收的产品始终绑定原 tag/SHA/digest；测试 runner 的 Dockerfile 则取当前可信控制面
 `GITHUB_SHA` 的固定路径，要求该提交已纳入 main。只允许覆盖这一个测试配方，不改变版本、
