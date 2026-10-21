@@ -861,6 +861,22 @@ assert_legacy_systemd_units() {
 	done
 }
 
+run_legacy_image_install() (
+	local ipv4_address="198.51.100.25"
+	local legacy_lifecycle="$TEST_DIR/legacy-install-kpanel.conf"
+	docker_app_plus() { :; }
+	check_docker_app_ip() { :; }
+	# A new fetched installer may still install an older stable image.
+	. "$PROJECT_DIR/packaging/kejilion-app/kpanel.conf"
+	docker_port=18080
+	sed '/^# KPanel systemd unit copies: v1$/d' "$PROJECT_DIR/packaging/kejilion-app/kpanel.conf" >"$legacy_lifecycle"
+	KPANEL_MOCK_LIFECYCLE_SOURCE="$legacy_lifecycle" docker_app_install >/dev/null
+	assert_legacy_systemd_units
+	docker_app_update >/dev/null
+	assert_systemd_unit_copies
+	docker_app_uninstall >/dev/null
+)
+
 assert_systemd_unit_copies() {
 	local unit_name=""
 	for unit_name in kejilion-agent.service kejilion-panel-update.service kejilion-panel-update.timer; do
@@ -1103,6 +1119,7 @@ bash "$PROJECT_DIR/packaging/tests/app-conf-lock-compat.sh" "$PROJECT_DIR"
 run_license_inheritance
 run_lifecycle
 run_symlinked_docker_root_lifecycle
+run_legacy_image_install
 grep -Fx '1|daemon-reload' "$KPANEL_MOCK_SYSTEMCTL_LOG" >/dev/null
 grep -Fx '3|enable --now kejilion-agent.service' "$KPANEL_MOCK_SYSTEMCTL_LOG" >/dev/null
 grep -Fx '3|enable --now kejilion-panel-update.timer' "$KPANEL_MOCK_SYSTEMCTL_LOG" >/dev/null
