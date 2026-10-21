@@ -6,6 +6,7 @@ export const GALLERY_RENDER_LIMITS = {
   sampleMs: 16, settleMs: 160, fastSpeed: 1, slowSpeed: 0.45,
   batchMs: 32, imageBatch: 4, mountBatch: 16, fastBatchMs: 80, fastImageBatch: 2,
   retainedCells: 240, overscanScreens: 2, overscanPx: 1600,
+  imageRequests: 4, backgroundRequests: 1,
 } as const
 
 /** Per gallery surface: scroll classification and admission of new image work.
@@ -18,6 +19,10 @@ export function createGalleryRenderPolicy(active: Readonly<Ref<boolean>> = ref(t
   const pauseVideos = computed(() => !active.value || phase.value !== 'idle')
   const pending = new Set<() => void>()
   const visible = new Set<() => void>()
+  interface ImageRequest { start: () => void; onScreen: boolean; admitted: boolean; cancel?: () => void }
+  const requests = new Set<ImageRequest>()
+  let imageSlots = 0
+  let backgroundSlots = 0
   let batchTimer: ReturnType<typeof setTimeout> | undefined
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let lastTop = 0
@@ -52,6 +57,37 @@ export function createGalleryRenderPolicy(active: Readonly<Ref<boolean>> = ref(t
     }
     return () => { pending.delete(job); visible.delete(job) }
   }
+  function admitImages(): void {
+    if (disposed || inactive.value) return
+    const ordered = [...requests].filter(request => !request.admitted)
+      .sort((a, b) => Number(b.onScreen) - Number(a.onScreen))
+    for (const request of ordered) {
+      if (imageSlots >= GALLERY_RENDER_LIMITS.imageRequests) break
+      if (!request.onScreen && (deferImages.value || backgroundSlots >= GALLERY_RENDER_LIMITS.backgroundRequests)) continue
+      request.admitted = true
+      imageSlots++
+      if (!request.onScreen) backgroundSlots++
+      request.cancel = enqueue(request.start, request.onScreen)
+    }
+  }
+  /** Native img requests need completion acknowledgement: pacing starts alone
+   * still lets cold offscreen requests occupy the server's serial thumbnail gate.
+   */
+  function requestImage(start: () => void, onScreen = false): () => void {
+    if (disposed) return () => undefined
+    const request: ImageRequest = { start, onScreen, admitted: false }
+    requests.add(request)
+    admitImages()
+    return () => {
+      if (!requests.delete(request)) return
+      request.cancel?.()
+      if (request.admitted) {
+        imageSlots--
+        if (!request.onScreen) backgroundSlots--
+      }
+      admitImages()
+    }
+  }
   function reset(top = lastTop, now = performance.now()): void {
     if (disposed) return
     clearTimeout(settleTimer)
@@ -82,7 +118,7 @@ export function createGalleryRenderPolicy(active: Readonly<Ref<boolean>> = ref(t
   const stopAdmission = watch([inactive, phase], () => {
     // Speed changes must not keep pushing an already scheduled batch into the future.
     if (inactive.value) { clearTimeout(batchTimer); batchTimer = undefined }
-    else scheduleBatch()
+    else { admitImages(); scheduleBatch() }
   }, { flush: 'sync' })
   const stopActivity = watch(active, () => reset(), { flush: 'sync' })
   function dispose(): void {
@@ -93,8 +129,9 @@ export function createGalleryRenderPolicy(active: Readonly<Ref<boolean>> = ref(t
     clearTimeout(settleTimer)
     pending.clear()
     visible.clear()
+    requests.clear()
   }
-  return { phase: readonly(phase), inactive, deferImages, pauseVideos, interact, reset, enqueue, dispose }
+  return { phase: readonly(phase), inactive, deferImages, pauseVideos, interact, reset, enqueue, requestImage, dispose }
 }
 
 export type GalleryRenderPolicy = ReturnType<typeof createGalleryRenderPolicy>

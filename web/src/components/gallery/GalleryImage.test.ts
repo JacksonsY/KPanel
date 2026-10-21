@@ -51,6 +51,23 @@ describe('native gallery image loading', () => {
     view.unmount(); policy.dispose()
   })
 
+  it('yields an unfinished out-of-view transfer but preserves decoded photos for backtracking', async () => {
+    vi.useFakeTimers()
+    const policy = createGalleryRenderPolicy()
+    const view = mount(GalleryImage, { props: { src: '/visible', priority: true }, global: { provide: { [galleryRenderPolicyKey as symbol]: policy } } })
+    await vi.advanceTimersByTimeAsync(32)
+    expect(view.attributes('src')).toBe('/visible')
+    policy.reset(0, 0); policy.interact(100, 20)
+    await view.setProps({ priority: false })
+    expect(view.attributes('src')).toBeUndefined()
+    await view.setProps({ priority: true })
+    await vi.advanceTimersByTimeAsync(80)
+    await view.trigger('load')
+    await view.setProps({ priority: false })
+    expect(view.attributes('src')).toBe('/visible')
+    view.unmount(); policy.dispose()
+  })
+
   it('does not start a queued stale image after its version changes or it unmounts', async () => {
     vi.useFakeTimers()
     const policy = createGalleryRenderPolicy()

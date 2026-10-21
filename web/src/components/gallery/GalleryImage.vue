@@ -20,16 +20,24 @@ let fallbackUsed = false
 let pendingLoad: Event | undefined
 let cancelWork: (() => void) | undefined
 let pendingWork: (() => void) | undefined
+let pendingNative = false
+let releaseImage: (() => void) | undefined
 
-function schedule(work: () => void): void {
+function releaseRequest(): void { releaseImage?.(); releaseImage = undefined }
+function schedule(work: () => void, native = false): void {
   cancelWork?.()
   pendingWork = work
+  pendingNative = native
   const run = () => {
     cancelWork = undefined
     pendingWork = undefined
     if (!paused.value && !stopped) work()
   }
-  if (policy) cancelWork = policy.enqueue(run, props.priority)
+  if (policy && native) {
+    releaseRequest()
+    releaseImage = policy.requestImage(run, props.priority)
+    cancelWork = releaseImage
+  } else if (policy) cancelWork = policy.enqueue(run, props.priority)
   else run()
 }
 
@@ -41,7 +49,7 @@ function releaseRecovery(): void {
 }
 function start(): void {
   if (visible && !paused.value && !stopped && !source.value) {
-    schedule(() => { source.value = fallbackUsed ? props.fallback : props.src })
+    schedule(() => { source.value = fallbackUsed ? props.fallback : props.src }, true)
   }
 }
 function fallback(): void {
@@ -49,7 +57,7 @@ function fallback(): void {
   recovering = false
   if (props.fallback && !fallbackUsed) {
     fallbackUsed = true
-    schedule(() => { source.value = props.fallback })
+    schedule(() => { source.value = props.fallback }, true)
   } else emit('error')
 }
 async function recover(): Promise<void> {
@@ -75,7 +83,11 @@ async function recover(): Promise<void> {
     if (recovery === current) recovering = false
   }
 }
-function onError(): void { schedule(() => { void recover() }) }
+function onError(): void {
+  if (!source.value || stopped || paused.value) return
+  releaseRequest()
+  schedule(() => { void recover() })
+}
 function notifyLoad(): void {
   // Decoded pixels must never wait behind admission of new requests.
   if (pendingLoad) {
@@ -85,12 +97,14 @@ function notifyLoad(): void {
 }
 function onLoad(event: Event): void {
   if (!source.value || stopped) return
+  releaseRequest()
   loaded = true
   pendingLoad = event
   if (!paused.value) notifyLoad()
 }
 watch([() => props.src, () => props.version], () => {
   releaseRecovery()
+  releaseRequest()
   cancelWork?.()
   pendingWork = undefined
   source.value = undefined
@@ -100,11 +114,20 @@ watch([() => props.src, () => props.version], () => {
   pendingLoad = undefined
   start()
 })
-watch(() => props.priority, () => { if (pendingWork) schedule(pendingWork) })
+watch(() => props.priority, () => {
+  if (!props.priority && releaseImage && source.value && !loaded) {
+    // Release an unfinished request that has left the viewport. Retain decoded
+    // photos; stale offscreen transfers must not occupy all foreground slots.
+    releaseRequest()
+    source.value = undefined
+    start()
+  } else if (pendingWork) schedule(pendingWork, pendingNative)
+})
 watch(paused, (value) => {
   if (value) {
     // Only hard inactivity cancels work; fast scrolling is handled by admission.
     cancelWork?.()
+    releaseRequest()
     if (!loaded) { releaseRecovery(); recovering = false; source.value = undefined }
   } else {
     notifyLoad()
@@ -122,7 +145,7 @@ onMounted(() => {
   }, { root: galleryIntersectionRoot(element.value), rootMargin: '160px 0px' })
   if (element.value) observer.observe(element.value)
 })
-onBeforeUnmount(() => { stopped = true; cancelWork?.(); observer?.disconnect(); releaseRecovery() })
+onBeforeUnmount(() => { stopped = true; cancelWork?.(); releaseRequest(); observer?.disconnect(); releaseRecovery() })
 </script>
 
 <template>

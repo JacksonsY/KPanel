@@ -89,3 +89,27 @@ it('does not starve visible images when scroll speed keeps alternating across th
   expect(visible).toHaveBeenCalledOnce()
   policy.dispose()
 })
+
+it('bounds native requests, reserves capacity for visible photos and reuses slots after completion', () => {
+  vi.useFakeTimers()
+  const policy = createGalleryRenderPolicy()
+  const started: string[] = []
+  const releaseBackground: (() => void)[] = []
+  for (let i = 0; i < 20; i++) releaseBackground.push(policy.requestImage(() => started.push(`bg${i}`)))
+  vi.advanceTimersByTime(200)
+  expect(started).toEqual(['bg0'])
+  const releaseVisible: (() => void)[] = []
+  for (let i = 0; i < 4; i++) releaseVisible.push(policy.requestImage(() => started.push(`visible${i}`), true))
+  vi.advanceTimersByTime(64)
+  expect(started).toEqual(['bg0', 'visible0', 'visible1', 'visible2'])
+  releaseBackground[0]!()
+  vi.advanceTimersByTime(32)
+  expect(started.at(-1)).toBe('visible3')
+  releaseVisible[0]!()
+  vi.advanceTimersByTime(32)
+  expect(started.at(-1)).toBe('bg1')
+  releaseBackground.forEach(release => release())
+  releaseVisible.forEach(release => release())
+  policy.dispose()
+  expect(vi.getTimerCount()).toBe(0)
+})
