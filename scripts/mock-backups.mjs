@@ -2,6 +2,7 @@
 const modules = ['panel', 'apps', 'web', 'docker']
 const maxBytes = 50 * 2 ** 30
 let sequence = 10
+const oneDriveAuthorizations = new Map()
 const records = new Map()
 const storageId = 'f'.repeat(32)
 let settings = { revision: 'mock-settings-1', storages: [{ id: storageId, name: 'Demo WebDAV', kind: 'webdav', endpoint: 'https://nas.example/dav', prefix: 'kpanel', username: 'backup', hasSecret: true }], schedule: { enabled: false, modules: ['panel'], storageId: '', frequency: 'daily', hour: 3, minute: 0, weekday: 0, day: 1, timezone: 'Asia/Shanghai', keep: 7, hasPassword: false } }
@@ -42,6 +43,29 @@ export async function mockBackups(request, response, url, send, readJSON) {
   try {
     if (path === '' && request.method === 'GET') send(response, 200, { items: [...records.values()].reverse(), maxBytes })
     else if (path === '/settings' && request.method === 'GET') send(response, 200, publicSettings())
+    else if (path === '/onedrive-auth' && request.method === 'POST') {
+      const input = await readJSON(request)
+      if (input.revision !== settings.revision) fail(409, '备份设置已变更，请刷新后重试')
+      else if (!/^[\da-f-]{36}$/i.test(input.storage?.clientId || '')) fail(400, '请检查远程存储、时间和备份密码')
+      else {
+        const id = (++sequence).toString(16).padStart(32, '0')
+        oneDriveAuthorizations.set(id, { storage: input.storage, revision: input.revision })
+        send(response, 200, { id, userCode: 'MOCK-CODE', verificationUri: 'https://microsoft.com/devicelogin', expiresIn: 900, interval: 5 })
+      }
+    } else if (/^\/onedrive-auth\/[^/]+$/.test(path)) {
+      const id = path.split('/')[2]
+      const auth = oneDriveAuthorizations.get(id)
+      oneDriveAuthorizations.delete(id)
+      if (request.method === 'DELETE') send(response, 200, { ok: true })
+      else if (request.method !== 'POST' || !auth) fail(400, '请重新连接 OneDrive')
+      else if (auth.revision !== settings.revision) fail(409, '备份设置已变更，请刷新后重试')
+      else {
+        const storage = { ...auth.storage, id: auth.storage.id || (++sequence).toString(16).padStart(32, '0'), hasSecret: true, driveId: 'mock-drive' }
+        delete storage.secret
+        settings.storages = [...settings.storages.filter(s => s.id !== storage.id), storage]
+        send(response, 200, { pending: false, settings: updated() })
+      }
+    }
     else if (path === '/storage' && request.method === 'PUT') {
       const input = await readJSON(request)
       if (input.revision !== settings.revision) fail(409, '备份设置已变更，请刷新后重试')
