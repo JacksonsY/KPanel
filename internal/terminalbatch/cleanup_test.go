@@ -214,6 +214,9 @@ func TestHistoricalCleanupFailureDoesNotRestoreLiveCleanupOrBlockNewBatch(t *tes
 	if !job.CleanupPending {
 		t.Fatal("fixture did not retain cleanup")
 	}
+	// Simulate an index saved by the earlier RC, which recorded closure failure
+	// as an execution error. History must never become a live reservation.
+	m.update(job.ID, 0, "failed", "terminal_close_failed", "", false)
 	m.Close()
 	data, err := os.ReadFile(m.path)
 	if err != nil {
@@ -229,7 +232,7 @@ func TestHistoricalCleanupFailureDoesNotRestoreLiveCleanupOrBlockNewBatch(t *tes
 	}
 	defer restarted.Close()
 	history, err := restarted.Get("user", job.ID)
-	if err != nil || history.CleanupPending || history.CleanupRunning || history.Results[0].State != "succeeded" {
+	if err != nil || history.CleanupPending || history.CleanupRunning || history.Results[0].Error != "terminal_close_failed" {
 		t.Fatalf("history and live cleanup were conflated: %+v %v", history, err)
 	}
 	if err = restarted.Stop("user", job.ID); err != nil {

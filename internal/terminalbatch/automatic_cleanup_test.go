@@ -88,10 +88,19 @@ func TestCleanupInProgressDoesNotBlockNewAdmissionAndShutdownCancelsIt(t *testin
 	if _, err := m.Create("user", strings.Repeat("c", 32), "true", targets(1)); err != nil {
 		t.Fatal(err)
 	}
-	close(d.release)
-	m.Close()
-	if retry.Err() == nil {
+	done := make(chan struct{})
+	go func() { m.Close(); close(done) }()
+	select {
+	case <-retry.Done():
+	case <-time.After(time.Second):
+		close(d.release)
 		t.Fatal("shutdown left cleanup alive")
+	}
+	close(d.release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("manager did not finish shutdown")
 	}
 	current, _ := m.Get("user", id)
 	if current.State != "completed" || current.Results[0].State != "succeeded" || current.Results[0].Output != "original" {
