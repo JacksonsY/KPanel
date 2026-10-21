@@ -4,6 +4,7 @@ interface Entry {
   url?: string
   at: number
   refs: number
+  decodedBytes: number
 }
 export interface GalleryImageLease {
   url: string
@@ -12,19 +13,23 @@ export interface GalleryImageLease {
   invalidate: () => void
 }
 
-/** Retain compressed bytes, not a library of decoded images. URLs exist only while mounted. */
+/** Compressed cache; viewers may also retain URLs within the total decoded budget. */
 export class GalleryImageCache {
   private entries = new Map<string, Entry>()
   private timer?: ReturnType<typeof setTimeout>
   private disposed = false
   private bytes = 0
   generation = 0
-  constructor(private limits = { count: 2048, bytes: 24 * 1024 * 1024, decoded: 32 * 1024 * 1024, itemBytes: 512 * 1024, ttl: 10 * 60_000 }) {}
+  constructor(private limits: { count: number; bytes: number; decoded: number; itemBytes: number; ttl: number; retainUrls?: boolean } = { count: 2048, bytes: 24 * 1024 * 1024, decoded: 32 * 1024 * 1024, itemBytes: 512 * 1024, ttl: 10 * 60_000 }) {}
 
   private remove(entry: Entry): void {
     if (this.entries.get(entry.key) === entry) {
       this.entries.delete(entry.key)
       this.bytes -= entry.blob.size
+      if (!entry.refs && entry.url) {
+        URL.revokeObjectURL(entry.url)
+        entry.url = undefined
+      }
     }
   }
 
@@ -34,7 +39,9 @@ export class GalleryImageCache {
     for (const entry of this.entries.values()) {
       if (Date.now() - entry.at >= this.limits.ttl) this.remove(entry)
     }
-    while (this.entries.size > this.limits.count || this.bytes > this.limits.bytes) {
+    const decodedBytes = () => [...this.entries.values()].reduce((sum, entry) => sum + entry.decodedBytes, 0)
+    while (this.entries.size > this.limits.count || this.bytes > this.limits.bytes
+      || (this.limits.retainUrls && decodedBytes() > this.limits.decoded)) {
       const idle = [...this.entries.values()].find((entry) => !entry.refs)
       // Evict active entries from retention as well; their owners still hold safe leases.
       const entry = idle ?? this.entries.values().next().value
@@ -55,14 +62,16 @@ export class GalleryImageCache {
         if (released) return
         released = true
         entry.refs -= 1
-        if (!entry.refs && entry.url) {
+        if (!entry.refs && entry.url && (!this.limits.retainUrls || this.entries.get(entry.key) !== entry)) {
           URL.revokeObjectURL(entry.url)
           entry.url = undefined
         }
       },
       decoded: (width, height) => {
         if (released) return
+        entry.decodedBytes = width * height * 4
         if (width * height * 4 > this.limits.decoded && this.entries.get(entry.key) === entry) this.remove(entry)
+        if (this.limits.retainUrls) this.prune()
       },
       invalidate: () => { if (this.entries.get(entry.key) === entry) this.remove(entry) },
     }
@@ -82,7 +91,7 @@ export class GalleryImageCache {
       const existing = this.acquire(key)
       if (existing) return existing
     }
-    const entry: Entry = { key, blob, at: Date.now(), refs: 0 }
+    const entry: Entry = { key, blob, at: Date.now(), refs: 0, decodedBytes: 0 }
     const lease = this.lease(entry)
     if (!this.disposed && generation === this.generation && blob.size <= Math.min(this.limits.itemBytes, this.limits.bytes)) {
       this.entries.set(key, entry)

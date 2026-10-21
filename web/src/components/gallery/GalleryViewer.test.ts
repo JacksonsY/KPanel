@@ -136,6 +136,30 @@ async function dispatchPointer(element: Element, type: string, init: MouseEventI
   await nextTick()
 }
 describe('GalleryViewer controls', () => {
+  it('dismisses a deliberate touch swipe up but keeps short, downward, mouse and zoomed drags open', async () => {
+    mockOriginals()
+    const view = mountViewer(); await flushPromises()
+    const stage = view.get('.gallery-viewer__stage')
+    const drag = async (id: number, y: number, type = 'touch') => {
+      const event = (clientY: number) => ({ pointerId: id, pointerType: type, button: 0, clientX: 200, clientY })
+      await dispatchPointer(stage.element, 'pointerdown', event(250))
+      await dispatchPointer(stage.element, 'pointermove', event(y))
+      await vi.advanceTimersByTimeAsync(500)
+      await dispatchPointer(stage.element, 'pointerup', event(y))
+    }
+    await drag(1, 230)
+    await drag(2, 360)
+    await drag(3, 100, 'mouse')
+    expect(view.emitted('close')).toBeUndefined()
+    await drag(4, 100)
+    expect(view.emitted('close')).toEqual([[]])
+    vi.spyOn(stage.element, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 400, height: 600 } as DOMRect)
+    await view.get('img.gallery-viewer__media').trigger('load')
+    await view.get('button[aria-label="放大"]').trigger('click')
+    await drag(5, 100)
+    expect(view.emitted('close')).toHaveLength(1)
+    expect(view.emitted('navigate')).toBeUndefined()
+  })
   it('tracks a swipe under the finger, rejects diagonal drags and resets after cancellation', async () => {
     mockOriginals()
     const view = mountViewer(); await flushPromises()
@@ -378,11 +402,13 @@ describe('adaptive screen preview', () => {
     fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { complete = resolve }))
     await view.get('img.gallery-viewer__media').trigger('load'); await flushPromises()
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/screen/b.jpg', '/screen/c.jpg'])
+    const first = view.get('img.gallery-viewer__media').attributes('src')
     await view.setProps({ index: 2 }); await flushPromises()
     expect(fetch).toHaveBeenCalledTimes(2)
     complete(new Response('neighbour')); await flushPromises()
     await view.setProps({ index: 1 }); await flushPromises()
     expect(fetch).toHaveBeenCalledTimes(2)
+    expect(view.get('img.gallery-viewer__media').attributes('src')).toBe(first)
     const changed = item('b.jpg'); changed.entry.resourceVersion = 'new-version'
     await view.setProps({ items: [item('a.jpg'), changed, item('c.jpg')] }); await flushPromises()
     expect(fetch).toHaveBeenCalledTimes(3)

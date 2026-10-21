@@ -320,6 +320,10 @@ onBeforeUnmount(() => {
 }
 
 @media (hover: none) {
+  .gallery-tile:not(.gallery-tile--selecting) .gallery-tile__check {
+    display: none;
+  }
+
   .gallery-tile {
     -webkit-touch-callout: none;
     user-select: none;

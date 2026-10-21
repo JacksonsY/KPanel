@@ -118,12 +118,13 @@ const contacts = new Map<number, { x: number; y: number }>()
 let pinch: { distance: number; x: number; y: number } | undefined
 const interacting = ref(false)
 const swipeOffset = ref(0)
+const dismissOffset = ref(0)
 // Separate from the page thumbnail cache, and disposed as soon as the viewer closes.
 const originalCache = new GalleryImageCache({ count: 3, bytes: 8 * 1024 * 1024, decoded: 32 * 1024 * 1024, itemBytes: 4 * 1024 * 1024, ttl: 60_000 })
 const originalUrl = ref<string>()
 const screenUrl = ref<string>()
 const originalError = ref(false)
-const screenCache = new GalleryImageCache({ count: 3, bytes: 6 * 1024 * 1024, decoded: 24 * 1024 * 1024, itemBytes: 2 * 1024 * 1024, ttl: 60_000 })
+const screenCache = new GalleryImageCache({ count: 3, bytes: 6 * 1024 * 1024, decoded: 24 * 1024 * 1024, itemBytes: 2 * 1024 * 1024, ttl: 60_000, retainUrls: true })
 let screenLease: GalleryImageLease | undefined
 let screenEpoch = 0
 const pendingScreens = new Map<string, { controller: AbortController; promise: Promise<Blob> }>()
@@ -221,7 +222,7 @@ const stripItems = computed(() => {
     index: start + offsetIndex,
   }))
 })
-const mediaTransform = computed(() => `translate3d(${offset.value.x + swipeOffset.value}px, ${offset.value.y}px, 0) scale(${scale.value})`)
+const mediaTransform = computed(() => `translate3d(${offset.value.x + swipeOffset.value}px, ${offset.value.y + dismissOffset.value}px, 0) scale(${scale.value})`)
 
 function cancelGesture(): void {
   for (const id of contacts.keys()) {
@@ -232,6 +233,7 @@ function cancelGesture(): void {
   pinch = undefined
   interacting.value = false
   swipeOffset.value = 0
+  dismissOffset.value = 0
 }
 
 function pinchPoints() {
@@ -371,6 +373,7 @@ function onPointerDown(event: PointerEvent): void {
   if (contacts.size > 1) {
     pointer = undefined
     swipeOffset.value = 0
+    dismissOffset.value = 0
     pinch = pinchPoints()
     return
   }
@@ -402,6 +405,8 @@ function onPointerMove(event: PointerEvent): void {
     const edge = (x > 0 && props.index === 0) || (x < 0 && props.index === props.items.length - 1)
     const limit = (stage.value?.clientWidth || 360) * 0.4
     swipeOffset.value = Math.abs(x) > Math.abs(y) * 1.5 ? Math.max(-limit, Math.min(limit, x * (edge ? 0.25 : 1))) : 0
+    dismissOffset.value = event.pointerType === 'touch' && y < 0 && Math.abs(y) > Math.abs(x) * 1.5
+      ? Math.max(-240, y) : 0
   }
 }
 
@@ -417,9 +422,11 @@ function onPointerUp(event: PointerEvent): void {
   }
   interacting.value = false
   swipeOffset.value = 0
+  dismissOffset.value = 0
   if (!pointer || pointer.id !== event.pointerId) return
   const swipe = event.clientX - pointer.startX
   const vertical = Math.abs(event.clientY - pointer.startY)
+  const upward = pointer.startY - event.clientY
   const wasZoomed = zoomed.value
   const tapped = !pointer.moved
   const pinched = pointer.pinched
@@ -427,7 +434,9 @@ function onPointerUp(event: PointerEvent): void {
   pointer = undefined
   // A horizontal drag on an unzoomed photo turns the page like a phone gallery.
   const threshold = Math.max(32, Math.min(64, (stage.value?.clientWidth || 360) * 0.15))
-  if (!pinched && !wasZoomed && Math.abs(swipe) > vertical * 1.5
+  if (!pinched && !wasZoomed && event.pointerType === 'touch' && upward > Math.abs(swipe) * 1.5
+    && (upward > 80 || (upward > 32 && upward / elapsed > 0.5))) emit('close')
+  else if (!pinched && !wasZoomed && Math.abs(swipe) > vertical * 1.5
     && (Math.abs(swipe) > threshold || (Math.abs(swipe) > 24 && Math.abs(swipe) / elapsed > 0.5))) go(swipe < 0 ? 1 : -1)
   // Touch screens have no hover, so a tap toggles the controls instead.
   else if (tapped && event.pointerType === 'touch') {

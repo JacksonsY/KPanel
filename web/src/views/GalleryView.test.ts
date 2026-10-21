@@ -172,8 +172,24 @@ describe('GalleryView Shift selection', () => {
     expect(checked(view)).toEqual([0, 1, 2, 3, 5])
   })
 
-  it('long-presses into touch selection, contracts the range and consumes the trailing click', async () => {
+  it('opens a photo directly after a browsing touch without selecting it', async () => {
     const view = await mountGallery()
+    vi.useFakeTimers()
+    try {
+      const tile = view.findAll('.gallery-tile__open')[1]!
+      await tile.trigger('touchstart', { touches: [{ identifier: 1, clientX: 100, clientY: 200 }] })
+      vi.advanceTimersByTime(700)
+      await tile.trigger('touchend', { touches: [] })
+      tile.element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }))
+      await view.vm.$nextTick()
+      expect(checked(view)).toEqual([])
+      expect(view.find('.gallery-viewer').exists()).toBe(true)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('long-presses only after entering selection mode, contracts the range and consumes the trailing click', async () => {
+    const view = await mountGallery()
+    await view.findAll('button').find(button => button.text() === '选择')!.trigger('click')
     vi.useFakeTimers()
     const original = document.elementFromPoint
     let hit = 1
@@ -200,6 +216,7 @@ describe('GalleryView Shift selection', () => {
 
   it('leaves vertical scrolling native and cancels a pending long press for multiple fingers', async () => {
     const view = await mountGallery()
+    await view.findAll('button').find(button => button.text() === '选择')!.trigger('click')
     vi.useFakeTimers()
     try {
       const tile = view.findAll('.gallery-tile__open')[0]!

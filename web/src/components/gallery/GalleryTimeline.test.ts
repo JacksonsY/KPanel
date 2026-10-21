@@ -29,22 +29,33 @@ it('mounts a bounded range, reveals a distant photo and updates geometry on dens
   })
   await flushPromises()
   await new Promise(resolve => setTimeout(resolve, 10))
-  expect(view.findAll('button').length).toBeLessThan(120)
+  expect(view.findAll('button').length).toBeLessThan(240)
   expect(view.find('[data-gallery-path="/p0"]').exists()).toBe(true)
-  // Scrolling retains the heavy subtree, and reads cached geometry rather than CSS.
+  // New thumbnails mount during scrolling, with recent nodes retained for backtracking.
   vi.useFakeTimers()
   const styleReads = vi.fn(() => ({ getPropertyValue: () => '' }))
   vi.stubGlobal('getComputedStyle', styleReads)
   const initial = view.findAll('button').map(button => button.attributes('data-gallery-path'))
+  const first = view.get('[data-gallery-path="/p0"]').element
+  scroller.scrollTop = 600
+  scroller.dispatchEvent(new Event('scroll'))
+  await vi.advanceTimersByTimeAsync(80)
+  expect(view.get('[data-gallery-path="/p0"]').element).toBe(first)
+  expect(view.findAll('button').length).toBeGreaterThan(initial.length)
+  scroller.scrollTop = 0
+  scroller.dispatchEvent(new Event('scroll'))
+  await vi.advanceTimersByTimeAsync(80)
+  expect(view.get('[data-gallery-path="/p0"]').element).toBe(first)
   scroller.scrollTop = 10000
   scroller.dispatchEvent(new Event('scroll'))
   await vi.advanceTimersByTimeAsync(80)
-  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).toEqual(initial)
-  expect(view.findAll('.gallery-timeline__placeholder').length).toBeGreaterThan(0)
+  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).not.toEqual(initial)
+  expect(view.findAll('.gallery-timeline__placeholder')).toHaveLength(0)
+  expect(view.findAll('button').length).toBeLessThanOrEqual(240)
   scroller.scrollTop = 12000
   scroller.dispatchEvent(new Event('scroll'))
   await vi.advanceTimersByTimeAsync(159)
-  expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).toEqual(initial)
+  expect(view.findAll('button').length).toBeLessThanOrEqual(240)
   expect(styleReads).not.toHaveBeenCalled()
   await vi.advanceTimersByTimeAsync(1)
   expect(view.findAll('button').map(button => button.attributes('data-gallery-path'))).not.toEqual(initial)
@@ -66,7 +77,7 @@ it('mounts a bounded range, reveals a distant photo and updates geometry on dens
   await flushPromises()
   expect(view.find('[data-gallery-path="/p4500"]').exists()).toBe(true)
   expect(view.find('[data-gallery-path="/p0"]').exists()).toBe(false)
-  expect(view.findAll('button').length).toBeLessThan(120)
+  expect(view.findAll('button').length).toBeLessThanOrEqual(240)
   width = 390
   minimum = 104
   await view.setProps({ density: 'compact', featured: false, resetKey: 'filtered', groups: [{ key: 'all', items: items.slice(0, 7) }] })

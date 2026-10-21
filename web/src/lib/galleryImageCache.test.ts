@@ -24,6 +24,24 @@ it('shares the active URL and revokes only after the last active owner, even aft
   expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith(first.url)
 })
 
+it('retains viewer URLs for backtracking within a total decoded budget and releases on expiry', () => {
+  cache.dispose()
+  cache = new GalleryImageCache({ count: 3, bytes: 12, decoded: 64, itemBytes: 4, ttl: 100, retainUrls: true })
+  const first = cache.store('a', new Blob(['aa']))
+  first.decoded(4, 2); first.release()
+  const again = cache.acquire('a')!
+  expect(again.url).toBe(first.url)
+  again.release()
+  expect(URL.revokeObjectURL).not.toHaveBeenCalled()
+  const second = cache.store('b', new Blob(['bb']))
+  second.decoded(4, 3); second.release()
+  expect(cache.acquire('a')).toBeUndefined()
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith(first.url)
+  vi.advanceTimersByTime(101)
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith(second.url)
+  expect(cache.acquire('b')).toBeUndefined()
+})
+
 it('evicts the least recently used idle image under count pressure', () => {
   cache.store('a', new Blob(['aa'])).release()
   const b = cache.store('b', new Blob(['bb'])); b.release()

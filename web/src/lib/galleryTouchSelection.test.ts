@@ -2,6 +2,21 @@
 import { expect, it, vi } from 'vitest'
 import { createGalleryTouchSelection } from './galleryTouchSelection'
 
+it('never activates selection from a browsing touch, even after a long press', () => {
+  vi.useFakeTimers()
+  const root = document.createElement('div')
+  root.innerHTML = '<div data-gallery-path="/a.jpg"></div>'
+  const begin = vi.fn()
+  const gesture = createGalleryTouchSelection({ root: () => root, selecting: () => false, begin, update: vi.fn() })
+  try {
+    gesture.start({ target: root.firstElementChild, touches: [{ identifier: 1, clientX: 10, clientY: 10 }] } as unknown as TouchEvent)
+    vi.advanceTimersByTime(1000)
+    gesture.move({ touches: [{ identifier: 1, clientX: 100, clientY: 10 }] } as unknown as TouchEvent)
+    expect(begin).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  } finally { gesture.cancel(); vi.useRealTimers() }
+})
+
 it('updates each hit path once and releases the pending animation on cancellation', () => {
   vi.useFakeTimers()
   const root = document.createElement('div')

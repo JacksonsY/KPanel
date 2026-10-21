@@ -18,7 +18,9 @@ const width = ref(0)
 const minimum = ref(168)
 const gap = ref(6)
 const cells = shallowRef<GalleryLayoutCell[]>([])
-const placeholders = shallowRef<GalleryLayoutCell[]>([])
+// Keep recent image elements and their decoded pixels alive across short backtracks.
+const retained = new Map<string, GalleryLayoutCell>()
+const RETAINED_CELLS = 240
 const moving = ref(false)
 let observer: ResizeObserver | undefined
 let frame: number | undefined
@@ -54,19 +56,22 @@ function updateViewport(): void {
   if (!enabled()) return
   if (geometryDirty) measureGeometry()
   const top = viewportTop()
-  // Pixel-bounded overscan avoids multiplying a maximized screen by three.
-  const buffer = Math.min(320, viewportHeight * 0.35)
+  // Warm two screens ahead, with a pixel cap for large desktop windows.
+  const buffer = Math.min(1600, viewportHeight * 2)
   const near = galleryViewport(layout.value.cells, top - buffer, top + viewportHeight + buffer, layout.value.maxCellHeight)
-  if (moving.value) {
-    const retained = new Set(cells.value.map((cell) => cell.key))
-    const pending = near.filter((cell) => cell.item && !retained.has(cell.key))
-    if (!same(placeholders.value, pending)) placeholders.value = pending
-    return
-  }
   const pinned = focused && layout.value.cells.find((cell) => cell.key === focused)
   if (pinned && !near.includes(pinned)) near.push(pinned)
-  if (!same(cells.value, near)) cells.value = near
-  if (placeholders.value.length) placeholders.value = []
+  const required = new Set(near.map(cell => cell.key))
+  for (const cell of near) {
+    retained.delete(cell.key)
+    retained.set(cell.key, cell)
+  }
+  for (const key of retained.keys()) {
+    if (retained.size <= Math.max(RETAINED_CELLS, near.length)) break
+    if (!required.has(key)) retained.delete(key)
+  }
+  const next = [...retained.values()].sort((a, b) => a.top - b.top || a.left - b.left)
+  if (!same(cells.value, next)) cells.value = next
 }
 function schedule(): void {
   if (frame === undefined && enabled()) frame = requestAnimationFrame(updateViewport)
@@ -137,10 +142,21 @@ watch(() => props.scrollRoot, (next, previous) => {
   if (next) observer?.observe(next)
   bindScroll()
 }, { flush: 'post' })
-watch(() => [props.featured, props.density, props.groups], () => { geometryDirty = true; updateViewport() }, { flush: 'post' })
+watch(layout, () => {
+  // Reconcile geometry and remove deleted/filtered/version-changed entries.
+  const current = new Map(layout.value.cells.map(cell => [cell.key, cell]))
+  for (const key of retained.keys()) {
+    const cell = current.get(key)
+    if (cell) retained.set(key, cell)
+    else retained.delete(key)
+  }
+  geometryDirty = true
+  updateViewport()
+}, { flush: 'post' })
 watch(() => props.active, activityChanged, { flush: 'post' })
 watch(() => props.resetKey, async () => {
   focused = ''
+  retained.clear()
   await nextTick()
   if (!root.value) return
   measureGeometry()
@@ -190,20 +206,12 @@ onBeforeUnmount(() => {
       <slot v-if="cell.item" :item="cell.item" :featured="cell.featured" />
       <slot v-else-if="cell.group" name="month" :group="cell.group" />
     </div>
-    <div
-      v-for="cell in placeholders"
-      :key="`pending:${cell.key}`"
-      class="gallery-timeline__placeholder"
-      aria-hidden="true"
-      :style="{ top: `${cell.top}px`, left: `${cell.left}px`, width: `${cell.width}px`, height: `${cell.height}px` }"
-    />
   </div>
 </template>
 
 <style scoped>
 .gallery-timeline { position: relative; min-width: 0; overflow-anchor: none; }
-.gallery-timeline__cell, .gallery-timeline__placeholder { position: absolute; }
+.gallery-timeline__cell { position: absolute; }
 .gallery-timeline__cell :deep(.gallery-tile) { width: 100%; height: 100%; }
-.gallery-timeline__placeholder { border-radius: var(--gallery-tile-radius, var(--radius-sm)); background: var(--surface-subtle); }
 .gallery-timeline--scrolling :deep(.gallery-tile__media) { transition: none; }
 </style>

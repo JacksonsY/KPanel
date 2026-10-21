@@ -174,7 +174,7 @@ const showHostSwitcher = computed(() => hosts.value.length > 1 || Boolean(hostId
 const snapshot = shallowRef<GalleryFolderSnapshot>()
 const folderCache = new GalleryFolderCache()
 const scrolling = ref(false)
-provide(galleryMediaPausedKey, computed(() => scrolling.value || !foreground.value || !desktopWindowActive.value || Boolean(viewerPath.value)))
+provide(galleryMediaPausedKey, computed(() => !foreground.value || !desktopWindowActive.value || Boolean(viewerPath.value)))
 const loading = ref(true)
 const loadError = ref('')
 let loadController: AbortController | undefined
@@ -1453,7 +1453,7 @@ onBeforeUnmount(() => {
                     v-else-if="album.cover && tileUrls(album.cover).video"
                     :src="tileUrls(album.cover).video!"
                     :poster-key="galleryPosterKey(album.cover.entry, tileUrls(album.cover).video)"
-                    :suspended="Boolean(viewerPath) || !desktopWindowActive"
+                    :suspended="scrolling || Boolean(viewerPath) || !desktopWindowActive"
                   />
                   <span v-else class="album-card__placeholder"><Images :size="28" :stroke-width="1.6" /></span>
                 </span>
@@ -1608,7 +1608,7 @@ onBeforeUnmount(() => {
               :image-url="tileUrls(item).image"
               :fallback-url="tileUrls(item).fallback"
               :video-url="tileUrls(item).video"
-              :suspended="Boolean(viewerPath) || !desktopWindowActive"
+              :suspended="scrolling || Boolean(viewerPath) || !desktopWindowActive"
               :featured="featured"
               :selecting="selecting"
               :selected="selected.has(item.entry.path)"

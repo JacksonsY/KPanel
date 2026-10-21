@@ -67,7 +67,8 @@ export function createGalleryTouchSelection(options: {
   function start(event: TouchEvent): void {
     cancel()
     suppressClick = false
-    if (event.touches.length !== 1) return
+    if (!options.selecting() || event.touches.length !== 1) return
+    if ((event.target as Element | null)?.closest('button.gallery-tile__check')) return
     const path = pathAt(event.target instanceof Element ? event.target : null)
     const touch = event.touches[0]
     if (!path || !touch) return
