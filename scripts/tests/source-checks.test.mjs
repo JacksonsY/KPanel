@@ -20,7 +20,7 @@ const lane = (id, code) => ({ id, argv: [process.execPath, '-e', code] });
 
 test('torrent baseline removes only the exact replacement and preserves every other declaration', () => {
   const replacement = 'replace github.com/anacrolix/torrent v1.61.0 => ./third_party/torrent\n';
-  const rest = 'module example.test/panel\n\ngo 1.27.2\nrequire github.com/anacrolix/torrent v1.61.0\nreplace example.test/other v1.0.0 => example.test/other v1.0.1\n';
+  const rest = 'module example.test/panel\n\ngo 1.27.3\nrequire github.com/anacrolix/torrent v1.61.0\nreplace example.test/other v1.0.0 => example.test/other v1.0.1\n';
   assert.equal(baselineMod(rest + replacement), rest);
   assert.throws(() => baselineMod(rest), /one exact/);
   assert.throws(() => baselineMod(rest + replacement + replacement), /one exact/);
@@ -29,8 +29,8 @@ test('torrent baseline removes only the exact replacement and preserves every ot
 });
 
 function moduleDeclarations() {
-  // Shape observed from the fixed Go 1.27.2 `go mod edit -json`: empty Replace is omitted.
-  const baseline = { Module: { Path: 'example.test/panel' }, Go: '1.27.2',
+  // Shape observed from the fixed Go 1.27.3 `go mod edit -json`: empty Replace is omitted.
+  const baseline = { Module: { Path: 'example.test/panel' }, Go: '1.27.3',
     Require: [{ Path: 'github.com/anacrolix/torrent', Version: 'v1.61.0' }, { Path: 'example.test/other', Version: 'v1.0.0', Indirect: true }] };
   const replacement = { Old: { Path: 'github.com/anacrolix/torrent', Version: 'v1.61.0' }, New: { Path: './third_party/torrent' } };
   return { baseline, actual: { ...structuredClone(baseline), Replace: [replacement] } };
@@ -141,7 +141,7 @@ test('production closure retains exact selected versions and rejects incomplete 
   ];
   const closure = productionClosure(packages, target, selected);
   assert.deepEqual(closure.modules, [{ Path: dependency.Path, Version: dependency.Version }]);
-  assert.deepEqual(closure.row.packages[0], { path: 'fmt', module: 'stdlib', version: 'go1.27.2' });
+  assert.deepEqual(closure.row.packages[0], { path: 'fmt', module: 'stdlib', version: 'go1.27.3' });
   assert.deepEqual(productionClosure([...packages].reverse(), target, selected), closure);
   for (const bad of [[], packages.slice(1), [...packages, packages[0]], packages.map(p => ({ ...p, Incomplete: true })), packages.map(p => ({ ...p, DepsErrors: [{}] }))]) {
     assert.throws(() => productionClosure(bad, target, selected));
