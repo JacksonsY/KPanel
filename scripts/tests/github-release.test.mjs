@@ -232,7 +232,8 @@ esac
     const result = spawnSync(resolveBash(), ['--noprofile', '--norc', '-c', prefix + workflowStep(workflow, 'Validate frozen public source')], {
       cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 10_000,
       env: { ...process.env, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: ref, EXPECTED_VERSION: version,
-        EXPECTED_SHA: 'b'.repeat(40), IMAGE_DIGEST: 'sha256:' + 'a'.repeat(64), WRONG_TAG: wrongTag },
+        EXPECTED_SHA: 'b'.repeat(40), IMAGE_DIGEST: 'sha256:' + 'a'.repeat(64), PUBLICATION_RUN_ID: '123',
+        PUBLICATION_ATTEMPT: '1', WRONG_TAG: wrongTag },
     });
     assert.ifError(result.error);
     assert.equal(result.status, expected, result.stderr);
