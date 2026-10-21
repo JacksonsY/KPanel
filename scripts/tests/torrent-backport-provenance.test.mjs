@@ -70,7 +70,7 @@ function fixture(change = () => {}) {
 }
 
 function goInfo(arch, executable, withTorrent = executable === 'paneld') {
-  return `/temporary/${executable}: go1.27.2\n\tpath\t${mainModule}/cmd/${executable}\n\tmod\t${mainModule}\t(devel)\t\n`
+  return `/temporary/${executable}: go1.27.3\n\tpath\t${mainModule}/cmd/${executable}\n\tmod\t${mainModule}\t(devel)\t\n`
     + (withTorrent ? '\tdep\tgithub.com/anacrolix/torrent\tv1.61.0\n\t=>\t./third_party/torrent\t(devel)\t\n\n' : '')
     + `\tbuild\tGOOS=linux\n\tbuild\tGOARCH=${arch}\n`;
 }
