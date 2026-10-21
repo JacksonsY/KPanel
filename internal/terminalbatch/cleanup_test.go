@@ -14,7 +14,7 @@ func settledBatch(t *testing.T, m *Manager, id string) Job {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		m.mu.Lock()
-		active := m.active[id] != nil
+		active := m.active[id] != nil || m.cleaning[id] != nil
 		m.mu.Unlock()
 		job, err := m.Get("user", id)
 		if err != nil {
@@ -42,7 +42,7 @@ func TestFailedCleanupHasIndependentDeadlineAndRetainsReservation(t *testing.T) 
 		t.Fatal(err)
 	}
 	job = settledBatch(t, m, job.ID)
-	if job.State != "completed" || job.Results[0].State != "failed" || job.Results[0].Error != "terminal_close_failed" || !strings.Contains(job.Results[0].Output, "private-output") {
+	if job.State != "completed" || job.Results[0].State != "succeeded" || job.Results[0].Error != "" || !strings.Contains(job.Results[0].Output, "private-output") {
 		t.Fatalf("wrong terminal result: %+v", job)
 	}
 	m.mu.Lock()
@@ -96,7 +96,7 @@ func TestStopWakesCleanupBackoffAndPreservesSuccessfulHosts(t *testing.T) {
 				succeeded++
 			}
 		}
-		ready = succeeded == 13 && job.Results[13].Error == "terminal_close_failed"
+		ready = succeeded == 13 && job.Results[13].State == "closing"
 		if ready {
 			break
 		}
@@ -109,7 +109,7 @@ func TestStopWakesCleanupBackoffAndPreservesSuccessfulHosts(t *testing.T) {
 		t.Fatal(err)
 	}
 	job = settledBatch(t, m, job.ID)
-	if job.State != "stopped" || job.Results[13].State != "failed" {
+	if job.State != "stopped" || job.Results[13].State != "succeeded" {
 		t.Fatalf("stop did not settle: %+v", job)
 	}
 	for i, result := range job.Results {
@@ -229,7 +229,7 @@ func TestHistoricalCleanupFailureDoesNotRestoreLiveCleanupOrBlockNewBatch(t *tes
 	}
 	defer restarted.Close()
 	history, err := restarted.Get("user", job.ID)
-	if err != nil || history.CleanupPending || history.CleanupRunning || history.Results[0].Error != "terminal_close_failed" {
+	if err != nil || history.CleanupPending || history.CleanupRunning || history.Results[0].State != "succeeded" {
 		t.Fatalf("history and live cleanup were conflated: %+v %v", history, err)
 	}
 	if err = restarted.Stop("user", job.ID); err != nil {
@@ -295,7 +295,7 @@ func TestCleanupDeadlineCancelsAStalledClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	job = settledBatch(t, m, job.ID)
-	if job.Results[0].Error != "terminal_close_failed" || job.Results[0].State != "failed" {
+	if job.Results[0].Error != "" || job.Results[0].State != "succeeded" {
 		t.Fatal(job)
 	}
 	d.mu.Lock()

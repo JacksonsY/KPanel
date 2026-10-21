@@ -162,9 +162,10 @@ func (m *Manager) execute(ctx context.Context, id, user, command string, index i
 		}
 	}
 	state, code := "failed", "terminal_execution_failed"
-	// A worker cannot release its slot until the target confirms closure. Failed
-	// closure stays visible and registered, including when a batch is stopped.
+	completed := false
+	// Preserve the command outcome independently of temporary connection cleanup.
 	defer func() {
+		unconfirmed := false
 		m.update(id, index, "closing", "", "", false)
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), m.options.CleanupTimeout)
 		defer cancelCleanup()
@@ -175,19 +176,23 @@ func (m *Manager) execute(ctx context.Context, id, user, command string, index i
 			if err == nil || errors.Is(err, terminal.ErrNotFound) || errors.Is(err, terminal.ErrClosed) {
 				break
 			}
-			m.update(id, index, "closing", "terminal_close_failed", "", false)
 			// Cleanup has its own deadline; stop wakes retries without discarding
 			// the identity or quota of a session whose close is unconfirmed.
 			if !waitCleanup(ctx, cleanupCtx, m.options.RetryDelay) {
-				m.rememberCleanup(id, index, session)
-				state, code = "failed", "terminal_close_failed"
+				unconfirmed = true
+				if !completed && ctx.Err() != nil {
+					state, code = "failed", "terminal_stop_failed"
+				}
 				break
 			}
 		}
-		if ctx.Err() != nil && code != "terminal_close_failed" {
+		if ctx.Err() != nil && !completed && code != "terminal_stop_failed" {
 			m.stopped(id, index, ctx)
 		} else {
 			m.update(id, index, state, code, "", false)
+		}
+		if unconfirmed {
+			m.rememberCleanup(id, index, session)
 		}
 	}()
 	nonce := make([]byte, 16)
@@ -235,6 +240,7 @@ func (m *Manager) execute(ctx context.Context, id, user, command string, index i
 		if match := exitPattern.FindStringSubmatch(raw); len(match) == 2 {
 			exitCode, parseErr := strconv.ParseInt(match[1], 10, 32)
 			if parseErr == nil && (host.Shell == "powershell" || exitCode >= 0 && exitCode <= 255) {
+				completed = true
 				state, code = "succeeded", ""
 				if exitCode != 0 {
 					state, code = "failed", fmt.Sprintf("exit status %d", exitCode)
@@ -251,6 +257,7 @@ func (m *Manager) execute(ctx context.Context, id, user, command string, index i
 		output := display(raw, command, marker)
 		m.update(id, index, "running", "", output, chunk.Truncated || len(raw) > MaxOutputBytes)
 		if chunk.Closed || chunk.ExitedAt != nil {
+			completed = true
 			state, code = "succeeded", ""
 			if chunk.ExitError != "" {
 				state, code = "failed", "terminal_exit_failed"
@@ -303,40 +310,53 @@ func (m *Manager) retryCleanup(ctx context.Context, id string) {
 		pending[index] = session
 	}
 	m.mu.Unlock()
+	var workers sync.WaitGroup
+	changed := false // Protected by m.mu, like the result mutations below.
 	for index, session := range pending {
-		for {
-			op, cancel := context.WithTimeout(ctx, 10*time.Second)
-			err := m.driver.Close(op, session)
-			cancel()
-			if err == nil || errors.Is(err, terminal.ErrNotFound) || errors.Is(err, terminal.ErrClosed) {
-				m.mu.Lock()
-				delete(m.cleanup[id], index)
-				m.mu.Unlock()
-				m.update(id, index, "stopped", "", "", false)
-				break
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for {
+				op, cancel := context.WithTimeout(ctx, 10*time.Second)
+				err := m.driver.Close(op, session)
+				cancel()
+				if err == nil || errors.Is(err, terminal.ErrNotFound) || errors.Is(err, terminal.ErrClosed) {
+					m.mu.Lock()
+					delete(m.cleanup[id], index)
+					// Only an unconfirmed stop becomes stopped. Successful commands and
+					// execution failures must retain their original outcome and output.
+					for n := range m.jobs {
+						if m.jobs[n].ID == id {
+							r := &m.jobs[n].Results[index]
+							if r.Error == "terminal_stop_failed" || r.Error == "terminal_close_failed" {
+								r.State, r.Error = "stopped", ""
+								m.jobs[n].UpdatedAt = time.Now().UTC()
+								changed = true
+							}
+						}
+					}
+					m.mu.Unlock()
+					break
+				}
+				if !wait(ctx, m.options.RetryDelay) {
+					break
+				}
 			}
-			if !wait(ctx, m.options.RetryDelay) {
-				m.update(id, index, "failed", "terminal_close_failed", "", false)
-				break
-			}
-		}
+		}()
 	}
+	workers.Wait()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for n := range m.jobs {
-		if m.jobs[n].ID == id {
-			m.jobs[n].State = "stopped"
-			m.jobs[n].UpdatedAt = time.Now().UTC()
-		}
-	}
-	if cancel := m.active[id]; cancel != nil {
+	if cancel := m.cleaning[id]; cancel != nil {
 		cancel()
 	}
-	delete(m.active, id)
+	delete(m.cleaning, id)
 	if len(m.cleanup[id]) == 0 {
 		delete(m.cleanup, id)
 	}
-	_ = m.persistLocked()
+	if changed {
+		_ = m.persistLocked()
+	}
 }
 
 func wrap(command, marker, shell string) string {

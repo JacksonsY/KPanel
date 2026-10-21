@@ -378,7 +378,7 @@ func TestFailedCloseCanBeRetriedWithoutResendingCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	j = finished(t, m)
-	if j.Results[0].Error != "terminal_close_failed" {
+	if j.Results[0].Error != "terminal_stop_failed" {
 		t.Fatal(j.Results[0])
 	}
 	if err := m.Remove("user", j.ID); !errors.Is(err, ErrBusy) {

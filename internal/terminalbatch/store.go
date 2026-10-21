@@ -87,24 +87,27 @@ type Driver interface {
 }
 
 type Options struct {
-	Timeout        time.Duration
-	RetryDelay     time.Duration
-	CleanupTimeout time.Duration
+	Timeout         time.Duration
+	RetryDelay      time.Duration
+	CleanupTimeout  time.Duration
+	CleanupInterval time.Duration
 }
 
 type Manager struct {
-	mu        sync.Mutex
-	path      string
-	jobs      []Job
-	driver    Driver
-	active    map[string]context.CancelFunc
-	cleanup   map[string]map[int]Session
-	closed    bool
-	available bool
-	warning   string
-	wg        sync.WaitGroup
-	options   Options
-	write     func(string, []byte) error
+	mu          sync.Mutex
+	path        string
+	jobs        []Job
+	driver      Driver
+	active      map[string]context.CancelFunc
+	cleanup     map[string]map[int]Session
+	cleaning    map[string]context.CancelFunc
+	stopCleanup context.CancelFunc
+	closed      bool
+	available   bool
+	warning     string
+	wg          sync.WaitGroup
+	options     Options
+	write       func(string, []byte) error
 }
 
 func Open(root string, driver Driver, options Options) (*Manager, error) {
@@ -130,9 +133,13 @@ func Open(root string, driver Driver, options Options) (*Manager, error) {
 	if options.RetryDelay <= 0 {
 		options.RetryDelay = time.Second
 	}
-	m := &Manager{path: filepath.Join(root, "jobs.json"), driver: driver, active: map[string]context.CancelFunc{}, cleanup: map[string]map[int]Session{}, available: true, options: options, write: atomicWrite}
+	if options.CleanupInterval <= 0 {
+		options.CleanupInterval = 5 * time.Second
+	}
+	m := &Manager{path: filepath.Join(root, "jobs.json"), driver: driver, active: map[string]context.CancelFunc{}, cleanup: map[string]map[int]Session{}, cleaning: map[string]context.CancelFunc{}, available: true, options: options, write: atomicWrite}
 	info, err = os.Lstat(m.path)
 	if errors.Is(err, os.ErrNotExist) {
+		m.startCleanupLoop()
 		return m, nil
 	}
 	if err != nil {
@@ -202,6 +209,7 @@ func Open(root string, driver Driver, options Options) (*Manager, error) {
 	if err := m.persistLocked(); err != nil {
 		m.available = false
 	}
+	m.startCleanupLoop()
 	return m, nil
 }
 
@@ -317,7 +325,7 @@ func clone(j Job) Job { j.Results = append([]Result(nil), j.Results...); return 
 func (m *Manager) snapshotLocked(j Job) Job {
 	j = clone(j)
 	j.CleanupPending = len(m.cleanup[j.ID]) > 0
-	j.CleanupRunning = j.State != "running" && m.active[j.ID] != nil
+	j.CleanupRunning = m.cleaning[j.ID] != nil
 	return j
 }
 
@@ -350,15 +358,13 @@ func (m *Manager) Stop(user, id string) error {
 	for _, j := range m.jobs {
 		if j.ID == id && j.UserID == user {
 			if cancel := m.active[id]; cancel != nil {
-				// Repeated cleanup retries are idempotent and never cancel each other.
-				if j.State == "running" {
-					cancel()
+				cancel()
+			}
+			// One stop action also retries all this user's retained temporary sessions.
+			for _, owned := range m.jobs {
+				if owned.UserID == user {
+					m.startCleanupLocked(owned.ID)
 				}
-			} else if len(m.cleanup[id]) > 0 && !m.closed {
-				ctx, cancel := context.WithTimeout(context.Background(), m.options.CleanupTimeout)
-				m.active[id] = cancel
-				m.wg.Add(1)
-				go m.retryCleanup(ctx, id)
 			}
 			return nil
 		}
@@ -390,6 +396,12 @@ func (m *Manager) Close() {
 	m.mu.Lock()
 	m.closed = true
 	for _, cancel := range m.active {
+		cancel()
+	}
+	if m.stopCleanup != nil {
+		m.stopCleanup()
+	}
+	for _, cancel := range m.cleaning {
 		cancel()
 	}
 	m.mu.Unlock()
