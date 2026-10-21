@@ -3,7 +3,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { fetchGalleryImage, GalleryImageError, galleryIntersectionRoot, galleryMediaPausedKey } from '@/lib/galleryMedia'
 import { galleryRenderPolicyKey } from '@/lib/galleryRenderPolicy'
 
-const props = defineProps<{ src: string; fallback?: string; eager?: boolean; version?: string }>()
+const props = defineProps<{ src: string; fallback?: string; eager?: boolean; version?: string; priority?: boolean }>()
 const emit = defineEmits<{ load: [event: Event]; error: [] }>()
 const paused = inject(galleryMediaPausedKey, computed(() => false))
 const policy = inject(galleryRenderPolicyKey, undefined)
@@ -19,14 +19,17 @@ let recovering = false
 let fallbackUsed = false
 let pendingLoad: Event | undefined
 let cancelWork: (() => void) | undefined
+let pendingWork: (() => void) | undefined
 
 function schedule(work: () => void): void {
   cancelWork?.()
+  pendingWork = work
   const run = () => {
     cancelWork = undefined
+    pendingWork = undefined
     if (!paused.value && !stopped) work()
   }
-  if (policy) cancelWork = policy.enqueue(run)
+  if (policy) cancelWork = policy.enqueue(run, props.priority)
   else run()
 }
 
@@ -67,17 +70,18 @@ async function recover(): Promise<void> {
   } catch (error) {
     if (current.signal.aborted || paused.value || stopped || recovery !== current) return
     if (error instanceof GalleryImageError && [413, 422].includes(error.status)) fallback()
-    else schedule(() => emit('error'))
+    else emit('error')
   } finally {
     if (recovery === current) recovering = false
   }
 }
 function onError(): void { schedule(() => { void recover() }) }
 function notifyLoad(): void {
-  if (pendingLoad) schedule(() => {
-    if (pendingLoad) emit('load', pendingLoad)
+  // Decoded pixels must never wait behind admission of new requests.
+  if (pendingLoad) {
+    emit('load', pendingLoad)
     pendingLoad = undefined
-  })
+  }
 }
 function onLoad(event: Event): void {
   if (!source.value || stopped) return
@@ -88,6 +92,7 @@ function onLoad(event: Event): void {
 watch([() => props.src, () => props.version], () => {
   releaseRecovery()
   cancelWork?.()
+  pendingWork = undefined
   source.value = undefined
   loaded = false
   recovering = false
@@ -95,6 +100,7 @@ watch([() => props.src, () => props.version], () => {
   pendingLoad = undefined
   start()
 })
+watch(() => props.priority, () => { if (pendingWork) schedule(pendingWork) })
 watch(paused, (value) => {
   if (value) {
     // Only hard inactivity cancels work; fast scrolling is handled by admission.

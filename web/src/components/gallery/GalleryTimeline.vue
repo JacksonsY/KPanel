@@ -19,12 +19,15 @@ const width = ref(0)
 const minimum = ref(168)
 const gap = ref(6)
 const cells = shallowRef<GalleryLayoutCell[]>([])
+const visibleKeys = shallowRef(new Set<string>())
 // Keep recent image elements and their decoded pixels alive across short backtracks.
 const retained = new Map<string, GalleryLayoutCell>()
 const moving = computed(() => policy.phase.value !== 'idle')
 let observer: ResizeObserver | undefined
 let frame: number | undefined
 let cancelMount: (() => void) | undefined
+let fastTimer: ReturnType<typeof setTimeout> | undefined
+let lastViewportAt = -Infinity
 let scrollTarget: HTMLElement | Window | undefined
 let geometryDirty = true
 let contentTop = 0
@@ -52,17 +55,25 @@ function measureGeometry(): void {
   geometryDirty = false
 }
 function updateViewport(): void {
-  frame = undefined
+  clearTimeout(fastTimer)
+  fastTimer = undefined
   cancelMount?.()
   cancelMount = undefined
   if (!enabled()) return
-  // Already mounted, prefetched photos remain available during a fling.
-  // Do not create new media subtrees until the scroll slows down.
-  if (policy.deferImages.value) return
+  if (policy.inactive.value) return
+  const fast = policy.phase.value === 'fast'
+  const elapsed = performance.now() - lastViewportAt
+  if (fast && elapsed < GALLERY_RENDER_LIMITS.fastBatchMs) {
+    fastTimer = setTimeout(schedule, GALLERY_RENDER_LIMITS.fastBatchMs - elapsed)
+    return
+  }
+  lastViewportAt = performance.now()
   if (geometryDirty) measureGeometry()
   const top = viewportTop()
+  const visible = galleryViewport(layout.value.cells, top, top + viewportHeight, layout.value.maxCellHeight)
+  visibleKeys.value = new Set(visible.map(cell => cell.key))
   // Warm two screens ahead, with a pixel cap for large desktop windows.
-  const buffer = Math.min(GALLERY_RENDER_LIMITS.overscanPx, viewportHeight * GALLERY_RENDER_LIMITS.overscanScreens)
+  const buffer = fast ? 0 : Math.min(GALLERY_RENDER_LIMITS.overscanPx, viewportHeight * GALLERY_RENDER_LIMITS.overscanScreens)
   const near = galleryViewport(layout.value.cells, top - buffer, top + viewportHeight + buffer, layout.value.maxCellHeight)
   const pinned = focused && layout.value.cells.find((cell) => cell.key === focused)
   if (pinned && !near.includes(pinned)) near.push(pinned)
@@ -83,10 +94,10 @@ function updateViewport(): void {
   }
   const next = [...retained.values()].sort((a, b) => a.top - b.top || a.left - b.left)
   if (!same(cells.value, next)) cells.value = next
-  if (newcomers.length > admitted.size) cancelMount = policy.enqueue(updateViewport)
+  if (newcomers.length > admitted.size) cancelMount = policy.enqueue(updateViewport, fast)
 }
 function schedule(): void {
-  if (frame === undefined && enabled()) frame = requestAnimationFrame(updateViewport)
+  if (frame === undefined && enabled()) frame = requestAnimationFrame(() => { frame = undefined; updateViewport() })
 }
 function settle(): void {
   policy.reset(scrollPosition())
@@ -132,6 +143,7 @@ function focusChanged(): void {
   focused = tile && root.value?.contains(tile) ? tile.dataset.galleryPath ?? '' : ''
 }
 function activityChanged(): void {
+  clearTimeout(fastTimer)
   if (frame !== undefined) cancelAnimationFrame(frame)
   frame = undefined
   policy.reset(scrollPosition())
@@ -139,7 +151,7 @@ function activityChanged(): void {
   schedule()
 }
 defineExpose({ reveal })
-watch(policy.phase, () => { if (!policy.deferImages.value) schedule() }, { flush: 'post' })
+watch(policy.phase, schedule, { flush: 'post' })
 watch(() => props.scrollRoot, (next, previous) => {
   if (previous) observer?.unobserve(previous)
   if (next) observer?.observe(next)
@@ -188,6 +200,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', activityChanged)
 })
 onBeforeUnmount(() => {
+  clearTimeout(fastTimer)
   cancelMount?.()
   policy.reset(scrollPosition())
   if (!sharedPolicy) policy.dispose()
@@ -208,7 +221,7 @@ onBeforeUnmount(() => {
       class="gallery-timeline__cell"
       :style="{ top: `${cell.top}px`, left: `${cell.left}px`, width: `${cell.width}px`, height: `${cell.height}px` }"
     >
-      <slot v-if="cell.item" :item="cell.item" :featured="cell.featured" />
+      <slot v-if="cell.item" :item="cell.item" :featured="cell.featured" :priority="visibleKeys.has(cell.key)" />
       <slot v-else-if="cell.group" name="month" :group="cell.group" />
     </div>
   </div>

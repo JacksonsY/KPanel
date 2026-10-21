@@ -1597,7 +1597,7 @@ onBeforeUnmount(() => {
               <span>{{ group.items.length }} 项</span>
             </header>
           </template>
-          <template #default="{ item, featured }">
+          <template #default="{ item, featured, priority }">
             <GalleryTile
               :key="item.entry.path"
               :item="item"
@@ -1606,6 +1606,7 @@ onBeforeUnmount(() => {
               :fallback-url="tileUrls(item).fallback"
               :video-url="tileUrls(item).video"
               :featured="featured"
+              :priority="priority"
               :selecting="selecting"
               :selected="selected.has(item.entry.path)"
               draggable

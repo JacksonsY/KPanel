@@ -58,3 +58,34 @@ it('keeps surfaces independent and prevents queued work while inactive', () => {
   expect(hidden).toHaveBeenCalledOnce()
   page.dispose(); viewer.dispose()
 })
+
+it('admits visible images during a fling ahead of offscreen preloading', () => {
+  vi.useFakeTimers()
+  const policy = createGalleryRenderPolicy()
+  policy.reset(0, 0); policy.interact(100, 20)
+  const order: string[] = []
+  policy.enqueue(() => order.push('offscreen'))
+  policy.enqueue(() => order.push('visible'), true)
+  vi.advanceTimersByTime(80)
+  expect(order).toEqual(['visible'])
+  policy.reset()
+  vi.advanceTimersByTime(32)
+  expect(order).toEqual(['visible', 'offscreen'])
+  policy.dispose()
+})
+
+it('does not starve visible images when scroll speed keeps alternating across thresholds', () => {
+  vi.useFakeTimers()
+  const policy = createGalleryRenderPolicy()
+  policy.reset(0, 0); policy.interact(100, 20)
+  const visible = vi.fn()
+  policy.enqueue(visible, true)
+  let top = 100
+  for (let i = 1; i <= 12; i++) {
+    vi.advanceTimersByTime(20)
+    top += i % 2 ? 4 : 24
+    policy.interact(top, 20 + i * 20)
+  }
+  expect(visible).toHaveBeenCalledOnce()
+  policy.dispose()
+})

@@ -4,7 +4,7 @@ import { galleryMediaPausedKey } from './galleryMedia'
 export type GalleryScrollPhase = 'idle' | 'slow' | 'fast'
 export const GALLERY_RENDER_LIMITS = {
   sampleMs: 16, settleMs: 160, fastSpeed: 1, slowSpeed: 0.45,
-  batchMs: 32, imageBatch: 4, mountBatch: 16,
+  batchMs: 32, imageBatch: 4, mountBatch: 16, fastBatchMs: 80, fastImageBatch: 2,
   retainedCells: 240, overscanScreens: 2, overscanPx: 1600,
 } as const
 
@@ -13,9 +13,11 @@ export const GALLERY_RENDER_LIMITS = {
  */
 export function createGalleryRenderPolicy(active: Readonly<Ref<boolean>> = ref(true)) {
   const phase = ref<GalleryScrollPhase>('idle')
+  const inactive = computed(() => !active.value)
   const deferImages = computed(() => !active.value || phase.value === 'fast')
   const pauseVideos = computed(() => !active.value || phase.value !== 'idle')
   const pending = new Set<() => void>()
+  const visible = new Set<() => void>()
   let batchTimer: ReturnType<typeof setTimeout> | undefined
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let lastTop = 0
@@ -25,23 +27,30 @@ export function createGalleryRenderPolicy(active: Readonly<Ref<boolean>> = ref(t
 
   function drain(): void {
     batchTimer = undefined
-    if (disposed || deferImages.value) return
-    // Spread starts and completion notifications; never resume an entire grid at once.
-    const batch = [...pending].slice(0, GALLERY_RENDER_LIMITS.imageBatch)
+    if (disposed || inactive.value) return
+    // Visible work always progresses; a fling defers only offscreen preloading.
+    const fast = phase.value === 'fast'
+    const batch = [...visible, ...(fast ? [] : pending)]
+      .slice(0, fast ? GALLERY_RENDER_LIMITS.fastImageBatch : GALLERY_RENDER_LIMITS.imageBatch)
     for (const job of batch) {
-      if (disposed || deferImages.value) break
-      if (pending.delete(job)) job()
+      if (disposed || inactive.value) break
+      if (visible.delete(job) || (!deferImages.value && pending.delete(job))) job()
     }
     scheduleBatch()
   }
   function scheduleBatch(): void {
-    if (!disposed && !deferImages.value && pending.size && batchTimer === undefined) {
-      batchTimer = setTimeout(drain, GALLERY_RENDER_LIMITS.batchMs)
+    if (!disposed && !inactive.value && (visible.size || (!deferImages.value && pending.size)) && batchTimer === undefined) {
+      batchTimer = setTimeout(drain, phase.value === 'fast' ? GALLERY_RENDER_LIMITS.fastBatchMs : GALLERY_RENDER_LIMITS.batchMs)
     }
   }
-  function enqueue(job: () => void): () => void {
-    if (!disposed) { pending.add(job); scheduleBatch() }
-    return () => { pending.delete(job) }
+  function enqueue(job: () => void, onScreen = false): () => void {
+    if (!disposed) {
+      pending.delete(job); visible.delete(job)
+      const queue = onScreen ? visible : pending
+      queue.add(job)
+      scheduleBatch()
+    }
+    return () => { pending.delete(job); visible.delete(job) }
   }
   function reset(top = lastTop, now = performance.now()): void {
     if (disposed) return
@@ -70,8 +79,9 @@ export function createGalleryRenderPolicy(active: Readonly<Ref<boolean>> = ref(t
     clearTimeout(settleTimer)
     settleTimer = setTimeout(() => reset(), GALLERY_RENDER_LIMITS.settleMs)
   }
-  const stopAdmission = watch(deferImages, (defer) => {
-    if (defer) { clearTimeout(batchTimer); batchTimer = undefined }
+  const stopAdmission = watch([inactive, phase], () => {
+    // Speed changes must not keep pushing an already scheduled batch into the future.
+    if (inactive.value) { clearTimeout(batchTimer); batchTimer = undefined }
     else scheduleBatch()
   }, { flush: 'sync' })
   const stopActivity = watch(active, () => reset(), { flush: 'sync' })
@@ -82,8 +92,9 @@ export function createGalleryRenderPolicy(active: Readonly<Ref<boolean>> = ref(t
     clearTimeout(batchTimer)
     clearTimeout(settleTimer)
     pending.clear()
+    visible.clear()
   }
-  return { phase: readonly(phase), deferImages, pauseVideos, interact, reset, enqueue, dispose }
+  return { phase: readonly(phase), inactive, deferImages, pauseVideos, interact, reset, enqueue, dispose }
 }
 
 export type GalleryRenderPolicy = ReturnType<typeof createGalleryRenderPolicy>
