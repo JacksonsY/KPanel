@@ -13,6 +13,7 @@ RELEASE_VERSION=$(tr -d '\r\n' <"$PROJECT_DIR/VERSION")
 export KPANEL_RELEASE_VERSION=$RELEASE_VERSION
 export KPANEL_PROJECT_DIR=$PROJECT_DIR
 export KPANEL_REAL_SHA256=$(command -v sha256sum)
+export KPANEL_REAL_AWK=$(command -v awk)
 TEST_DIR=$(mktemp -d /tmp/kpanel-app-conf-test.XXXXXX)
 FAKE_BIN="$TEST_DIR/bin"
 MOCK_STATE="$TEST_DIR/state"
@@ -29,6 +30,15 @@ cleanup() {
 	rm -f /root/kejilion.sh
 }
 trap cleanup EXIT HUP INT TERM
+
+cat >"$FAKE_BIN/awk" <<'EOF'
+#!/bin/sh
+if [ "$#" = 2 ] && [ "$2" = /proc/self/mountinfo ] && [ -n "${KPANEL_MOCK_MOUNTINFO:-}" ]; then
+    exec "$KPANEL_REAL_AWK" "$1" "$KPANEL_MOCK_MOUNTINFO"
+fi
+exec "$KPANEL_REAL_AWK" "$@"
+EOF
+chmod 755 "$FAKE_BIN/awk"
 
 cat >"$FAKE_BIN/docker" <<'EOF'
 #!/bin/sh
@@ -584,7 +594,7 @@ EOF
 	grep -Fx 'OnBootSec=15min' /home/docker/kpanel/kejilion-panel-update.timer >/dev/null
 	grep -Fx 'OnCalendar=*-*-* 04:00:00' /home/docker/kpanel/kejilion-panel-update.timer >/dev/null
 	grep -Fx 'RandomizedDelaySec=30min' /home/docker/kpanel/kejilion-panel-update.timer >/dev/null
-	assert_systemd_unit_copies
+	assert_expected_systemd_units
 	test ! -e /etc/systemd/system/multi-user.target.wants/kejilion-agent.service
 	# Migrate legacy links, including enable links canonicalized through /home/docker.
 	local unit_name=""
@@ -597,6 +607,8 @@ EOF
 		/etc/systemd/system/multi-user.target.wants/kejilion-agent.service
 	ln -s "$(readlink -f /home/docker/kpanel/kejilion-panel-update.timer)" \
 		/etc/systemd/system/timers.target.wants/kejilion-panel-update.timer
+	local original_links=""
+	original_links="$(systemd_link_snapshot)"
 	test -x /home/docker/kpanel/bin/kejilion.sh
 	test "$(stat -c '%a' /home/docker/kpanel/bin/kejilion.sh)" = 700
 	grep -Fx 'permission_granted="true"' /home/docker/kpanel/bin/kejilion.sh >/dev/null
@@ -633,16 +645,21 @@ EOF
 		>"$TEST_DIR/retargeted-latest-output.txt"
 	test "$(grep -Ec '^(CapabilityBoundingSet|AmbientCapabilities)=.* CAP_KILL$' \
 		/home/docker/kpanel/kejilion-agent.service)" -eq 2
-	assert_systemd_unit_copies
-	test "$(readlink /etc/systemd/system/multi-user.target.wants/kejilion-agent.service)" = \
-		/etc/systemd/system/kejilion-agent.service
-	test "$(readlink /etc/systemd/system/timers.target.wants/kejilion-panel-update.timer)" = \
-		/etc/systemd/system/kejilion-panel-update.timer
-	# A missing data tree at early boot must not hide the enabled unit definitions.
-	mv /home/docker/kpanel /home/docker/kpanel-hidden
-	test -f /etc/systemd/system/multi-user.target.wants/kejilion-agent.service
-	test -f /etc/systemd/system/timers.target.wants/kejilion-panel-update.timer
-	mv /home/docker/kpanel-hidden /home/docker/kpanel
+	assert_expected_systemd_units
+	if [ "${KPANEL_TEST_UNIT_LAYOUT:-linked}" = copied ]; then
+		test "$(readlink /etc/systemd/system/multi-user.target.wants/kejilion-agent.service)" = \
+			/etc/systemd/system/kejilion-agent.service
+		test "$(readlink /etc/systemd/system/timers.target.wants/kejilion-panel-update.timer)" = \
+			/etc/systemd/system/kejilion-panel-update.timer
+		# A missing data tree must not hide definitions for separately mounted data.
+		mv /home/docker/kpanel /home/docker/kpanel-hidden
+		test -f /etc/systemd/system/multi-user.target.wants/kejilion-agent.service
+		test -f /etc/systemd/system/timers.target.wants/kejilion-panel-update.timer
+		mv /home/docker/kpanel-hidden /home/docker/kpanel
+	else
+		# Root-mount users retain both unit and enable links byte-for-byte/inode.
+		test "$(systemd_link_snapshot)" = "$original_links"
+	fi
 	grep -Fx '    image: docker.io/kjlion/kejilion-panel@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
 		/home/docker/kpanel/docker-compose.yml >/dev/null
 	test "$(cat "$MOCK_STATE/running-id")" = \
@@ -721,7 +738,7 @@ EOF
 	grep -Fx 'KPANEL_SECURE_COOKIE=true' /home/docker/kpanel/.env >/dev/null
 	test ! -e /home/docker/kpanel/.env.rollback
 	test ! -e "$MOCK_STATE/image-rm"
-	assert_systemd_unit_copies
+	assert_expected_systemd_units
 	grep -Fx 'Description=KPanel previous Agent' /etc/systemd/system/kejilion-agent.service >/dev/null
 
 	rm -f "$MOCK_STATE/rollback-tagged" "$MOCK_STATE/image-tag" \
@@ -775,7 +792,7 @@ EOF
 		/home/docker/kpanel/data/panel/rollback-marker >/dev/null
 	grep -Fx 'original-agent-data' \
 		/home/docker/kpanel/data/agent/rollback-marker >/dev/null
-	assert_systemd_unit_copies
+	assert_expected_systemd_units
 	test ! -e /home/docker/kpanel/update-state/transaction
 	test ! -e "$MOCK_STATE/rollback-tagged"
 	test ! -e "$MOCK_STATE/image-tag"
@@ -841,7 +858,7 @@ EOF
 	assert_legacy_systemd_units
 	# Upgrading again migrates all three definitions to system-owned copies.
 	docker_app_update >/dev/null
-	assert_systemd_unit_copies
+	assert_expected_systemd_units
 
 	docker_app_uninstall
 	[ ! -e /home/docker/kpanel ]
@@ -873,11 +890,18 @@ run_legacy_image_install() (
 	KPANEL_MOCK_LIFECYCLE_SOURCE="$legacy_lifecycle" docker_app_install >/dev/null
 	assert_legacy_systemd_units
 	docker_app_update >/dev/null
-	assert_systemd_unit_copies
+	assert_expected_systemd_units
 	docker_app_uninstall >/dev/null
 )
 
-assert_systemd_unit_copies() {
+assert_expected_systemd_units() {
+	if [ "${KPANEL_TEST_UNIT_LAYOUT:-linked}" = linked ]; then
+		assert_legacy_systemd_units
+		if [ -n "${original_links:-}" ]; then
+			test "$(systemd_link_snapshot)" = "$original_links"
+		fi
+		return
+	fi
 	local unit_name=""
 	for unit_name in kejilion-agent.service kejilion-panel-update.service kejilion-panel-update.timer; do
 		local target="/etc/systemd/system/$unit_name"
@@ -893,6 +917,61 @@ assert_systemd_unit_copies() {
 	done
 }
 
+run_mount_detection() (
+	docker_app_plus() { :; }
+	. "$PROJECT_DIR/packaging/kejilion-app/kpanel.conf"
+	# Exercise the real proc table before using deterministic mount fixtures.
+	kpanel_path_on_root_mount /
+	local KPANEL_MOCK_MOUNTINFO="$TEST_DIR/detection-mountinfo"
+	export KPANEL_MOCK_MOUNTINFO
+	printf '%s\n' \
+		'1 0 8:1 / / rw - ext4 /dev/root rw' \
+		'2 1 8:2 / /data rw - ext4 /dev/data rw' \
+		'3 1 8:1 /storage /bound rw - ext4 /dev/root rw' \
+		'4 1 8:1 /subvol /subvolume rw - btrfs /dev/root rw' \
+		'5 1 8:2 / /data\040with\040space\134leaf%vol rw - ext4 /dev/data rw' \
+		'6 1 8:2 / /tabs\011data rw - ext4 /dev/data rw' \
+		>"$KPANEL_MOCK_MOUNTINFO"
+	kpanel_path_on_root_mount /home/docker/kpanel
+	kpanel_path_on_root_mount /database/kpanel
+	local path="" status=0
+	for path in /data/kpanel /bound/kpanel /subvolume/kpanel \
+		'/data with space\leaf%vol/kpanel' $'/tabs\tdata/kpanel'; do
+		status=0
+		kpanel_path_on_root_mount "$path" || status=$?
+		test "$status" = 1
+	done
+	: >"$KPANEL_MOCK_MOUNTINFO"
+	status=0
+	kpanel_path_on_root_mount /home/docker/kpanel || status=$?
+	test "$status" = 2
+	# Unknown detection must not migrate an existing root-mount installation.
+	mkdir -p /home/docker/kpanel
+	printf '[Unit]\nDescription=fixture\n' >/home/docker/kpanel/kejilion-agent.service
+	ln -s /home/docker/kpanel/kejilion-agent.service /etc/systemd/system/kejilion-agent.service
+	local inode="$(stat -c '%i' /etc/systemd/system/kejilion-agent.service)"
+	kpanel_link_managed_unit kejilion-agent.service /home/docker/kpanel/kejilion-agent.service
+	test "$(stat -c '%i' /etc/systemd/system/kejilion-agent.service)" = "$inode"
+	assert_root_link() {
+		test "$(readlink /etc/systemd/system/kejilion-agent.service)" = /home/docker/kpanel/kejilion-agent.service
+	}
+	assert_root_link
+	rm /etc/systemd/system/kejilion-agent.service
+	rm -rf /home/docker/kpanel
+	printf '%s\n' 'mount_detection=pass'
+)
+
+systemd_link_snapshot() {
+	local path=""
+	for path in /etc/systemd/system/kejilion-agent.service \
+		/etc/systemd/system/kejilion-panel-update.service \
+		/etc/systemd/system/kejilion-panel-update.timer \
+		/etc/systemd/system/multi-user.target.wants/kejilion-agent.service \
+		/etc/systemd/system/timers.target.wants/kejilion-panel-update.timer; do
+		printf '%s:%s:%s\n' "$path" "$(stat -c '%i' "$path")" "$(readlink "$path")"
+	done
+}
+
 run_symlinked_docker_root_lifecycle() {
 	local physical_docker_root="$TEST_DIR/physical docker root"
 
@@ -903,6 +982,18 @@ run_symlinked_docker_root_lifecycle() {
 	mkdir -p "$physical_docker_root"
 	ln -s "$physical_docker_root" /home/docker
 	test "$(readlink -f /home/docker)" = "$physical_docker_root"
+	# A symlink whose destination remains on / must not trigger migration.
+	run_lifecycle
+	# Model a separately mounted bind/subvolume on the same device as /.
+	local KPANEL_MOCK_MOUNTINFO="$TEST_DIR/separate-mountinfo"
+	local KPANEL_TEST_UNIT_LAYOUT=copied
+	local encoded="${physical_docker_root// /\\040}"
+	printf '1 0 8:1 / / rw - ext4 /dev/root rw\n2 1 8:1 / %s rw - ext4 /dev/root rw\n' \
+		"$encoded" >"$KPANEL_MOCK_MOUNTINFO"
+	export KPANEL_MOCK_MOUNTINFO KPANEL_TEST_UNIT_LAYOUT
+	MOCK_STATE="$TEST_DIR/separate-mount-state"
+	mkdir -p "$MOCK_STATE"
+	export KPANEL_MOCK_STATE="$MOCK_STATE"
 	run_lifecycle
 }
 
@@ -1117,6 +1208,7 @@ export KPANEL_MOCK_SYSTEMCTL_LOG="$TEST_DIR/systemctl.log"
 mkdir -p /home/docker/kpanel
 bash "$PROJECT_DIR/packaging/tests/app-conf-lock-compat.sh" "$PROJECT_DIR"
 run_license_inheritance
+run_mount_detection
 run_lifecycle
 run_symlinked_docker_root_lifecycle
 run_legacy_image_install
