@@ -1,6 +1,9 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['授权已过期，请重新连接 OneDrive。', 'Authorization expired. Connect OneDrive again.'],
+  ['连接未完成，请重新连接 OneDrive。', 'Connection incomplete. Connect OneDrive again.'],
+  ['OneDrive 已连接。', 'OneDrive connected.'],
   ["请先更新 kejilion.sh 以支持 ~/apps-local 本地应用", "Update kejilion.sh first to support local apps in ~/apps-local"],
   ["正在保存…","Saving…"],
   ["保存设置","Save settings"],
@@ -139,7 +142,7 @@ export default [
   ["面板需保持运行。错过超过 5 分钟、无效月日或夏令时跳过的时间不补跑；恢复面板数据后自动备份暂停。密码与计划加密保存在本机，不随备份迁移。","The panel must stay running. Runs missed by over 5 minutes, missing calendar dates and daylight-saving gaps are skipped. Restoring panel data pauses scheduling. Passwords and schedules are encrypted locally and are not included in backups."],
   ["上次计划已错过，请检查面板运行状态。","The previous run was missed. Check whether the panel was running."],
   ["上次自动备份未完成，请查看备份记录。","The last automatic backup did not complete. Check backup history."],
-  ["连接 S3 兼容存储或 WebDAV，备份文件由面板直接传输。","Connect S3-compatible storage or WebDAV. The panel transfers backups directly."],
+  ['连接 S3、WebDAV 或 OneDrive，备份文件由面板直接传输。', 'Connect S3, WebDAV or OneDrive. The panel transfers backup files directly.'],
   ["还没有远程存储","No remote storage yet"],
   ["测试连接","Test connection"],
   ["添加远程存储","Add remote storage"],

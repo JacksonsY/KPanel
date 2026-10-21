@@ -1,6 +1,23 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['连接 S3、WebDAV 或 OneDrive，备份文件由面板直接传输。', '連接 S3、WebDAV 或 OneDrive，備份檔案由面板直接傳輸。'],
+  ['使用 Microsoft 国际版个人或工作/学校账户，文件保存在应用专属目录。', '使用 Microsoft 國際版個人或工作/學校帳戶，檔案儲存在應用程式專屬目錄。'],
+  ['账户类型', '帳戶類型'],
+  ['个人及工作/学校账户', '個人及工作/學校帳戶'],
+  ['个人账户', '個人帳戶'],
+  ['工作/学校账户', '工作/學校帳戶'],
+  ['如何配置 OneDrive', '如何設定 OneDrive'],
+  ['在 Microsoft Entra 注册应用，选择支持的账户类型，启用公共客户端流，并添加 Microsoft Graph 委托权限 Files.ReadWrite.AppFolder。无需客户端密钥或回调地址。', '在 Microsoft Entra 註冊應用程式，選擇支援的帳戶類型，啟用公用用戶端流程，並新增 Microsoft Graph 委派權限 Files.ReadWrite.AppFolder。無需用戶端密鑰或回呼位址。'],
+  ['Microsoft 官方文档', 'Microsoft 官方文件'],
+  ['重新授权 OneDrive', '重新授權 OneDrive'],
+  ['连接 OneDrive', '連接 OneDrive'],
+  ['在 Microsoft 页面输入以下代码并授权，完成后会自动保存连接。', '在 Microsoft 頁面輸入以下代碼並授權，完成後會自動儲存連接。'],
+  ['打开 Microsoft 授权页面', '開啟 Microsoft 授權頁面'],
+  ['取消授权', '取消授權'],
+  ['OneDrive 已连接。', 'OneDrive 已連接。'],
+  ['授权已过期，请重新连接 OneDrive。', '授權已過期，請重新連接 OneDrive。'],
+  ['连接未完成，请重新连接 OneDrive。', '連接未完成，請重新連接 OneDrive。'],
   ['外来备份的宿主机配置', '外來備份的宿主機設定'],
   ['无法验证为本机导出的备份。确认恢复即同意下面的目录覆盖、容器权限和网络配置；文件属主与特殊权限也会原样恢复。', '無法驗證為本機匯出的備份。確認還原即同意以下的目錄覆寫、容器權限和網路設定；檔案擁有者與特殊權限也會原樣還原。'],
   ["无法取得完整备份配置，请更新 Agent 并重新导入备份", "無法取得完整備份設定，請更新 Agent 並重新匯入備份"],

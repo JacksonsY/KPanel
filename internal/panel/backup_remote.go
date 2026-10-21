@@ -29,7 +29,11 @@ func (s *Server) newBackupRemoteClient(storage backupremote.Storage) (backupRemo
 	if s.backupRemoteClient != nil {
 		return s.backupRemoteClient(storage)
 	}
-	return backupremote.NewClient(storage)
+	client, err := backupremote.NewClient(storage)
+	if err == nil && storage.Kind == "onedrive" {
+		client.SetOneDriveTokenSaver(func(previous, next string) error { return s.backupRemote.RotateOneDriveToken(storage, previous, next) })
+	}
+	return client, err
 }
 
 func decodeBackupSettings(r *http.Request, out any) error {
@@ -63,7 +67,7 @@ func (s *Server) serveRemoteBackups(w http.ResponseWriter, r *http.Request, p []
 	if len(p) < 2 {
 		return false
 	}
-	matched := p[1] == "settings" || p[1] == "storage" || p[1] == "schedule" || p[1] == "remote-import" || len(p) == 3 && p[2] == "upload"
+	matched := p[1] == "settings" || p[1] == "storage" || p[1] == "onedrive-auth" || p[1] == "schedule" || p[1] == "remote-import" || len(p) == 3 && p[2] == "upload"
 	if !matched {
 		return false
 	}
@@ -73,6 +77,9 @@ func (s *Server) serveRemoteBackups(w http.ResponseWriter, r *http.Request, p []
 	}
 	var err error
 	switch {
+	case p[1] == "onedrive-auth":
+		s.serveOneDriveAuth(w, r, p)
+		return true
 	case len(p) == 2 && p[1] == "settings" && r.Method == "GET":
 		s.writeJSON(w, 200, s.backupSettingsSnapshot())
 		return true

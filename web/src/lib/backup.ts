@@ -42,6 +42,9 @@ export interface BackupInventory {
   host?: { revision: string; modules: Array<{ id: BackupModule; bytes: number; containers: number; requires: BackupModule[]; issue?: string }> }
 }
 export const backups = {
+	startOneDrive: (revision: string, storage: BackupStorage) => apiRequest<OneDriveAuthorization>('/backups/onedrive-auth', { method: 'POST', body: { revision, storage } }),
+	pollOneDrive: (id: string) => apiRequest<{ pending: boolean; settings?: BackupSettings }>(`/backups/onedrive-auth/${id}`, { method: 'POST', body: {} }),
+	cancelOneDrive: (id: string) => apiRequest<{ ok: boolean }>(`/backups/onedrive-auth/${id}`, { method: 'DELETE', body: {} }),
   settings: () => apiRequest<BackupSettings>('/backups/settings'),
   saveStorage: (revision: string, storage: BackupStorage) => apiRequest<BackupSettings>('/backups/storage', { method: 'PUT', body: { revision, storage } }),
   deleteStorage: (revision: string, id: string) => apiRequest<BackupSettings>(`/backups/storage/${id}`, { method: 'DELETE', body: { revision } }),
@@ -69,9 +72,11 @@ export const backups = {
 }
 
 export interface BackupStorage {
-  id: string; name: string; kind: 's3' | 'webdav'; endpoint: string; prefix: string
+  id: string; name: string; kind: 's3' | 'webdav' | 'onedrive'; endpoint: string; prefix: string
+  clientId?: string; tenantId?: string; driveId?: string
   bucket?: string; region?: string; pathStyle?: boolean; accessKey?: string; username?: string; secret?: string; hasSecret?: boolean
 }
+export interface OneDriveAuthorization { id: string; userCode: string; verificationUri: string; expiresIn: number; interval: number }
 export interface BackupSchedule {
   enabled: boolean; modules: BackupModule[]; storageId: string; frequency: 'daily' | 'weekly' | 'monthly'
   hour: number; minute: number; weekday: number; day: number; timezone: string; keep: number

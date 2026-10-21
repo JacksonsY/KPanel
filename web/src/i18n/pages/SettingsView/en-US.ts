@@ -1,6 +1,23 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['连接 S3、WebDAV 或 OneDrive，备份文件由面板直接传输。', 'Connect S3, WebDAV or OneDrive. The panel transfers backup files directly.'],
+  ['使用 Microsoft 国际版个人或工作/学校账户，文件保存在应用专属目录。', 'Use a personal or work/school account in the Microsoft global cloud. Files are stored in the app folder.'],
+  ['账户类型', 'Account type'],
+  ['个人及工作/学校账户', 'Personal and work/school accounts'],
+  ['个人账户', 'Personal account'],
+  ['工作/学校账户', 'Work/school account'],
+  ['如何配置 OneDrive', 'Set up OneDrive'],
+  ['在 Microsoft Entra 注册应用，选择支持的账户类型，启用公共客户端流，并添加 Microsoft Graph 委托权限 Files.ReadWrite.AppFolder。无需客户端密钥或回调地址。', 'Register an app in Microsoft Entra, choose the supported account types, enable public client flows and add the Microsoft Graph delegated permission Files.ReadWrite.AppFolder. No client secret or redirect URI is needed.'],
+  ['Microsoft 官方文档', 'Microsoft documentation'],
+  ['重新授权 OneDrive', 'Reconnect OneDrive'],
+  ['连接 OneDrive', 'Connect OneDrive'],
+  ['在 Microsoft 页面输入以下代码并授权，完成后会自动保存连接。', 'Enter this code on the Microsoft page and grant access. The connection is saved automatically.'],
+  ['打开 Microsoft 授权页面', 'Open Microsoft authorization'],
+  ['取消授权', 'Cancel authorization'],
+  ['OneDrive 已连接。', 'OneDrive connected.'],
+  ['授权已过期，请重新连接 OneDrive。', 'Authorization expired. Connect OneDrive again.'],
+  ['连接未完成，请重新连接 OneDrive。', 'Connection incomplete. Connect OneDrive again.'],
   ['外来备份的宿主机配置', 'Host configuration from an external backup'],
   ['无法验证为本机导出的备份。确认恢复即同意下面的目录覆盖、容器权限和网络配置；文件属主与特殊权限也会原样恢复。', 'This backup cannot be verified as exported by this host. Confirming restore accepts the directory replacements, container permissions and network configuration below. File owners and special permissions are also restored.'],
   ["无法取得完整备份配置，请更新 Agent 并重新导入备份", "Complete backup configuration is unavailable. Update the Agent and import the backup again."],
