@@ -28,7 +28,7 @@ vi.mock('@/components/terminal/HostTerminal.vue', () => ({ default: defineCompon
 
 vi.mock('@/components/terminal/BatchTerminalPanel.vue', () => ({ default: defineComponent({
   name: 'BatchTerminalPanelStub',
-  props: { hosts: { type: Array, default: () => [] }, sessionCapacity: Number },
+  props: { hosts: { type: Array, default: () => [] }, hostInventory: { type:Array, default:()=>[] }, sessionCapacity: Number },
   emits: ['runningChange'],
   setup(_props, { expose }) {
     expose({ applyQuickCommand: mocks.batchApplies })
@@ -76,6 +76,7 @@ describe('terminal batch mode', () => {
     await wrapper.get('.terminal-search input').setValue('本机')
     expect(wrapper.findAll('.terminal-host--batch')).toHaveLength(1)
     expect(wrapper.get('.batch-panel-stub').text()).toBe('生产环境')
+    expect(wrapper.findComponent({name:'BatchTerminalPanelStub'}).props('hostInventory')).toHaveLength(3)
 
     await wrapper.get('.terminal-mode-button').trigger('click')
     expect(wrapper.findAll('.terminal-tab')).toHaveLength(1)

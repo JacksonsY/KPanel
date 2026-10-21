@@ -1776,4 +1776,5 @@ export default [
   ["台主机","hosts"],
   ["已结束","Finished"],
   ["操作记录已保留，原终端输出已释放。","Operation records remain. Original terminal output has been released."],
+  ["重试释放会话","Retry session cleanup"],
 ] as const satisfies PhraseCatalog

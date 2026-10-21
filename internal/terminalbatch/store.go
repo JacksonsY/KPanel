@@ -84,8 +84,9 @@ type Driver interface {
 }
 
 type Options struct {
-	Timeout    time.Duration
-	RetryDelay time.Duration
+	Timeout        time.Duration
+	RetryDelay     time.Duration
+	CleanupTimeout time.Duration
 }
 
 type Manager struct {
@@ -119,6 +120,9 @@ func Open(root string, driver Driver, options Options) (*Manager, error) {
 	}
 	if options.Timeout <= 0 {
 		options.Timeout = 4 * time.Hour
+	}
+	if options.CleanupTimeout <= 0 {
+		options.CleanupTimeout = 30 * time.Second
 	}
 	if options.RetryDelay <= 0 {
 		options.RetryDelay = time.Second
@@ -335,15 +339,13 @@ func (m *Manager) Stop(user, id string) error {
 	for _, j := range m.jobs {
 		if j.ID == id && j.UserID == user {
 			if cancel := m.active[id]; cancel != nil {
-				cancel()
-			} else if len(m.cleanup[id]) > 0 && !m.closed {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				m.active[id] = cancel
-				for n := range m.jobs {
-					if m.jobs[n].ID == id {
-						m.jobs[n].State = "running"
-					}
+				// Repeated cleanup retries are idempotent and never cancel each other.
+				if j.State == "running" {
+					cancel()
 				}
+			} else if len(m.cleanup[id]) > 0 && !m.closed {
+				ctx, cancel := context.WithTimeout(context.Background(), m.options.CleanupTimeout)
+				m.active[id] = cancel
 				m.wg.Add(1)
 				go m.retryCleanup(ctx, id)
 			}

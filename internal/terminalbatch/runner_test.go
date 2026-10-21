@@ -390,7 +390,7 @@ func TestFailedCloseCanBeRetriedWithoutResendingCommands(t *testing.T) {
 	if err := m.Stop("user", j.ID); err != nil {
 		t.Fatal(err)
 	}
-	j = finished(t, m)
+	j = settledBatch(t, m, j.ID)
 	if j.Results[0].State != "stopped" {
 		t.Fatal(j.Results[0])
 	}

@@ -103,6 +103,19 @@ func wait(ctx context.Context, d time.Duration) bool {
 	}
 }
 
+func waitCleanup(execution, cleanup context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-execution.Done():
+		return false
+	case <-cleanup.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
 func (m *Manager) stopped(id string, index int, ctx context.Context) {
 	state, code := "stopped", ""
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -153,24 +166,19 @@ func (m *Manager) execute(ctx context.Context, id, user, command string, index i
 	// closure stays visible and registered, including when a batch is stopped.
 	defer func() {
 		m.update(id, index, "closing", "", "", false)
-		attempts := 0
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), m.options.CleanupTimeout)
+		defer cancelCleanup()
 		for {
-			closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			closeCtx, cancel := context.WithTimeout(cleanupCtx, 10*time.Second)
 			err := m.driver.Close(closeCtx, session)
 			cancel()
 			if err == nil || errors.Is(err, terminal.ErrNotFound) || errors.Is(err, terminal.ErrClosed) {
 				break
 			}
-			attempts++
 			m.update(id, index, "closing", "terminal_close_failed", "", false)
-			// During shutdown/stop make bounded cleanup attempts. The Panel retains the
-			// failed-close identity and quota, so a later batch still cannot over-admit.
-			if ctx.Err() != nil && attempts >= 2 {
-				m.rememberCleanup(id, index, session)
-				state, code = "failed", "terminal_close_failed"
-				break
-			}
-			if !wait(ctx, m.options.RetryDelay) && attempts >= 2 {
+			// Cleanup has its own deadline; stop wakes retries without discarding
+			// the identity or quota of a session whose close is unconfirmed.
+			if !waitCleanup(ctx, cleanupCtx, m.options.RetryDelay) {
 				m.rememberCleanup(id, index, session)
 				state, code = "failed", "terminal_close_failed"
 				break
@@ -296,7 +304,6 @@ func (m *Manager) retryCleanup(ctx context.Context, id string) {
 	}
 	m.mu.Unlock()
 	for index, session := range pending {
-		m.update(id, index, "closing", "terminal_close_failed", "", false)
 		for {
 			op, cancel := context.WithTimeout(ctx, 10*time.Second)
 			err := m.driver.Close(op, session)

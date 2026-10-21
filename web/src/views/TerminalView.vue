@@ -809,7 +809,7 @@ onBeforeUnmount(() => {
             @toggle-fullscreen="toggleWorkspaceFullscreen"
           />
         </div>
-        <BatchTerminalPanel :ref="setBatchPanelRef" class="batch-terminal-stage" :hosts="selectedBatchHosts" :session-capacity="batchSessionCapacity" @running-change="batchRunning = $event" @restore-selection="restoreBatchSelection" />
+        <BatchTerminalPanel :ref="setBatchPanelRef" class="batch-terminal-stage" :hosts="selectedBatchHosts" :host-inventory="orderedHosts" :session-capacity="batchSessionCapacity" @running-change="batchRunning = $event" @restore-selection="restoreBatchSelection" />
         <TerminalQuickCommands
           mode="batch"
           :open="quickCommandsOpen && terminalMode === 'batch'"
