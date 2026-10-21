@@ -145,11 +145,11 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
 
 <template>
   <section class="batch-terminal-panel" aria-label="批量执行">
-    <div class="batch-command">
+    <div class="batch-command" :class="{ 'is-executing': executing }">
       <header>
         <div><TerminalSquare :size="19" aria-hidden="true" /><span><strong>{{ phrase('自定义命令') }}</strong><small>{{ phrase(`已选择 ${hosts.length} 台主机`) }}</small></span></div>
       </header>
-      <label>
+      <label v-show="!executing">
         <span class="sr-only">{{ phrase('输入自定义命令') }}</span>
         <textarea v-model="command" :ref="setCommandInput" :disabled="executing" rows="4" spellcheck="false" :placeholder="phrase('例如：uname -a')" />
       </label>
@@ -216,8 +216,12 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
 </template>
 
 <style scoped>
-.batch-terminal-panel { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto minmax(0, 1fr); color: var(--terminal-shell-text, #d8dddc); background: var(--terminal-shell-background, #0b1214); }
-.batch-command { padding: 18px; border-bottom: 1px solid var(--terminal-shell-border, #29383a); background: var(--terminal-shell-panel, #111a1d); }
+.batch-terminal-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: var(--terminal-shell-scrollbar, #35474a) var(--terminal-shell-panel, #111a1d); scrollbar-width: thin; color: var(--terminal-shell-text, #d8dddc); background: var(--terminal-shell-background, #0b1214); }
+.batch-command { flex: 0 0 auto; padding: 18px; border-bottom: 1px solid var(--terminal-shell-border, #29383a); background: var(--terminal-shell-panel, #111a1d); }
+.batch-command.is-executing { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; }
+.batch-command.is-executing > header { margin-bottom: 0; }
+.batch-command.is-executing > footer { margin-top: 0; }
+.batch-command.is-executing > .batch-result__error { grid-column: 1 / -1; }
 .batch-command > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .batch-command > header > div { display: flex; align-items: center; gap: 9px; }
 .batch-command > header svg { color: var(--brand); }
@@ -232,7 +236,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
 .batch-command footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 .batch-command footer p { margin: 0; color: var(--terminal-shell-muted, #8a9695); font-size: 13px; line-height: 1.45; }
 .batch-command footer p.batch-command__error { flex: 1; color: var(--danger); }
-.batch-status { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+.batch-status { display: flex; flex: 1 0 auto; flex-direction: column; }
 .batch-status > header { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--terminal-shell-border, #29383a); }
 .batch-status > header > div:first-child { display: grid; gap: 2px; }
 .batch-status > header strong { font-size: 14px; }
@@ -244,11 +248,11 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
 .batch-status__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .batch-status__toggle { padding: 5px 12px; border: 1px solid var(--terminal-shell-border, #29383a); border-radius: var(--radius-sm); color: var(--terminal-shell-text, #d8dddc); background: transparent; font: inherit; font-size: 13px; cursor: pointer; transition: border-color .16s ease, color .16s ease; }
 .batch-status__toggle:hover, .batch-status__toggle:focus-visible { border-color: var(--brand); color: var(--brand); outline: none; }
-.batch-status__empty { display: grid; place-content: center; justify-items: center; gap: 7px; padding: 24px; text-align: center; }
+.batch-status__empty { display: grid; flex: 1; place-content: center; justify-items: center; gap: 7px; padding: 24px; text-align: center; }
 .batch-status__empty > span { display: grid; width: 52px; height: 52px; place-items: center; color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, transparent); border-radius: var(--radius); }
 .batch-status__empty strong { font-size: 16px; }
 .batch-status__empty p { margin: 0; color: var(--terminal-shell-muted, #8a9695); font-size: 14px; }
-.batch-result-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px 18px; scrollbar-color: var(--terminal-shell-scrollbar, #35474a) var(--terminal-shell-panel, #111a1d); scrollbar-width: thin; }
+.batch-result-list { padding: 12px 16px 18px; scrollbar-color: var(--terminal-shell-scrollbar, #35474a) var(--terminal-shell-panel, #111a1d); scrollbar-width: thin; }
 .batch-result { min-width: 0; margin-bottom: 10px; overflow: hidden; border: 1px solid var(--terminal-shell-border, #29383a); border-radius: var(--radius-sm); background: var(--terminal-shell-panel, #111a1d); }
 .batch-result:last-child { margin-bottom: 0; }
 .batch-result > header { display: flex; min-height: 58px; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--terminal-shell-border, #29383a); }
