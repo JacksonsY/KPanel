@@ -14,6 +14,8 @@ export interface TerminalBatch {
   createdAt: string
   updatedAt: string
   results: BatchResult[]
+  cleanupPending?: boolean
+  cleanupRunning?: boolean
 }
 export interface TerminalBatchList {
   items: TerminalBatch[]

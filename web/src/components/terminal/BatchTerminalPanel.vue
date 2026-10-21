@@ -27,14 +27,15 @@ const syncError = ref('')
 const selectedJob = computed(() => jobs.value.find(job => job.id === selectedID.value))
 const activeJob = computed(() => jobs.value.find(job => job.state === 'running'))
 const executing = computed(() => Boolean(activeJob.value))
-const needsCleanup = computed(() => selectedJob.value?.results.some(result => result.error === 'terminal_close_failed') || false)
+const cleanupJob = computed(() => jobs.value.find(job => job.cleanupPending || job.cleanupRunning))
+const cleaningUp = computed(() => jobs.value.some(job => job.cleanupRunning))
 const results = computed(() => (submitting.value ? [] : selectedJob.value?.results || []).map(result => ({ ...result, output: result.output || '', error: errorLabel(result.error || '') })))
 const expandedHosts = ref<Set<string>>(new Set())
 const terminalHistory = useTerminalHistory()
 const commandInput = ref<HTMLTextAreaElement>()
 const commandBytes = computed(() => new TextEncoder().encode(command.value).byteLength)
 const commandError = computed(() => commandBytes.value > 16 * 1024 ? phrase('命令不能超过 16 KiB。') : '')
-const canExecute = computed(() => !loading.value && available.value && !executing.value && !needsCleanup.value && !submitting.value && Boolean(command.value.trim()) && !commandError.value && props.hosts.length > 0)
+const canExecute = computed(() => !loading.value && available.value && !executing.value && !cleaningUp.value && !stopping.value && !submitting.value && !syncError.value && Boolean(command.value.trim()) && !commandError.value && props.hosts.length > 0)
 const completedCount = computed(() => results.value.filter(item => ['succeeded', 'failed', 'timed_out', 'stopped', 'interrupted'].includes(item.state)).length)
 const succeededCount = computed(() => results.value.filter(item => item.state === 'succeeded').length)
 const failedCount = computed(() => results.value.filter(item => ['failed', 'timed_out', 'interrupted'].includes(item.state)).length)
@@ -57,7 +58,7 @@ function badgeStatus(state: BatchState): string { if (state === 'succeeded' || s
 function errorLabel(code: string): string {
   const messages: Record<string, string> = {
     waiting_for_capacity: '等待终端名额，释放后自动继续。',
-    terminal_close_failed: '会话释放未确认，名额仍保留，请检查目标主机连接。',
+    terminal_close_failed: '会话释放结果未确认，请检查目标主机上的实际状态。',
     terminal_open_failed: '连接失败，请检查目标主机后单独重试。',
     terminal_input_uncertain: '命令发送结果不确定，请检查目标主机，避免重复执行。',
     terminal_output_failed: '无法继续读取输出，请检查目标主机上的实际执行结果。',
@@ -77,17 +78,20 @@ let timer: ReturnType<typeof setTimeout> | undefined
 const controller = new AbortController()
 let restoredID = ''
 let revision = 0
+let refreshSequence = 0
 let pending: { id: string; command: string; hostIds: string[] } | undefined
 async function refresh(): Promise<void> {
+  const sequence = ++refreshSequence
+  const before = revision
+  const current = () => !disposed && revision === before && sequence === refreshSequence
   try {
-    const before = revision
     const response = await api.terminals.batches(controller.signal)
-    if (disposed || revision !== before) return
+    if (!current()) return
     const following = [...outputPreElements].filter(([, pre]) => pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8).map(([id]) => id)
     const selection = response.items.find(job => job.state === 'running')?.id || response.items.find(job => job.id === selectedID.value)?.id || response.items[0]?.id
     if (selection) {
       const detail = await api.terminals.getBatch(selection, controller.signal)
-      if (disposed || revision !== before) return
+      if (!current()) return
       response.items = response.items.map(job => job.id === detail.id ? detail : job)
     }
     syncError.value = ''
@@ -102,12 +106,12 @@ async function refresh(): Promise<void> {
     await nextTick()
     following.forEach(scrollOutputToBottom)
   } catch {
-    if (!disposed) syncError.value = phrase('无法同步批量进度，后台任务可能仍在执行，请刷新重连。')
-  } finally { if (!disposed) loading.value = false }
+    if (current()) syncError.value = phrase('无法同步批量进度，后台任务可能仍在执行，请刷新重连。')
+  } finally { if (current()) loading.value = false }
 }
 async function poll(): Promise<void> {
   await refresh()
-  if (!disposed) timer = setTimeout(() => void poll(), executing.value ? 1000 : 4000)
+  if (!disposed) timer = setTimeout(() => void poll(), executing.value || cleaningUp.value ? 1000 : 4000)
 }
 async function execute(): Promise<void> {
   if (!canExecute.value) return
@@ -133,10 +137,11 @@ async function execute(): Promise<void> {
   } finally { if (!disposed) submitting.value = false }
 }
 async function stopExecution(): Promise<void> {
-  const id = activeJob.value?.id || selectedJob.value?.id
-  if (!id || stopping.value) return
+  const id = activeJob.value?.id || cleanupJob.value?.id
+  if (!id || stopping.value || cleaningUp.value || submitting.value) return
   stopping.value = true; error.value = ''
-  try { await api.terminals.stopBatch(id); await refresh() }
+  revision++
+  try { await api.terminals.stopBatch(id); if (!disposed) { revision++; await refresh() } }
   catch { if (!disposed) error.value = phrase('停止请求未确认，任务可能仍在执行，请重试。') }
   finally { if (!disposed) stopping.value = false }
 }
@@ -157,11 +162,11 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
       </label>
       <footer>
         <p v-if="commandError" class="batch-command__error" role="alert">{{ commandError }}</p>
-        <button v-if="executing || needsCleanup" class="button button--danger" type="button" :disabled="stopping" @click="stopExecution">
+        <button v-if="executing || cleanupJob" class="button button--danger" type="button" :disabled="stopping || cleaningUp || submitting" @click="stopExecution">
           <XCircle :size="18" aria-hidden="true" />
-          {{ phrase(executing ? '终止执行' : '重试释放会话') }}
+          {{ phrase(executing ? '终止执行' : stopping || cleaningUp ? '正在释放会话' : '重试释放会话') }}
         </button>
-        <button v-else class="button button--primary" type="button" :disabled="!canExecute" @click="execute">
+        <button v-if="!executing" class="button button--primary" type="button" :disabled="!canExecute" @click="execute">
           <Play :size="18" aria-hidden="true" />
           {{ phrase('执行命令') }}
         </button>
@@ -169,6 +174,7 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); clearTimeout(timer)
       <p v-if="error" class="batch-result__error" role="alert">{{ error }}</p>
       <p v-if="syncError" class="batch-result__error" role="alert">{{ syncError }}</p>
       <p v-if="storageWarning" class="batch-result__error" role="alert">{{ storageWarning }}</p>
+      <p v-if="cleanupJob && !executing" class="batch-result__error" role="status">{{ phrase('会话释放未确认，名额仍保留，请检查目标主机连接。') }} <span data-i18n-ignore>{{ cleanupJob.results.filter(result => result.error === 'terminal_close_failed').map(result => result.host.name).join('、') }}</span></p>
     </div>
 
     <div class="batch-status" :aria-busy="submitting">

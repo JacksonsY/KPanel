@@ -57,6 +57,9 @@ type Job struct {
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	Results   []Result  `json:"results"`
+	// Live scheduler state, populated only on API snapshots, never persisted.
+	CleanupPending bool `json:"cleanupPending,omitempty"`
+	CleanupRunning bool `json:"cleanupRunning,omitempty"`
 }
 
 type persistedJob struct {
@@ -163,6 +166,7 @@ func Open(root string, driver Driver, options Options) (*Manager, error) {
 	seen := map[string]bool{}
 	for _, saved := range disk.Jobs {
 		j := saved.Job
+		j.CleanupPending, j.CleanupRunning = false, false
 		j.UserID = saved.Owner
 		if !validID(j.ID) || seen[j.ID] || j.UserID == "" || len(j.UserID) > 256 || len(j.Command) > MaxCommandBytes || len(j.Results) == 0 || len(j.Results) > MaxHosts || !validJobState(j.State) || j.CreatedAt.IsZero() || j.UpdatedAt.IsZero() {
 			m.available = false
@@ -235,7 +239,7 @@ func (m *Manager) Create(user, id, command string, hosts []Host) (Job, error) {
 			if j.UserID != user {
 				return Job{}, ErrInvalid
 			}
-			return clone(j), nil
+			return m.snapshotLocked(j), nil
 		}
 	}
 	if !validID(id) || user == "" || strings.TrimSpace(command) == "" || len(command) > MaxCommandBytes || !utf8.ValidString(command) || strings.ContainsRune(command, 0) || len(hosts) == 0 || len(hosts) > MaxHosts {
@@ -310,13 +314,20 @@ func commandSummary(command string) string {
 
 func clone(j Job) Job { j.Results = append([]Result(nil), j.Results...); return j }
 
+func (m *Manager) snapshotLocked(j Job) Job {
+	j = clone(j)
+	j.CleanupPending = len(m.cleanup[j.ID]) > 0
+	j.CleanupRunning = j.State != "running" && m.active[j.ID] != nil
+	return j
+}
+
 func (m *Manager) List(user string) ([]Job, string, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	jobs := make([]Job, 0, len(m.jobs))
 	for _, j := range m.jobs {
 		if j.UserID == user && (j.State == "running" || len(m.cleanup[j.ID]) > 0 || time.Since(j.UpdatedAt) <= retention) {
-			jobs = append(jobs, clone(j))
+			jobs = append(jobs, m.snapshotLocked(j))
 		}
 	}
 	return jobs, m.warning, m.available
@@ -327,7 +338,7 @@ func (m *Manager) Get(user, id string) (Job, error) {
 	defer m.mu.Unlock()
 	for _, j := range m.jobs {
 		if j.ID == id && j.UserID == user && (j.State == "running" || len(m.cleanup[id]) > 0 || time.Since(j.UpdatedAt) <= retention) {
-			return clone(j), nil
+			return m.snapshotLocked(j), nil
 		}
 	}
 	return Job{}, ErrNotFound

@@ -60,13 +60,13 @@ describe('server scheduled terminal batches', () => {
     expect(wrapper.text()).toContain('命令执行中')
     wrapper.unmount()
   })
-  it('retries unconfirmed cleanup through the existing stop action before allowing another batch', async () => {
-    const saved = job('completed'); saved.results[0]!.state = 'failed'; saved.results[0]!.error = 'terminal_close_failed'
+  it('offers cleanup without blocking another batch from using remaining capacity', async () => {
+    const saved = job('completed'); saved.cleanupPending = true; saved.results[0]!.state = 'failed'; saved.results[0]!.error = 'terminal_close_failed'
     mocks.batches.mockResolvedValue({ available: true, items: [saved] })
     const wrapper = mountPanel(); await flushPromises(); await wrapper.get('textarea').setValue('true')
-    expect(wrapper.findAll('button').some(item => item.text().includes('执行命令'))).toBe(false)
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
     mocks.stopBatch.mockImplementation(async () => {
-      const cleaned = structuredClone(saved); cleaned.results[0]!.error = ''; cleaned.results[0]!.state = 'stopped'
+      const cleaned = structuredClone(saved); cleaned.cleanupPending = false; cleaned.results[0]!.error = ''; cleaned.results[0]!.state = 'stopped'
       mocks.batches.mockResolvedValue({ available: true, items: [cleaned] })
     })
     expect(wrapper.text()).not.toContain('终止执行')
@@ -78,7 +78,7 @@ describe('server scheduled terminal batches', () => {
   })
   it('finishes stop with a pending cleanup and restores that state without showing another stop action', async () => {
     mocks.batches.mockResolvedValue({ available:true, items:[job()] })
-    const saved=job('stopped'); saved.results[0]!.state='failed'; saved.results[0]!.error='terminal_close_failed'
+    const saved=job('stopped'); saved.cleanupPending=true; saved.results[0]!.state='failed'; saved.results[0]!.error='terminal_close_failed'
     mocks.stopBatch.mockImplementation(async () => { mocks.batches.mockResolvedValue({available:true,items:[saved]}) })
     const wrapper=mountPanel(); await flushPromises()
     await button(wrapper,'终止执行').trigger('click');await flushPromises()
@@ -153,6 +153,21 @@ describe('server scheduled terminal batches', () => {
     expect(mocks.startBatch).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+  it('does not turn a historical close failure into a permanent execution lock after restart', async () => {
+    const saved = { ...job('completed'), cleanupPending: false, cleanupRunning: false }
+    saved.results[0]!.state = 'failed'
+    saved.results[0]!.error = 'terminal_close_failed'
+    saved.results[0]!.outputAvailable = false
+    mocks.batches.mockResolvedValue({ available: true, items: [saved] })
+    const wrapper = mountPanel(); await flushPromises()
+    await wrapper.get('textarea').setValue('true')
+    expect(wrapper.text()).not.toContain('重试释放会话')
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
+    await button(wrapper, '执行命令').trigger('click'); await flushPromises()
+    expect(mocks.startBatch).toHaveBeenCalledTimes(1)
+    expect(mocks.stopBatch).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('disables submission when initial state cannot be synchronized', async () => {
     mocks.batches.mockRejectedValue(new Error('offline'))
     const wrapper = mountPanel(); await flushPromises(); await wrapper.get('textarea').setValue('true')
@@ -168,5 +183,55 @@ describe('server scheduled terminal batches', () => {
     await wrapper.get('textarea').setValue('true'); await button(wrapper, '执行命令').trigger('click'); await flushPromises()
     resolvePoll({ available: true, items: [] }); await flushPromises()
     expect(wrapper.text()).toContain('命令执行中'); wrapper.unmount()
+  })
+  it('keeps cleanup progress disabled until the background retry settles and preserves old cleanup access', async () => {
+    const saved = job('stopped'); saved.cleanupPending = true
+    saved.results[0]!.state = 'failed'; saved.results[0]!.error = 'terminal_close_failed'
+    const recent = job('completed'); recent.id = 'b'.repeat(32)
+    mocks.batches.mockResolvedValue({ available: true, items: [recent, saved] })
+    mocks.stopBatch.mockImplementation(async () => {
+      mocks.batches.mockResolvedValue({ available: true, items: [recent, { ...saved, cleanupRunning: true }] })
+    })
+    const wrapper = mountPanel(); await flushPromises(); await wrapper.get('textarea').setValue('true')
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
+    await button(wrapper, '重试释放会话').trigger('click'); await flushPromises()
+    expect(mocks.stopBatch).toHaveBeenCalledWith(saved.id)
+    expect(button(wrapper, '正在释放会话').attributes('disabled')).toBeDefined()
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeDefined()
+    await button(wrapper, '正在释放会话').trigger('click')
+    expect(mocks.stopBatch).toHaveBeenCalledTimes(1)
+    mocks.batches.mockResolvedValue({ available: true, items: [recent, { ...saved, cleanupPending: false }] })
+    await vi.advanceTimersByTimeAsync(4000); await flushPromises()
+    expect(wrapper.text()).not.toContain('重试释放会话')
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('.batch-result__summary').text()).toContain('执行成功')
+    wrapper.unmount()
+  })
+  it('does not restore stale cleanup state from an overlapping poll after a retry', async () => {
+    const saved = job('completed'); saved.cleanupPending = true
+    mocks.batches.mockResolvedValue({ available: true, items: [saved] })
+    const wrapper = mountPanel(); await flushPromises()
+    let rejectPoll!: (reason: Error) => void
+    mocks.batches.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectPoll = reject }))
+    await vi.advanceTimersByTimeAsync(4000)
+    mocks.stopBatch.mockImplementation(async () => {
+      mocks.batches.mockResolvedValue({ available: true, items: [{ ...saved, cleanupPending: false }] })
+    })
+    await button(wrapper, '重试释放会话').trigger('click'); await flushPromises()
+    rejectPoll(new Error('stale offline')); await flushPromises()
+    await wrapper.get('textarea').setValue('true')
+    expect(wrapper.text()).not.toContain('无法同步批量进度')
+    expect(wrapper.text()).not.toContain('重试释放会话')
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+  it('waits for synchronization after losing contact with a previously idle backend', async () => {
+    const wrapper = mountPanel(); await flushPromises(); await wrapper.get('textarea').setValue('true')
+    mocks.batches.mockRejectedValueOnce(new Error('offline'))
+    await vi.advanceTimersByTimeAsync(4000); await flushPromises()
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeDefined()
+    await vi.advanceTimersByTimeAsync(4000); await flushPromises()
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
   })
 })

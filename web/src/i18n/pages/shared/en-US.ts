@@ -1777,4 +1777,5 @@ export default [
   ["已结束","Finished"],
   ["操作记录已保留，原终端输出已释放。","Operation records remain. Original terminal output has been released."],
   ["重试释放会话","Retry session cleanup"],
+  ["会话释放结果未确认，请检查目标主机上的实际状态。","Session cleanup was not confirmed. Check the actual state on the target host."],
 ] as const satisfies PhraseCatalog
