@@ -51,7 +51,7 @@ describe('native gallery image loading', () => {
     view.unmount(); policy.dispose()
   })
 
-  it('yields an unfinished out-of-view transfer but preserves decoded photos for backtracking', async () => {
+  it('keeps an out-of-view in-flight transfer accounted for until completion and retains decoded photos', async () => {
     vi.useFakeTimers()
     const policy = createGalleryRenderPolicy()
     const view = mount(GalleryImage, { props: { src: '/visible', priority: true }, global: { provide: { [galleryRenderPolicyKey as symbol]: policy } } })
@@ -59,7 +59,7 @@ describe('native gallery image loading', () => {
     expect(view.attributes('src')).toBe('/visible')
     policy.reset(0, 0); policy.interact(100, 20)
     await view.setProps({ priority: false })
-    expect(view.attributes('src')).toBeUndefined()
+    expect(view.attributes('src')).toBe('/visible')
     await view.setProps({ priority: true })
     await vi.advanceTimersByTimeAsync(80)
     await view.trigger('load')

@@ -115,13 +115,9 @@ watch([() => props.src, () => props.version], () => {
   start()
 })
 watch(() => props.priority, () => {
-  if (!props.priority && releaseImage && source.value && !loaded) {
-    // Release an unfinished request that has left the viewport. Retain decoded
-    // photos; stale offscreen transfers must not occupy all foreground slots.
-    releaseRequest()
-    source.value = undefined
-    start()
-  } else if (pendingWork) schedule(pendingWork, pendingNative)
+  // Reprioritize queued starts only. Removing a native img src does not reliably
+  // cancel its network transfer, so an in-flight request keeps its slot until load/error.
+  if (pendingWork) schedule(pendingWork, pendingNative)
 })
 watch(paused, (value) => {
   if (value) {
