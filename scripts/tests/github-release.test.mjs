@@ -319,6 +319,8 @@ test('freeze-assets binds the original uploaded release inventory before writing
   const snapshotBytes = Buffer.from('{"tag":"v1.26.0"}\n');
   const expected = { candidate, version, digest, runId, attempt };
   for (const name of expectedReleaseAssetNames(version)) writeFileSync(join(releaseDirectory, name), Buffer.from('original:' + name));
+  const finalNotes = Buffer.from('original frozen final notes ' + digest);
+  writeFileSync(join(releaseDirectory, 'RELEASE_NOTES.md'), finalNotes);
   writeFileSync(join(evidence, 'stable-before.json'), snapshotBytes);
   writeFileSync(join(evidence, 'publication-identity.json'), JSON.stringify({ schemaVersion: 1,
     phase: 'before-publication', candidate, version, runId, attempt, controllerSha,
@@ -340,6 +342,7 @@ test('freeze-assets binds the original uploaded release inventory before writing
     const rawManifest = readFileSync(join(evidence, 'release-assets.json'));
     const identity = JSON.parse(readFileSync(join(evidence, 'publication-identity.json'), 'utf8'));
     assert.equal(identity.assetManifestSha256, createHash('sha256').update(rawManifest).digest('hex'));
+    assert.equal(identity.notesSha256, createHash('sha256').update(finalNotes).digest('hex'));
     await assert.rejects(freezeReleaseAssets({ GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'kejilion/KPanel',
       GITHUB_SHA: controllerSha, GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: attempt,
       EXPECTED_SHA: candidate, VERSION: version, IMAGE_DIGEST: digest, GH_TOKEN: 'fixture',
@@ -375,7 +378,8 @@ test('stable recovery validates both original artifact copies and their exact by
   const identityBytes = Buffer.from(JSON.stringify({ schemaVersion: 1, candidate, version: expected.version,
     controllerSha, runId: expected.runId, attempt: expected.attempt,
     snapshotSha256: createHash('sha256').update(snapshotBytes).digest('hex'),
-    assetManifestSha256: createHash('sha256').update(manifestBytes).digest('hex'), phase: 'before-publication' }, null, 2) + '\n');
+    assetManifestSha256: createHash('sha256').update(manifestBytes).digest('hex'),
+    notesSha256: createHash('sha256').update(notes).digest('hex'), phase: 'before-publication' }, null, 2) + '\n');
   const write = (path, bytes) => { mkdirSync(join(path, '..'), { recursive: true }); writeFileSync(path, bytes); };
   try {
     write(join(snapshotDirectory, 'stable-before.json'), snapshotBytes);
@@ -393,6 +397,9 @@ test('stable recovery validates both original artifact copies and their exact by
     assert.equal(valid.notesSha256, createHash('sha256').update(notes).digest('hex'));
     write(join(evidence, 'stable-before.json'), Buffer.from('tampered'));
     assert.throws(() => validatePublicationArtifacts({ snapshotDirectory, publicationDirectory, expected }));
+    write(join(evidence, 'stable-before.json'), snapshotBytes);
+    write(join(nested, 'RELEASE_NOTES.md'), Buffer.from('rerendered ' + imageDigest));
+    assert.throws(() => validatePublicationArtifacts({ snapshotDirectory, publicationDirectory, expected }), /artifact identity mismatch/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -436,6 +443,9 @@ test('stable recovery workflow separates the read-only check, draft writer and D
   const publish = workflow.split('  publish_draft:')[1].split('  restore_latest:')[0];
   const rollback = workflow.split('  restore_latest:')[1].split('  public-acceptance:')[0];
   assert.doesNotMatch(publish, /DOCKERHUB_TOKEN|docker login|imagetools create/);
+  assert.doesNotMatch(workflow, /scripts\/(?:check|render)-release-notes\.sh/);
+  assert.match(publish, /KPANEL_RELEASE_NOTES_FILE:.*steps\.inspect\.outputs\.notes_path/);
+  assert.match(publish, /go test \.\/internal\/selfupdate -run '\^TestRenderedReleaseNotesForPublication\$' -count=1/);
   assert.doesNotMatch(rollback, /contents: write|gh release edit/);
   assert.ok(publish.indexOf('Revalidate immediately before the GitHub write') < publish.indexOf('Publish the existing frozen draft'));
   assert.ok(rollback.indexOf('Revalidate immediately before the Docker write') < rollback.indexOf('Restore only the frozen Docker latest digest'));

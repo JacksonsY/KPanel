@@ -174,7 +174,8 @@ export function validatePublicationArtifacts({ snapshotDirectory, publicationDir
     || identity.candidate !== expected.candidate || identity.version !== expected.version
     || identity.runId !== expected.runId || identity.attempt !== expected.attempt
     || !sha.test(identity.controllerSha ?? '') || identity.snapshotSha256 !== sha256(snapshotArtifact.bytes)
-    || identity.assetManifestSha256 !== sha256(publishedManifest.bytes)) fail('Original publication artifact identity mismatch');
+    || identity.assetManifestSha256 !== sha256(publishedManifest.bytes)
+    || identity.notesSha256 !== sha256(notes.bytes)) fail('Original publication artifact identity mismatch');
   const manifestAssets = validateAssetEntries(assetManifest.assets, expected.version);
   if (assetManifest.schemaVersion !== 1 || assetManifest.phase !== 'before-channel-promotion'
     || assetManifest.candidate !== expected.candidate || assetManifest.version !== expected.version
@@ -289,7 +290,13 @@ export async function freezeReleaseAssets(env) {
     || identity.candidate !== expected.candidate || identity.version !== expected.version
     || identity.runId !== expected.runId || identity.attempt !== expected.attempt
     || identity.controllerSha !== env.GITHUB_SHA || identity.snapshotSha256 !== snapshotSha256
-    || identity.assetManifestSha256) fail('Existing publication identity is stale or already bound');
+    || identity.assetManifestSha256 || identity.notesSha256) fail('Existing publication identity is stale or already bound');
+  const notesPath = join(env.ASSET_DIRECTORY, 'RELEASE_NOTES.md');
+  const notesStat = lstatSync(notesPath);
+  if (!notesStat.isFile() || notesStat.isSymbolicLink() || notesStat.size <= 0 || notesStat.size > 1024 * 1024) {
+    fail('Invalid original final release notes');
+  }
+  const notesBytes = readFileSync(notesPath);
   const manifest = createReleaseAssetManifest({ releaseDirectory: env.ASSET_DIRECTORY, expected,
     controllerSha: env.GITHUB_SHA, snapshotSha256 });
   const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2) + '\n');
@@ -301,6 +308,7 @@ export async function freezeReleaseAssets(env) {
   const manifestPath = join(env.PUBLIC_EVIDENCE, 'release-assets.json');
   writeFileSync(manifestPath, manifestBytes, { flag: 'wx' });
   identity.assetManifestSha256 = sha256(manifestBytes);
+  identity.notesSha256 = sha256(notesBytes);
   const pendingIdentity = join(env.PUBLIC_EVIDENCE, 'publication-identity.next.json');
   writeFileSync(pendingIdentity, JSON.stringify(identity, null, 2) + '\n', { flag: 'wx' });
   renameSync(pendingIdentity, identityPath);

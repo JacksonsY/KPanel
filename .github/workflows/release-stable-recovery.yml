@@ -100,11 +100,9 @@ jobs:
         run: node scripts/stable-release-recovery.mjs inspect
       - name: Validate the original final release notes
         env:
-          NOTES_PATH: ${{ steps.inspect.outputs.notes_path }}
-          VERSION: ${{ inputs.version }}
-          IMAGE: docker.io/kjlion/kejilion-panel
-          IMAGE_DIGEST: ${{ inputs.digest }}
-        run: bash scripts/check-release-notes.sh "$VERSION" "$IMAGE" "$IMAGE_DIGEST" "$NOTES_PATH"
+          KPANEL_RELEASE_NOTES_FILE: ${{ steps.inspect.outputs.notes_path }}
+          KPANEL_RELEASE_NOTES_VERSION: ${{ inputs.version }}
+        run: go test ./internal/selfupdate -run '^TestRenderedReleaseNotesForPublication$' -count=1
 
   publish_draft:
     needs: preflight
@@ -166,11 +164,9 @@ jobs:
       - name: Validate the original final release notes
         if: steps.inspect.outputs.plan == 'publish'
         env:
-          NOTES_PATH: ${{ steps.inspect.outputs.notes_path }}
-          VERSION: ${{ inputs.version }}
-          IMAGE: docker.io/kjlion/kejilion-panel
-          IMAGE_DIGEST: ${{ inputs.digest }}
-        run: bash scripts/check-release-notes.sh "$VERSION" "$IMAGE" "$IMAGE_DIGEST" "$NOTES_PATH"
+          KPANEL_RELEASE_NOTES_FILE: ${{ steps.inspect.outputs.notes_path }}
+          KPANEL_RELEASE_NOTES_VERSION: ${{ inputs.version }}
+        run: go test ./internal/selfupdate -run '^TestRenderedReleaseNotesForPublication$' -count=1
       - name: Revalidate immediately before the GitHub write
         id: final-inspect
         run: node scripts/stable-release-recovery.mjs inspect

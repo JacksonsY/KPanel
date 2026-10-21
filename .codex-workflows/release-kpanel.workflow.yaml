@@ -81,7 +81,7 @@ Release 复核 tag/源码/主线身份、版本与实际发布说明解析器；
 推送 amd64/arm64 OCI 镜像并生成 SBOM/provenance。
 元数据附件命名为 `kejilion-panel-meta-${{version}}.tar.gz`，不是可构建源码包。
 modified-component provenance 上传并验证、最终说明门禁通过后，冻结全部15附件的名称/大小/SHA-256，
-将清单摘要绑定到原发布身份，并成功上传独立 snapshot-<run ID>-<attempt> artifact，才提升通道并公开 Release。
+将清单摘要与原最终正文SHA-256绑定到发布身份，并成功上传独立 snapshot-<run ID>-<attempt> artifact，才提升通道并公开 Release。
 预览版提升 preview/公开 prerelease；稳定版提升 latest/公开非 prerelease 并成为 GitHub Latest。
 stable tag 的 Release 先调用同一 L3；stable 分支收尾继续使用唯一 archive-release-candidate.mjs。
 Release 公开失败或公开后验收失败分别报告，不得把已公开产物重建覆盖；恢复应复核现状并保留失败原件。
@@ -104,7 +104,8 @@ publication-identity.json 的 candidate/version/run/attempt 及 stable-before.js
 
 稳定 tag 的原运行若镜像提升成功、GitHub Release 发布步骤失败，使用 main 的
 `Recover stable release publication`，必须输入原 run ID/attempt 与精确 candidate/version/digest。
-入口逐项验证原 snapshot/publication artifact、冻结15附件和当前公开状态，并在每次写入前再次核验。
+入口逐项验证原 snapshot/publication artifact、冻结15附件、原最终正文SHA-256和当前公开状态，并在每次写入前再次核验。
+正文仅调用运行时解析器只读验证，不经过会重新生成正文的发布检查脚本。
 `publish-draft` 仅公开原草稿；`restore-latest` 仅在草稿未公开且 GitHub Latest 未改变时恢复原 Docker latest 摘要。
 不重建或覆盖不可变版本镜像，不改写 preview。身份或公开状态不确定即停止；公开后验收失败仍走只读入口。
 
