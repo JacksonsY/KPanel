@@ -180,7 +180,7 @@ test('preview pipeline binds trusted workflows, atomic Git writes and explicit d
 
 test('public acceptance retries cannot rebuild or repush the published image', () => {
   const workflow = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8');
-  const publicJob = workflow.slice(workflow.indexOf('\n  public-acceptance:'));
+  const publicJob = workflow.slice(workflow.indexOf('\n  public-acceptance:'), workflow.indexOf('\n  preview-completion:'));
   const verifier = readFileSync(new URL('../../.github/workflows/release-public-verify.yml', import.meta.url), 'utf8');
   assert.match(publicJob, /needs: release/);
   assert.match(publicJob, /contents: read/);
@@ -190,18 +190,27 @@ test('public acceptance retries cannot rebuild or repush the published image', (
   assert.match(verifier, /workflow_call:/);
   assert.match(verifier, /workflow_dispatch:/);
   assert.match(verifier, /restore-snapshot/);
+  assert.match(verifier, /actions\/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333/);
+  assert.match(verifier, /publication-run-id:/);
+  assert.match(verifier, /publication-attempt:/);
+  assert.doesNotMatch(verifier.split('  workflow_dispatch:')[1].split('\npermissions:')[0], /stable-snapshot:/);
   assert.ok(workflow.indexOf('Reject an already occupied') < workflow.indexOf('- name: Build and push multi-architecture image'));
 });
 
-test('skipped reusable L3 cannot silently skip or satisfy public preview acceptance', () => {
+test('public acceptance runs for both channels and stable archival waits for its success', () => {
   const workflow = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8');
   const publicJob = workflow.slice(workflow.indexOf('\n  public-acceptance:'), workflow.indexOf('\n  preview-completion:'));
-  assert.match(publicJob, /if:.*!failure\(\).* !cancelled\(\).*needs\.release\.result == 'success'.*stable == 'false'/);
+  assert.match(publicJob, /if:.*!failure\(\).* !cancelled\(\).*needs\.release\.result == 'success'/);
+  assert.doesNotMatch(publicJob, /stable == 'false'/);
   const completion = workflow.slice(workflow.indexOf('\n  preview-completion:'));
   assert.match(completion, /needs: \[release, public-acceptance\]/);
   assert.match(completion, /if:.*!failure\(\).* !cancelled\(\).*contains\(inputs\.tag \|\| github\.ref_name, '-rc\.'\)/);
   assert.match(completion, /PUBLIC_RESULT: \$\{\{ needs\.public-acceptance\.result \}\}/);
   assert.match(completion, /run: test "\$PUBLIC_RESULT" = success/);
+  const stableCompletion = workflow.slice(workflow.indexOf('\n  stable-completion:'));
+  assert.match(stableCompletion, /needs: \[release, public-acceptance\]/);
+  assert.match(stableCompletion, /needs\.public-acceptance\.result == 'success'.*needs\.release\.outputs\.stable == 'true'/);
+  assert.ok(workflow.indexOf('\n  public-acceptance:') < workflow.indexOf('name: Archive published candidate branch'));
 });
 
 test('read-only recovery verifies the published source tag before executing candidate helpers', () => {
@@ -233,8 +242,8 @@ esac
 test('public recovery binds only the trusted controller runner recipe and rejects changed product identities', () => {
   const workflow = readFileSync(new URL('../../.github/workflows/release-public-verify.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
   const body = workflowStep(workflow, 'Bind controller-owned test runner recipe');
-  assert.ok(workflow.indexOf('Verify public preview assets') < workflow.indexOf('Bind controller-owned'));
-  assert.ok(workflow.indexOf('Bind controller-owned') < workflow.indexOf('Verify public preview in real browsers'));
+  assert.ok(workflow.indexOf('Verify public release assets') < workflow.indexOf('Bind controller-owned'));
+  assert.ok(workflow.indexOf('Bind controller-owned') < workflow.indexOf('Verify public release in real browsers'));
   for (const scenario of ['updated-recipe', 'untrusted-controller', 'dirty-product', 'wrong-head', 'wrong-version', 'missing-controller']) {
     const root = mkdtempSync(join(tmpdir(), 'kpanel-recipe-'));
     const git = (...args) => {

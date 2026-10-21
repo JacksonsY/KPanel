@@ -151,9 +151,8 @@ jobs:
       - name: Scan Go call paths for known vulnerabilities
         run: make security-audit-go
 
-      - name: Freeze stable channel before preview publication
+      - name: Freeze public channels before publication
         id: snapshot
-        if: steps.release.outputs.stable == 'false'
         env:
           EXPECTED_VERSION: ${{ steps.release.outputs.version }}
         run: node scripts/verify-github-public-release.mjs snapshot
@@ -540,20 +539,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
-      - name: Archive published candidate branch
-        if: steps.release.outputs.stable == 'true'
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          node scripts/archive-release-candidate.mjs \
-            --tag "$RELEASE_TAG" --release-sha "$RELEASE_SHA" --apply
-
   public-acceptance:
     needs: release
-    if: ${{ !failure() && !cancelled() && needs.release.result == 'success' && needs.release.outputs.stable == 'false' }}
+    if: ${{ !failure() && !cancelled() && needs.release.result == 'success' }}
     permissions:
       contents: read
+      actions: read
     uses: ./.github/workflows/release-public-verify.yml
     with:
       candidate: ${{ inputs.candidate || github.sha }}
@@ -573,3 +564,29 @@ jobs:
     steps:
       - name: Require actual public preview acceptance
         run: test "$PUBLIC_RESULT" = success
+
+  stable-completion:
+    needs: [release, public-acceptance]
+    if: ${{ !failure() && !cancelled() && needs.release.result == 'success' && needs.public-acceptance.result == 'success' && needs.release.outputs.stable == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_SHA: ${{ inputs.candidate || github.sha }}
+    steps:
+      - name: Check out exact stable source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.21.0"
+      - name: Archive published candidate branch
+        run: |
+          node scripts/archive-release-candidate.mjs \
+            --tag "$RELEASE_TAG" --release-sha "$RELEASE_SHA" --apply

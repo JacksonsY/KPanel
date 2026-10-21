@@ -5,7 +5,8 @@ import { join } from 'node:path';
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const env = process.env;
 const version = env.EXPECTED_VERSION;
-if (!/^\d+\.\d+\.\d+(?:-rc\.[1-9]\d*)?$/.test(version ?? '') || !/^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? '')) throw new Error('Exact release identity required');
+if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-rc\.[1-9]\d*)?$/.test(version ?? '') || !/^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? '')) throw new Error('Exact release identity required');
+const isPreview = version.includes('-rc.');
 if (env.GITHUB_ACTIONS !== 'true' || env.RUNNER_ENVIRONMENT !== 'github-hosted') throw new Error('GitHub-hosted execution required');
 const directory = env.PUBLIC_EVIDENCE;
 if (!directory?.startsWith(env.RUNNER_TEMP + '/')) throw new Error('Evidence must be owned runner temporary data');
@@ -14,8 +15,32 @@ if (process.argv[2] === 'restore-snapshot') {
   if (!/^v\d+\.\d+\.\d+$/.test(snapshot.tag) || !/^sha256:[a-f0-9]{64}$/.test(snapshot.digest)
       || !/^\d+\.\d+\.\d+-rc\.[1-9]\d*$/.test(snapshot.previousPreview?.version)
       || !/^sha256:[a-f0-9]{64}$/.test(snapshot.previousPreview?.digest)) throw new Error('Invalid frozen publication snapshot');
+  if (!isPreview && snapshot.tag === `v${version}`) throw new Error('Stable recovery requires the original pre-publication baseline');
   mkdirSync(directory, { recursive: false });
   writeFileSync(join(directory, 'stable-before.json'), JSON.stringify(snapshot, null, 2) + '\n', { flag: 'wx' });
+  writeFileSync(env.GITHUB_ENV, `PREVIOUS_PREVIEW_VERSION=${snapshot.previousPreview.version}\nPREVIOUS_PREVIEW_IMAGE=docker.io/kjlion/kejilion-panel@${snapshot.previousPreview.digest}\n`, { flag: 'a' });
+  process.exit(0);
+}
+if (process.argv[2] === 'restore-artifact') {
+  const runId = env.PUBLICATION_RUN_ID;
+  const attempt = env.PUBLICATION_ATTEMPT;
+  const artifactDirectory = env.SNAPSHOT_ARTIFACT_DIR;
+  if (!/^[1-9]\d*$/.test(runId ?? '') || !/^[1-9]\d*$/.test(attempt ?? '')
+      || !artifactDirectory?.startsWith(env.RUNNER_TEMP + '/')) throw new Error('Exact original publication artifact required');
+  const snapshotBytes = readFileSync(join(artifactDirectory, 'stable-before.json'));
+  const identity = JSON.parse(readFileSync(join(artifactDirectory, 'publication-identity.json'), 'utf8'));
+  const snapshot = JSON.parse(snapshotBytes);
+  if (identity.schemaVersion !== 1 || identity.phase !== 'before-publication'
+      || identity.candidate !== env.EXPECTED_SHA || identity.version !== version
+      || identity.runId !== runId || identity.attempt !== attempt
+      || !/^[a-f0-9]{40}$/.test(identity.controllerSha ?? '')
+      || identity.snapshotSha256 !== sha256(snapshotBytes)) throw new Error('Original publication artifact identity mismatch');
+  if (!/^v\d+\.\d+\.\d+$/.test(snapshot.tag) || !/^sha256:[a-f0-9]{64}$/.test(snapshot.digest)
+      || !/^\d+\.\d+\.\d+-rc\.[1-9]\d*$/.test(snapshot.previousPreview?.version)
+      || !/^sha256:[a-f0-9]{64}$/.test(snapshot.previousPreview?.digest)) throw new Error('Invalid frozen publication snapshot');
+  if (!isPreview && snapshot.tag === `v${version}`) throw new Error('Stable recovery requires the original pre-publication baseline');
+  mkdirSync(directory, { recursive: false });
+  writeFileSync(join(directory, 'stable-before.json'), snapshotBytes, { flag: 'wx' });
   writeFileSync(env.GITHUB_ENV, `PREVIOUS_PREVIEW_VERSION=${snapshot.previousPreview.version}\nPREVIOUS_PREVIEW_IMAGE=docker.io/kjlion/kejilion-panel@${snapshot.previousPreview.digest}\n`, { flag: 'a' });
   process.exit(0);
 }
@@ -38,7 +63,6 @@ if (process.argv[2] === 'unused') {
   console.log(`version_image=unused version=${version}`);
   process.exit(0);
 }
-if (!version.includes('-rc.')) throw new Error('Public preview validation requires a preview version');
 const manifest = async ref => {
   const r = await request(`${registry}/manifests/${ref}`, headers, 4 * 1024 * 1024);
   const digest = 'sha256:' + sha256(r.bytes);
@@ -49,6 +73,7 @@ const latestRelease = await json('https://api.github.com/repos/kejilion/KPanel/r
 const latestImage = await manifest('latest');
 const snapshotPath = join(directory, 'stable-before.json');
 if (process.argv[2] === 'snapshot') {
+  if (!isPreview && latestRelease.tag_name === `v${version}`) throw new Error('Stable version already occupies Latest');
   mkdirSync(directory, { recursive: false });
   const previous = await manifest('preview');
   const native = previous.body.manifests.find(m => m.platform?.os === 'linux' && m.platform?.architecture === 'amd64');
@@ -70,11 +95,12 @@ if (process.argv[2] === 'snapshot') {
 }
 if (process.argv[2] !== 'verify') throw new Error('snapshot or verify required');
 const before = JSON.parse(readFileSync(snapshotPath));
-if (before.tag !== latestRelease.tag_name || before.digest !== latestImage.digest) throw new Error('Preview publication changed the stable channel');
+if (isPreview && (before.tag !== latestRelease.tag_name || before.digest !== latestImage.digest)) throw new Error('Preview publication changed the stable channel');
 const target = await manifest(version), preview = await manifest('preview');
-if (target.digest !== env.IMAGE_DIGEST || preview.digest !== target.digest) throw new Error('Version/preview digest mismatch');
+if (target.digest !== env.IMAGE_DIGEST || (isPreview ? preview.digest !== target.digest : latestImage.digest !== target.digest)) throw new Error('Version/channel digest mismatch');
+if (!isPreview && (latestRelease.tag_name !== `v${version}` || preview.digest !== before.previousPreview?.digest)) throw new Error('Stable publication changed preview or did not become Latest');
 const release = await json(`https://api.github.com/repos/kejilion/KPanel/releases/tags/v${version}`);
-if (release.draft || !release.prerelease || release.tag_name !== `v${version}` || release.assets.length !== 15) throw new Error('Release identity mismatch');
+if (release.draft || release.prerelease !== isPreview || release.tag_name !== `v${version}` || release.assets.length !== 15) throw new Error('Release identity mismatch');
 const tagRef = await json(`https://api.github.com/repos/kejilion/KPanel/git/ref/tags/v${version}`);
 if (tagRef.object.type !== 'tag') throw new Error('Annotated release tag required');
 const tagObject = await json(tagRef.object.url);
@@ -125,5 +151,5 @@ if (!summaries.length || !warnings.length || !release.body.includes(target.diges
 const result = { status: 'passed', candidate: env.EXPECTED_SHA, version, digest: target.digest, stable: before, platforms, assets, checksumCount: sums.length,
   notesCount: Math.min(8, summaries.length), upgradeNotesCount: Math.min(3, warnings.length), checkedAt: new Date().toISOString() };
 writeFileSync(join(directory, 'public-release.json'), JSON.stringify(result, null, 2) + '\n', { flag: 'wx' });
-if (env.GITHUB_ENV) writeFileSync(env.GITHUB_ENV, `EXPECTED_NOTES=${result.notesCount}\nEXPECTED_UPGRADE_NOTES=${result.upgradeNotesCount}\nEXPECTED_STABLE_VERSION=${before.tag.slice(1)}\n`, { flag: 'a' });
+if (env.GITHUB_ENV) writeFileSync(env.GITHUB_ENV, `EXPECTED_NOTES=${result.notesCount}\nEXPECTED_UPGRADE_NOTES=${result.upgradeNotesCount}\nEXPECTED_STABLE_VERSION=${isPreview ? before.tag.slice(1) : version}\n`, { flag: 'a' });
 console.log(`public_release=pass version=${version} digest=${target.digest} assets=${assets.length} platforms=${platforms.length}`);

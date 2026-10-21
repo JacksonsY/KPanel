@@ -93,8 +93,9 @@ Latest/prerelease 状态、版本镜像和通道标签 digest、候选分支处�
 发布入口为 main 的 `Publish preview`，候选 CI 与完整 L3 并行，均成功后才原子提升 main/tag；
 主线 CI 通过后才运行 Release、Docker Hub 与公开浏览器验收。并行不减少任何检查或变更权限。
 发布前的 stable/previous-preview 快照和源码身份先保存为 `snapshot-<run ID>-<attempt>` artifact。
-公开后的验收恢复从原 artifact 读取快照并核对摘要，使用 main 的 `Verify published preview` 只读入口；
-不重建或覆盖已发布的版本镜像。新业务变更必须递增 RC 序号，不能复用已公开的版本/tag。
+公开后的验收恢复使用 main 的 `Verify published release` 只读入口，输入原发布 run ID/attempt；入口从该
+run 下载 `snapshot-<run ID>-<attempt>` artifact，并核对候选、版本、run/attempt 与快照 SHA256。禁止手工
+提交快照 JSON，不重建或覆盖已发布的版本镜像。新业务变更必须递增 RC 序号，不能复用已公开的版本/tag。
 
 公开验收的产品始终绑定原 tag/SHA/digest；测试 runner 的 Dockerfile 则取当前可信控制面
 `GITHUB_SHA` 的固定路径，要求该提交已纳入 main。只允许覆盖这一个测试配方，不改变版本、

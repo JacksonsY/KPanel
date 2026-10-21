@@ -94,10 +94,10 @@ HTTPS/证书故障恢复、域名边界、PTY 续接/关闭、预览切换和真
 不挂载宿主 Docker/systemd socket 到被测 Panel/Agent，不声称隔离夹具等于生产安装/systemd 验证。
 作业受 timeout/watchdog/容器资源限额约束；截图、JSON、日志与清理回执作为 Actions artifact 保存。
 
-公开后仅验收失败时，从原 publication run 下载 snapshot-<run ID>-<attempt>，
-核对 publication-identity.json 的 candidate/version/run/attempt 及 stable-before.json 的 SHA256；
-从 main 的 **Verify published preview** 输入已发布 candidate、version、digest 和该原始 snapshot JSON，
-只读恢复公开验收。禁止从当前 preview 重新生成发布前快照，禁止重跑 publication 覆盖版本镜像。
+公开后仅验收失败时，记录原 publication run ID/attempt；从 main 的 **Verify published release** 输入已发布
+candidate、version、digest 与原 run ID/attempt。入口从该 run 下载 snapshot-<run ID>-<attempt>，校验
+publication-identity.json 的 candidate/version/run/attempt 及 stable-before.json 的 SHA256，再只读恢复公开验收。
+禁止手工提供快照 JSON、从当前 preview 重新生成发布前快照，或重跑 publication 覆盖版本镜像。
 
 ### 6. 收尾与回滚
 
