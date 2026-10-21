@@ -174,15 +174,16 @@ jobs:
         if: steps.final-inspect.outputs.plan == 'publish'
         env:
           RELEASE_NOTES: ${{ steps.inspect.outputs.notes_path }}
+          RELEASE_ID: ${{ steps.final-inspect.outputs.release_id }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          gh release edit "v$VERSION" \
-            --draft=false \
-            --prerelease=false \
-            --latest \
-            --title "KPanel $VERSION" \
-            --notes-file "$RELEASE_NOTES"
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F draft=false \
+            -F prerelease=false \
+            -f make_latest=true \
+            -f name="KPanel $VERSION" \
+            -F "body=@$RELEASE_NOTES"
 
   restore_latest:
     needs: preflight

@@ -106,6 +106,8 @@ publication-identity.json 的 candidate/version/run/attempt 及 stable-before.js
 `Recover stable release publication`，必须输入原 run ID/attempt 与精确 candidate/version/digest。
 入口逐项验证原 snapshot/publication artifact、冻结15附件、原最终正文SHA-256和当前公开状态，并在每次写入前再次核验。
 正文仅调用运行时解析器只读验证，不经过会重新生成正文的发布检查脚本。
+冻结清单按真实上传布局读取根目录许可证，并绑定草稿可见查询取得的 Release ID；恢复按该ID读写同一对象。
+前一预览可以属于更早补丁列车，仍须低于目标正式版并与原快照摘要精确一致。
 `publish-draft` 仅公开原草稿；`restore-latest` 仅在草稿未公开且 GitHub Latest 未改变时恢复原 Docker latest 摘要。
 不重建或覆盖不可变版本镜像，不改写 preview。身份或公开状态不确定即停止；公开后验收失败仍走只读入口。
 

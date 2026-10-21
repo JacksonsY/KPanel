@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { appendFileSync, lstatSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -53,10 +53,13 @@ function validateAssetEntries(assets, version) {
   return sorted;
 }
 
-export function createReleaseAssetManifest({ releaseDirectory, expected, controllerSha, snapshotSha256 }) {
-  if (!sha.test(controllerSha ?? '') || !/^[a-f0-9]{64}$/.test(snapshotSha256 ?? '')) fail('Frozen controller and snapshot identity required');
+export function createReleaseAssetManifest({ releaseDirectory, expected, controllerSha, snapshotSha256, releaseId }) {
+  if (!sha.test(controllerSha ?? '') || !/^[a-f0-9]{64}$/.test(snapshotSha256 ?? '')
+    || !Number.isSafeInteger(releaseId) || releaseId <= 0) fail('Frozen controller, release ID and snapshot identity required');
   const assets = expectedReleaseAssetNames(expected.version).map(name => {
-    const path = join(releaseDirectory, name);
+    // The uploader sends these two legal files from the checkout root, not release/.
+    const directory = ['LICENSE', 'THIRD_PARTY_NOTICES.md'].includes(name) ? dirname(releaseDirectory) : releaseDirectory;
+    const path = join(directory, name);
     const stat = lstatSync(path);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size <= 0 || stat.size > 128 * 1024 * 1024) {
       fail('Invalid local release asset: ' + name);
@@ -73,6 +76,7 @@ export function createReleaseAssetManifest({ releaseDirectory, expected, control
     runId: expected.runId,
     attempt: expected.attempt,
     controllerSha,
+    releaseId,
     imageDigest: expected.digest,
     snapshotSha256,
     assets,
@@ -81,6 +85,7 @@ export function createReleaseAssetManifest({ releaseDirectory, expected, control
 
 export function validateReleaseAssetInventory(release, manifest, { allowPublished = false } = {}) {
   if (!manifest || !release || !releaseVersionPattern.test(manifest.version ?? '')
+    || !Number.isSafeInteger(manifest.releaseId) || manifest.releaseId <= 0 || release.id !== manifest.releaseId
     || (release.draft !== true && !(allowPublished && release.draft === false))
     || release.tag_name !== 'v' + manifest.version
     || release.prerelease !== manifest.version.includes('-rc.') || !Array.isArray(release.assets)) {
@@ -173,6 +178,7 @@ export function validatePublicationArtifacts({ snapshotDirectory, publicationDir
   if (identity.schemaVersion !== 1 || identity.phase !== 'before-publication'
     || identity.candidate !== expected.candidate || identity.version !== expected.version
     || identity.runId !== expected.runId || identity.attempt !== expected.attempt
+    || !Number.isSafeInteger(identity.releaseId) || identity.releaseId <= 0 || identity.releaseId !== assetManifest.releaseId
     || !sha.test(identity.controllerSha ?? '') || identity.snapshotSha256 !== sha256(snapshotArtifact.bytes)
     || identity.assetManifestSha256 !== sha256(publishedManifest.bytes)
     || identity.notesSha256 !== sha256(notes.bytes)) fail('Original publication artifact identity mismatch');
@@ -187,9 +193,11 @@ export function validatePublicationArtifacts({ snapshotDirectory, publicationDir
     || !digestPattern.test(snapshot.digest ?? '') || !digestPattern.test(snapshot.previousPreview?.digest ?? '')) {
     fail('Invalid frozen stable-channel snapshot');
   }
-  const expectedTrain = expected.version + '-rc.';
-  if (typeof snapshot.previousPreview?.version !== 'string' || !snapshot.previousPreview.version.startsWith(expectedTrain)
-    || !previewPattern.test(snapshot.previousPreview.version)) fail('Frozen preview must belong to the exact stable release train');
+  const previewVersion = snapshot.previousPreview?.version;
+  if (typeof previewVersion !== 'string' || !previewPattern.test(previewVersion)
+    || stableVersionIsOlder(expected.version, previewVersion.split('-rc.')[0])) {
+    fail('Frozen preview must be a canonical RC older than the target stable release');
+  }
   if (!notes.bytes.toString('utf8').includes(expected.digest)) fail('Frozen release notes do not name the exact image digest');
   if (/[\r\n]/.test(notes.path)) fail('Release notes path cannot contain line breaks');
   const componentAsset = manifestAssets.find(asset => asset.name === 'KPANEL_MODIFIED_COMPONENTS.json');
@@ -261,11 +269,25 @@ async function boundedResponse(response, limit = 4 * 1024 * 1024) {
   return Buffer.concat(chunks);
 }
 
-async function requestJson(url, headers, limit = 4 * 1024 * 1024) {
-  const response = await fetch(url, { headers, signal: AbortSignal.timeout(30_000) });
+async function requestJson(url, headers, limit = 4 * 1024 * 1024, request = {}) {
+  const response = await fetch(url, { ...request, headers, signal: AbortSignal.timeout(30_000) });
   const bytes = await boundedResponse(response, limit);
   if (!response.ok) fail(`Remote verification failed with HTTP ${response.status}`);
   return JSON.parse(bytes.toString('utf8'));
+}
+
+export async function findReleaseByTag({ api, repository, version, headers }) {
+  // The REST tag endpoint excludes unpublished drafts. Resolve the exact tag via
+  // GitHub's draft-aware lookup, then bind subsequent reads and writes to its ID.
+  const [owner, name] = repository.split('/');
+  const query = 'query($owner:String!,$name:String!,$tag:String!){repository(owner:$owner,name:$name){release(tagName:$tag){databaseId}}}';
+  const result = await requestJson(`${api}/graphql`, { ...headers, 'Content-Type': 'application/json' }, 64 * 1024,
+    { method: 'POST', body: JSON.stringify({ query, variables: { owner, name, tag: 'v' + version } }) });
+  const id = result.data?.repository?.release?.databaseId;
+  if (result.errors?.length || !Number.isSafeInteger(id) || id <= 0) fail('Exact draft-aware release lookup failed');
+  const release = await requestJson(`${api}/repos/${repository}/releases/${id}`, headers);
+  if (release.id !== id || release.tag_name !== 'v' + version) fail('Draft-aware release lookup identity mismatch');
+  return release;
 }
 
 export async function freezeReleaseAssets(env) {
@@ -297,18 +319,19 @@ export async function freezeReleaseAssets(env) {
     fail('Invalid original final release notes');
   }
   const notesBytes = readFileSync(notesPath);
-  const manifest = createReleaseAssetManifest({ releaseDirectory: env.ASSET_DIRECTORY, expected,
-    controllerSha: env.GITHUB_SHA, snapshotSha256 });
-  const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2) + '\n');
   const api = env.GITHUB_API_URL || 'https://api.github.com';
   const headers = { Accept: 'application/vnd.github+json', Authorization: `Bearer ${env.GH_TOKEN}`,
     'X-GitHub-Api-Version': '2022-11-28' };
-  const release = await requestJson(`${api}/repos/${env.GITHUB_REPOSITORY}/releases/tags/v${expected.version}`, headers);
+  const release = await findReleaseByTag({ api, repository: env.GITHUB_REPOSITORY, version: expected.version, headers });
+  const manifest = createReleaseAssetManifest({ releaseDirectory: env.ASSET_DIRECTORY, expected,
+    controllerSha: env.GITHUB_SHA, snapshotSha256, releaseId: release.id });
+  const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2) + '\n');
   validateReleaseAssetInventory(release, manifest);
   const manifestPath = join(env.PUBLIC_EVIDENCE, 'release-assets.json');
   writeFileSync(manifestPath, manifestBytes, { flag: 'wx' });
   identity.assetManifestSha256 = sha256(manifestBytes);
   identity.notesSha256 = sha256(notesBytes);
+  identity.releaseId = release.id;
   const pendingIdentity = join(env.PUBLIC_EVIDENCE, 'publication-identity.next.json');
   writeFileSync(pendingIdentity, JSON.stringify(identity, null, 2) + '\n', { flag: 'wx' });
   renameSync(pendingIdentity, identityPath);
@@ -350,14 +373,14 @@ async function inspect(env) {
   const githubHeaders = { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`,
     'X-GitHub-Api-Version': '2022-11-28' };
   const api = env.GITHUB_API_URL || 'https://api.github.com';
-  const [workflow, run, jobs, latestRelease, release, snapshotData] = await Promise.all([
+  const snapshotData = validatePublicationArtifacts({ snapshotDirectory: env.SNAPSHOT_ARTIFACT_DIR,
+    publicationDirectory: env.PUBLICATION_ARTIFACT_DIR, expected });
+  const [workflow, run, jobs, latestRelease, release] = await Promise.all([
     requestJson(`${api}/repos/${repository}/actions/workflows/release.yml`, githubHeaders),
     requestJson(`${api}/repos/${repository}/actions/runs/${expected.runId}/attempts/${expected.attempt}`, githubHeaders),
     requestJson(`${api}/repos/${repository}/actions/runs/${expected.runId}/attempts/${expected.attempt}/jobs`, githubHeaders),
     requestJson(`${api}/repos/${repository}/releases/latest`, githubHeaders),
-    requestJson(`${api}/repos/${repository}/releases/tags/v${expected.version}`, githubHeaders),
-    Promise.resolve(validatePublicationArtifacts({ snapshotDirectory: env.SNAPSHOT_ARTIFACT_DIR,
-      publicationDirectory: env.PUBLICATION_ARTIFACT_DIR, expected })),
+    requestJson(`${api}/repos/${repository}/releases/${snapshotData.identity.releaseId}`, githubHeaders),
   ]);
   validateMainCandidate(expected, env, snapshotData.identity.controllerSha);
   validateFailedPublication({ run, workflow, jobs, expected: { ...expected, repository }, identity: snapshotData.identity });
@@ -381,8 +404,9 @@ async function inspect(env) {
     appendFileSync(env.GITHUB_OUTPUT, `plan=${plan}\n`);
     appendFileSync(env.GITHUB_OUTPUT, `snapshot=${JSON.stringify(snapshotData.snapshot)}\n`);
     appendFileSync(env.GITHUB_OUTPUT, `notes_path=${snapshotData.notesPath}\n`);
+    appendFileSync(env.GITHUB_OUTPUT, `release_id=${snapshotData.identity.releaseId}\n`);
   }
-  return { plan, snapshot: snapshotData.snapshot, notesPath: snapshotData.notesPath };
+  return { plan, snapshot: snapshotData.snapshot, notesPath: snapshotData.notesPath, releaseId: snapshotData.identity.releaseId };
 }
 
 if (process.argv[2] === 'freeze-assets') {
