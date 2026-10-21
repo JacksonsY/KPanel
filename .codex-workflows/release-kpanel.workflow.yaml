@@ -108,6 +108,8 @@ publication-identity.json 的 candidate/version/run/attempt 及 stable-before.js
 正文仅调用运行时解析器只读验证，不经过会重新生成正文的发布检查脚本。
 冻结清单按真实上传布局读取根目录许可证，并绑定草稿可见查询取得的 Release ID；恢复按该ID读写同一对象。
 前一预览可以属于更早补丁列车，仍须低于目标正式版并与原快照摘要精确一致。
+GitHub 仍可能因目标tag与后续默认分支的工作流差异要求额外 Workflows 权限；`GITHUB_TOKEN` 无此权限时停止，
+不承诺任意后续main状态可恢复，不在恢复中自动更换凭据。
 `publish-draft` 仅公开原草稿；`restore-latest` 仅在草稿未公开且 GitHub Latest 未改变时恢复原 Docker latest 摘要。
 不重建或覆盖不可变版本镜像，不改写 preview。身份或公开状态不确定即停止；公开后验收失败仍走只读入口。
 

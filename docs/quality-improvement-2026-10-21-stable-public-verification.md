@@ -14,6 +14,8 @@
 通道提升和GitHub公开均skipped，原1.27.0镜像/tag/draft保留，详见release-v1.27.0-acceptance.md。
 后续只读核对同时确认REST tag endpoint对draft返回404；修复采用草稿可见的精确查询，冻结Release ID并在恢复时按ID读取和发布。
 不扩大原恢复故障窗口；新1.27.1候选重新执行CI/L3/公开验收，允许精确快照中的前一预览来自更早补丁列车。
+恢复可用性仍受GitHub Workflows权限约束；目标tag与后续默认分支工作流不兼容时，现有GITHUB_TOKEN可能被拒绝，
+应停止并保留失败，不宣称任意后续main均可恢复，不在本提案中新增通用凭据。
 
 `release-public-verify.yml` 与 `verify-github-public-release.mjs` 只接受 RC，而稳定 Release 的公开验收 job 被跳过。
 这与现有稳定/预览同样验收的契约不一致，是可重复的入口缺口，非单次网络失败。

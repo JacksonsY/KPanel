@@ -63,6 +63,12 @@
 
 证据根 `C:/GitHub/_release-evidence/v1.27.0-stable-recovery`；补漏原件 `C:/GitHub/_release-evidence/v1.27.0`。旧workflow上下文错误、范围身份失配、inventory失败和工具下载不可用原件均保留；actionlint未取得可运行版本，不称其通过。已知流程异常含 `publication/freeze-release-assets/legal-file-layout`，在生产写前被门禁拦截；历史总数不完整，不推断为零。
 
+本次可确认单项如下；它不是完整历史累计数。机器指标依照模板将不完整总数记为“未记录”，不将已知1次误写成全部异常总数或零。
+
+| 已确认指纹 | 次数与位置 | 影响、恢复证据与后续处置 |
+| --- | --- | --- |
+| publication/freeze-release-assets/legal-file-layout | 1，before-production-write | 2026-10-21T16:51:21Z原attempt1在冻结入口失败；原日志和publication工件保留，latest提升及公开均skipped。发布维护者在本地34a28579修正真实布局并补回归，组合候选另做独立复核、同SHA CI/L3后才可发布；不将未完成验证记为永久修复通过。后续复核触发为新候选发布前。 |
+
 <!-- kpanel-release-metrics:start -->
 - 首个纳入提交时间：2026-10-15T14:30:29+08:00
 - 候选冻结时间：2026-10-21T23:58:38+08:00

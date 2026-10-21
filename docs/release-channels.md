@@ -105,6 +105,8 @@ run 下载 `snapshot-<run ID>-<attempt>` artifact，并核对候选、版本、r
 15 个附件的名称/大小/SHA-256、原最终正文SHA-256、不可变版本镜像与未改变的公开通道状态；正文只读验证，写入前再次核验。
 许可证按原上传入口从仓库根目录读取；冻结阶段通过草稿可见查询解析精确 Release ID，并写入清单与身份工件。
 恢复按该冻结 ID 读取和发布同一对象；前一预览允许来自更早补丁列车，但版本必须低于目标正式版，摘要仍精确绑定原快照。
+恢复仍受 GitHub 的工作流权限检查约束：若目标 tag 的 `.github/workflows` 与后续默认分支不兼容，
+`GITHUB_TOKEN` 可能无法更新该 Release，入口应停止；不能宣称任意后续主线状态下都可恢复，也不自动引入额外凭据。
 `publish-draft` 只公开原冻结草稿；`restore-latest` 只在该 Release 仍为草稿且 GitHub Latest 未变化时，
 把 Docker `latest` 恢复到原快照摘要。任何不确定状态均停止，不重建镜像、不改写版本标签或预览通道。
 Release 已公开而验收失败时，继续使用上述只读 `Verify published release`，不使用发布恢复重发产物。
