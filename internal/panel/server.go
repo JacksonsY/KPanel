@@ -65,6 +65,7 @@ type Server struct {
 	backups                 *backup.Manager
 	backupRestart           chan struct{}
 	backupRemote            *backupremote.Store
+	backupOneDriveAuth      backupremote.OneDriveAuth
 	backupRemoteClient      func(backupremote.Storage) (backupRemoteTransport, error)
 	backupRemoteGate        chan struct{}
 	backupScheduleMu        sync.Mutex

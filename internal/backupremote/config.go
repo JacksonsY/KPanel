@@ -37,6 +37,9 @@ type Storage struct {
 	AccessKey string `json:"accessKey,omitempty"`
 	Secret    string `json:"secret,omitempty"`
 	HasSecret bool   `json:"hasSecret,omitempty"`
+	ClientID  string `json:"clientId,omitempty"`
+	TenantID  string `json:"tenantId,omitempty"`
+	DriveID   string `json:"driveId,omitempty"`
 }
 
 func (s Storage) Public() Storage { s.HasSecret = s.Secret != ""; s.Secret = ""; return s }
@@ -44,6 +47,9 @@ func (s Storage) Public() Storage { s.HasSecret = s.Secret != ""; s.Secret = "";
 // Fingerprint binds receipts to a destination, not to rotating credentials.
 func (s Storage) Fingerprint() string {
 	b, _ := json.Marshal([]string{s.Kind, s.Endpoint, s.Bucket, s.Prefix})
+	if s.Kind == "onedrive" {
+		b, _ = json.Marshal([]string{s.Kind, s.Endpoint, s.ClientID, s.TenantID, s.DriveID, s.Prefix})
+	}
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
@@ -65,6 +71,15 @@ func (s *Storage) Validate() error {
 	s.Prefix = strings.Trim(s.Prefix, "/")
 	s.Endpoint = strings.TrimRight(s.Endpoint, "/")
 	switch s.Kind {
+	case "onedrive":
+		if s.Endpoint != graphEndpoint || !validMicrosoftID(s.ClientID) || !validTenant(s.TenantID) || !validDriveID(s.DriveID) || len(s.Secret) > 4096 {
+			return ErrInvalid
+		}
+		for _, part := range strings.Split(s.Prefix, "/") {
+			if strings.ContainsAny(part, `:*<>|"`) || strings.HasSuffix(part, ".") || strings.HasSuffix(part, " ") || part == "" && s.Prefix != "" {
+				return ErrInvalid
+			}
+		}
 	case "s3":
 		if u.Path != "" && u.Path != "/" || len(s.Bucket) < 3 || len(s.Bucket) > 63 || strings.ContainsAny(s.Bucket, "/\\:%?# ") || controls(s.Bucket) || len(s.AccessKey) > 256 || s.AccessKey == "" || controls(s.AccessKey) || len(s.Region) > 80 || controls(s.Region) {
 			return ErrInvalid

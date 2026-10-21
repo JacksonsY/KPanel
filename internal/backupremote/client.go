@@ -33,6 +33,7 @@ type Client struct {
 	http      *http.Client
 	s3        *minio.Client
 	transport *http.Transport
+	oneDrive  *oneDriveClient
 }
 
 // Administrators may connect a private NAS/MinIO. Loopback, metadata and
@@ -46,6 +47,9 @@ func allowedIP(ip netip.Addr) bool {
 	}
 }
 func secureDial(ctx context.Context, network, address string) (net.Conn, error) {
+	return secureDialPolicy(ctx, network, address, allowedIP)
+}
+func secureDialPolicy(ctx context.Context, network, address string, allowed func(netip.Addr) bool) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, ErrInvalid
@@ -57,7 +61,7 @@ func secureDial(ctx context.Context, network, address string) (net.Conn, error) 
 		return nil, ErrUnavailable
 	}
 	for _, ip := range ips {
-		if !allowedIP(ip) {
+		if !allowed(ip) {
 			return nil, ErrUnavailable
 		}
 	}
@@ -131,6 +135,11 @@ func newClient(storage Storage, injected http.RoundTripper) (*Client, error) {
 	}
 	u, _ := url.Parse(storage.Endpoint)
 	transport := &http.Transport{Proxy: nil, DialContext: secureDial, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, DisableCompression: true, MaxConnsPerHost: 3, MaxIdleConns: 3, MaxIdleConnsPerHost: 3, IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second, MaxResponseHeaderBytes: 64 << 10}
+	if storage.Kind == "onedrive" {
+		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+			return secureDialPolicy(ctx, network, address, func(ip netip.Addr) bool { return netpolicy.Classify(ip) == netpolicy.Public })
+		}
+	}
 	var base http.RoundTripper = transport
 	if injected != nil {
 		base = injected
@@ -151,6 +160,9 @@ func newClient(storage Storage, injected http.RoundTripper) (*Client, error) {
 		}
 	}
 	c := &Client{storage: storage, transport: transport, http: &http.Client{Transport: guard, CheckRedirect: func(*http.Request, []*http.Request) error { return ErrUnavailable }}}
+	if storage.Kind == "onedrive" {
+		c.oneDrive = newOneDriveClient(storage, base)
+	}
 	if storage.Kind == "s3" {
 		lookup := minio.BucketLookupDNS
 		if storage.PathStyle {
@@ -175,7 +187,11 @@ func (c *Client) Upload(ctx context.Context, name string, file *os.File, size in
 	return c.put(ctx, name, file, size)
 }
 func (c *Client) put(ctx context.Context, name string, reader io.Reader, size int64) error {
-	if c.s3 != nil {
+	if c.oneDrive != nil {
+		if err := c.oneDrive.put(ctx, name, reader, size); err != nil {
+			return err
+		}
+	} else if c.s3 != nil {
 		_, err := c.s3.PutObject(ctx, c.storage.Bucket, c.key(name), reader, size, minio.PutObjectOptions{ContentType: "application/octet-stream", PartSize: 16 << 20, NumThreads: 1})
 		if err != nil {
 			return ErrUnavailable
@@ -190,6 +206,9 @@ func (c *Client) put(ctx context.Context, name string, reader io.Reader, size in
 	return nil
 }
 func (c *Client) stat(ctx context.Context, name string) (Object, error) {
+	if c.oneDrive != nil {
+		return c.oneDrive.stat(ctx, name)
+	}
 	if c.s3 != nil {
 		v, err := c.s3.StatObject(ctx, c.storage.Bucket, c.key(name), minio.StatObjectOptions{})
 		if err != nil {
@@ -209,6 +228,9 @@ func (c *Client) stat(ctx context.Context, name string) (Object, error) {
 	return Object{Key: name, Size: res.ContentLength, Modified: modified}, nil
 }
 func (c *Client) get(ctx context.Context, name string) (io.ReadCloser, error) {
+	if c.oneDrive != nil {
+		return c.oneDrive.get(ctx, name)
+	}
 	if c.s3 != nil {
 		obj, err := c.s3.GetObject(ctx, c.storage.Bucket, c.key(name), minio.GetObjectOptions{})
 		if err != nil {
@@ -256,6 +278,9 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 	return c.remove(ctx, name)
 }
 func (c *Client) remove(ctx context.Context, name string) error {
+	if c.oneDrive != nil {
+		return c.oneDrive.remove(ctx, name)
+	}
 	if c.s3 != nil {
 		if err := c.s3.RemoveObject(ctx, c.storage.Bucket, c.key(name), minio.RemoveObjectOptions{}); err != nil {
 			return ErrUnavailable
@@ -273,6 +298,9 @@ func (c *Client) remove(ctx context.Context, name string) error {
 	return nil
 }
 func (c *Client) List(ctx context.Context) ([]Object, error) {
+	if c.oneDrive != nil {
+		return c.oneDrive.list(ctx)
+	}
 	if c.s3 == nil {
 		return c.davList(ctx)
 	}

@@ -44,6 +44,31 @@ Panel 存储于 `<DataDir>/backups/<id>`，Agent 为 `<StateDir>/backup-center/<
 
 协议参考：[MinIO Go SDK](https://github.com/minio/minio-go)、[AWS multipart upload](https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html)、[R2 S3 compatibility](https://developers.cloudflare.com/r2/api/s3/api/)、[WebDAV RFC 4918](https://www.rfc-editor.org/rfc/rfc4918)。设计借鉴 1Panel 的存储连接后选择备份目标，KPanel 的配置入口仍集中在本区块。
 
+## OneDrive
+
+“远程存储 → 添加 → OneDrive”通过 Microsoft Graph v1.0 直连 Microsoft 国际云的个人及工作/学校账户。
+在 Microsoft Entra 注册自己的应用，选择相应账户类型，启用“允许公共客户端流”，添加 Graph **委托**权限
+`Files.ReadWrite.AppFolder`。填入 Application (client) ID，点击“连接 OneDrive”，在 Microsoft 页面输入设备码并授权；
+不需要客户端密钥、回调地址或公网 Panel。工作/学校租户的同意策略可能要求管理员批准。暂不支持世纪互联及美国政府云。
+
+仅请求 `offline_access` 和应用目录权限，文件位于 `Apps/<Entra 应用名称>/<备份目录>`；不请求整个网盘的读写权限。
+授权后可测试读写、手动/定时上传、列出和取回 `.kpb`，恢复及保留策略共用现有流程。默认备份目录 `kpanel`，可留空
+使用应用目录本身；更换应用、账户或目录会改变目标身份，旧目标的备份不会被新目标保留策略删除。
+
+访问令牌仅保存在内存，刷新令牌以现有 XChaCha20-Poly1305 设置文件加密保存，轮换先持久化再使用。
+设备授权最多 8 个、至多 30 分钟；重启或关闭授权窗口后重新连接。拒绝、过期、撤销授权或组织策略阻止时可重新授权。
+大文件按 10 MiB（320 KiB 的整数倍）顺序上传，失败取消上传会话，完整本地包保留供重试；不承诺跨任务断点续传。
+预授权传输 URL 不附加 Graph bearer token，分页只允许 Graph，传输限制为 Microsoft 存储域名并逐次验证公共 DNS，禁止自动重定向。
+
+官方依据：[设备码授权](https://learn.microsoft.com/entra/identity-platform/v2-oauth2-device-code)、
+[应用目录与最小权限](https://learn.microsoft.com/graph/onedrive-sharepoint-appfolder)、
+[上传会话及分块限制](https://learn.microsoft.com/graph/api/driveitem-createuploadsession?view=graph-rest-1.0)、
+[下载预授权链接](https://learn.microsoft.com/graph/api/driveitem-get-content?view=graph-rest-1.0)。
+实现与本地协议夹具可以验证接口与失败边界；真实 Microsoft 账户的授权、云端配额及往返兼容仍须实机验收。
+本扩展 `scriptLinkageState=not-required`（无需发布脚本，不适用）；沿用脚本
+`160924a498d9b8d071fed72f165d23c1b9e886de` / SHA-256 `39837815ce0eb23021fd4d8e8b5898000f5309b709bdc48b2713e18f78f3eaf1`，
+只传输原有加密包，不改变脚本协议或宿主机恢复行为。
+
 ## 事务与失败边界
 
 备份中心显示自动备份状态、下次执行和最近成功备份的任务开始时间。仅根据当前类别与存储目标的已完成任务回执计算，不把启动、正在上传或落盘失败记为成功；开始时间保持原备份的数据年龄，后台清理和上传重试不会使旧备份变新。旧副本清理失败单独提示。删除任务记录后，相应成功证据也会消失，此状态不代表已经验证过恢复。
@@ -81,6 +106,7 @@ Panel 写接口统一校验 Session、Origin、CSRF；公开列表及预览不�
 | `settings` | GET | 无密钥的存储与计划配置，包含并发写入 revision |
 | `storage` / `storage/<storageId>` | PUT / DELETE | `{revision,storage}` 保存 / `{revision}` 移除连接 |
 | `storage/<storageId>/test` / `storage/<storageId>/files` | POST / GET | 测试连接 / 列出远程加密包 |
+| `onedrive-auth` / `onedrive-auth/<id>` | POST / POST / DELETE | `{revision,storage}` 开始设备授权 / 检查并保存 / 取消；仅返回用户码，令牌不出服务端 |
 | `schedule` / `schedule/run` | PUT / POST | `{revision,schedule}` 保存 / 立即执行已保存计划 |
 | `<id>/upload` | POST | `{storageId}`，上传已有本地完整包 |
 | `remote-import` | POST | `{storageId,key,password}`，后台取回并检查，不直接恢复 |

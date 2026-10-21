@@ -146,7 +146,7 @@ func (s *Store) PutStorage(revision string, input Storage) error {
 	for i, old := range v.Storages {
 		if old.ID == input.ID {
 			index = i
-			if input.Secret == "" && input.Kind == old.Kind {
+			if input.Secret == "" && input.Kind == old.Kind && (input.Kind != "onedrive" || input.ClientID == old.ClientID && input.TenantID == old.TenantID && input.DriveID == old.DriveID) {
 				input.Secret = old.Secret
 			}
 			break
@@ -170,6 +170,24 @@ func (s *Store) PutStorage(revision string, input Storage) error {
 		v.Storages[index] = input
 	}
 	return s.save(v, true)
+}
+
+// Token rotation does not change destination or the administrator's revision.
+// A stale transfer cannot replace credentials after reconnecting or deleting.
+func (s *Store) RotateOneDriveToken(storage Storage, previous, next string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v := cloneSettings(s.state)
+	for i, item := range v.Storages {
+		if item.ID == storage.ID && item.Kind == "onedrive" && item.Fingerprint() == storage.Fingerprint() && item.Secret == previous {
+			v.Storages[i].Secret = next
+			if v.Storages[i].Validate() != nil {
+				return ErrInvalid
+			}
+			return s.save(v, false)
+		}
+	}
+	return ErrConflict
 }
 func (s *Store) DeleteStorage(revision, id string) error {
 	s.mu.Lock()
