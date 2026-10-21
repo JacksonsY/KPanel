@@ -60,36 +60,34 @@ describe('server scheduled terminal batches', () => {
     expect(wrapper.text()).toContain('命令执行中')
     wrapper.unmount()
   })
-  it('retries unconfirmed cleanup through the existing stop action before allowing another batch', async () => {
-    const saved = job('completed'); saved.results[0]!.state = 'failed'; saved.results[0]!.error = 'terminal_close_failed'
+  it('shows only execute while temporary connections are handled in the background', async () => {
+    const saved = job('completed'); saved.cleanupPending = true; saved.cleanupRunning = true
     mocks.batches.mockResolvedValue({ available: true, items: [saved] })
     const wrapper = mountPanel(); await flushPromises(); await wrapper.get('textarea').setValue('true')
-    expect(wrapper.findAll('button').some(item => item.text().includes('执行命令'))).toBe(false)
-    mocks.stopBatch.mockImplementation(async () => {
-      const cleaned = structuredClone(saved); cleaned.results[0]!.error = ''; cleaned.results[0]!.state = 'stopped'
-      mocks.batches.mockResolvedValue({ available: true, items: [cleaned] })
-    })
-    expect(wrapper.text()).not.toContain('终止执行')
-    await button(wrapper, '重试释放会话').trigger('click'); await flushPromises()
-    expect(mocks.stopBatch).toHaveBeenCalledWith(saved.id)
+    expect(wrapper.findAll('.batch-command footer button').map(item => item.text())).toEqual(['执行命令'])
+    expect(wrapper.text()).not.toMatch(/释放|名额|会话/)
     expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
-    expect(mocks.startBatch).not.toHaveBeenCalled()
+    await button(wrapper, '执行命令').trigger('click'); await flushPromises()
+    expect(mocks.startBatch).toHaveBeenCalledTimes(1)
+    expect(mocks.stopBatch).not.toHaveBeenCalled()
     wrapper.unmount()
   })
   it('finishes stop with a pending cleanup and restores that state without showing another stop action', async () => {
     mocks.batches.mockResolvedValue({ available:true, items:[job()] })
-    const saved=job('stopped'); saved.results[0]!.state='failed'; saved.results[0]!.error='terminal_close_failed'
+    const saved=job('stopped'); saved.cleanupPending=true; saved.results[0]!.state='failed'; saved.results[0]!.error='terminal_close_failed'
     mocks.stopBatch.mockImplementation(async () => { mocks.batches.mockResolvedValue({available:true,items:[saved]}) })
     const wrapper=mountPanel(); await flushPromises()
     await button(wrapper,'终止执行').trigger('click');await flushPromises()
     expect(wrapper.text()).toContain('已完成 1 / 1 台')
     expect(wrapper.text()).not.toContain('终止执行')
-    expect(button(wrapper,'重试释放会话').exists()).toBe(true)
+    expect(button(wrapper,'执行命令').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('释放')
     expect(wrapper.emitted('runningChange')?.at(-1)).toEqual([false])
     wrapper.unmount()
     const reopened=mountPanel();await flushPromises()
     expect(reopened.text()).not.toContain('终止执行')
-    expect(button(reopened,'重试释放会话').exists()).toBe(true)
+    expect(button(reopened,'执行命令').exists()).toBe(true)
+    expect(reopened.text()).not.toContain('释放')
     expect(mocks.startBatch).not.toHaveBeenCalled()
     reopened.unmount()
   })
@@ -147,10 +145,25 @@ describe('server scheduled terminal batches', () => {
     const saved = job('interrupted'); saved.results[0]!.error = 'panel_restarted'; saved.results[0]!.outputAvailable = false; saved.results[0]!.output = ''
     mocks.batches.mockResolvedValue({ available: true, items: [saved] })
     const wrapper = mountPanel(); await flushPromises(); await button(wrapper, '全部展开').trigger('click')
-    expect(wrapper.text()).toContain('未完成命令未自动重放'); expect(wrapper.text()).toContain('原终端输出已释放')
+    expect(wrapper.text()).toContain('未完成命令未自动重放'); expect(wrapper.text()).toContain('本次执行输出已不可用')
     expect(wrapper.get('textarea').element.value).toBe('')
     expect(wrapper.find('select, details, .batch-record-command').exists()).toBe(false)
     expect(mocks.startBatch).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('does not turn a historical close failure into a permanent execution lock after restart', async () => {
+    const saved = { ...job('completed'), cleanupPending: false, cleanupRunning: false }
+    saved.results[0]!.state = 'failed'
+    saved.results[0]!.error = 'terminal_close_failed'
+    saved.results[0]!.outputAvailable = false
+    mocks.batches.mockResolvedValue({ available: true, items: [saved] })
+    const wrapper = mountPanel(); await flushPromises()
+    await wrapper.get('textarea').setValue('true')
+    expect(wrapper.text()).not.toContain('重试释放会话')
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
+    await button(wrapper, '执行命令').trigger('click'); await flushPromises()
+    expect(mocks.startBatch).toHaveBeenCalledTimes(1)
+    expect(mocks.stopBatch).not.toHaveBeenCalled()
     wrapper.unmount()
   })
   it('disables submission when initial state cannot be synchronized', async () => {
@@ -168,5 +181,61 @@ describe('server scheduled terminal batches', () => {
     await wrapper.get('textarea').setValue('true'); await button(wrapper, '执行命令').trigger('click'); await flushPromises()
     resolvePoll({ available: true, items: [] }); await flushPromises()
     expect(wrapper.text()).toContain('命令执行中'); wrapper.unmount()
+  })
+  it('allows new work while older background cleanup is still running', async () => {
+    const saved = job('stopped'); saved.cleanupPending = true; saved.cleanupRunning = true
+    const recent = job('completed'); recent.id = 'b'.repeat(32)
+    mocks.batches.mockResolvedValue({ available: true, items: [recent, saved] })
+    const wrapper = mountPanel(); await flushPromises(); await wrapper.get('textarea').setValue('true')
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).not.toMatch(/释放|名额|会话/)
+    await vi.advanceTimersByTimeAsync(4000); await flushPromises()
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
+    expect(mocks.stopBatch).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('ignores a stale poll failure after stopping a batch', async () => {
+    mocks.batches.mockResolvedValue({ available: true, items: [job()] })
+    const wrapper = mountPanel(); await flushPromises()
+    let rejectPoll!: (reason: Error) => void
+    mocks.batches.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectPoll = reject }))
+    await vi.advanceTimersByTimeAsync(1000)
+    mocks.stopBatch.mockImplementation(async () => { mocks.batches.mockResolvedValue({ available: true, items: [job('stopped')] }) })
+    await button(wrapper, '终止执行').trigger('click'); await flushPromises()
+    rejectPoll(new Error('stale offline')); await flushPromises()
+    await wrapper.get('textarea').setValue('true')
+    expect(wrapper.text()).not.toContain('无法同步批量进度')
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+  it('waits for synchronization after losing contact with a previously idle backend', async () => {
+    const wrapper = mountPanel(); await flushPromises(); await wrapper.get('textarea').setValue('true')
+    mocks.batches.mockRejectedValueOnce(new Error('offline'))
+    await vi.advanceTimersByTimeAsync(4000); await flushPromises()
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeDefined()
+    await vi.advanceTimersByTimeAsync(4000); await flushPromises()
+    expect(button(wrapper, '执行命令').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+  it('can stop the active batch while the backend handles an older batch', async () => {
+    const older = job('stopped'); older.id = 'b'.repeat(32)
+    older.cleanupPending = true; older.cleanupRunning = true
+    const active = job()
+    mocks.batches.mockResolvedValue({ available: true, items: [active, older] })
+    const wrapper = mountPanel(); await flushPromises()
+    expect(button(wrapper, '终止执行').attributes('disabled')).toBeUndefined()
+    await button(wrapper, '终止执行').trigger('click'); await flushPromises()
+    expect(mocks.stopBatch).toHaveBeenCalledWith(active.id)
+    wrapper.unmount()
+  })
+  it('keeps stop available after a failed stop request without claiming completion', async () => {
+    mocks.batches.mockResolvedValue({ available: true, items: [job()] })
+    mocks.stopBatch.mockRejectedValue(new Error('offline'))
+    const wrapper = mountPanel(); await flushPromises()
+    await button(wrapper, '终止执行').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('停止请求未确认')
+    expect(button(wrapper, '终止执行').attributes('disabled')).toBeUndefined()
+    expect(wrapper.findAll('.batch-command footer button')).toHaveLength(1)
+    wrapper.unmount()
   })
 })
