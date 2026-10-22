@@ -228,6 +228,52 @@ describe('dedicated desktop app script terminal', () => {
     expect(unregister).toHaveBeenCalledOnce()
   })
 
+  it.each(['inventory', 'jobs'] as const)('waits for pending %s before stopping the existing task on close', async stage => {
+    let guard: (() => boolean | Promise<boolean>) | undefined
+    const closeGuards: DesktopWindowCloseGuardRegistry = {
+      register: candidate => { guard = candidate; return vi.fn() },
+    }
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mocks.jobs.mockResolvedValue({ items: [job] })
+    let complete!: () => void
+    let pendingSignal: AbortSignal | undefined
+    mocks[stage].mockImplementationOnce((signal?: AbortSignal) => new Promise((resolve, reject) => {
+      pendingSignal = signal
+      complete = () => resolve({ items: stage === 'inventory' ? [app] : [job] })
+      signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    }))
+    const wrapper = await mountView(closeGuards)
+    let settled = false
+    const closing = Promise.resolve(guard?.()).then(result => { settled = true; return result })
+    await flushPromises()
+    expect(settled).toBe(false)
+    expect(pendingSignal?.aborted).toBe(false)
+    expect(mocks.cancelJob).not.toHaveBeenCalled()
+    complete()
+    await expect(closing).resolves.toBe(true)
+    expect(mocks.action).not.toHaveBeenCalled()
+    expect(mocks.cancelJob).toHaveBeenCalledExactlyOnceWith('job-1')
+    expect(window.localStorage.getItem('kpanel:active-app-job')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('waits for an in-flight manage action before stopping its returned task', async () => {
+    let guard: (() => boolean | Promise<boolean>) | undefined
+    let complete!: (value: typeof job) => void
+    mocks.action.mockReturnValueOnce(new Promise(resolve => { complete = resolve }))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = await mountView({ register: candidate => { guard = candidate; return vi.fn() } })
+    let settled = false
+    const closing = Promise.resolve(guard?.()).then(result => { settled = true; return result })
+    await flushPromises()
+    expect(settled).toBe(false)
+    complete(job)
+    await expect(closing).resolves.toBe(true)
+    expect(mocks.action).toHaveBeenCalledOnce()
+    expect(mocks.cancelJob).toHaveBeenCalledExactlyOnceWith('job-1')
+    wrapper.unmount()
+  })
+
   it('keeps the task visible when the Agent cannot confirm process shutdown', async () => {
     let guard: (() => boolean | Promise<boolean>) | undefined
     const closeGuards: DesktopWindowCloseGuardRegistry = {

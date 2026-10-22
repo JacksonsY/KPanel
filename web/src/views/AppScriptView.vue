@@ -151,8 +151,9 @@ async function waitForJobToStop(current: AppInstallJob): Promise<boolean> {
 
 async function stopActiveJobBeforeClose(): Promise<boolean> {
   closeError.value = ''
-  controller?.abort()
+  // Discover or finish launching the task before deciding whether the window can close.
   await loadRequest
+  controller?.abort()
 
   const active = job.value
   if (!active || !isActiveJob(active)) return true
