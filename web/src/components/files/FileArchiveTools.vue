@@ -9,7 +9,7 @@ import { fileAPIForHost } from '@/lib/fileHostContext'
 import type { FileActionInput, FileArchiveDirectory, FileArchiveJob, FileEntry } from '@/types/api'
 
 const props = defineProps<{ hostId: string; path: string; archiveManagementAvailable?: boolean; memberDownloadsAvailable?: boolean }>()
-const emit = defineEmits<{ changed: [hostId: string, path: string, reveal: string[]]; open: [hostId: string, path: string]; download: [entry: FileEntry] }>()
+const emit = defineEmits<{ changed: [hostId: string, path: string, reveal: string[]]; open: [hostId: string, path: string]; download: [entry: FileEntry]; closed: [] }>()
 const i18n = useI18n()
 const jobs = ref<FileArchiveJob[]>([])
 const capability = computed(() => props.archiveManagementAvailable === undefined
@@ -110,6 +110,7 @@ function browse(entry: FileEntry) {
   void loadContents()
 }
 function closeBrowser() { browser.value = undefined; contentsController?.abort(); ++browseGeneration; clearTimeout(searching) }
+function dismissBrowser() { closeBrowser(); emit('closed') }
 function navigate(value: string) { clearTimeout(searching); directory.value = value; search.value = ''; void loadContents() }
 function searchContents() { clearTimeout(searching); contentsController?.abort(); ++browseGeneration; loading.value = true; selection.value = new Set(); searching = setTimeout(() => loadContents(), 250) }
 function toggle(path: string) {
@@ -133,7 +134,7 @@ async function extractContents() {
   const source = browser.value; const token = generation
   if (!source) return
   const members = selection.value.size ? [...selection.value] : undefined
-  closeBrowser()
+  dismissBrowser()
   // Let the shared dialog restore the file opener before the next dialog captures it.
   await nextTick(); await nextTick()
   if (!disposed && token === generation) configure('extract', [source], members)
@@ -213,7 +214,7 @@ defineExpose({ configure, browse, capability, available, checking, legacy, hasJo
     <button v-if="jobs.length > 3" type="button" class="button button--secondary" :aria-expanded="expanded" @click="expanded = !expanded">{{ i18n.t(expanded ? 'files.archive.collapse' : 'files.archive.showAll', { count: jobs.length }) }}</button>
   </section>
 
-  <ModalDialog :open="Boolean(browser)" :title="browser?.name || i18n.t('files.archive.title')" :description="i18n.t('files.archive.browseDescription')" size="large" :allow-fullscreen="true" @close="closeBrowser">
+  <ModalDialog :open="Boolean(browser)" :title="browser?.name || i18n.t('files.archive.title')" :description="i18n.t('files.archive.browseDescription')" size="large" :allow-fullscreen="true" @close="dismissBrowser">
     <div class="archive-browser">
       <div class="archive-toolbar">
         <button type="button" class="button button--secondary" :disabled="!directory || loading" @click="navigate(directory.includes('/') ? directory.slice(0, directory.lastIndexOf('/')) : '')"><ArrowLeft :size="16" />{{ i18n.t('files.archive.parent') }}</button>

@@ -136,6 +136,7 @@ describe('archive UI host and task ownership', () => {
     expect(mocks.archiveContents).toHaveBeenCalledWith(expect.objectContaining({ path: '/site.zip', resourceVersion: source.resourceVersion }), expect.any(AbortSignal), 'host-a')
     await view.get('tbody input').setValue(true)
     await view.get('.archive-toolbar .button--primary').trigger('click'); await flushPromises()
+    expect(view.emitted('closed')).toEqual([[]])
     await view.get('.archive-form').trigger('submit'); await flushPromises()
     expect(mocks.createArchiveJob).toHaveBeenCalledWith(expect.objectContaining({ archiveEntries: ['assets'], sources: ['/site.zip'], target: '/destination', expectedResourceVersions: { '/site.zip': source.resourceVersion } }), 'host-a')
     expect(mocks.createArchiveJob.mock.calls[0]![0]).not.toHaveProperty('format')

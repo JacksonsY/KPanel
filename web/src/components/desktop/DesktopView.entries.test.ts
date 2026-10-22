@@ -731,6 +731,32 @@ describe('DesktopView dynamic entries', () => {
     wrapper.unmount()
   })
 
+  it('reopens archive shortcuts in their directory window while text previews stay separate', async () => {
+    const archiveID = '4'.repeat(32), textID = '5'.repeat(32), directoryID = '6'.repeat(32)
+    mockedWorkspace.mockResolvedValueOnce(makeWorkspace({ shortcuts: [
+      { id: archiveID, name: 'site.ZIP', path: '/home/site.ZIP', targetType: 'file', description: '', createdAt: '', updatedAt: '' },
+      { id: textID, name: 'notes.txt', path: '/home/notes.txt', targetType: 'file', description: '', createdAt: '', updatedAt: '' },
+      { id: directoryID, name: 'home', path: '/home', targetType: 'directory', description: '', createdAt: '', updatedAt: '' },
+    ] }))
+    const wrapper = mount(DesktopView, { attachTo: document.body })
+    await flushPromises()
+    const desktop = useDesktopMode()
+    await wrapper.get(`[data-icon-key="shortcut:${directoryID}"] button`).trigger('dblclick')
+    const directoryWindow = desktop.windows.value[0]!
+    await wrapper.get(`[data-icon-key="shortcut:${archiveID}"] button`).trigger('dblclick')
+    expect(desktop.windows.value).toHaveLength(1)
+    expect(directoryWindow.path).toBe('/files?file=%2Fhome%2Fsite.ZIP&path=%2Fhome')
+    await wrapper.get(`[data-icon-key="shortcut:${textID}"] button`).trigger('dblclick')
+    expect(desktop.windows.value).toHaveLength(2)
+    expect(desktop.windows.value[1]!.path).toBe('/files?file=%2Fhome%2Fnotes.txt')
+    desktop.updateWindowRoute(directoryWindow.id, '/files?path=%2Fhome', 'nav.files')
+    await wrapper.get(`[data-icon-key="shortcut:${archiveID}"] button`).trigger('dblclick')
+    expect(desktop.windows.value).toHaveLength(2)
+    expect(desktop.focusedId.value).toBe(directoryWindow.id)
+    expect(directoryWindow.path).toContain('file=%2Fhome%2Fsite.ZIP')
+    wrapper.unmount()
+  })
+
   it('opens a file shortcut preview and its containing directory as separate actions', async () => {
     const shortcutID = '7'.repeat(32)
     mockedWorkspace.mockResolvedValueOnce(makeWorkspace({

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { focusTextInput } from '../lib/touchFocus'
 import { computed, defineAsyncComponent, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 import { useI18n } from '@/i18n'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
 
@@ -102,6 +102,7 @@ import { fileHostStatus as sharedFileHostStatus, type FileHostStatus } from '@/l
 import { withoutUnsupportedLightNodes } from '@/lib/nodeFeatureHosts'
 import { filesSplitControlKey } from '@/lib/filesSplit'
 import { downloadFileEntries } from '@/lib/fileDownloads'
+import { archiveFormatForName } from '@/lib/archiveFormat'
 import {
   addFileEntriesToDesktop,
   beginDesktopFileDrag,
@@ -831,11 +832,14 @@ function setRemoteDownloadJobsError(error: unknown): void {
 
 function archiveFormat(entry: Pick<FileEntry, 'kind' | 'name'>): ArchiveFormat | undefined {
   if (entry.kind !== 'file') return undefined
-  const name = entry.name.toLocaleLowerCase()
-  if (name.endsWith('.tar.gz') || name.endsWith('.tgz')) return 'tar.gz'
-  if (name.endsWith('.zip')) return 'zip'
-  if (name.endsWith('.tar')) return 'tar'
-  return undefined
+  return archiveFormatForName(entry.name)
+}
+
+function clearArchiveRoute(): void {
+  if (!shortcutArchivePath.value) return
+  const query: LocationQuery = { ...route.query, path: routeDirectoryPath.value }
+  delete query.file
+  void router.replace({ name: 'files', query })
 }
 
 function archiveSuffix(format: ArchiveFormat): string {
@@ -1234,6 +1238,7 @@ function closePreview(): void {
   }
   if (previewSaving.value) return
   if (previewDirty.value && !window.confirm('文件尚未保存，确认关闭吗？')) return
+  clearArchiveRoute()
   previewRequestId += 1
   previewLoading.value = false
   previewEntry.value = undefined
@@ -3254,6 +3259,7 @@ onBeforeUnmount(() => {
         @changed="archiveChanged"
         @open="openArchiveResult"
         @download="download"
+        @closed="clearArchiveRoute"
       />
       <Transition name="slide">
         <section

@@ -82,6 +82,7 @@ import {
 } from '@/lib/contextMenu'
 import { transferCrossPanelFileBatch } from '@/lib/crossPanelFileTransfer'
 import { downloadFileEntries } from '@/lib/fileDownloads'
+import { archiveFormatForName } from '@/lib/archiveFormat'
 import { canExecuteFile } from '@/lib/fileExecution'
 import {
   addFileEntriesToDesktop,
@@ -1363,6 +1364,7 @@ function fileShortcutRoute(entry: DesktopEntry): string | undefined {
   const query = new URLSearchParams(entry.launch === 'file'
     ? { file: entry.path }
     : { path: entry.path })
+  if (entry.launch === 'file' && archiveFormatForName(entry.path)) query.set('path', parentFilePath(entry.path))
   return `/files?${query.toString()}`
 }
 
@@ -1378,7 +1380,7 @@ function isDesktopFilePreviewRoute(fullPath: string): boolean {
   if (queryIndex === -1) return false
   const hashIndex = fullPath.indexOf('#', queryIndex)
   const query = new URLSearchParams(fullPath.slice(queryIndex + 1, hashIndex === -1 ? undefined : hashIndex))
-  return query.has('file') && !query.has('hostId')
+  return query.has('file') && !archiveFormatForName(query.get('file') || '') && !query.has('hostId')
 }
 
 function fileWindowDirectory(fullPath: string): string | undefined {
@@ -1388,10 +1390,10 @@ function fileWindowDirectory(fullPath: string): string | undefined {
   const hashIndex = fullPath.indexOf('#', queryIndex)
   const query = new URLSearchParams(fullPath.slice(queryIndex + 1, hashIndex === -1 ? undefined : hashIndex))
   // Desktop shortcuts refer to this Panel; a remote window is a different identity.
-  if (query.get('hostId') || query.getAll('file').length) return undefined
+  if (query.get('hostId') || (query.has('file') && !archiveFormatForName(query.get('file') || ''))) return undefined
   const pathValues = query.getAll('path')
   if (pathValues.length > 1) return undefined
-  const path = pathValues[0] || '/'
+  const path = pathValues[0] || (query.get('file') ? parentFilePath(query.get('file')!) : '/')
   if (
     !path.startsWith('/')
     || path.length > 4096
@@ -1425,7 +1427,7 @@ function openDesktopFilesRoute(route: string, mode: 'file-preview' | 'directory'
 
 function openFileShortcut(entry: DesktopEntry): void {
   const route = fileShortcutRoute(entry)
-  if (route) openDesktopFilesRoute(route, entry.launch === 'file' ? 'file-preview' : 'directory')
+  if (route) openDesktopFilesRoute(route, entry.launch === 'file' && !archiveFormatForName(entry.path || '') ? 'file-preview' : 'directory')
 }
 
 function openFileShortcutDirectory(entry: DesktopEntry): void {

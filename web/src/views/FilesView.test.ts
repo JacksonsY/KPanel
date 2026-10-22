@@ -43,7 +43,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('vue-router', async (importOriginal) => ({
   ...await importOriginal<typeof import('vue-router')>(),
   useRoute: () => mocks.route,
-  useRouter: () => ({ push: mocks.push }),
+  useRouter: () => ({ push: mocks.push, replace: mocks.push }),
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -1215,6 +1215,7 @@ describe('FilesView desktop shortcuts', () => {
     expect(view.previewEntry.value).toBeUndefined()
     view.closePreview()
     expect(closeWindow).not.toHaveBeenCalled()
+    expect(mocks.push).toHaveBeenCalledWith({ name: 'files', query: { path: '/home/releases' } })
   })
 })
 
