@@ -938,7 +938,7 @@ textarea:focus-visible,
 .button--small {
   min-height: 32px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .button--block {
@@ -2957,6 +2957,7 @@ textarea:focus-visible,
 .realtime-monitoring {
   display: grid;
   gap: 12px;
+  container: realtime-monitoring / inline-size;
 }
 
 .realtime-monitoring__header,
@@ -2968,6 +2969,11 @@ textarea:focus-visible,
 .realtime-monitoring__header {
   justify-content: space-between;
   gap: 16px;
+}
+
+.realtime-monitoring__heading {
+  min-width: 0;
+  flex: 1 1 220px;
 }
 
 .realtime-monitoring__actions {
@@ -3005,6 +3011,46 @@ textarea:focus-visible,
   color: var(--brand);
   background: var(--brand-soft);
   border-radius: var(--radius);
+}
+
+/* Use the content width in classic pages and independently resized windows. */
+@container realtime-monitoring (max-width: 700px) {
+  .realtime-monitoring__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .realtime-monitoring__heading {
+    flex: 0 0 auto;
+  }
+
+  .realtime-monitoring__header > .realtime-monitoring__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .realtime-monitoring__actions .observed-at {
+    min-width: 0;
+    font-size: 13px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .realtime-monitoring__actions > .icon-button {
+    width: 44px;
+    height: 44px;
+    justify-self: end;
+  }
+
+  .realtime-monitoring__actions > .button {
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
 }
 
 .metric-link {

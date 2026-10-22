@@ -1200,7 +1200,7 @@ onBeforeUnmount(() => {
         aria-labelledby="realtime-monitoring-title"
       >
         <header class="realtime-monitoring__header">
-          <div>
+          <div class="realtime-monitoring__heading">
             <span class="realtime-monitoring__icon"><Activity :size="18" /></span>
             <div>
               <h2 id="realtime-monitoring-title">实时监控</h2>
