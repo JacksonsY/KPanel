@@ -22,24 +22,52 @@ const moreVideoLinks = computed(() => {
   return isEnglish.value ? [youtube, bilibili] : [bilibili, youtube]
 })
 
-const videos = ref<TutorialVideoFeed['videos']>([])
+// Reuse the shipped catalog and covers when platform discovery is unavailable.
+type BundledTutorialId = 'release125' | 'webssh' | 'cluster' | 'security' | 'theme' | 'desktop' | 'release124' | 'overview' | 'launch'
+const bundledCatalog: { id: BundledTutorialId; cover: string; bilibili: string; youtube?: string }[] = [
+  { id: 'release125', cover: 'release-125', bilibili: 'BV13xpb6tEq7', youtube: '3HwmSTCtozg' },
+  { id: 'webssh', cover: 'webssh', bilibili: 'BV1J2HX6ME7p', youtube: 'kNBMTGF4G1k' },
+  { id: 'cluster', cover: 'cluster', bilibili: 'BV1jNe46WEjf' },
+  { id: 'security', cover: 'security', bilibili: 'BV1rvpe6dE9k', youtube: '6OFR8TxFguo' },
+  { id: 'theme', cover: 'theme', bilibili: 'BV1YKaY6FEzk' },
+  { id: 'desktop', cover: 'desktop', bilibili: 'BV145by6kEgG' },
+  { id: 'release124', cover: 'release-124', bilibili: 'BV14UH66EEZ9', youtube: 'vl7ulAKvah4' },
+  { id: 'overview', cover: 'overview', bilibili: 'BV1e7ar69EfD', youtube: 'HLTtsALHlpw' },
+  { id: 'launch', cover: 'launch', bilibili: 'BV1c5GG6vExw' },
+]
+const feeds = ref<Partial<Record<'bilibili' | 'youtube', TutorialVideoFeed>>>({})
 const loading = ref(false)
 const failed = ref(false)
 const stale = ref(false)
+const empty = ref(false)
 const reload = ref(0)
 const source = computed(() => isEnglish.value ? 'youtube' : 'bilibili')
 const fallbackPoster = '/tutorials/kpanel-video-placeholder.svg'
+const videos = computed(() => feeds.value[source.value]?.videos ?? bundledCatalog
+  .filter(entry => !isEnglish.value || entry.youtube)
+  .map(entry => ({
+    url: isEnglish.value ? `https://www.youtube.com/watch?v=${entry.youtube}&hl=en` : `https://www.bilibili.com/video/${entry.bilibili}/`,
+    title: i18n.t(`tutorials.videos.${entry.id}.title`),
+    thumbnailUrl: `/tutorials/kpanel-${entry.cover}-${isEnglish.value ? 'en' : 'zh'}.webp`,
+  })))
+const statusKey = computed(() => loading.value ? 'tutorials.feed.loading'
+  : failed.value ? (feeds.value[source.value] ? 'tutorials.feed.stale' : 'tutorials.feed.fallback')
+  : empty.value ? 'tutorials.feed.empty' : 'tutorials.feed.stale')
 
 watch([source, reload], ([currentSource], _previous, onCleanup) => {
   const controller = new AbortController()
   onCleanup(() => controller.abort())
-  videos.value = []
   failed.value = false
-  stale.value = false
+  stale.value = feeds.value[currentSource]?.stale ?? false
+  empty.value = false
   loading.value = true
   void api.tutorials.videos(currentSource, controller.signal).then((result) => {
     if (controller.signal.aborted) return
-    videos.value = result.videos.slice(0, 9)
+    if (!result.videos.length) {
+      empty.value = true
+      return
+    }
+    feeds.value[currentSource] = { ...result, videos: result.videos.slice(0, 9) }
     stale.value = result.stale
   }).catch(() => {
     if (!controller.signal.aborted) failed.value = true
@@ -99,8 +127,8 @@ const quickSteps = computed(() => [
         <span class="guide-platform">{{ platform }}</span>
       </div>
 
-      <div v-if="loading || failed || stale || !videos.length" class="guide-feed-status panel-card" role="status" aria-live="polite" data-testid="tutorial-feed-status">
-        <p>{{ i18n.t(loading ? 'tutorials.feed.loading' : failed ? 'tutorials.feed.failed' : stale ? 'tutorials.feed.stale' : 'tutorials.feed.empty') }}</p>
+      <div v-if="loading || failed || stale || empty" class="guide-feed-status panel-card" role="status" aria-live="polite" data-testid="tutorial-feed-status">
+        <p>{{ i18n.t(statusKey) }}</p>
         <button v-if="!loading" class="button button--secondary" type="button" @click="reload++">{{ i18n.t('tutorials.feed.retry') }}</button>
       </div>
 
