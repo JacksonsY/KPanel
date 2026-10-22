@@ -4545,6 +4545,8 @@ textarea:focus-visible,
 }
 
 .table-scroll {
+  /* Keep absolute screen-reader labels inside the table's scroll boundary. */
+  position: relative;
   width: 100%;
   overflow-x: auto;
   overscroll-behavior-x: contain;
