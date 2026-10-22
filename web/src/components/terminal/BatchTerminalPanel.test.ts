@@ -238,4 +238,74 @@ describe('server scheduled terminal batches', () => {
     expect(wrapper.findAll('.batch-command footer button')).toHaveLength(1)
     wrapper.unmount()
   })
+  describe('output scroll position', () => {
+    beforeEach(() => {
+      // jsdom has no layout: model a scrollable output and display:none so
+      // scrolling before Vue reveals the detail has the same effect as a browser.
+      const positions = new WeakMap<HTMLElement, number>()
+      function visible(element: HTMLElement): boolean {
+        return !element.closest<HTMLElement>('.batch-result__detail')?.style.display.includes('none')
+      }
+      vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) {
+        return visible(this) ? 1000 + (this.textContent?.length || 0) : 0
+      })
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+        return visible(this) ? 190 : 0
+      })
+      vi.spyOn(HTMLElement.prototype, 'scrollTop', 'get').mockImplementation(function (this: HTMLElement) { return positions.get(this) || 0 })
+      vi.spyOn(HTMLElement.prototype, 'scrollTop', 'set').mockImplementation(function (this: HTMLElement, value: number) {
+        positions.set(this, Math.max(0, Math.min(value, this.scrollHeight - this.clientHeight)))
+      })
+    })
+    afterEach(() => { vi.restoreAllMocks() })
+    const output = (wrapper: ReturnType<typeof mountPanel>) => wrapper.get<HTMLPreElement>('.batch-result__detail pre').element
+    const expectBottom = (pre: HTMLPreElement) => expect(pre.scrollTop).toBe(pre.scrollHeight - pre.clientHeight)
+
+    it.each(['single', 'all'])('opens completed output at the bottom with %s expansion', async mode => {
+      mocks.batches.mockResolvedValue({ available: true, items: [job('completed')] })
+      const wrapper = mountPanel(); await flushPromises()
+      if (mode === 'single') await wrapper.get('.batch-result__summary').trigger('click')
+      else await button(wrapper, '全部展开').trigger('click')
+      await flushPromises()
+      expectBottom(output(wrapper))
+      wrapper.unmount()
+    })
+
+    it('scrolls first output to the bottom when it arrives after expansion', async () => {
+      const empty = job(); empty.results[0]!.output = ''
+      mocks.batches.mockResolvedValue({ available: true, items: [empty] })
+      const wrapper = mountPanel(); await flushPromises()
+      await wrapper.get('.batch-result__summary').trigger('click')
+      expect(wrapper.find('.batch-result__detail pre').exists()).toBe(false)
+      mocks.batches.mockResolvedValue({ available: true, items: [job('completed')] })
+      await vi.advanceTimersByTimeAsync(1000); await flushPromises()
+      expectBottom(output(wrapper))
+      wrapper.unmount()
+    })
+
+    it('follows appended output at the bottom but preserves manual scrolling during a pending refresh', async () => {
+      mocks.batches.mockResolvedValue({ available: true, items: [job()] })
+      const wrapper = mountPanel(); await flushPromises()
+      await button(wrapper, '全部展开').trigger('click'); await flushPromises()
+      const appended = job(); appended.results[0]!.output += '\nmore output'
+      mocks.batches.mockResolvedValue({ available: true, items: [appended] })
+      await vi.advanceTimersByTimeAsync(1000); await flushPromises()
+      expectBottom(output(wrapper))
+
+      let accept!: (value: TerminalBatch) => void
+      mocks.getBatch.mockReturnValueOnce(new Promise(resolve => { accept = resolve }))
+      await vi.advanceTimersByTimeAsync(1000); await flushPromises()
+      output(wrapper).scrollTop = 30
+      const completed = job('completed'); completed.results[0]!.output += '\nlast lines'
+      accept(completed); await flushPromises()
+      expect(output(wrapper).scrollTop).toBe(30)
+      mocks.batches.mockResolvedValue({ available: true, items: [completed] })
+      await vi.advanceTimersByTimeAsync(4000); await flushPromises()
+      expect(output(wrapper).scrollTop).toBe(30)
+      await wrapper.get('.batch-result__summary').trigger('click')
+      await wrapper.get('.batch-result__summary').trigger('click'); await flushPromises()
+      expectBottom(output(wrapper))
+      wrapper.unmount()
+    })
+  })
 })

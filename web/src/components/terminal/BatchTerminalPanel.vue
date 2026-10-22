@@ -42,9 +42,25 @@ watch(executing, value => emit('runningChange', value), { immediate: true })
 
 function operatingSystemIdentity(host: { id: string }) { return detectOperatingSystemIdentity((props.hostInventory || props.hosts).find(item => item.id === host.id)?.lastSnapshot?.telemetry) }
 const outputPreElements = new Map<string, HTMLPreElement>()
-function setOutputPre(id: string, element: Element | ComponentPublicInstance | null) { if (element instanceof HTMLPreElement) outputPreElements.set(id, element); else outputPreElements.delete(id) }
+const initializedOutputElements = new WeakSet<HTMLPreElement>()
+function setOutputPre(id: string, element: Element | ComponentPublicInstance | null) {
+  if (!(element instanceof HTMLPreElement)) { outputPreElements.delete(id); return }
+  outputPreElements.set(id, element)
+  if (initializedOutputElements.has(element)) return
+  initializedOutputElements.add(element)
+  // Output can arrive after expansion or mount after a task transition.
+  void nextTick(() => {
+    if (expandedHosts.value.has(id) && outputPreElements.get(id) === element) scrollOutputToBottom(id)
+  })
+}
 function scrollOutputToBottom(id: string) { const pre = outputPreElements.get(id); if (pre) pre.scrollTop = pre.scrollHeight }
-function toggleExpanded(id: string) { const next = new Set(expandedHosts.value); if (next.has(id)) next.delete(id); else { next.add(id); void nextTick(() => scrollOutputToBottom(id)) }; expandedHosts.value = next }
+function toggleExpanded(id: string) {
+  const next = new Set(expandedHosts.value)
+  const expanding = !next.has(id)
+  if (expanding) next.add(id); else next.delete(id)
+  expandedHosts.value = next
+  if (expanding) void nextTick(() => scrollOutputToBottom(id))
+}
 function expandAll() { expandedHosts.value = new Set(results.value.map(item => item.host.id)); void nextTick(() => results.value.forEach(item => scrollOutputToBottom(item.host.id))) }
 function collapseAll() { expandedHosts.value = new Set() }
 function setCommandInput(element: Element | ComponentPublicInstance | null) { commandInput.value = element instanceof HTMLTextAreaElement ? element : undefined }
@@ -86,13 +102,13 @@ async function refresh(): Promise<void> {
   try {
     const response = await api.terminals.batches(controller.signal)
     if (!current()) return
-    const following = [...outputPreElements].filter(([, pre]) => pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8).map(([id]) => id)
     const selection = response.items.find(job => job.state === 'running')?.id || response.items.find(job => job.id === selectedID.value)?.id || response.items[0]?.id
     if (selection) {
       const detail = await api.terminals.getBatch(selection, controller.signal)
       if (!current()) return
       response.items = response.items.map(job => job.id === detail.id ? detail : job)
     }
+    const following = [...outputPreElements].filter(([, pre]) => pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8).map(([id]) => id)
     syncError.value = ''
     jobs.value = response.items
     available.value = response.available
