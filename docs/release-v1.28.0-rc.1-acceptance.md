@@ -113,13 +113,15 @@ Go1.27.3 对六平台 actual/original 闭包重新资格化，1009 个第一方 
 <!-- kpanel-release-metrics:end -->
 
 <!-- kpanel-release-process-metrics:start -->
-- 已记录发布流程异常或无效证据拦截次数：11
+- 已记录发布流程异常或无效证据拦截次数：12
 - 其中生产写操作开始后异常次数：0
 <!-- kpanel-release-process-metrics:end -->
 
 以上变更失败字段不适用于本轮流程异常：没有产品载荷引起的生产退化、回滚、紧急热修复或重复发布。公开验收流程发现时间2026-10-22T22:41:56+08:00，恢复时间2026-10-22T22:45:25.265+08:00；未逃逸公开验收门禁，原run失败保留，恢复入口绑定冻结产物完成断言，无生产写入。草稿曾将这段流程恢复填入变更失败字段，被本地指标校验拒绝，已按两类指标语义更正；这是文档编写校验，不计为另一次发布执行失败。
 
-计数口径为本轮已记录的准备、资格化、夹具、候选门禁及取证/公开验收流程拦截，不是11次产品发布失败。开发中间断言调整、有效旧代码red回归和可选探测不机械计数。较早来源任务未知的全量操作不作补算。部分失败只保留工具原回执而非独立日志文件，下面明确区别；成功后不覆盖首轮记录。
+计数口径为本轮已记录的准备、资格化、夹具、候选门禁及取证/公开验收流程拦截，另含发布后首轮文档CI的镜像拉取失败，不是12次产品发布失败。文档候选 `da744b5f` 的39800825318/1通过变更检查、竞态、Go/Node/Trivy安全扫描及第一组生命周期夹具，在最后拉取固定Alpine3.24镜像时收到 `unauthorized: authentication required`，exit125，尚未运行该OpenRC夹具；不能据此判断为产品失败或已证实上游瞬断。原始 `docs-ci-first-failed.log` 保留，补录后仅对文档检查有限重试，不重跑版本发布。最终文档候选/main仍须各自同SHA CI成功后才归档。
+
+开发中间断言调整、有效旧代码red回归和可选探测不机械计数。较早来源任务未知的全量操作不作补算。部分失败只保留工具原回执而非独立日志文件，下面明确区别；成功后不覆盖首轮记录。
 
 <!-- kpanel-release-process-incidents:start -->
 [
@@ -133,7 +135,8 @@ Go1.27.3 对六平台 actual/original 闭包重新资格化，1009 个第一方 
   {"fingerprint":"evidence/github-run-watch/tls-handshake-timeout","position":"before-production-write","count":1,"impact":"CLI发布watch TLS握手超时，不能据此推断workflow终态","recoveryEvidence":"publication-watch.log；以run/jobs、原始job日志和artifact继续核验","permanentAction":"KPanel release maintainers于2026-10-25复核网络/CLI；本轮使用连接器有界查询，不盲目重发版本","historicalReleases":[]},
   {"fingerprint":"evidence/candidate-ci/base-ref-misinterpretation","position":"before-production-write","count":1,"impact":"临时契约将push CI base误记为bbecee，未据此发布新内容","recoveryEvidence":"candidate-ci-job.log实际env为8a；takeover-contract.json已按原日志更正","permanentAction":"本轮以实际job参数冻结身份，最终文档明确push/main不同base；不将资格回执冒充L3","historicalReleases":[]},
   {"fingerprint":"evidence/publication-artifact/zip-layout-assumption","position":"before-production-write","count":1,"impact":"辅助读取publication ZIP误猜flat路径，KeyError，取证未完成","recoveryEvidence":"工具原回执；按namelist实际嵌套路径读取，publication-artifact-verification.json成功","permanentAction":"仓库外verify-publication-artifacts.py按原布局验证并拒绝不安全条目；不更改公开artifact","historicalReleases":[]},
-  {"fingerprint":"public-acceptance/validate-frozen-source/inherited-dispatch-event","position":"before-production-write","count":1,"impact":"复用工作流误入独立dispatch分支，run/attempt为空，公开业务断言尚未启动","recoveryEvidence":"public-acceptance-first-failed.log；39798207805/1从原39790232673/1 snapshot只读恢复成功，public-recovery-verification.json","permanentAction":"KPanel release maintainers在下一RC前且最晚2026-10-25前独立治理修复workflow_call事件判定并补回归；本次恢复不是永久处置","historicalReleases":[]}
+  {"fingerprint":"public-acceptance/validate-frozen-source/inherited-dispatch-event","position":"before-production-write","count":1,"impact":"复用工作流误入独立dispatch分支，run/attempt为空，公开业务断言尚未启动","recoveryEvidence":"public-acceptance-first-failed.log；39798207805/1从原39790232673/1 snapshot只读恢复成功，public-recovery-verification.json","permanentAction":"KPanel release maintainers在下一RC前且最晚2026-10-25前独立治理修复workflow_call事件判定并补回归；本次恢复不是永久处置","historicalReleases":[]},
+  {"fingerprint":"acceptance-docs/application-lifecycle/registry-unauthorized","position":"before-production-write","count":1,"impact":"39800825318/1在拉取固定Alpine镜像时收到unauthorized，exit125，OpenRC夹具未执行","recoveryEvidence":"docs-ci-first-failed.log；原产品候选/主线/L3同镜像场景已成功，文档收尾仍须新的精确SHA候选与主线CI成功","permanentAction":"KPanel release maintainers于2026-10-25复核镜像registry认证/可用性，根因尚未证实；仅允许有限重试，完整生命周期夹具成功且同摘要身份不变才退出本次例外，不改镜像pin绕过","historicalReleases":[]}
 ]
 <!-- kpanel-release-process-incidents:end -->
 
