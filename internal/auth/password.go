@@ -71,16 +71,35 @@ func (h *Argon2idHasher) Hash(password string) (string, error) {
 		h.params.Threads,
 		h.params.KeyLength,
 	)
+	return encodeArgon2id(h.params, salt, key), nil
+}
+
+// dummyHash has the same verification cost as a real password hash. Its random
+// digest is deliberately unrelated to a password: missing accounts are always
+// rejected after Verify, so startup need not run Argon2 just to obtain a digest.
+func (h *Argon2idHasher) dummyHash() (string, error) {
+	salt := make([]byte, h.params.SaltLength)
+	if _, err := rand.Read(salt); err != nil {
+		return "", fmt.Errorf("generate verifier salt: %w", err)
+	}
+	key := make([]byte, h.params.KeyLength)
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("generate verifier digest: %w", err)
+	}
+	return encodeArgon2id(h.params, salt, key), nil
+}
+
+func encodeArgon2id(params Argon2idParams, salt, key []byte) string {
 	encoding := base64.RawStdEncoding
 	return fmt.Sprintf(
 		"$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version,
-		h.params.MemoryKiB,
-		h.params.Iterations,
-		h.params.Threads,
+		params.MemoryKiB,
+		params.Iterations,
+		params.Threads,
 		encoding.EncodeToString(salt),
 		encoding.EncodeToString(key),
-	), nil
+	)
 }
 
 func (h *Argon2idHasher) Verify(password, encoded string) (bool, error) {

@@ -54,3 +54,31 @@ func TestArgon2idVerifyRejectsUnsafeParameters(t *testing.T) {
 		}
 	}
 }
+
+func TestArgon2idDummyHashPreservesVerificationParameters(t *testing.T) {
+	hasher := testHasher(t)
+	first, err := hasher.dummyHash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := hasher.dummyHash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	params, salt, key, err := parseArgon2id(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if params != hasher.params || len(salt) != int(params.SaltLength) || len(key) != int(params.KeyLength) {
+		t.Fatalf("dummy verifier changed password cost or encoding: %+v", params)
+	}
+	if first == second {
+		t.Fatal("dummy verifiers must use fresh randomness")
+	}
+	for _, password := range []string{"kejilion-panel-invalid-password", "a-strong-password-1"} {
+		valid, err := hasher.Verify(password, first)
+		if err != nil || valid {
+			t.Fatalf("dummy verifier accepted %q: valid=%v err=%v", password, valid, err)
+		}
+	}
+}

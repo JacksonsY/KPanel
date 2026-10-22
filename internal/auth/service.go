@@ -136,7 +136,14 @@ func NewService(storage *store.Store, hasher PasswordHasher, config Config) (*Se
 		return nil, errors.New("max concurrent password hashes must not exceed 8")
 	}
 
-	dummyHash, err := hasher.Hash("kejilion-panel-invalid-password")
+	// Argon2 can prepare a cost-equivalent random verifier without allocating
+	// its 64 MiB working set. Other PasswordHasher implementations retain their
+	// existing preparation path.
+	prepareDummy := func() (string, error) { return hasher.Hash("kejilion-panel-invalid-password") }
+	if preparer, ok := hasher.(interface{ dummyHash() (string, error) }); ok {
+		prepareDummy = preparer.dummyHash
+	}
+	dummyHash, err := prepareDummy()
 	if err != nil {
 		return nil, fmt.Errorf("prepare password verifier: %w", err)
 	}
