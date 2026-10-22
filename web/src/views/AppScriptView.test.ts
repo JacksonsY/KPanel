@@ -200,7 +200,7 @@ describe('dedicated desktop app script terminal', () => {
     wrapper.unmount()
   })
 
-  it('detaches on window close and stops only through the explicit end action', async () => {
+  it('uses window close to stop the task without a redundant terminal toolbar', async () => {
     let guard: (() => boolean | Promise<boolean>) | undefined
     const unregister = vi.fn()
     const closeGuards: DesktopWindowCloseGuardRegistry = {
@@ -213,11 +213,12 @@ describe('dedicated desktop app script terminal', () => {
     const wrapper = await mountView(closeGuards)
 
     expect(guard).toBeTypeOf('function')
-    await expect(Promise.resolve(guard?.())).resolves.toBe(true)
     expect(mocks.cancelJob).not.toHaveBeenCalled()
     expect(confirm).not.toHaveBeenCalled()
-    await wrapper.get('[data-app-script-stop]').trigger('click')
-    await flushPromises()
+    expect(wrapper.find('[data-app-script-stop]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('关闭窗口或刷新不会结束任务')
+    expect(wrapper.element.children).toHaveLength(1)
+    await expect(Promise.resolve(guard?.())).resolves.toBe(true)
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('释放应用管理锁'))
     expect(mocks.cancelJob).toHaveBeenCalledWith('job-1')
     expect(mocks.job).toHaveBeenCalledWith('job-1')
@@ -239,9 +240,7 @@ describe('dedicated desktop app script terminal', () => {
     mocks.cancelJob.mockRejectedValue(new Error('Agent offline'))
     const wrapper = await mountView(closeGuards)
 
-    await wrapper.get('[data-app-script-stop]').trigger('click')
-    await flushPromises()
-    expect(await guard?.()).toBe(true)
+    expect(await guard?.()).toBe(false)
     expect(wrapper.find('[role="alert"]').text()).toContain('Agent offline')
     expect(window.localStorage.getItem('kpanel:active-app-job')).toBe('job-1')
     wrapper.unmount()
@@ -258,10 +257,21 @@ describe('dedicated desktop app script terminal', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     const wrapper = await mountView(closeGuards)
 
-    await wrapper.get('[data-app-script-stop]').trigger('click')
-    await flushPromises()
-    expect(await guard?.()).toBe(true)
+    expect(await guard?.()).toBe(false)
     expect(mocks.cancelJob).not.toHaveBeenCalled()
     wrapper.unmount()
+  })
+
+  it('keeps the task running across page refresh and restores the same terminal', async () => {
+    const wrapper = await mountView()
+    wrapper.unmount()
+
+    expect(mocks.cancelJob).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem('kpanel:active-app-job')).toBe('job-1')
+    mocks.jobs.mockResolvedValue({ items: [job] })
+    const restored = await mountView(undefined, () => false)
+    expect(mocks.action).toHaveBeenCalledOnce()
+    expect(restored.findComponent({ name: 'AppInteractiveTerminal' }).props('jobId')).toBe('job-1')
+    restored.unmount()
   })
 })

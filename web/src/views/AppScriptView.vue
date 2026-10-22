@@ -193,7 +193,7 @@ function guardWindowClose(): Promise<boolean> {
 }
 
 onMounted(() => {
-  unregisterWindowCloseGuard = windowCloseGuards?.register(() => true)
+  unregisterWindowCloseGuard = windowCloseGuards?.register(guardWindowClose)
   startLoad(consumeWindowLaunch())
 })
 onBeforeUnmount(() => {
@@ -204,10 +204,6 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="app-script-page terminal-theme-scope">
-    <div v-if="job && !loading && !error" class="app-script-page__actions">
-      <span>{{ i18n.t('appScript.backgroundNotice') }}</span>
-      <button v-if="isActiveJob(job)" class="button" type="button" :disabled="closingJob" data-app-script-stop @click="guardWindowClose">{{ i18n.t('appScript.endTask') }}</button>
-    </div>
     <div v-if="closeError" class="app-script-page__close-error" role="alert">
       <TriangleAlert :size="16" />
       <span>{{ closeError }}</span>
@@ -257,8 +253,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.app-script-page__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); color: var(--text); }
-.app-script-page__actions span { flex: 1; min-width: 180px; font-size: 13px; line-height: 1.5; }
 .app-script-page {
   display: flex;
   height: 100%;
