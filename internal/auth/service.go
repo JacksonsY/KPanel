@@ -140,7 +140,7 @@ func NewService(storage *store.Store, hasher PasswordHasher, config Config) (*Se
 	// its 64 MiB working set. Other PasswordHasher implementations retain their
 	// existing preparation path.
 	prepareDummy := func() (string, error) { return hasher.Hash("kejilion-panel-invalid-password") }
-	if preparer, ok := hasher.(interface{ dummyHash() (string, error) }); ok {
+	if preparer, ok := hasher.(*Argon2idHasher); ok {
 		prepareDummy = preparer.dummyHash
 	}
 	dummyHash, err := prepareDummy()

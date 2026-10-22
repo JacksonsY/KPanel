@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,15 +19,20 @@ type dummyVerifierSpy struct {
 }
 
 func (h *dummyVerifierSpy) Hash(string) (string, error) {
-	return "", errors.New("unexpected expensive startup hash")
+	encoded, err := h.Argon2idHasher.Hash("wrapped-dummy")
+	return "wrapped:" + encoded, err
 }
 
 func (h *dummyVerifierSpy) Verify(password, encoded string) (bool, error) {
 	h.verifications++
+	encoded, ok := strings.CutPrefix(encoded, "wrapped:")
+	if !ok {
+		return false, ErrInvalidPasswordHash
+	}
 	return h.Argon2idHasher.Verify(password, encoded)
 }
 
-func TestServicePreparesDummyWithoutHashingButStillVerifiesMissingUsers(t *testing.T) {
+func TestServicePreservesEmbeddedCustomHasherDummyFormat(t *testing.T) {
 	directory := t.TempDir()
 	storage, err := store.Open(filepath.Join(directory, "state.json"))
 	if err != nil {
@@ -40,11 +46,37 @@ func TestServicePreparesDummyWithoutHashingButStillVerifiesMissingUsers(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !strings.HasPrefix(service.dummyHash, "wrapped:") {
+		t.Fatal("custom hasher dummy preparation bypassed its Hash method")
+	}
 	if _, err := service.Login("192.0.2.100", "missing", "kejilion-panel-invalid-password", ""); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("missing account must stay rejected: %v", err)
 	}
 	if hasher.verifications != 1 {
 		t.Fatalf("missing account performed %d verifications; want 1", hasher.verifications)
+	}
+}
+
+func TestServiceUsesRandomArgon2idDummyVerifier(t *testing.T) {
+	directory := t.TempDir()
+	storage, err := store.Open(filepath.Join(directory, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	hasher := testHasher(t)
+	service, err := NewService(storage, hasher, Config{
+		BootstrapTokenPath: filepath.Join(directory, "bootstrap.token"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid, err := hasher.Verify("kejilion-panel-invalid-password", service.dummyHash)
+	if err != nil || valid {
+		t.Fatalf("startup dummy should contain a random digest: valid=%v err=%v", valid, err)
+	}
+	if _, err := service.Login("192.0.2.101", "missing", "kejilion-panel-invalid-password", ""); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("missing account must stay rejected: %v", err)
 	}
 }
 
