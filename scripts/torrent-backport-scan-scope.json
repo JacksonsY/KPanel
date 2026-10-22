@@ -12,14 +12,14 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "f5b0d0988c5f7d37ed9cd9cee453c22586efa5d9d1bed42240599df5517eee07",
-  "firstPartySourceSha256": "ff0cdd4eb981e0547941980126422c6fd56d98e6cf9537d22f6c834b40c62946",
+  "firstPartySourceSha256": "0dbbab66d8e0a81903806221f2110132c6f615de0dbd619df36486ece685df09",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
     "state": "reviewed",
     "reviewerRole": "Independent stable release, source and dependency evidence reviewer",
-    "evidenceSha256": "fe89dc5694a066c650b24be082e0379a96b655bc46bcb0901711fe0d64928dd9",
+    "evidenceSha256": "48b3d2529f6402a334054fa529d3f458cc4e456f62b4145bc08e11fba1ab1591",
     "nodeSecurityPatchEvidenceSha256": "9ac599260ddaac5a66b837f48ff22eff5bc6a40123ad3e138360f17b8c340019",
     "nodeSecurityPatchSummary": "Node 24.22.1 security patch: independent read-only review of accb4c12..fb18f425 confirms that only Node pins change in Dockerfile and release.yml; their UTF-8 LF build hashes are rebound. No Go source, module, vendor, production GoFiles, finding disposition, observation date or expiry changes. Canonical Go 1.27.3 inventory requalified all six actual/original production closures and the unchanged first-party source identity. Review is PASS WITH FOLLOW-UP, not integration or publication approval; exact-candidate Linux L2 and release L3 remain required.",
     "advisoryEvidenceSha256": "32c054b8eebcda02c82748fd29981fa8c3988fa19605e1deed1628d7a6ab4607",
@@ -54,7 +54,9 @@
     "notes": "Terminal connection candidate qualification: independently reviewed local capability reuse, authenticated ready-stream role, receive deadline, retry and peer resource admission changes. Four additional Go test files; no production Go filenames, third-party modules, release targets or vendored source changes. Canonical firstPartySources rebinds the content identity; actual/original six-platform closure qualification is required before delivery. Existing findings, dispositions and expiry remain unchanged; no scanner, CI, L3 or publication pass is implied. Shared terminal output candidate: existing host/job output pumps share burst and idle bounds, task recovery events and atomic subscription admission; two additional Go test files. No production Go filenames, module graph, vendored sources, build targets, findings, dispositions or expiry changed. Canonical six-platform actual/original qualification is required before delivery; no new vulnerability scanner, L3 or publication pass is implied.",
     "terminalSharedSourceEvidenceSha256": "01ed779c6a1af853628d5aaf3a8ea42ed42130ca5b4405332825446b46f6c4ef",
     "previousEvidenceSha256": "cb1bab8108d1af99d027ffdd90ce1b151057262fb6e680d73cd571efad4d5fb9",
-    "identityRefreshObservationSha256": "12f2467fdb06ee4ab7ea010da1452941ab0becee68ae262a5f02b2a43f7352b1"
+    "identityRefreshObservationSha256": "12f2467fdb06ee4ab7ea010da1452941ab0becee68ae262a5f02b2a43f7352b1",
+    "versionPatchPreviousEvidenceSha256": "fe89dc5694a066c650b24be082e0379a96b655bc46bcb0901711fe0d64928dd9",
+    "versionPatchSummary": "v1.27.2: independent read-only source comparison confirms only the release version constant changes among 1007 first-party Go files, with identical path/import sets. Build targets, dependency graph and closure, 37 finding dispositions, observation and expiry remain unchanged. Canonical six-platform actual/original inventory and all release scanners must revalidate; this identity review is not a scanner or release pass."
   },
   "findings": [
     {
