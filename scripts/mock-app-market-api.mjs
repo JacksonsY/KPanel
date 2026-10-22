@@ -2406,14 +2406,34 @@ createServer(async (request, response) => {
   if (await handleMockSystemServices(request, response, url, { send, readJSON })) return
   if (await handleMockEditor(request, response, url, { send, readJSON })) return
   if (request.method === 'GET' && url.pathname === '/api/v1/files/archive' && url.searchParams.has('members')) {
-    const input = JSON.parse(url.searchParams.get('selection') || '{}')
+    let input, members
+    try {
+      const selection = url.searchParams.get('selection') || '{}'
+      const memberSelection = url.searchParams.get('members') || '{}'
+      if (selection.length > 8192 || memberSelection.length > 8192) throw new Error('oversized selection')
+      input = JSON.parse(selection)
+      members = JSON.parse(memberSelection)
+      if (!input || !Array.isArray(input.sources) || input.sources.length !== 1 || typeof input.sources[0] !== 'string'
+        || !input.expectedResourceVersions || typeof input.expectedResourceVersions !== 'object'
+        || !members || !Array.isArray(members.entries) || !members.entries.length || members.entries.length > 100
+        || members.entries.some(entry => typeof entry !== 'string' || !entry || entry.length > 1024)
+        || (members.raw !== undefined && typeof members.raw !== 'boolean')
+        || (members.raw && (members.entries.length !== 1 || !mockArchiveFiles.has(members.entries[0])))) throw new Error('invalid selection')
+    } catch {
+      send(response, 400, { title: '压缩下载参数无效', code: 'invalid_archive_download' })
+      return
+    }
+    const name = url.searchParams.get('name') || 'selected.zip'
+    if (name.length > 1024 || /[\\/\x00\r\n]/.test(name) || name === '.' || name === '..') {
+      send(response, 400, { title: '压缩下载参数无效', code: 'invalid_archive_download' })
+      return
+    }
     const source = mockFiles.find(item => item.path === input.sources?.[0])
     if (!source || source.resourceVersion !== input.expectedResourceVersions?.[source.path]) { send(response, 409, { title: '文件状态已变化，请刷新后重试', code: 'file_conflict' }); return }
-    const members = JSON.parse(url.searchParams.get('members') || '{}')
     const selected = new Map([...mockArchiveFiles].filter(([name]) => members.entries?.some(member => name === member || name.startsWith(`${member}/`))))
     if (!selected.size) { send(response, 409, { title: '文件状态已变化，请刷新后重试', code: 'file_conflict' }); return }
     const data = members.raw ? Buffer.from(selected.values().next().value) : mockArchiveZIP(selected)
-    sendBinary(response, 200, data, members.raw ? 'application/octet-stream' : 'application/zip', `attachment; filename="${url.searchParams.get('name') || 'selected.zip'}"`)
+    sendBinary(response, 200, data, members.raw ? 'application/octet-stream' : 'application/zip', `attachment; filename="${name}"`)
     return
   }
   if (request.method === 'GET' && url.pathname === '/api/v1/files/content') {
