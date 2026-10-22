@@ -447,6 +447,14 @@ func (m *Manager) extractArchive(
 	if !targetInfo.IsDir() {
 		return contract.FileEntry{}, ErrNotDirectory
 	}
+	parent, openedTarget, err := m.openReceiveDirectory(normalizedTarget, false)
+	if err != nil {
+		return contract.FileEntry{}, err
+	}
+	defer parent.Close()
+	if !os.SameFile(targetInfo, openedTarget) {
+		return contract.FileEntry{}, ErrConflict
+	}
 	outputVirtual := joinVirtual(normalizedTarget, name)
 	if err := m.mutationError(outputVirtual); err != nil {
 		return contract.FileEntry{}, err
@@ -461,15 +469,43 @@ func (m *Manager) extractArchive(
 	if operation := archiveOptions(ctx); operation != nil && operation.tempSuffix != "" {
 		tempVirtual = joinVirtual(normalizedTarget, ".kpanel-extract-"+operation.tempSuffix)
 	}
-	if err := m.rootFS.Mkdir(rootName(tempVirtual), 0700); err != nil {
+	tempName := path.Base(tempVirtual)
+	if err := parent.Mkdir(tempName, 0700); err != nil {
 		return contract.FileEntry{}, err
 	}
-	success := false
+	var ownedStage os.FileInfo
 	defer func() {
-		if !success {
-			_ = m.rootFS.RemoveAll(rootName(tempVirtual))
+		if ownedStage != nil {
+			if visible, err := parent.Lstat(tempName); err == nil {
+				_ = removeOwnedReceiveDirectory(parent, tempName, visible, ownedStage, "")
+			}
 		}
 	}()
+	stageInfo, err := parent.Lstat(tempName)
+	if err != nil || !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 {
+		return contract.FileEntry{}, ErrConflict
+	}
+	publication, err := parent.OpenRoot(tempName)
+	if err != nil {
+		return contract.FileEntry{}, err
+	}
+	defer publication.Close()
+	opened, err := publication.Stat(".")
+	if err != nil || !os.SameFile(stageInfo, opened) {
+		return contract.FileEntry{}, ErrConflict
+	}
+	ownedStage = opened
+	if err := publication.Mkdir("result", 0700); err != nil {
+		return contract.FileEntry{}, err
+	}
+	stage, err := publication.OpenRoot("result")
+	if err != nil {
+		return contract.FileEntry{}, err
+	}
+	defer stage.Close()
+	// Resolve every extracted child against the opened staging object. A
+	// replacement sibling cannot redirect writes within the wider Agent root.
+	extractor := &Manager{rootFS: stage}
 
 	source, err := m.rootFS.Open(rootName(normalizedSource))
 	if err != nil {
@@ -482,7 +518,7 @@ func (m *Manager) extractArchive(
 	}
 	budget := archiveBudget(ctx, m)
 	directoryTimes := make([]archiveDirectoryTime, 0)
-	if err := m.readArchive(ctx, source, sourceInfo.Size(), format, tempVirtual, budget, &directoryTimes); err != nil {
+	if err := extractor.readArchive(ctx, source, sourceInfo.Size(), format, "/", budget, &directoryTimes); err != nil {
 		return contract.FileEntry{}, err
 	}
 	if operation := archiveOptions(ctx); operation != nil {
@@ -492,7 +528,7 @@ func (m *Manager) extractArchive(
 			}
 		}
 	}
-	if err := m.applyArchiveDirectoryTimes(directoryTimes); err != nil {
+	if err := extractor.applyArchiveDirectoryTimes(directoryTimes); err != nil {
 		return contract.FileEntry{}, err
 	}
 	currentInfo, err := source.Stat()
@@ -505,17 +541,32 @@ func (m *Manager) extractArchive(
 	if err := ctx.Err(); err != nil {
 		return contract.FileEntry{}, err
 	}
-	if err := renameNoReplaceRoot(m.rootFS, tempVirtual, outputVirtual); err != nil {
+	visible, stageErr := parent.Lstat(tempName)
+	_, _, parentErr := m.resolveExisting(normalizedTarget)
+	currentTarget, targetErr := m.rootFS.Lstat(rootName(normalizedTarget))
+	if stageErr != nil || !os.SameFile(ownedStage, visible) || parentErr != nil || targetErr != nil || !os.SameFile(targetInfo, currentTarget) {
+		return contract.FileEntry{}, ErrConflict
+	}
+	resultInfo, err := stage.Stat(".")
+	if err != nil {
+		return contract.FileEntry{}, err
+	}
+	if err := publishReceiveObject(publication, "result", parent, name, false); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return contract.FileEntry{}, ErrAlreadyExists
 		}
 		return contract.FileEntry{}, err
 	}
-	if err := syncRootDirectory(m.rootFS, rootName(normalizedTarget)); err != nil {
+	if err := syncRootDirectory(parent, "."); err != nil {
 		return contract.FileEntry{}, err
 	}
-	success = true
-	return m.Stat(outputVirtual)
+	_, _, parentErr = m.resolveExisting(normalizedTarget)
+	currentTarget, targetErr = m.rootFS.Lstat(rootName(normalizedTarget))
+	published, publishedErr := parent.Lstat(name)
+	if parentErr != nil || targetErr != nil || !os.SameFile(targetInfo, currentTarget) || publishedErr != nil || !os.SameFile(resultInfo, published) {
+		return contract.FileEntry{}, ErrConflict
+	}
+	return m.entry(outputVirtual, published), nil
 }
 
 func boundedZIPDirectory(ctx context.Context, reader io.ReaderAt, size int64, maxEntries int) (*archiveDirectoryReader, error) {

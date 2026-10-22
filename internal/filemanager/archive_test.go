@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -76,6 +77,65 @@ func TestCompressAndExtractSupportedFormats(t *testing.T) {
 			}
 			if restoredInfo.ModTime().Sub(modified).Abs() > 2*time.Second {
 				t.Fatalf("restored modification time = %v", restoredInfo.ModTime())
+			}
+		})
+	}
+}
+
+func TestExtractKeepsWritesInsideOpenedStageAfterSiblingReplacement(t *testing.T) {
+	for _, replaceWithLink := range []bool{true, false} {
+		t.Run(strconv.FormatBool(replaceWithLink), func(t *testing.T) {
+			manager, root := newTestManager(t)
+			mustMkdirAll(t, filepath.Join(root, "source"))
+			mustMkdirAll(t, filepath.Join(root, "target"))
+			mustMkdirAll(t, filepath.Join(root, "sensitive"))
+			mustWrite(t, filepath.Join(root, "source", "first.txt"), "first")
+			mustWrite(t, filepath.Join(root, "source", "second.txt"), "second")
+			mustWrite(t, filepath.Join(root, "sensitive", "sentinel"), "keep")
+			mustWrite(t, filepath.Join(root, "sensitive", "first.txt"), "existing")
+			_, err := manager.Action(context.Background(), contract.FileActionRequest{
+				Action: "compress", Sources: []string{"/source"}, Target: "/", Name: "bundle.zip", Format: archiveFormatZIP,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stage := filepath.Join(root, "target", ".kpanel-extract-swap-test")
+			moved := filepath.Join(root, "target", "moved-stage")
+			swapped := false
+			operation := &archiveOperation{tempSuffix: "swap-test", progress: func(budget *copyBudget) {
+				if swapped || budget.bytes == 0 {
+					return
+				}
+				if err := os.Rename(stage, moved); err != nil {
+					if runtime.GOOS == "windows" {
+						t.Skipf("platform cannot move an opened staging directory: %v", err)
+					}
+					t.Fatal(err)
+				}
+				swapped = true
+				if replaceWithLink {
+					if err := os.Symlink(filepath.Join(root, "sensitive"), stage); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					mustWrite(t, filepath.Join(stage, "sentinel"), "replacement")
+				}
+			}}
+			ctx := context.WithValue(context.Background(), archiveContextKey{}, operation)
+			_, err = manager.extractArchive(ctx, "/bundle.zip", "/target", "result", archiveFormatZIP, "")
+			if err == nil || !swapped {
+				t.Fatalf("replaced stage must fail, swapped=%v err=%v", swapped, err)
+			}
+			for _, candidate := range []string{filepath.Join(root, "sensitive", "second.txt"), filepath.Join(stage, "second.txt"), filepath.Join(root, "target", "result")} {
+				if _, err := os.Lstat(candidate); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("replacement received or published extraction output %s: %v", candidate, err)
+				}
+			}
+			if !replaceWithLink {
+				content, err := os.ReadFile(filepath.Join(stage, "sentinel"))
+				if err != nil || string(content) != "replacement" {
+					t.Fatalf("cleanup changed the replacement directory: %q %v", content, err)
+				}
 			}
 		})
 	}
