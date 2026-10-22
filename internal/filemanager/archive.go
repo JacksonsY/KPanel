@@ -45,6 +45,8 @@ type archiveEntryWriter func(
 	info os.FileInfo,
 ) error
 
+type archiveSourceRootKey struct{}
+
 func (m *Manager) prepareArchiveSources(
 	sources []string,
 	expectedVersions map[string]string,
@@ -274,8 +276,30 @@ func (m *Manager) walkArchive(
 	budget *copyBudget,
 	writeEntry archiveEntryWriter,
 ) error {
+	parent, _, err := m.openReceiveDirectory(path.Dir(sourceVirtual), false)
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	return m.walkArchiveRoot(ctx, parent, sourceVirtual, archiveName, info, budget, writeEntry)
+}
+
+func (m *Manager) walkArchiveRoot(
+	ctx context.Context,
+	parent *fileRoot,
+	sourceVirtual string,
+	archiveName string,
+	info os.FileInfo,
+	budget *copyBudget,
+	writeEntry archiveEntryWriter,
+) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	sourceName := rootName(path.Base(sourceVirtual))
+	visible, err := parent.Lstat(sourceName)
+	if err != nil || !os.SameFile(info, visible) {
+		return ErrConflict
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return ErrSymlink
@@ -291,7 +315,7 @@ func (m *Manager) walkArchive(
 		return ErrTooLarge
 	}
 	if archiveName != "" {
-		if err := writeEntry(ctx, archiveName, sourceVirtual, info); err != nil {
+		if err := writeEntry(context.WithValue(ctx, archiveSourceRootKey{}, parent), archiveName, sourceVirtual, info); err != nil {
 			return err
 		}
 	}
@@ -299,7 +323,16 @@ func (m *Manager) walkArchive(
 	if !info.IsDir() {
 		return nil
 	}
-	directory, err := m.rootFS.Open(rootName(sourceVirtual))
+	directoryRoot, err := parent.OpenRoot(sourceName)
+	if err != nil {
+		return err
+	}
+	defer directoryRoot.Close()
+	opened, err := directoryRoot.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		return ErrConflict
+	}
+	directory, err := directoryRoot.Open(".")
 	if err != nil {
 		return err
 	}
@@ -325,7 +358,7 @@ func (m *Manager) walkArchive(
 		if m.isProtected(childVirtual) || isInternalComponent(entry.Name()) {
 			continue
 		}
-		childInfo, statErr := m.rootFS.Lstat(rootName(childVirtual))
+		childInfo, statErr := directoryRoot.Lstat(entry.Name())
 		if statErr != nil {
 			return statErr
 		}
@@ -333,7 +366,7 @@ func (m *Manager) walkArchive(
 		if archiveName != "" {
 			childArchiveName = path.Join(archiveName, entry.Name())
 		}
-		if err := m.walkArchive(ctx, childVirtual, childArchiveName, childInfo, budget, writeEntry); err != nil {
+		if err := m.walkArchiveRoot(ctx, directoryRoot, childVirtual, childArchiveName, childInfo, budget, writeEntry); err != nil {
 			return err
 		}
 	}
@@ -383,7 +416,11 @@ func (m *Manager) copyArchiveFile(
 	expected os.FileInfo,
 	destination io.Writer,
 ) error {
-	source, err := m.rootFS.Open(rootName(sourceVirtual))
+	parent, ok := ctx.Value(archiveSourceRootKey{}).(*fileRoot)
+	if !ok {
+		return ErrConflict
+	}
+	source, err := parent.Open(path.Base(sourceVirtual))
 	if err != nil {
 		return err
 	}

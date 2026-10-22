@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -114,7 +115,7 @@ func TestExtractKeepsWritesInsideOpenedStageAfterSiblingReplacement(t *testing.T
 				}
 				swapped = true
 				if replaceWithLink {
-					if err := os.Symlink(filepath.Join(root, "sensitive"), stage); err != nil {
+					if err := os.Symlink("../sensitive", stage); err != nil {
 						t.Fatal(err)
 					}
 				} else {
@@ -138,6 +139,94 @@ func TestExtractKeepsWritesInsideOpenedStageAfterSiblingReplacement(t *testing.T
 				}
 			}
 		})
+	}
+}
+
+func TestCompressRejectsNestedDirectorySubstitution(t *testing.T) {
+	manager, root := newTestManager(t)
+	mustWrite(t, filepath.Join(root, "source", "outer", "nested", "public.txt"), "public")
+	mustWrite(t, filepath.Join(root, "sensitive", "secret.txt"), "secret")
+	swapped := false
+	operation := &archiveOperation{progress: func(budget *copyBudget) {
+		if swapped || budget.entries != 3 {
+			return
+		}
+		original := filepath.Join(root, "source", "outer", "nested")
+		if err := os.Rename(original, filepath.Join(root, "moved-source")); err != nil {
+			if runtime.GOOS == "windows" {
+				t.Skipf("platform cannot move opened directories: %v", err)
+			}
+			t.Fatal(err)
+		}
+		if err := os.Symlink("../../sensitive", original); err != nil {
+			t.Fatal(err)
+		}
+		swapped = true
+	}}
+	ctx := context.WithValue(context.Background(), archiveContextKey{}, operation)
+	_, err := manager.compressArchive(ctx, []string{"/source"}, "/", "result.zip", archiveFormatZIP, nil)
+	if err == nil || !swapped {
+		t.Fatalf("substituted source must be rejected, swapped=%v err=%v", swapped, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "result.zip")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("substituted source was published: %v", err)
+	}
+}
+
+func TestArchiveTraversalKeepsOpenedParentForLaterFiles(t *testing.T) {
+	manager, root := newTestManager(t)
+	for _, directory := range []string{"source/outer/nested", "sensitive"} {
+		mustWrite(t, filepath.Join(root, directory, "first.txt"), "first")
+		mustWrite(t, filepath.Join(root, directory, "second.txt"), directory)
+	}
+	swapped := false
+	walks := 0
+	operation := &archiveOperation{progress: func(budget *copyBudget) {
+		if budget.entries == 1 {
+			walks++
+		}
+		if swapped || walks != 2 || budget.entries != 4 {
+			return
+		}
+		original := filepath.Join(root, "source", "outer", "nested")
+		if err := os.Rename(original, filepath.Join(root, "moved-source")); err != nil {
+			if runtime.GOOS == "windows" {
+				t.Skipf("platform cannot move opened directories: %v", err)
+			}
+			t.Fatal(err)
+		}
+		if err := os.Symlink("../../sensitive", original); err != nil {
+			t.Fatal(err)
+		}
+		swapped = true
+	}}
+	ctx := context.WithValue(context.Background(), archiveContextKey{}, operation)
+	var output bytes.Buffer
+	if err := manager.ExportZIP(ctx, []string{"/source"}, nil, &output); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(output.Bytes()), int64(output.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range reader.File {
+		if !strings.HasSuffix(entry.Name, "/second.txt") {
+			continue
+		}
+		input, err := entry.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, err := io.ReadAll(input)
+		_ = input.Close()
+		if err != nil || string(content) != "source/outer/nested" {
+			t.Fatalf("archive read from substituted parent: %q %v", content, err)
+		}
+		found = true
+	}
+	if !found || !swapped {
+		t.Fatalf("regression scenario incomplete: file=%v swap=%v", found, swapped)
 	}
 }
 
