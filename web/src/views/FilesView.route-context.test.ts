@@ -2,6 +2,7 @@
 import { shallowMount, flushPromises } from '@vue/test-utils'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import FilesView from './FilesView.vue'
+import FileArchiveTools from '@/components/files/FileArchiveTools.vue'
 import { createWindowRouter, reactiveRouteFor, synchronizeWindowRoute } from '@/lib/desktopWindowRoute'
 import { windowRouterKey, windowRouteKey } from '@/lib/desktopRouteKeys'
 import { useFileClipboard, resetFileWindowTransferForTest } from '@/lib/fileWindowTransfer'
@@ -35,6 +36,35 @@ beforeEach(()=>{
  }))
 })
 afterEach(()=>{wrapper?.unmount();wrapper=undefined;vi.unstubAllGlobals();vi.useRealTimers()})
+
+it('closes the actual archive browser when a directory shortcut reuses its window', async () => {
+ const source = { ...entry, name: 'site.zip', path: '/home/site.zip', kind: 'file', editable: false, sizeBytes: 10, mime: 'application/zip' }
+ vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+  const url = new URL(input, 'http://localhost')
+  let body: unknown = { items: [] }
+  if (url.pathname.endsWith('/cluster/hosts')) body = { nodeId: 'c'.repeat(32), items: hosts }
+  if (url.pathname.endsWith('/files/entry')) body = source
+  if (url.pathname.endsWith('/files')) body = { path: '/home', entries: [source], archiveManagementAvailable: true }
+  if (url.pathname.endsWith('/archive-contents')) body = { path: source.path, entries: [], total: 0 }
+  return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } })
+ }))
+ const router = createWindowRouter('/files?path=/home&file=/home/site.zip')
+ await router.isReady()
+ wrapper = shallowMount(FilesView, { global: {
+  stubs: { FileArchiveTools: false },
+  provide: { [windowRouterKey as symbol]: router, [windowRouteKey as symbol]: reactiveRouteFor(router) },
+ } })
+ await flushPromises()
+ const tools = wrapper.getComponent(FileArchiveTools)
+ const browser = () => tools.findAllComponents({ name: 'ModalDialog' })[0]!
+ expect(browser().props('open')).toBe(true)
+ await router.replace('/files?path=/home')
+ await flushPromises()
+ expect(browser().props('open')).toBe(false)
+ await router.replace('/files?path=/home&file=/home/site.zip')
+ await flushPromises()
+ expect(browser().props('open')).toBe(true)
+})
 
 it('opens execution for the editor active tab and captured host rather than the initial preview file', async () => {
  const router = createWindowRouter('/files?path=/&hostId=a')

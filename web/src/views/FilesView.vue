@@ -2996,6 +2996,7 @@ watch(
       }
       if (unmounted || hostId !== fileHostId.value) return
       if (hostChanged || fileValue !== previous?.[1]) {
+        archiveTools.value?.closeBrowser?.()
         openedRouteFile = ''
         await openRequestedFile(fileValue)
       }

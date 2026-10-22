@@ -199,7 +199,7 @@ watch([() => props.hostId, () => props.archiveManagementAvailable], () => {
 }, { immediate: true })
 onBeforeUnmount(() => { disposed = true; ++generation; jobsController?.abort(); contentsController?.abort(); clearTimeout(polling); clearTimeout(searching) })
 const hasJobs = computed(() => jobs.value.length > 0 || Boolean(jobsError.value))
-defineExpose({ configure, browse, capability, available, checking, legacy, hasJobs })
+defineExpose({ configure, browse, closeBrowser, capability, available, checking, legacy, hasJobs })
 </script>
 
 <template>
