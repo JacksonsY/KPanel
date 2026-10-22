@@ -261,6 +261,7 @@ defineExpose({ configure, browse, closeBrowser, capability, available, checking,
 .archive-error,.archive-job__body .archive-error{color:var(--danger);overflow-wrap:anywhere}
 .archive-selection-note{margin:0 0 12px;color:var(--text-soft);font-size:13px;overflow-wrap:anywhere}
 .archive-browser,.archive-form{font-size:14px;line-height:1.55}
+.archive-browser{container:archive-browser / inline-size}
 .archive-toolbar{margin-bottom:14px}
 .archive-toolbar>span{flex:1;overflow-wrap:anywhere;color:var(--text-soft)}
 .archive-root{padding:4px 0;background:none;border:0;color:var(--text);font:inherit;text-align:left;cursor:pointer;overflow-wrap:anywhere}
@@ -280,5 +281,8 @@ defineExpose({ configure, browse, closeBrowser, capability, available, checking,
 .archive-form label{display:grid;gap:8px;margin:16px 0}.archive-form p{overflow-wrap:anywhere}
 .archive-form small{font-size:13px;color:var(--text-soft)}
 .archive-form footer{justify-content:flex-end;margin-top:22px}
-@media(max-width:540px){.archive-toolbar>.button:last-child{margin-left:auto}.archive-job__actions{width:100%}.archive-job__actions .button,.archive-toolbar .button,.archive-form footer .button{min-height:44px}.archive-browser th:last-child{width:84px}.archive-browser th,.archive-browser td{padding:10px 4px}}
+@container archive-browser (max-width:540px){
+  .archive-toolbar>.button:not(:first-child){flex:0 0 100%;width:100%;min-height:44px;justify-content:center;margin-inline:0}
+}
+@media(max-width:540px){.archive-job__actions{width:100%}.archive-job__actions .button,.archive-toolbar .button,.archive-form footer .button{min-height:44px}.archive-browser th:last-child{width:84px}.archive-browser th,.archive-browser td{padding:10px 4px}}
 </style>
