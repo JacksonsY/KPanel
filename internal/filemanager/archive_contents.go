@@ -24,6 +24,7 @@ type archiveOperation struct {
 	selection  []string
 	found      map[string]bool
 	inspect    func(string, os.FileInfo, int64) error
+	export     func(string, os.FileInfo, int64, io.Reader) error
 	budget     *copyBudget
 	progress   func(*copyBudget)
 	tempSuffix string

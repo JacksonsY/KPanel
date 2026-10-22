@@ -218,10 +218,12 @@ func (s *Server) fileShareContent(w http.ResponseWriter, r *http.Request, reques
 func (s *Server) fileArchive(w http.ResponseWriter, r *http.Request) {
 	requestID := requestIDFrom(w)
 	var input contract.FileArchiveDownloadRequest
+	var members contract.FileArchiveMemberDownload
+	memberDownload := r.URL.Query().Has("members")
 	var name string
 	switch r.Method {
 	case http.MethodGet:
-		if r.URL.RawPath != "" || !strictQuery(r.URL.Query(), "selection", "name") {
+		if r.URL.RawPath != "" || !strictQuery(r.URL.Query(), "selection", "name", "members") {
 			writeProblem(w, requestID, http.StatusBadRequest, "invalid_query", "压缩下载参数无效", "")
 			return
 		}
@@ -260,7 +262,20 @@ func (s *Server) fileArchive(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, requestID, http.StatusMethodNotAllowed, "method_not_allowed", "请求方法不允许", "")
 		return
 	}
-	if !validArchiveDownloadName(name) {
+	if memberDownload {
+		value := r.URL.Query().Get("members")
+		if r.Method != http.MethodGet || len(value) == 0 || len(value) > fileArchiveQueryMaxBytes ||
+			json.Unmarshal([]byte(value), &members) != nil || len(members.Entries) == 0 || len(members.Entries) > filemanager.MaxBatchItems ||
+			len(input.Sources) != 1 || (members.Raw && len(members.Entries) != 1) {
+			writeProblem(w, requestID, http.StatusBadRequest, "invalid_archive_download", "压缩下载参数无效", "")
+			return
+		}
+	}
+	validName := validArchiveDownloadName(name)
+	if memberDownload && members.Raw {
+		validName = name != "" && name != "." && name != ".." && len(name) <= 1024 && path.Base(name) == name && !strings.ContainsAny(name, "\\\x00\r\n")
+	}
+	if !validName {
 		writeProblem(w, requestID, http.StatusBadRequest, "invalid_archive_download", "压缩下载参数无效", "")
 		return
 	}
@@ -274,19 +289,25 @@ func (s *Server) fileArchive(w http.ResponseWriter, r *http.Request) {
 	reader, writer := io.Pipe()
 	defer reader.Close()
 	go func() {
-		err := s.files.ExportZIP(
-			transferContext, input.Sources, input.ExpectedResourceVersions, writer,
-		)
+		var err error
+		if memberDownload {
+			err = s.files.ExportArchiveMembers(transferContext, input.Sources[0], input.ExpectedResourceVersions[input.Sources[0]], members.Entries, members.Raw, writer)
+		} else {
+			err = s.files.ExportZIP(transferContext, input.Sources, input.ExpectedResourceVersions, writer)
+		}
 		_ = writer.CloseWithError(err)
 	}()
 
 	buffer := make([]byte, 64<<10)
 	read, err := reader.Read(buffer)
-	if err != nil && read == 0 {
+	if err != nil && read == 0 && !(memberDownload && errors.Is(err, io.EOF)) {
 		writeFileProblem(w, requestID, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/zip")
+	if memberDownload && members.Raw {
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}
 	if formatted := mime.FormatMediaType("attachment", map[string]string{"filename": name}); formatted != "" {
 		w.Header().Set("Content-Disposition", formatted)
 	}
@@ -301,7 +322,10 @@ func (s *Server) fileArchive(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err == nil {
-		_, _ = io.CopyBuffer(output, reader, buffer)
+		_, err = io.CopyBuffer(output, reader, buffer)
+	}
+	if memberDownload && err != nil && !errors.Is(err, io.EOF) {
+		panic(http.ErrAbortHandler)
 	}
 }
 

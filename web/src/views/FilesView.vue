@@ -181,9 +181,15 @@ let unsubscribeClusterHostOrder: (() => void) | undefined
 
 type DialogAction = 'mkdir' | 'rename' | 'chmod' | 'compress' | 'extract' | 'trash'
 
+const shortcutArchivePath = computed(() => {
+  const path = requestedFilePath(route.query.file)
+  return path && archiveFormat({ kind: 'file', name: path }) ? path : undefined
+})
+const routeDirectoryPath = computed(() => requestedFilePath(route.query.path)
+  || (shortcutArchivePath.value ? parentDirectory(shortcutArchivePath.value) : '/'))
 const shortcutFilePreviewOnly = computed(() => {
   const filePath = requestedFilePath(route.query.file)
-  return Boolean(requestDesktopWindowClose && filePath && filePath !== '/')
+  return Boolean(requestDesktopWindowClose && filePath && filePath !== '/' && !shortcutArchivePath.value)
 })
 const shortcutFileName = computed(() => requestedFilePath(route.query.file)?.split('/').at(-1))
 type PreviewMode = 'text' | 'office' | 'image' | 'audio' | 'video' | 'pdf' | 'metadata'
@@ -823,7 +829,7 @@ function setRemoteDownloadJobsError(error: unknown): void {
     : { detail: error instanceof Error ? error.message : i18n.t('files.remoteDownload.error.generic') }
 }
 
-function archiveFormat(entry: FileEntry): ArchiveFormat | undefined {
+function archiveFormat(entry: Pick<FileEntry, 'kind' | 'name'>): ArchiveFormat | undefined {
   if (entry.kind !== 'file') return undefined
   const name = entry.name.toLocaleLowerCase()
   if (name.endsWith('.tar.gz') || name.endsWith('.tgz')) return 'tar.gz'
@@ -1011,7 +1017,7 @@ async function loadRequestedRoute(): Promise<void> {
     return
   }
   const hostId = fileHostId.value
-  await loadDirectory(requestedFilePath(route.query.path) || '/')
+  await loadDirectory(routeDirectoryPath.value)
   if (unmounted || hostId !== fileHostId.value) return
   await openRequestedFile(route.query.file)
   await revealRouteSelection(route.query.select)
@@ -2980,7 +2986,7 @@ watch(
     if (!hostChanged && pathValue === previous?.[0] && fileValue === previous?.[1] && selectValue === previous?.[3]) return
     void (async () => {
       if (!shortcutFilePreviewOnly.value) {
-        const directoryPath = requestedFilePath(pathValue) || '/'
+        const directoryPath = routeDirectoryPath.value
         if (hostChanged || directoryPath !== currentPath.value) await loadDirectory(directoryPath)
       }
       if (unmounted || hostId !== fileHostId.value) return
@@ -3244,8 +3250,10 @@ onBeforeUnmount(() => {
         :host-id="fileHostId"
         :path="currentPath"
         :archive-management-available="directory ? directory.archiveManagementAvailable === true : undefined"
+        :member-downloads-available="directory?.archiveMemberDownloadAvailable === true"
         @changed="archiveChanged"
         @open="openArchiveResult"
+        @download="download"
       />
       <Transition name="slide">
         <section

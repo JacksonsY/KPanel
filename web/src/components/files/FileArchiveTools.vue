@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Archive, ArrowLeft, RefreshCw } from '@lucide/vue'
+import { Archive, ArrowLeft, Download, RefreshCw } from '@lucide/vue'
 import FileEntryIcon from './FileEntryIcon.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import { useI18n } from '@/i18n'
@@ -8,8 +8,8 @@ import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import { fileAPIForHost } from '@/lib/fileHostContext'
 import type { FileActionInput, FileArchiveDirectory, FileArchiveJob, FileEntry } from '@/types/api'
 
-const props = defineProps<{ hostId: string; path: string; archiveManagementAvailable?: boolean }>()
-const emit = defineEmits<{ changed: [hostId: string, path: string, reveal: string[]]; open: [hostId: string, path: string] }>()
+const props = defineProps<{ hostId: string; path: string; archiveManagementAvailable?: boolean; memberDownloadsAvailable?: boolean }>()
+const emit = defineEmits<{ changed: [hostId: string, path: string, reveal: string[]]; open: [hostId: string, path: string]; download: [entry: FileEntry] }>()
 const i18n = useI18n()
 const jobs = ref<FileArchiveJob[]>([])
 const capability = computed(() => props.archiveManagementAvailable === undefined
@@ -62,6 +62,10 @@ const archiveDetails = new Set([
 function detail(value: string) { phraseCatalogVersion.value; return archiveDetails.has(value) ? translatePhrase(value) : value }
 const errorDetail = (error: unknown) => error instanceof Error ? detail(error.message) : i18n.t('files.archive.error')
 const stateLabel = (job: FileArchiveJob) => i18n.t(`files.archive.state.${job.state}`)
+const selectionDownloadName = computed(() => `${baseName(browser.value?.name || 'archive')}-selected.zip`)
+function memberURL(members: string[], raw: boolean, name: string) {
+  return browser.value ? fileAPIForHost(props.hostId).archiveMemberUrl(browser.value, members, name, raw) : ''
+}
 
 async function refreshJobs() {
   clearTimeout(polling)
@@ -211,12 +215,19 @@ defineExpose({ configure, browse, capability, available, checking, legacy, hasJo
 
   <ModalDialog :open="Boolean(browser)" :title="browser?.name || i18n.t('files.archive.title')" :description="i18n.t('files.archive.browseDescription')" size="large" :allow-fullscreen="true" @close="closeBrowser">
     <div class="archive-browser">
-      <div class="archive-toolbar"><button type="button" class="button button--secondary" :disabled="!directory || loading" @click="navigate(directory.includes('/') ? directory.slice(0, directory.lastIndexOf('/')) : '')"><ArrowLeft :size="16" />{{ i18n.t('files.archive.parent') }}</button><button type="button" class="archive-root" @click="navigate('')">{{ i18n.t('files.archive.root') }}</button><span>{{ directory }}</span><button type="button" class="button button--primary" :disabled="loading || Boolean(browseError)" @click="extractContents">{{ selection.size ? i18n.t('files.archive.extractSelected', { count: selection.size }) : i18n.t('files.archive.extractAll') }}</button></div>
+      <div class="archive-toolbar">
+        <button type="button" class="button button--secondary" :disabled="!directory || loading" @click="navigate(directory.includes('/') ? directory.slice(0, directory.lastIndexOf('/')) : '')"><ArrowLeft :size="16" />{{ i18n.t('files.archive.parent') }}</button>
+        <button type="button" class="archive-root" @click="navigate('')">{{ i18n.t('files.archive.root') }}</button><span>{{ directory }}</span>
+        <button v-if="browser" type="button" class="button button--secondary archive-download-original" @click="emit('download', { ...browser })"><Download :size="16" />{{ i18n.t('files.archive.downloadOriginal') }}</button>
+        <a v-if="memberDownloadsAvailable && selection.size && !loading && !browseError" class="button button--secondary archive-download-selected" :href="memberURL([...selection], false, selectionDownloadName)" :download="selectionDownloadName" rel="noopener"><Download :size="16" />{{ i18n.t('files.archive.downloadSelected', { count: selection.size }) }}</a>
+        <button type="button" class="button button--primary" :disabled="loading || Boolean(browseError)" @click="extractContents">{{ selection.size ? i18n.t('files.archive.extractSelected', { count: selection.size }) : i18n.t('files.archive.extractAll') }}</button>
+      </div>
+      <p v-if="!memberDownloadsAvailable" class="archive-selection-note">{{ i18n.t('files.archive.downloadUnsupported') }}</p>
       <p v-if="selectionLimitVisible" class="archive-selection-note">{{ i18n.t('files.archive.selectionLimit') }}</p>
       <input v-model="search" type="search" :placeholder="i18n.t('files.archive.search')" :aria-label="i18n.t('files.archive.search')" @input="searchContents">
       <p v-if="loading" role="status">{{ i18n.t('files.archive.loading') }}</p>
       <div v-else-if="browseError" class="archive-error" role="alert">{{ browseError }} <button type="button" class="button button--secondary" @click="loadContents()">{{ i18n.t('files.archive.refresh') }}</button></div>
-      <template v-else><table><thead><tr><th><input type="checkbox" :checked="allSelected" :indeterminate="selection.size > 0 && !allSelected" :disabled="!canSelectPage" :title="!canSelectPage && entries.length ? i18n.t('files.archive.selectionLimit') : undefined" :aria-label="i18n.t('files.archive.selectAll')" @change="toggleAll"></th><th>{{ i18n.t('files.archive.name') }}</th><th>{{ i18n.t('files.archive.size') }}</th></tr></thead><tbody><tr v-for="entry in entries" :key="entry.path" :class="{ selected: selection.has(entry.path) }"><td><input type="checkbox" :checked="selection.has(entry.path)" :disabled="selection.size >= 100 && !selection.has(entry.path)" :aria-label="entry.path" @change="toggle(entry.path)"></td><td><div class="archive-entry"><FileEntryIcon :entry="entry" :size="26" /><button v-if="entry.kind === 'directory'" type="button" class="archive-root" @click="navigate(entry.path)">{{ search ? entry.path : entry.name }}</button><span v-else>{{ search ? entry.path : entry.name }}</span></div></td><td>{{ entry.kind === 'directory' ? '—' : size(entry.sizeBytes) }}</td></tr></tbody></table><p v-if="!entries.length">{{ i18n.t('files.archive.empty') }}</p>
+      <template v-else><table><thead><tr><th><input type="checkbox" :checked="allSelected" :indeterminate="selection.size > 0 && !allSelected" :disabled="!canSelectPage" :title="!canSelectPage && entries.length ? i18n.t('files.archive.selectionLimit') : undefined" :aria-label="i18n.t('files.archive.selectAll')" @change="toggleAll"></th><th>{{ i18n.t('files.archive.name') }}</th><th>{{ i18n.t('files.archive.size') }}</th></tr></thead><tbody><tr v-for="entry in entries" :key="entry.path" :class="{ selected: selection.has(entry.path) }"><td><input type="checkbox" :checked="selection.has(entry.path)" :disabled="selection.size >= 100 && !selection.has(entry.path)" :aria-label="entry.path" @change="toggle(entry.path)"></td><td><div class="archive-entry"><FileEntryIcon :entry="entry" :size="26" /><button v-if="entry.kind === 'directory'" type="button" class="archive-root" @click="navigate(entry.path)">{{ search ? entry.path : entry.name }}</button><span v-else>{{ search ? entry.path : entry.name }}</span></div><a v-if="memberDownloadsAvailable && entry.kind === 'file'" class="archive-member-download" :href="memberURL([entry.path], true, entry.name)" :download="entry.name" rel="noopener" :aria-label="i18n.t('files.archive.downloadMember', { name: entry.name })"><Download :size="14" />{{ i18n.t('files.archive.download') }}</a></td><td>{{ entry.kind === 'directory' ? '—' : size(entry.sizeBytes) }}</td></tr></tbody></table><p v-if="!entries.length">{{ i18n.t('files.archive.empty') }}</p>
         <footer><span>{{ i18n.t('files.archive.count', { count: contents?.total || 0 }) }}</span><button v-if="pageOffset" type="button" class="button button--secondary" @click="loadContents(Math.max(0, pageOffset - 500))">{{ i18n.t('files.archive.previous') }}</button><button v-if="contents?.truncated" type="button" class="button button--secondary" @click="loadContents(contents.nextOffset)">{{ i18n.t('files.archive.next') }}</button></footer>
       </template>
     </div>
@@ -263,6 +274,7 @@ defineExpose({ configure, browse, capability, available, checking, legacy, hasJo
 .archive-browser input[type=checkbox]{accent-color:var(--brand);width:24px;height:24px}
 .archive-browser tr.selected{background:var(--brand-soft)}
 .archive-entry{flex-wrap:nowrap}
+.archive-member-download{display:inline-flex;align-items:center;gap:4px;min-height:40px;color:var(--brand);font-size:14px}
 .archive-browser footer{justify-content:space-between;margin-top:14px;color:var(--text-soft)}
 .archive-form label{display:grid;gap:8px;margin:16px 0}.archive-form p{overflow-wrap:anywhere}
 .archive-form small{font-size:13px;color:var(--text-soft)}

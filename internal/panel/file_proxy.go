@@ -224,8 +224,9 @@ func (s *Server) federatedFileArchive(w http.ResponseWriter, r *http.Request) {
 		s.writeProblem(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed", "")
 		return
 	}
-	values, ok := federatedFileQuery(r, "selection", "name")
+	values, ok := federatedFileQuery(r, "selection", "name", "members")
 	if !ok || values.Get("selection") == "" || len(values.Get("selection")) > panelFileArchiveQueryMaxBytes ||
+		len(values.Get("members")) > panelFileArchiveQueryMaxBytes ||
 		values.Get("name") == "" || len(values.Get("name")) > 1024 {
 		s.writeProblem(w, r, http.StatusBadRequest, "file_query_invalid", "压缩下载参数无效", "")
 		return

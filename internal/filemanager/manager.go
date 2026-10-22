@@ -290,7 +290,7 @@ func (m *Manager) ListPage(
 		Path: normalized, Entries: entries,
 		Offset: options.Offset, NextOffset: nextOffset, Total: total, TotalKnown: reachedEOF,
 		Truncated: hasMore || scanTruncated, ScanTruncated: scanTruncated,
-		ArchiveManagementAvailable: true, ReadAt: m.now().UTC(),
+		ArchiveManagementAvailable: true, ArchiveMemberDownloadAvailable: true, ReadAt: m.now().UTC(),
 	}, nil
 }
 

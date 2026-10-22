@@ -11,6 +11,7 @@ import { mockGallery, mockGalleryRootEntries } from './mock-gallery.mjs'
 import { mockOffers } from './mock-offers.mjs'
 import { handleMockSystemServices } from './mock-system-services.mjs'
 import { mockTutorials } from './mock-tutorials.mjs'
+import { mockArchiveFiles, mockArchiveZIP } from './mock-archive-download.mjs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -2332,7 +2333,7 @@ createServer(async (request, response) => {
     ))
     send(response, 200, {
       path: requestedPath, entries, offset: 0, total: entries.length, totalKnown: true,
-      truncated: false, scanTruncated: false, archiveManagementAvailable: true, readAt: new Date().toISOString(),
+      truncated: false, scanTruncated: false, archiveManagementAvailable: true, archiveMemberDownloadAvailable: true, readAt: new Date().toISOString(),
     })
     return
   }
@@ -2404,7 +2405,22 @@ createServer(async (request, response) => {
   if (await handleMockOffice(request, response, url, { send, readJSON })) return
   if (await handleMockSystemServices(request, response, url, { send, readJSON })) return
   if (await handleMockEditor(request, response, url, { send, readJSON })) return
+  if (request.method === 'GET' && url.pathname === '/api/v1/files/archive' && url.searchParams.has('members')) {
+    const input = JSON.parse(url.searchParams.get('selection') || '{}')
+    const source = mockFiles.find(item => item.path === input.sources?.[0])
+    if (!source || source.resourceVersion !== input.expectedResourceVersions?.[source.path]) { send(response, 409, { title: '文件状态已变化，请刷新后重试', code: 'file_conflict' }); return }
+    const members = JSON.parse(url.searchParams.get('members') || '{}')
+    const selected = new Map([...mockArchiveFiles].filter(([name]) => members.entries?.some(member => name === member || name.startsWith(`${member}/`))))
+    if (!selected.size) { send(response, 409, { title: '文件状态已变化，请刷新后重试', code: 'file_conflict' }); return }
+    const data = members.raw ? Buffer.from(selected.values().next().value) : mockArchiveZIP(selected)
+    sendBinary(response, 200, data, members.raw ? 'application/octet-stream' : 'application/zip', `attachment; filename="${url.searchParams.get('name') || 'selected.zip'}"`)
+    return
+  }
   if (request.method === 'GET' && url.pathname === '/api/v1/files/content') {
+    if (url.searchParams.get('path') === '/website.zip') {
+      sendBinary(response, 200, mockArchiveZIP(), 'application/zip', 'attachment; filename="website.zip"')
+      return
+    }
     if (url.searchParams.get('path') === '/kpanel-desktop.webp') {
       sendBinary(response, 200, mockSharedImage, 'image/webp', 'inline; filename="kpanel-desktop.webp"')
     } else {

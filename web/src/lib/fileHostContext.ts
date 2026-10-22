@@ -10,6 +10,7 @@ export function fileAPIForHost(hostId = '') {
       files.list(path, options, signal, hostId),
     contentUrl: (path: string, disposition?: 'inline' | 'attachment') => files.contentUrl(path, disposition, hostId),
     archiveUrl: (entries: Parameters<typeof files.archiveUrl>[0], name: string) => files.archiveUrl(entries, name, hostId),
+    archiveMemberUrl: (entry: Parameters<typeof files.archiveMemberUrl>[0], members: readonly string[], name: string, raw = false) => files.archiveMemberUrl(entry, members, name, raw, hostId),
     archiveContents: (input: Parameters<typeof files.archiveContents>[0], signal?: AbortSignal) => files.archiveContents(input, signal, hostId),
     archiveJobs: (signal?: AbortSignal) => files.archiveJobs(signal, hostId),
     createArchiveJob: (input: Parameters<typeof files.createArchiveJob>[0]) => files.createArchiveJob(input, hostId),

@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -418,6 +419,32 @@ func TestFileSessionDownloadsRequireActiveSessionAndRespectSecurityEntrance(t *t
 				}
 			}
 		})
+	}
+}
+
+func TestFileArchiveMemberDownloadProxy(t *testing.T) {
+	s, tokenPath := newTestServer(t)
+	session, csrf := bootstrapCookies(t, s, tokenPath)
+	agent := &fileStubAgent{stubAgent: &stubAgent{}, streamResponse: []byte("script"), streamHeaders: http.Header{"Content-Type": {"application/octet-stream"}, "Content-Disposition": {`attachment; filename="app.js"`}}}
+	s.agent = agent
+	query := "selection=%7B%22sources%22%3A%5B%22%2Fsite.zip%22%5D%7D&members=%7B%22entries%22%3A%5B%22assets%2Fapp.js%22%5D%2C%22raw%22%3Atrue%7D&name=app.js"
+	unauthenticated := performRequest(s, http.MethodGet, "/api/v1/files/archive?"+query, nil, nil)
+	if unauthenticated.Code != http.StatusUnauthorized || len(agent.snapshotStreamCalls()) != 0 {
+		t.Fatal("member download bypassed session")
+	}
+	response := authenticatedRequest(s, http.MethodGet, "/api/v1/files/archive?"+query, nil, session, csrf, nil)
+	if response.Code != 200 || response.Body.String() != "script" || response.Header().Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("response=%d %s", response.Code, response.Body.String())
+	}
+	recorder := httptest.NewRecorder()
+	s.federatedFileHandler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/v1/files/archive?"+query, nil))
+	if recorder.Code != 200 || recorder.Body.String() != "script" {
+		t.Fatalf("federated=%d %s", recorder.Code, recorder.Body.String())
+	}
+	for _, call := range agent.snapshotStreamCalls() {
+		if call.path != "/v1/files/archive" || call.rawQuery != query {
+			t.Fatalf("call=%#v", call)
+		}
 	}
 }
 

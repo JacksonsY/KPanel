@@ -2575,6 +2575,7 @@ export interface FileDirectory {
   truncated: boolean
   scanTruncated?: boolean
   archiveManagementAvailable?: boolean
+  archiveMemberDownloadAvailable?: boolean
   fileReceiveVersion?: number
   panelFileReceiveVersion?: number
   readAt: string

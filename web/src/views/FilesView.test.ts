@@ -1199,6 +1199,23 @@ describe('FilesView desktop shortcuts', () => {
     expect(requestDesktopWindowClose).toHaveBeenCalledOnce()
     expect(view.previewEntry.value).toEqual(entry)
   })
+
+  it.each(['zip', 'tar', 'tar.gz', 'TGZ'])('opens a desktop %s archive with its parent directory and archive tools', async (extension) => {
+    const entry = { ...testEntry(`site.${extension}`), path: `/home/releases/site.${extension}`, editable: false }
+    mocks.route.query = { file: entry.path }
+    mocks.entry.mockResolvedValueOnce(entry)
+    mocks.list.mockResolvedValueOnce(testDirectory('/home/releases'))
+    const closeWindow = vi.fn(async () => undefined)
+    const view = setupView(closeWindow)
+    const browse = vi.fn()
+    view.archiveTools.value = { available: true, checking: false, browse, configure: vi.fn() }
+    await view.loadRequestedRoute()
+    expect(mocks.list.mock.calls[0]![0]).toBe('/home/releases')
+    expect(browse).toHaveBeenCalledWith(entry)
+    expect(view.previewEntry.value).toBeUndefined()
+    view.closePreview()
+    expect(closeWindow).not.toHaveBeenCalled()
+  })
 })
 
 describe('FilesView downloads', () => {

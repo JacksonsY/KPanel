@@ -23,6 +23,121 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/filemanager"
 )
 
+func TestFileArchiveMemberDownloads(t *testing.T) {
+	s := testServer(t)
+	root := t.TempDir()
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	for _, name := range []string{"assets/app.js", "empty.txt"} {
+		item, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name != "empty.txt" {
+			_, _ = item.Write([]byte("script"))
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "site.zip"), archive.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := filemanager.New(filemanager.Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.files = manager
+	t.Cleanup(func() { _ = manager.Close() })
+	entry, err := manager.Stat("/site.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, _ := json.Marshal(contract.FileArchiveDownloadRequest{Sources: []string{entry.Path}, ExpectedResourceVersions: map[string]string{entry.Path: entry.ResourceVersion}})
+	for _, test := range []struct {
+		name    string
+		entries []string
+		raw     bool
+		status  int
+		content string
+	}{
+		{"app.js", []string{"assets/app.js"}, true, 200, "script"},
+		{"empty.txt", []string{"empty.txt"}, true, 200, ""},
+		{"selected.zip", []string{"assets", "empty.txt"}, false, 200, ""},
+		{"missing.txt", []string{"missing"}, true, 409, ""},
+		{"invalid.txt", []string{"../secret"}, true, 422, ""},
+		{"invalid.txt", []string{"assets/app.js", "empty.txt"}, true, 400, ""},
+	} {
+		t.Run(test.name+fmt.Sprint(test.entries), func(t *testing.T) {
+			members, _ := json.Marshal(contract.FileArchiveMemberDownload{Entries: test.entries, Raw: test.raw})
+			query := url.Values{"selection": {string(selection)}, "members": {string(members)}, "name": {test.name}}
+			response := fileRequest(s, http.MethodGet, "/v1/files/archive?"+query.Encode(), "")
+			if response.Code != test.status {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if test.status != 200 {
+				return
+			}
+			if test.raw {
+				if response.Body.String() != test.content || response.Header().Get("Content-Type") != "application/octet-stream" {
+					t.Fatalf("raw=%q headers=%v", response.Body.String(), response.Header())
+				}
+			} else {
+				z, err := zip.NewReader(bytes.NewReader(response.Body.Bytes()), int64(response.Body.Len()))
+				if err != nil || len(z.File) != 2 {
+					t.Fatalf("zip=%v err=%v", z, err)
+				}
+			}
+		})
+	}
+}
+
+func TestFileArchiveMemberCorruptionAbortsHTTPDownload(t *testing.T) {
+	s := testServer(t)
+	root := t.TempDir()
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	item, err := writer.CreateHeader(&zip.FileHeader{Name: "large.bin", Method: zip.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := item.Write(bytes.Repeat([]byte("x"), 128<<10)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data := archive.Bytes()
+	data[100<<10] ^= 1 // Keep the directory valid but break the member checksum.
+	if err := os.WriteFile(filepath.Join(root, "bad.zip"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := filemanager.New(filemanager.Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	s.files = manager
+	entry, err := manager.Stat("/bad.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, _ := json.Marshal(contract.FileArchiveDownloadRequest{Sources: []string{entry.Path}, ExpectedResourceVersions: map[string]string{entry.Path: entry.ResourceVersion}})
+	members, _ := json.Marshal(contract.FileArchiveMemberDownload{Entries: []string{"large.bin"}, Raw: true})
+	server := httptest.NewServer(s)
+	defer server.Close()
+	request, _ := http.NewRequest(http.MethodGet, server.URL+"/v1/files/archive?"+url.Values{"selection": {string(selection)}, "members": {string(members)}, "name": {"large.bin"}}.Encode(), nil)
+	request.Header.Set("Authorization", "Bearer "+strings.Repeat("x", 32))
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if _, err := io.ReadAll(response.Body); err == nil {
+		t.Fatal("corrupt download completed successfully")
+	}
+}
+
 func TestFileArchiveDownloadStreamsOneZIPAndRejectsStaleSelections(t *testing.T) {
 	server := testServer(t)
 	root := t.TempDir()

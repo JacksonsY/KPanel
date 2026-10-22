@@ -1580,7 +1580,16 @@ describe('API client', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('uses the hash-only file share contract for lookup, rotation, removal, and public metadata', async () => {
+    it('binds member downloads to their archive version and selected host', () => {
+      const source = { path: '/home/site.zip', resourceVersion: 'sha256:source' }
+      const url = new URL(api.files.archiveMemberUrl(source, ['assets/app.js'], 'app.js', true, 'node-a'), 'http://panel.test')
+      expect(url.searchParams.get('hostId')).toBe('node-a')
+      expect(JSON.parse(url.searchParams.get('members')!)).toEqual({ entries: ['assets/app.js'], raw: true })
+      expect(JSON.parse(url.searchParams.get('selection')!)).toEqual({ sources: [source.path], expectedResourceVersions: { [source.path]: source.resourceVersion } })
+      expect(url.searchParams.get('name')).toBe('app.js')
+    })
+
+    it('uses the hash-only file share contract for lookup, rotation, removal, and public metadata', async () => {
     const token = 'a'.repeat(43)
     const id = 'b'.repeat(22)
     const created = {

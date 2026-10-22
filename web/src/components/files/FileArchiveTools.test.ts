@@ -5,7 +5,7 @@ import FileArchiveTools from './FileArchiveTools.vue'
 import { ApiError } from '@/lib/api'
 import type { FileArchiveJob, FileEntry } from '@/types/api'
 
-const mocks = vi.hoisted(() => ({ archiveJobs: vi.fn(), archiveContents: vi.fn(), createArchiveJob: vi.fn(), changeArchiveJob: vi.fn(), entries: vi.fn() }))
+const mocks = vi.hoisted(() => ({ archiveJobs: vi.fn(), archiveContents: vi.fn(), createArchiveJob: vi.fn(), changeArchiveJob: vi.fn(), entries: vi.fn(), archiveMemberUrl: vi.fn() }))
 vi.mock('@/lib/api', () => ({
   ApiError: class extends Error {
     readonly status: number
@@ -24,7 +24,7 @@ const job: FileArchiveJob = { id: 'a'.repeat(32), action: 'extract', name: 'site
 let wrapper: ReturnType<typeof mount<typeof FileArchiveTools>> | undefined
 async function open(archiveManagementAvailable = true) {
   wrapper = mount(FileArchiveTools, {
-    props: { hostId: 'host-a', path: '/destination', archiveManagementAvailable },
+    props: { hostId: 'host-a', path: '/destination', archiveManagementAvailable, memberDownloadsAvailable: true },
     global: {
       stubs: {
         ModalDialog: {
@@ -46,8 +46,33 @@ describe('archive UI host and task ownership', () => {
     mocks.createArchiveJob.mockResolvedValue(job)
     mocks.changeArchiveJob.mockResolvedValue({ ok: true })
     mocks.entries.mockResolvedValue({ entries: [source], unavailable: [] })
+    mocks.archiveMemberUrl.mockReturnValue('/api/v1/files/archive?members=selected')
   })
   afterEach(() => { wrapper?.unmount(); vi.useRealTimers() })
+
+  it('keeps original downloads available after a listing failure and exposes exact single and batch selections', async () => {
+    mocks.archiveContents.mockResolvedValueOnce({ entries: [{ path: 'assets/app.js', name: 'app.js', kind: 'file', sizeBytes: 12 }], total: 1 })
+    const view = await open(); view.vm.browse(source); await flushPromises()
+    expect(view.get('.archive-member-download').attributes('download')).toBe('app.js')
+    expect(mocks.archiveMemberUrl).toHaveBeenCalledWith(source, ['assets/app.js'], 'app.js', true, 'host-a')
+    await view.get('tbody input').setValue(true)
+    expect(view.get('.archive-download-selected').attributes('download')).toBe('site-selected.zip')
+    expect(mocks.archiveMemberUrl).toHaveBeenCalledWith(source, ['assets/app.js'], 'site-selected.zip', false, 'host-a')
+    mocks.archiveContents.mockRejectedValueOnce(new Error('listing failed'))
+    view.vm.browse(source); await flushPromises()
+    expect(view.find('.archive-member-download').exists()).toBe(false)
+    expect(view.find('.archive-download-selected').exists()).toBe(false)
+    await view.get('.archive-download-original').trigger('click')
+    expect(view.emitted('download')).toEqual([[source]])
+  })
+
+  it('keeps original download and browsing on hosts without member downloads', async () => {
+    const view = await open(); await view.setProps({ memberDownloadsAvailable: false })
+    view.vm.browse(source); await flushPromises()
+    expect(view.find('.archive-download-original').exists()).toBe(true)
+    expect(view.find('.archive-member-download').exists()).toBe(false)
+    expect(view.text()).toContain('当前主机暂不支持包内下载')
+  })
 
   it('keeps mixed file icons and directory navigation intact while selecting archive members', async () => {
     mocks.archiveContents.mockResolvedValueOnce({

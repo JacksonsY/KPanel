@@ -690,6 +690,26 @@ func (m *Manager) extractZIP(
 			archiveProgress(ctx, budget)
 			continue
 		}
+		if operation := archiveOptions(ctx); operation != nil && operation.export != nil {
+			var input io.ReadCloser
+			if !info.IsDir() {
+				input, err = entry.Open()
+				if err != nil {
+					return ErrInvalidArchive
+				}
+			}
+			err = operation.export(name, info, int64(entry.UncompressedSize64), input)
+			if input != nil {
+				if closeErr := input.Close(); err == nil {
+					err = closeErr
+				}
+			}
+			if err != nil {
+				return err
+			}
+			budget.bytes += int64(entry.UncompressedSize64)
+			continue
+		}
 		targetVirtual := joinVirtual(tempVirtual, name)
 		if info.IsDir() {
 			if err := m.rootFS.MkdirAll(rootName(targetVirtual), archiveMode(info.Mode(), true)); err != nil {
@@ -771,6 +791,13 @@ func (m *Manager) extractTAR(
 			}
 			budget.bytes += written
 			archiveProgress(ctx, budget)
+			continue
+		}
+		if operation := archiveOptions(ctx); operation != nil && operation.export != nil {
+			if err := operation.export(name, header.FileInfo(), header.Size, reader); err != nil {
+				return err
+			}
+			budget.bytes += header.Size
 			continue
 		}
 		targetVirtual := joinVirtual(tempVirtual, name)

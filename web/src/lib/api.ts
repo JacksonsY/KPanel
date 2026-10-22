@@ -2366,6 +2366,17 @@ export const api = {
       }),
       name,
     }, fileHostId)),
+    archiveMemberUrl: (
+      entry: Pick<FileEntry, 'path' | 'resourceVersion'>,
+      members: readonly string[],
+      name: string,
+      raw = false,
+      fileHostId?: string | null,
+    ): string => buildUrl('/files/archive', fileRequestQuery('/files/archive', {
+      selection: JSON.stringify({ sources: [entry.path], expectedResourceVersions: { [entry.path]: entry.resourceVersion } }),
+      members: JSON.stringify({ entries: members, raw }),
+      name,
+    }, fileHostId)),
     archiveContents: (input: FileArchiveQuery, signal?: AbortSignal, fileHostId?: string | null): Promise<FileArchiveDirectory> =>
       request<FileArchiveDirectory>('/files/archive-contents', { method: 'POST', body: input, signal, fileHostId }),
     archiveJobs: (signal?: AbortSignal, fileHostId?: string | null): Promise<{ items: FileArchiveJob[] }> =>

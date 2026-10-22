@@ -202,7 +202,7 @@ func (s *Server) handleFileArchiveDownload(w http.ResponseWriter, r *http.Reques
 		s.writeProblem(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed", "")
 		return
 	}
-	if r.URL.RawPath != "" || !strictPanelQuery(r.URL.Query(), "selection", "name") {
+	if r.URL.RawPath != "" || !strictPanelQuery(r.URL.Query(), "selection", "name", "members") || len(r.URL.Query().Get("members")) > panelFileArchiveQueryMaxBytes {
 		s.writeProblem(w, r, http.StatusBadRequest, "file_query_invalid", "压缩下载参数无效", "")
 		return
 	}
@@ -279,7 +279,9 @@ func (s *Server) streamFileArchiveDownload(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Pragma", "no-cache")
 	writer := httpstream.NewIdleResponseWriter(transferContext, w, panelFileTransferIdleTimeout)
 	writer.WriteHeader(response.StatusCode)
-	_, _ = io.CopyBuffer(writer, response.Body, make([]byte, 64<<10))
+	if _, err := io.CopyBuffer(writer, response.Body, make([]byte, 64<<10)); err != nil && r.URL.Query().Has("members") {
+		panic(http.ErrAbortHandler)
+	}
 }
 
 func validFileDownloadPath(value string) bool {

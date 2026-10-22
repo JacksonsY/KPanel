@@ -76,18 +76,19 @@ type FileShareEntry struct {
 const FileShareVersionHeader = "X-KPanel-File-Share-Version"
 
 type FileDirectory struct {
-	Path                       string      `json:"path"`
-	Entries                    []FileEntry `json:"entries"`
-	Offset                     int         `json:"offset"`
-	NextOffset                 int         `json:"nextOffset,omitempty"`
-	Total                      int         `json:"total,omitempty"`
-	TotalKnown                 bool        `json:"totalKnown,omitempty"`
-	Truncated                  bool        `json:"truncated"`
-	ScanTruncated              bool        `json:"scanTruncated,omitempty"`
-	ArchiveManagementAvailable bool        `json:"archiveManagementAvailable,omitempty"`
-	FileReceiveVersion         int         `json:"fileReceiveVersion,omitempty"`
-	PanelFileReceiveVersion    int         `json:"panelFileReceiveVersion,omitempty"`
-	ReadAt                     time.Time   `json:"readAt"`
+	Path                           string      `json:"path"`
+	Entries                        []FileEntry `json:"entries"`
+	Offset                         int         `json:"offset"`
+	NextOffset                     int         `json:"nextOffset,omitempty"`
+	Total                          int         `json:"total,omitempty"`
+	TotalKnown                     bool        `json:"totalKnown,omitempty"`
+	Truncated                      bool        `json:"truncated"`
+	ScanTruncated                  bool        `json:"scanTruncated,omitempty"`
+	ArchiveManagementAvailable     bool        `json:"archiveManagementAvailable,omitempty"`
+	ArchiveMemberDownloadAvailable bool        `json:"archiveMemberDownloadAvailable,omitempty"`
+	FileReceiveVersion             int         `json:"fileReceiveVersion,omitempty"`
+	PanelFileReceiveVersion        int         `json:"panelFileReceiveVersion,omitempty"`
+	ReadAt                         time.Time   `json:"readAt"`
 }
 
 type FileEntryBatchRequest struct {
@@ -102,6 +103,11 @@ type FileEntryBatchResult struct {
 type FileArchiveDownloadRequest struct {
 	Sources                  []string          `json:"sources"`
 	ExpectedResourceVersions map[string]string `json:"expectedResourceVersions,omitempty"`
+}
+
+type FileArchiveMemberDownload struct {
+	Entries []string `json:"entries"`
+	Raw     bool     `json:"raw,omitempty"`
 }
 
 type FileActionRequest struct {
