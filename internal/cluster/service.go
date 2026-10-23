@@ -305,7 +305,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		schedulerTick: config.SchedulerTick, checkpointEvery: config.CheckpointEvery,
 		jitter: config.Jitter, sem: make(chan struct{}, config.MaxConcurrency),
 		runtime: make(map[string]runtimeState), kick: make(chan struct{}, 1),
-		replays:               newReplayGuard(8192, 5*time.Minute),
+		replays:               newReplayGuard(replayGuardTotalEntries, replayGuardEntriesPerPrincipal, 5*time.Minute),
 		pairLimiter:           newFixedWindowLimiter(20, time.Minute, 1024),
 		v2SourceLimiter:       newFixedWindowLimiter(120, time.Minute, 2048),
 		requestLimiter:        newFixedWindowLimiter(30, time.Minute, 512),
@@ -910,7 +910,7 @@ func (s *Service) SignedSummary(ctx context.Context, request *http.Request) (Fed
 	if !s.requestLimiter.Allow(controllerID, now) {
 		return FederationSummary{}, "", ErrRateLimited
 	}
-	if err := s.replays.Accept(controllerID, nonce, now); err != nil {
+	if err := s.replays.Accept(replayControllerPrincipal(controllerID), nonce, now); err != nil {
 		return FederationSummary{}, "", err
 	}
 	telemetry, err := s.localTelemetry(ctx)
@@ -965,7 +965,7 @@ func (s *Service) SignedRevoke(request *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := s.replays.Accept(controllerID, nonce, now); err != nil {
+	if err := s.replays.Accept(replayControllerPrincipal(controllerID), nonce, now); err != nil {
 		return err
 	}
 	if err := s.fileRelayV1Grants.Delete(controllerID); err != nil {

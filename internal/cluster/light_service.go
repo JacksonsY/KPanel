@@ -212,7 +212,7 @@ func (s *Service) AcceptLightReport(auth LightReportAuth, rawBody []byte, input 
 	if !s.lightReports.Allow(auth.NodeID, now) {
 		return LightReportResponse{}, ErrRateLimited
 	}
-	if err := s.replays.Accept(auth.NodeID, auth.RequestID, now); err != nil {
+	if err := s.replays.Accept(replayLightPrincipal(auth.NodeID), auth.RequestID, now); err != nil {
 		return LightReportResponse{}, err
 	}
 	if err := validateTelemetry(input.Telemetry, now); err != nil {
@@ -267,7 +267,7 @@ func (s *Service) UpgradeLightFileCapability(
 	if !s.lightReports.Allow(auth.NodeID, now) {
 		return LightFileCapabilityResponse{}, ErrRateLimited
 	}
-	if err := s.replays.Accept("file-capability:"+auth.NodeID, auth.RequestID, now); err != nil {
+	if err := s.replays.Accept(replayLightPrincipal(auth.NodeID), auth.RequestID, now); err != nil {
 		return LightFileCapabilityResponse{}, err
 	}
 	terminalPublicKey, err := decodeTerminalRelayPublicKey(input.TerminalPublicKey)

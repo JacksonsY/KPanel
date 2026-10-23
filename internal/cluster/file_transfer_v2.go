@@ -190,7 +190,7 @@ func (s *Service) AuthorizeLinkedFederationFileV2(
 	if !s.fileRequests.Allow(grant.LinkID, now) {
 		return FederationFileOpenRequest{}, nil, ErrRateLimited
 	}
-	if err := s.replays.Accept(grant.LinkID, envelope.RequestID, now); err != nil {
+	if err := s.replays.Accept(replayLinkedPeerPrincipal(grant.PeerNodeID), envelope.RequestID, now); err != nil {
 		return FederationFileOpenRequest{}, nil, err
 	}
 	var input FederationFileOpenRequest

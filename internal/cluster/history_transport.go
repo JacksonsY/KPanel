@@ -215,7 +215,7 @@ func (s *Service) AuthorizeHistoryV1(source string, request *http.Request) (moni
 	if !s.requestLimiter.Allow(id, now) {
 		return monitoring.Query{}, nil, ErrRateLimited
 	}
-	if err := s.replays.Accept("history:v1:"+id, nonce, now); err != nil {
+	if err := s.replays.Accept(replayControllerPrincipal(id), nonce, now); err != nil {
 		return monitoring.Query{}, nil, err
 	}
 	release, ok := s.historyStreams.acquire(id)
@@ -244,7 +244,7 @@ func (s *Service) handleHistoryRelayV2(ctx context.Context, envelope v2Envelope,
 	if !s.historyRelayRequests.Allow(record.ID, now) {
 		return FederationEnvelopeV2{}, ErrRateLimited
 	}
-	if err := s.replays.Accept("light:history:"+record.ID, envelope.RequestID, now); err != nil {
+	if err := s.replays.Accept(replayLightPrincipal(record.ID), envelope.RequestID, now); err != nil {
 		return FederationEnvelopeV2{}, err
 	}
 	var input FileRelayPollRequest

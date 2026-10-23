@@ -125,7 +125,7 @@ func TestReplayGuardRejectsDuplicateSignedNonce(t *testing.T) {
 		t.Fatalf("VerifyRequest() error: %v", err)
 	}
 
-	guard := newReplayGuard(4, 5*time.Minute)
+	guard := newReplayGuard(4, 4, 5*time.Minute)
 	if err := guard.Accept(verifiedController, nonce, now); err != nil {
 		t.Fatalf("first replay guard acceptance error: %v", err)
 	}

@@ -1,44 +1,148 @@
 package cluster
 
 import (
+	"container/heap"
+	"crypto/sha256"
+	"encoding/binary"
 	"sync"
 	"time"
 )
 
-type replayGuard struct {
-	mu       sync.Mutex
-	entries  map[string]time.Time
-	capacity int
-	ttl      time.Duration
+const (
+	// One light-node principal can pass at most 4,680 replay-protected requests
+	// per minute across the current independent route limiters. This budget
+	// covers five minutes of that configured maximum, with a small margin.
+	replayGuardEntriesPerPrincipal = 24_576
+	// Keep the cache bounded while allowing more than one principal to reach its
+	// own budget without denying every other authenticated principal.
+	replayGuardTotalEntries = 65_536
+)
+
+type replayKey [sha256.Size]byte
+
+type replayEntry struct {
+	principal string
+	expiresAt time.Time
 }
 
-func newReplayGuard(capacity int, ttl time.Duration) *replayGuard {
+type replayPrincipalCount struct {
+	identity string
+	count    int
+}
+
+type replayExpiry struct {
+	key       replayKey
+	expiresAt time.Time
+}
+
+type replayExpiryHeap []replayExpiry
+
+func (h replayExpiryHeap) Len() int           { return len(h) }
+func (h replayExpiryHeap) Less(i, j int) bool { return h[i].expiresAt.Before(h[j].expiresAt) }
+func (h replayExpiryHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *replayExpiryHeap) Push(value any) {
+	*h = append(*h, value.(replayExpiry))
+}
+
+func (h *replayExpiryHeap) Pop() any {
+	old := *h
+	last := len(old) - 1
+	value := old[last]
+	old[last] = replayExpiry{}
+	*h = old[:last]
+	return value
+}
+
+type replayGuard struct {
+	mu                   sync.Mutex
+	entries              map[replayKey]replayEntry
+	principalEntries     map[string]replayPrincipalCount
+	expiries             replayExpiryHeap
+	capacity             int
+	perPrincipalCapacity int
+	ttl                  time.Duration
+}
+
+func newReplayGuard(capacity, perPrincipalCapacity int, ttl time.Duration) *replayGuard {
+	if capacity < 1 {
+		capacity = 1
+	}
+	if perPrincipalCapacity < 1 || perPrincipalCapacity > capacity {
+		perPrincipalCapacity = capacity
+	}
 	return &replayGuard{
-		entries:  make(map[string]time.Time),
-		capacity: capacity,
-		ttl:      ttl,
+		entries:              make(map[replayKey]replayEntry),
+		principalEntries:     make(map[string]replayPrincipalCount),
+		capacity:             capacity,
+		perPrincipalCapacity: perPrincipalCapacity,
+		ttl:                  ttl,
 	}
 }
 
-func (g *replayGuard) Accept(controllerID, nonce string, now time.Time) error {
-	key := controllerID + ":" + nonce
+func replayControllerPrincipal(controllerID string) string {
+	return "controller:" + controllerID
+}
+
+func replayLightPrincipal(nodeID string) string {
+	return "light:" + nodeID
+}
+
+func replayLinkedPeerPrincipal(nodeID string) string {
+	return "linked-peer:" + nodeID
+}
+
+func replayCacheKey(principal, nonce string) replayKey {
+	input := make([]byte, 16+len(principal)+len(nonce))
+	binary.BigEndian.PutUint64(input[:8], uint64(len(principal)))
+	copy(input[8:], principal)
+	offset := 8 + len(principal)
+	binary.BigEndian.PutUint64(input[offset:offset+8], uint64(len(nonce)))
+	copy(input[offset+8:], nonce)
+	return sha256.Sum256(input)
+}
+
+func (g *replayGuard) Accept(principal, nonce string, now time.Time) error {
+	key := replayCacheKey(principal, nonce)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.pruneLocked(now)
 	if _, exists := g.entries[key]; exists {
 		return ErrReplay
 	}
-	if len(g.entries) >= g.capacity {
+	principalCount, hasPrincipal := g.principalEntries[principal]
+	if hasPrincipal {
+		// Route helpers create prefixed strings per request. Reuse one immutable
+		// identity string for all live entries to keep cache memory predictable.
+		principal = principalCount.identity
+	}
+	if len(g.entries) >= g.capacity ||
+		principalCount.count >= g.perPrincipalCapacity {
 		return ErrRateLimited
 	}
-	g.entries[key] = now.Add(g.ttl)
+	expiresAt := now.Add(g.ttl)
+	g.entries[key] = replayEntry{principal: principal, expiresAt: expiresAt}
+	principalCount.identity = principal
+	principalCount.count++
+	g.principalEntries[principal] = principalCount
+	heap.Push(&g.expiries, replayExpiry{key: key, expiresAt: expiresAt})
 	return nil
 }
 
 func (g *replayGuard) pruneLocked(now time.Time) {
-	for key, expiresAt := range g.entries {
-		if !expiresAt.After(now) {
-			delete(g.entries, key)
+	for len(g.expiries) > 0 && !g.expiries[0].expiresAt.After(now) {
+		expired := heap.Pop(&g.expiries).(replayExpiry)
+		entry, exists := g.entries[expired.key]
+		if !exists || !entry.expiresAt.Equal(expired.expiresAt) {
+			continue
+		}
+		delete(g.entries, expired.key)
+		principalCount := g.principalEntries[entry.principal]
+		if principalCount.count <= 1 {
+			delete(g.principalEntries, entry.principal)
+		} else {
+			principalCount.count--
+			g.principalEntries[entry.principal] = principalCount
 		}
 	}
 }

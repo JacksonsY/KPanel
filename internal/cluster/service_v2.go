@@ -785,7 +785,7 @@ func (s *Service) handleFileRelayV2(
 		if !s.lightFileRequests.Allow(envelope.ControllerID, now) {
 			return FederationEnvelopeV2{}, ErrRateLimited
 		}
-		if replayErr := s.replays.Accept("light:file:"+envelope.ControllerID, envelope.RequestID, now); replayErr != nil {
+		if replayErr := s.replays.Accept(replayLightPrincipal(envelope.ControllerID), envelope.RequestID, now); replayErr != nil {
 			return FederationEnvelopeV2{}, replayErr
 		}
 		var input FileRelayPollRequest
@@ -856,7 +856,7 @@ func (s *Service) handleTerminalRelayV2(
 	if !s.lightTerminalRequests.Allow(envelope.ControllerID, now) {
 		return FederationEnvelopeV2{}, ErrRateLimited
 	}
-	if err := s.replays.Accept("light:"+envelope.ControllerID, envelope.RequestID, now); err != nil {
+	if err := s.replays.Accept(replayLightPrincipal(envelope.ControllerID), envelope.RequestID, now); err != nil {
 		return FederationEnvelopeV2{}, err
 	}
 	var input TerminalRelayPollRequest
@@ -899,7 +899,7 @@ func (s *Service) handlePairV2(
 		return FederationEnvelopeV2{}, ErrRateLimited
 	}
 	if err := s.replays.Accept(
-		envelope.ControllerID, envelope.RequestID, now,
+		replayControllerPrincipal(envelope.ControllerID), envelope.RequestID, now,
 	); err != nil {
 		return FederationEnvelopeV2{}, err
 	}
@@ -1073,7 +1073,7 @@ func (s *Service) openControllerV2(
 		return controllerRecordV2{}, nil, nil, ErrRateLimited
 	}
 	if err := s.replays.Accept(
-		controller.ID, envelope.RequestID, now,
+		replayControllerPrincipal(controller.ID), envelope.RequestID, now,
 	); err != nil {
 		return controllerRecordV2{}, nil, nil, err
 	}

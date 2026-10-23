@@ -422,7 +422,7 @@ func (s *Service) authorizeFileStream(envelope v2Envelope) (fileStreamHello, *no
 			return fail()
 		}
 		expected, _ = base64.RawURLEncoding.DecodeString(record.PublicKey)
-		controller, panel, owner = record, true, "controller:"+record.ID
+		controller, panel, owner = record, true, replayControllerPrincipal(record.ID)
 	} else {
 		node, err := s.light.Host(envelope.ControllerID)
 		if err != nil {
@@ -432,7 +432,7 @@ func (s *Service) authorizeFileStream(envelope v2Envelope) (fileStreamHello, *no
 		if err != nil {
 			return fail()
 		}
-		owner = "light:" + node.ID
+		owner = replayLightPrincipal(node.ID)
 	}
 	plain, peer, handshake, err := openV2Request(http.MethodGet, FileStreamV2Path, envelope, key, nil)
 	if err != nil || len(expected) != 32 || !bytes.Equal(peer, expected) {
@@ -474,7 +474,7 @@ func (s *Service) authorizeFileStream(envelope v2Envelope) (fileStreamHello, *no
 	} else if hello.RequestID != "" || hello.Generation != "" {
 		return fail()
 	}
-	if !limiter.Allow(envelope.ControllerID, now) || s.replays.Accept(envelope.ControllerID, envelope.RequestID, now) != nil {
+	if !limiter.Allow(envelope.ControllerID, now) || s.replays.Accept(owner, envelope.RequestID, now) != nil {
 		return fail()
 	}
 	return hello, handshake, owner, nil

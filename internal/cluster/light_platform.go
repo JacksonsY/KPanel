@@ -35,7 +35,7 @@ func (s *Service) ProbeLightCapabilities(auth LightReportAuth, body []byte) (Lig
 	if !s.lightReports.Allow(auth.NodeID, now) {
 		return LightCapabilitiesResponse{}, ErrRateLimited
 	}
-	if err := s.replays.Accept(auth.NodeID, auth.RequestID, now); err != nil {
+	if err := s.replays.Accept(replayLightPrincipal(auth.NodeID), auth.RequestID, now); err != nil {
 		return LightCapabilitiesResponse{}, err
 	}
 	return LightCapabilitiesResponse{Capabilities: LightCenterCapabilities()}, nil

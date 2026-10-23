@@ -146,7 +146,7 @@ func (s *Service) AuthorizeFileRelayV1(
 	if !s.fileRequests.Allow(controllerID, now) {
 		return LightFileRequest{}, ErrRateLimited
 	}
-	if err := s.replays.Accept("file:v1:"+controllerID, nonce, now); err != nil {
+	if err := s.replays.Accept(replayControllerPrincipal(controllerID), nonce, now); err != nil {
 		return LightFileRequest{}, err
 	}
 	s.store.TouchController(controllerID, now)
