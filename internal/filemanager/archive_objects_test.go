@@ -29,7 +29,13 @@ func TestArchiveBudgetCountsImplicitParents(t *testing.T) {
 				if format == "zip" {
 					writer := zip.NewWriter(&data)
 					for _, name := range names {
-						if _, err := writer.Create(name); err != nil {
+						header := &zip.FileHeader{Name: name, Method: zip.Deflate}
+						mode := os.FileMode(0644)
+						if strings.HasSuffix(name, "/") {
+							mode = os.ModeDir | 0755
+						}
+						header.SetMode(mode)
+						if _, err := writer.CreateHeader(header); err != nil {
 							t.Fatal(err)
 						}
 					}
