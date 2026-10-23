@@ -1713,7 +1713,7 @@ type copyBudget struct {
 	bytes          int64
 	maxEntries     int
 	maxBytes       int64
-	archiveObjects map[string]struct{}
+	archiveObjects map[archiveObjectKey]struct{}
 }
 
 func (m *Manager) copyTree(

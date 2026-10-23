@@ -82,9 +82,6 @@ func TestArchiveBudgetCountsImplicitParents(t *testing.T) {
 
 func TestArchiveBatchCountsEqualMembersInSeparateOutputs(t *testing.T) {
 	m, root := newTestManager(t)
-	for _, name := range []string{"one", "two"} {
-		mustMkdirAll(t, filepath.Join(root, name))
-	}
 	var data bytes.Buffer
 	writer := zip.NewWriter(&data)
 	if _, err := writer.Create("a/b/file"); err != nil {
@@ -93,20 +90,22 @@ func TestArchiveBatchCountsEqualMembersInSeparateOutputs(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reader, err := zip.NewReader(bytes.NewReader(data.Bytes()), int64(data.Len()))
-	if err != nil {
+	if err := os.WriteFile(filepath.Join(root, "bundle.zip"), data.Bytes(), 0600); err != nil {
 		t.Fatal(err)
 	}
 	budget := &copyBudget{maxEntries: 5, maxBytes: 1024}
-	var times []archiveDirectoryTime
-	if err := m.extractZIP(context.Background(), reader, "/one", budget, map[string]struct{}{}, &times); err != nil {
+	ctx := context.WithValue(context.Background(), archiveContextKey{}, &archiveOperation{budget: budget})
+	if _, err := m.extractArchive(ctx, "/bundle.zip", "/", "one", archiveFormatZIP, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.extractZIP(context.Background(), reader, "/two", budget, map[string]struct{}{}, &times); !errors.Is(err, ErrTooLarge) {
+	if _, err := m.extractArchive(ctx, "/bundle.zip", "/", "two", archiveFormatZIP, ""); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("second extraction reused first output's object allowance: %v", err)
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "two"))
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("over-budget output created objects: %v %v", entries, err)
+	if _, err := os.Stat(filepath.Join(root, "two")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("over-budget output was published: %v", err)
+	}
+	stages, err := filepath.Glob(filepath.Join(root, ".kpanel-extract-*"))
+	if err != nil || len(stages) != 0 {
+		t.Fatalf("failed extraction left staging objects: %v %v", stages, err)
 	}
 }

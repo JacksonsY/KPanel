@@ -779,7 +779,7 @@ func (m *Manager) extractZIP(
 			archiveProgress(ctx, budget)
 			continue
 		}
-		if err := budget.reserveArchivePath(tempVirtual, name); err != nil {
+		if err := budget.reserveArchivePath(m.rootFS, tempVirtual, name); err != nil {
 			return err
 		}
 		if operation := archiveOptions(ctx); operation != nil && operation.export != nil {
@@ -885,7 +885,7 @@ func (m *Manager) extractTAR(
 			archiveProgress(ctx, budget)
 			continue
 		}
-		if err := budget.reserveArchivePath(tempVirtual, name); err != nil {
+		if err := budget.reserveArchivePath(m.rootFS, tempVirtual, name); err != nil {
 			return err
 		}
 		if operation := archiveOptions(ctx); operation != nil && operation.export != nil {
@@ -972,14 +972,20 @@ func (m *Manager) writeExtractedFile(
 
 // Header count and payload bytes do not account for implicit parent
 // directories. Bound distinct expanded objects before MkdirAll or export.
-func (b *copyBudget) reserveArchivePath(target, name string) error {
+type archiveObjectKey struct {
+	root *fileRoot
+	path string
+}
+
+func (b *copyBudget) reserveArchivePath(root *fileRoot, target, name string) error {
 	if b.archiveObjects == nil {
-		b.archiveObjects = make(map[string]struct{})
+		b.archiveObjects = make(map[archiveObjectKey]struct{})
 	}
 	for current := name; current != "." && current != "/"; current = path.Dir(current) {
 		// A batch shares its budget across distinct extraction destinations.
-		// Equal member names in separate outputs still create separate objects.
-		key := target + "\x00" + current
+		// Each extraction has its own pinned root and starts at virtual "/".
+		// Holding the root identity also prevents reuse after that root closes.
+		key := archiveObjectKey{root: root, path: path.Join(target, current)}
 		if _, exists := b.archiveObjects[key]; exists {
 			return nil
 		}
