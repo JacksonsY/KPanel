@@ -43,13 +43,13 @@ const empty = ref(false)
 const reload = ref(0)
 const source = computed(() => isEnglish.value ? 'youtube' : 'bilibili')
 const fallbackPoster = '/tutorials/kpanel-video-placeholder.svg'
-const videos = computed(() => feeds.value[source.value]?.videos ?? bundledCatalog
+const videos = computed(() => feeds.value[source.value]?.videos ?? (loading.value || (!failed.value && !empty.value) ? [] : bundledCatalog
   .filter(entry => !isEnglish.value || entry.youtube)
   .map(entry => ({
     url: isEnglish.value ? `https://www.youtube.com/watch?v=${entry.youtube}&hl=en` : `https://www.bilibili.com/video/${entry.bilibili}/`,
     title: i18n.t(`tutorials.videos.${entry.id}.title`),
     thumbnailUrl: `/tutorials/kpanel-${entry.cover}-${isEnglish.value ? 'en' : 'zh'}.webp`,
-  })))
+  }))))
 const statusKey = computed(() => loading.value ? 'tutorials.feed.loading'
   : failed.value ? (feeds.value[source.value] ? 'tutorials.feed.stale' : 'tutorials.feed.fallback')
   : empty.value ? 'tutorials.feed.empty' : 'tutorials.feed.stale')

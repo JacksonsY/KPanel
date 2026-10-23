@@ -360,7 +360,7 @@ export const zhCNMessages = {
   'tutorials.settingsHint': '经典模式和桌面模式都能打开；桌面快捷图标可在图标管理中恢复。',
   'tutorials.open': '打开使用说明',
   'tutorials.back': '返回设置',
-  'tutorials.feed.loading': "正在更新视频列表，下方教程仍可观看…",
+  'tutorials.feed.loading': "正在获取视频列表…",
   'tutorials.feed.fallback': "暂时无法更新，正在显示内置教程，可直接前往视频平台观看。",
   'tutorials.feed.failed': "视频暂时加载失败，请重试或通过下方链接访问视频平台。",
   'tutorials.feed.stale': "暂时无法更新，正在显示上次成功获取的视频。",

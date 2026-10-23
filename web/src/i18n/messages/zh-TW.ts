@@ -1294,7 +1294,7 @@ export const zhTWMessages = {
   "tutorials.settingsHint": "經典模式和桌面模式都能開啟；桌面捷徑可在圖示管理中還原。",
   "tutorials.open": "開啟使用說明",
   "tutorials.back": "返回設定",
-  'tutorials.feed.loading': "正在更新影片清單，下方教學仍可觀看…",
+  'tutorials.feed.loading': "正在取得影片清單…",
   'tutorials.feed.fallback': "暫時無法更新，目前顯示內建教學，可直接前往影片平台觀看。",
   'tutorials.feed.failed': "影片暫時載入失敗，請重試或透過下方連結前往影片平台。",
   'tutorials.feed.stale': "暫時無法更新，目前顯示上次成功取得的影片。",

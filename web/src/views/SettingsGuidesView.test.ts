@@ -75,9 +75,9 @@ describe('SettingsGuidesView', () => {
     let resolveOld!: (value: ReturnType<typeof feed>) => void
     vi.mocked(api.tutorials.videos).mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve }))
     const wrapper = await mountGuides()
-    expect(wrapper.get('[data-testid="tutorial-feed-status"]').text()).toContain('正在更新')
-    expect(wrapper.findAll('[data-testid="tutorial-video-link"]')).toHaveLength(9)
-    expect(wrapper.get('img').attributes('src')).toBe('/tutorials/kpanel-release-125-zh.webp')
+    expect(wrapper.get('[data-testid="tutorial-feed-status"]').text()).toContain('正在获取')
+    expect(wrapper.find('[data-testid="tutorial-video-grid"]').exists()).toBe(false)
+    expect(wrapper.find('img').exists()).toBe(false)
     const oldSignal = vi.mocked(api.tutorials.videos).mock.calls[0]![1]!
     await setLocale('en-US')
     await flushPromises()
@@ -97,9 +97,14 @@ describe('SettingsGuidesView', () => {
     expect(wrapper.findAll('[data-testid="tutorial-video-link"]')).toHaveLength(9)
     expect(wrapper.get('[data-testid="tutorial-video-link"]').attributes('href')).toBe('https://www.bilibili.com/video/BV13xpb6tEq7/')
     expect(wrapper.findAll('[data-testid="tutorial-more-link"]')).toHaveLength(2)
+    let resolveRetry!: (value: ReturnType<typeof feed>) => void
+    vi.mocked(api.tutorials.videos).mockReturnValueOnce(new Promise(resolve => { resolveRetry = resolve }))
     await wrapper.get('[data-testid="tutorial-feed-status"] button').trigger('click')
+    expect(wrapper.find('[data-testid="tutorial-video-grid"]').exists()).toBe(false)
+    resolveRetry(feed())
     await flushPromises()
     expect(wrapper.findAll('[data-testid="tutorial-video-link"]')).toHaveLength(9)
+    expect(wrapper.get('strong').text()).toBe('New tutorial 0')
   })
 
   it('distinguishes an empty source from a stale source and limits displayed cards', async () => {
