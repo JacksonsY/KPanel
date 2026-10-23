@@ -12,7 +12,7 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "f7c89d5e862888205deb3af9331784042142e11eaec2d3e420b349f750e8ff27",
-  "firstPartySourceSha256": "1aae1b834b1951e864b0806011f5069a934be16d41af3ae86c3bd7e3f04f1601",
+  "firstPartySourceSha256": "78ae6f27d3347ffbbd3034b9eaa347c5fc46835ba6cc83a722da06901ca02a25",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -63,7 +63,9 @@
     "rc128SourceQualificationSha256": "99a423c33dc50216767a66bc678f95d3b142af7b7aa5a817648b538c1cc5aa79",
     "relayRevocationPreviousEvidenceSha256": "76f6ec787de2e178ceb38ba8675604f93a425449acaf9b8a934f91cae633e73d",
     "relayRevocationObservationSha256": "8ded65cf8111c77451810febbc8efd5ab55808d41e5377aa35300bbb147c662d",
-    "relayRevocationSummary": "b80eb000: independent review of controller polling-relay revocation and admission fencing. Canonical first-party inventory is 1022 Go files; production imports, six-platform actual/original package closure, 110 production modules and all 37 finding dispositions remain unchanged. Original observation and expiry remain unchanged. Final exact-candidate CI must revalidate; this identity qualification is not a scanner or release pass."
+    "relayRevocationSummary": "b80eb000: independent review of controller polling-relay revocation and admission fencing. Canonical first-party inventory is 1022 Go files; production imports, six-platform actual/original package closure, 110 production modules and all 37 finding dispositions remain unchanged. Original observation and expiry remain unchanged. Final exact-candidate CI must revalidate; this identity qualification is not a scanner or release pass.",
+    "rc128RC2VersionQualificationSha256": "ab8ba053e8285c6f53d68abb4510b1be0fbf6b4e67ac59e2950f825d90f5802e",
+    "rc128RC2VersionSummary": "RC2 assembly preserves accepted security candidate cc6807f3 first-party paths/imports, selected graph, six-platform closure, all 37 findings and original expiry; only Go version literal changes after source acceptance. Independent final release review and exact SHA CI/L3 remain required; this observation is not a scanner pass."
   },
   "findings": [
     {
