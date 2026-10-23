@@ -529,12 +529,12 @@ func (s *Service) openLightStreamTerminal(ctx context.Context, nodeID string, ro
 // managerTerminalBackend adapts a local PTY manager for the stream server.
 type managerTerminalBackend struct{ manager *terminal.Manager }
 
-func (b managerTerminalBackend) OpenRetained(_ context.Context, owner string, rows, columns uint16) (terminal.Snapshot, error) {
-	return b.manager.OpenRetained(owner, rows, columns)
+func (b managerTerminalBackend) OpenRetained(ctx context.Context, owner string, rows, columns uint16) (terminal.Snapshot, error) {
+	return b.manager.OpenRetainedContext(ctx, owner, rows, columns)
 }
 
-func (b managerTerminalBackend) Open(_ context.Context, owner string, rows, columns uint16) (terminal.Snapshot, error) {
-	return b.manager.Open(owner, rows, columns)
+func (b managerTerminalBackend) Open(ctx context.Context, owner string, rows, columns uint16) (terminal.Snapshot, error) {
+	return b.manager.OpenContext(ctx, owner, rows, columns)
 }
 
 func (b managerTerminalBackend) Output(ctx context.Context, owner, id string, offset int64, wait time.Duration) (terminal.Output, error) {

@@ -64,11 +64,16 @@ type Manager struct {
 	stop     chan struct{}
 	stopOnce sync.Once
 	closed   bool
-	// spawning marks a process being started outside mu so Busy cannot miss
-	// the admission window between spawn and registration. openSpawnMu keeps
-	// concurrent Open calls from racing the quota check across that window.
-	spawning    bool
-	openSpawnMu sync.Mutex
+	// Admission includes queued and spawning processes. Owner epochs exist only
+	// while admissions are pending, bounded by the ordinary session limits.
+	opening       int
+	openingOwners map[string]*ownerAdmission
+	openSpawnMu   sync.Mutex
+}
+
+type ownerAdmission struct {
+	pending int
+	epoch   uint64
 }
 
 type session struct {
@@ -293,15 +298,74 @@ func (m *Manager) Open(owner string, rows, columns uint16) (Snapshot, error) {
 // OpenWithStarter uses the same ownership, quotas and lifecycle for a fixed
 // backend-selected terminal process. The starter is never supplied over HTTP.
 func (m *Manager) OpenWithStarter(owner string, rows, columns uint16, start Starter) (Snapshot, error) {
-	return m.open(owner, rows, columns, start, false)
+	return m.open(context.Background(), owner, rows, columns, start, false)
+}
+
+// OpenContext propagates cancellation through admission and final registration.
+func (m *Manager) OpenContext(ctx context.Context, owner string, rows, columns uint16) (Snapshot, error) {
+	return m.open(ctx, owner, rows, columns, m.config.Starter, false)
 }
 
 // OpenRetained keeps an authenticated session across client disconnects, bounded by Lifetime.
 func (m *Manager) OpenRetained(owner string, rows, columns uint16) (Snapshot, error) {
-	return m.open(owner, rows, columns, m.config.Starter, true)
+	return m.OpenRetainedContext(context.Background(), owner, rows, columns)
 }
 
-func (m *Manager) open(owner string, rows, columns uint16, start Starter, retained bool) (Snapshot, error) {
+func (m *Manager) OpenRetainedContext(ctx context.Context, owner string, rows, columns uint16) (Snapshot, error) {
+	return m.open(ctx, owner, rows, columns, m.config.Starter, true)
+}
+
+func (m *Manager) reserveOpen(owner string) (*ownerAdmission, uint64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return nil, 0, ErrClosed
+	}
+	m.trimFinishedLocked(m.config.Now().UTC())
+	active, owned := 0, 0
+	for _, item := range m.sessions {
+		if item.isActive() {
+			active++
+			if item.owner == owner {
+				owned++
+			}
+		}
+	}
+	state := m.openingOwners[owner]
+	pending := 0
+	if state != nil {
+		pending = state.pending
+	}
+	if active+m.opening >= m.config.MaxSessions || owned+pending >= m.config.MaxOwnerSessions {
+		return nil, 0, ErrLimit
+	}
+	if state == nil {
+		if m.openingOwners == nil {
+			m.openingOwners = make(map[string]*ownerAdmission)
+		}
+		state = &ownerAdmission{}
+		m.openingOwners[owner] = state
+	}
+	state.pending++
+	m.opening++
+	return state, state.epoch, nil
+}
+
+func (m *Manager) releaseOpenLocked(owner string, state *ownerAdmission) {
+	state.pending--
+	m.opening--
+	if state.pending == 0 {
+		delete(m.openingOwners, owner)
+	}
+}
+
+func (m *Manager) open(ctx context.Context, owner string, rows, columns uint16, start Starter, retained bool) (Snapshot, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
 	if start == nil {
 		return Snapshot{}, errors.New("terminal starter is required")
 	}
@@ -309,50 +373,48 @@ func (m *Manager) open(owner string, rows, columns uint16, start Starter, retain
 	if owner == "" || rows == 0 || columns == 0 || rows > 500 || columns > 1000 {
 		return Snapshot{}, errors.New("invalid terminal session request")
 	}
+	state, epoch, err := m.reserveOpen(owner)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	reserved := true
+	defer func() {
+		if reserved {
+			m.mu.Lock()
+			m.releaseOpenLocked(owner, state)
+			m.mu.Unlock()
+		}
+	}()
 	m.openSpawnMu.Lock()
 	defer m.openSpawnMu.Unlock()
-	m.mu.Lock()
-	if m.closed {
-		m.mu.Unlock()
+	m.mu.RLock()
+	invalid := m.closed || state.epoch != epoch
+	m.mu.RUnlock()
+	if invalid {
 		return Snapshot{}, ErrClosed
 	}
-	m.trimFinishedLocked(m.config.Now().UTC())
-	ownerCount := 0
-	activeCount := 0
-	for _, item := range m.sessions {
-		if item.isActive() {
-			activeCount++
-		}
-		if item.owner == owner && item.isActive() {
-			ownerCount++
-		}
-	}
-	if activeCount >= m.config.MaxSessions || ownerCount >= m.config.MaxOwnerSessions {
-		m.mu.Unlock()
-		return Snapshot{}, ErrLimit
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
 	}
 	id, err := randomID()
 	if err != nil {
-		m.mu.Unlock()
 		return Snapshot{}, err
 	}
 	// The spawn (fork + systemd-run) can take tens of milliseconds; run it
 	// without mu so every other session's Input/Output/Resize stays live.
-	// busy-visibility is preserved through m.spawning below.
-	m.spawning = true
-	m.mu.Unlock()
+	// The reservation keeps both quota and backup busy-visibility intact.
 	process, spawnErr := start(rows, columns)
-	m.mu.Lock()
-	m.spawning = false
-	closed := m.closed
-	m.mu.Unlock()
 	now := m.config.Now().UTC()
 	item := &session{retained: retained, id: id, owner: owner, process: process, notify: make(chan struct{}), inputGate: make(chan struct{}, 1), createdAt: now, updatedAt: now}
 	m.mu.Lock()
-	closed = closed || m.closed
-	if spawnErr == nil && closed {
+	if spawnErr == nil {
+		spawnErr = ctx.Err()
+	}
+	if spawnErr == nil && (m.closed || state.epoch != epoch) {
 		spawnErr = ErrClosed
 	}
+	m.releaseOpenLocked(owner, state)
+	reserved = false
 	if process == nil {
 		m.mu.Unlock()
 		if spawnErr == nil {
@@ -379,7 +441,7 @@ func (m *Manager) open(owner string, rows, columns uint16, start Starter, retain
 func (m *Manager) Busy() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if m.spawning {
+	if m.opening != 0 {
 		return true
 	}
 	for _, item := range m.sessions {
@@ -581,14 +643,18 @@ func (m *Manager) Close(owner, id string) error {
 // CloseOwner terminates both relay and stream sessions when their controller epoch changes.
 // Failed cleanup stays registered for the normal retry and quota accounting.
 func (m *Manager) CloseOwner(owner string) {
-	m.mu.RLock()
+	owner = strings.TrimSpace(owner)
+	m.mu.Lock()
+	if state := m.openingOwners[owner]; state != nil {
+		state.epoch++
+	}
 	ids := make([]string, 0)
 	for id, item := range m.sessions {
-		if item.owner == strings.TrimSpace(owner) {
+		if item.owner == owner {
 			ids = append(ids, id)
 		}
 	}
-	m.mu.RUnlock()
+	m.mu.Unlock()
 	for _, id := range ids {
 		_ = m.Close(owner, id)
 	}
