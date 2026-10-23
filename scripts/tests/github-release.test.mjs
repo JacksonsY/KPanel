@@ -551,6 +551,10 @@ test('public recovery binds only the trusted controller runner recipe and reject
       const path = 'packaging/release-runner/Dockerfile';
       const original = 'FROM example@sha256:' + 'a'.repeat(64) + '\nRUN old-fixed-recipe\n';
       const recipe = original.replace('old-fixed', 'new-fixed');
+      const fixturePath = 'packaging/tests/release-browser/real-feature-public.sh';
+      const fixture = '#!/usr/bin/env bash\n# fixed verifier fixture\n';
+      mkdirSync(join(root, 'packaging/tests/release-browser'), { recursive: true });
+      writeFileSync(join(root, fixturePath), fixture);
       writeFileSync(join(root, path), original); writeFileSync(join(root, 'VERSION'), '1.27.0-rc.5\n');
       git('add', '.'); git('commit', '-qm', 'frozen product');
       const candidate = git('rev-parse', 'HEAD');
@@ -577,6 +581,13 @@ test('public recovery binds only the trusted controller runner recipe and reject
           assert.equal(receipt.recipeSha256, createHash('sha256').update(recipe).digest('hex'));
           assert.match(receipt.diff, /-RUN old-fixed-recipe/); assert.match(receipt.diff, /\+RUN new-fixed-recipe/);
           assert.equal(git('diff', '--name-only'), path);
+          const fixtureReceipt = JSON.parse(readFileSync(join(evidence, 'test-fixture-source.json')));
+          assert.equal(fixtureReceipt.path, fixturePath);
+          assert.equal(fixtureReceipt.candidate, candidate); assert.equal(fixtureReceipt.controller, controller);
+          assert.equal(fixtureReceipt.original, fixture); assert.equal(fixtureReceipt.recipe, fixture);
+          assert.equal(fixtureReceipt.originalSha256, createHash('sha256').update(fixture).digest('hex'));
+          assert.equal(fixtureReceipt.recipeSha256, fixtureReceipt.originalSha256);
+          assert.equal(fixtureReceipt.diff, ''); assert.equal(fixtureReceipt.productImageUnchanged, true);
           assert.equal(readFileSync(join(root, 'VERSION'), 'utf8'), '1.27.0-rc.5\n');
         } else assert.equal(readFileSync(join(root, path), 'utf8'), original);
       } finally { rmSync(evidence, { recursive: true, force: true }); }
