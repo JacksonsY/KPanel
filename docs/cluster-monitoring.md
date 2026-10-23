@@ -295,6 +295,9 @@ bash <(curl -fsSL https://kejilion.sh) kpanel node join '<kpl1-token>'
   地址，仍与清单同属一个版本。github.com 可达却隐藏重定向时照旧失败，不改走镜像。摘要、`light-v1` 协议与回滚
   校验不变；信任范围与 `kejilion.sh` 本身一致，没有新的第三方。暂不可达 GitHub 的旧节点运行一次
   `k kpanel node update` 即可换上新更新器（`kejilion.sh` 由自有域名提供）；
+- 更新器运行时代数 7 起，在替换二进制前比较实际版本；拒绝较旧版本及无法识别的版本身份，
+  正常升级和同版本修复继续可用。版本比较区分 RC 与正式版，不把 `9.10` 按字符串顺序排在 `9.9` 之前；
+  这是自动更新的防降级检查，失败恢复仍可恢复该次更新前的二进制。
 - 服务使用无登录、无 home 的 `kejilion-node` 系统用户运行，配置目录 `0750`，遥测凭据文件
   `0640 root:kejilion-node`；终端 Noise 私钥另存为 `0600 root:root`，低权限遥测进程不可读取；
   遥测 systemd unit 继续启用 `NoNewPrivileges`、只读系统、隐藏 home、空 capability 及地址族限制；
