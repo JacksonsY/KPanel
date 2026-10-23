@@ -822,7 +822,7 @@ func (s *Service) handlePanelFileRelayV2(
 		!fileRelayPayloadFits(input) {
 		return FederationEnvelopeV2{}, ErrAuthentication
 	}
-	response, err := s.panelFileRelay.poll(ctx, input, now)
+	response, err := s.panelFileRelay.poll(ctx, controller.ID, input, now)
 	if err != nil {
 		return FederationEnvelopeV2{}, err
 	}

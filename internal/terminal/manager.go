@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,9 @@ const (
 	DefaultLifetime         = 8 * time.Hour
 	MaxInputBytes           = 16 << 10
 	MaxOutputBytes          = 64 << 10
+	maxFinishedSessions     = 64
+	maxFinishedBufferBytes  = 16 << 20
+	finishedRetention       = 5 * time.Minute
 )
 
 var (
@@ -82,6 +86,7 @@ type session struct {
 	notify      chan struct{}
 	createdAt   time.Time
 	updatedAt   time.Time
+	finishedAt  time.Time
 	exitedAt    *time.Time
 	exitError   string
 	closed      bool
@@ -311,6 +316,7 @@ func (m *Manager) open(owner string, rows, columns uint16, start Starter, retain
 		m.mu.Unlock()
 		return Snapshot{}, ErrClosed
 	}
+	m.trimFinishedLocked(m.config.Now().UTC())
 	ownerCount := 0
 	activeCount := 0
 	for _, item := range m.sessions {
@@ -419,6 +425,7 @@ func (m *Manager) capture(item *session) {
 		err = readErr
 	}
 	item.setExit(err, m.config.Now().UTC())
+	m.trimFinished()
 }
 
 func (m *Manager) Output(ctx context.Context, owner, id string, offset int64, wait time.Duration) (Output, error) {
@@ -556,12 +563,16 @@ func (m *Manager) Close(owner, id string) error {
 		return err
 	}
 	item.mu.Lock()
-	defer item.mu.Unlock()
 	item.closeFailed = false
 	item.closed = true
 	item.updatedAt = m.config.Now().UTC()
+	if item.finishedAt.IsZero() {
+		item.finishedAt = item.updatedAt
+	}
 	close(item.notify)
 	item.notify = make(chan struct{})
+	item.mu.Unlock()
+	m.trimFinished()
 	return nil
 }
 
@@ -612,13 +623,12 @@ func (m *Manager) reap(now time.Time) {
 	type staleSession struct{ owner, id string }
 	stale := make([]staleSession, 0)
 	m.mu.Lock()
+	m.trimFinishedLocked(now)
 	for id, item := range m.sessions {
 		item.mu.Lock()
 		inactive := (!item.retained && now.Sub(item.updatedAt) >= m.config.IdleTimeout) || now.Sub(item.createdAt) >= m.config.Lifetime
 		finished := item.closed || (item.exitedAt != nil && !item.closeFailed)
-		if finished && now.Sub(item.updatedAt) >= 5*time.Minute {
-			delete(m.sessions, id)
-		} else if (inactive || item.closeFailed) && !finished {
+		if (inactive || item.closeFailed) && !finished {
 			stale = append(stale, staleSession{owner: item.owner, id: id})
 		}
 		item.mu.Unlock()
@@ -626,6 +636,51 @@ func (m *Manager) reap(now time.Time) {
 	m.mu.Unlock()
 	for _, item := range stale {
 		_ = m.Close(item.owner, item.id)
+	}
+}
+
+func (m *Manager) trimFinished() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.trimFinishedLocked(m.config.Now().UTC())
+}
+
+// Completed output is a bounded cache. Reads cannot renew its retention, and
+// pending cleanup remains owned and counted until termination is confirmed.
+func (m *Manager) trimFinishedLocked(now time.Time) {
+	type entry struct {
+		id    string
+		at    time.Time
+		bytes int
+	}
+	finished := make([]entry, 0)
+	total := 0
+	for id, item := range m.sessions {
+		item.mu.Lock()
+		done := (item.closed || item.exitedAt != nil) && !item.closeFailed
+		at, size := item.finishedAt, cap(item.buffer)
+		item.mu.Unlock()
+		if !done {
+			continue
+		}
+		if !at.IsZero() && now.Sub(at) >= finishedRetention {
+			delete(m.sessions, id)
+			continue
+		}
+		finished = append(finished, entry{id, at, size})
+		total += size
+	}
+	sort.Slice(finished, func(i, j int) bool {
+		if finished[i].at.Equal(finished[j].at) {
+			return finished[i].id < finished[j].id
+		}
+		return finished[i].at.Before(finished[j].at)
+	})
+	for len(finished) > maxFinishedSessions || total > maxFinishedBufferBytes {
+		oldest := finished[0]
+		delete(m.sessions, oldest.id)
+		total -= oldest.bytes
+		finished = finished[1:]
 	}
 }
 
@@ -682,6 +737,9 @@ func (item *session) setExit(err error, now time.Time) {
 		return
 	}
 	item.exitedAt = &now
+	if item.finishedAt.IsZero() {
+		item.finishedAt = now
+	}
 	item.updatedAt = now
 	if err != nil {
 		item.exitError = err.Error()

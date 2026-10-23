@@ -220,6 +220,10 @@ ID 或静态公钥变化时停止信任，不自动接受新身份。
 
 ### 3.2 v1 兼容
 
+完整 Panel 的 v2 文件轮询中继最多保留 32 个 Session，每个已认证控制端最多 8 个；
+Session 绑定创建它的控制端。满额只拒绝新建，既有会话的控制和结果读取仍可继续；
+超时或底层上下文结束后回收名额。该限制不改变文件 scope，也不新增授权。
+
 既有 v1 主机、`cluster-state.json`、`cluster-secrets/*.ed25519` 和
 `POST /api/v1/cluster/pairing-codes` 保持可读可用。v1 仍要求公网 HTTPS，并使用原有
 Ed25519 签名。新前端调用 `/api/v1/cluster/pairing-codes/v2`，不会把旧授权码接口改成

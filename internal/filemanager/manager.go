@@ -1831,7 +1831,19 @@ func (m *Manager) copyTreeWithAccess(
 			_ = m.rootFS.Remove(rootName(targetVirtual))
 		}
 	}()
-	if _, err := io.CopyBuffer(output, &contextReader{ctx: ctx, reader: input}, make([]byte, 64<<10)); err != nil {
+	// The source can grow after Stat. Charge actual bytes across the whole
+	// operation and probe for overflow without writing beyond the remaining budget.
+	remaining := budget.maxBytes - budget.bytes + info.Size()
+	reader := &contextReader{ctx: ctx, reader: input}
+	written, err := io.CopyBuffer(output, io.LimitReader(reader, remaining), make([]byte, 64<<10))
+	budget.bytes += written - info.Size()
+	if err != nil {
+		return err
+	}
+	var extra [1]byte
+	if n, err := reader.Read(extra[:]); n != 0 {
+		return ErrTooLarge
+	} else if err != nil && !errors.Is(err, io.EOF) {
 		return err
 	}
 	if err := output.Sync(); err != nil {

@@ -15,10 +15,12 @@ import (
 )
 
 const (
-	panelFileRelayPollWait     = 2 * time.Second
-	panelFileRelaySessionTTL   = 2 * time.Hour
-	panelFileRelayQueueLimit   = 128
-	panelFileRelayQueueTimeout = 30 * time.Second
+	panelFileRelayPollWait              = 2 * time.Second
+	panelFileRelaySessionTTL            = 2 * time.Hour
+	panelFileRelayQueueLimit            = 128
+	panelFileRelayQueueTimeout          = 30 * time.Second
+	panelFileRelayMaxSessions           = 32
+	panelFileRelayMaxControllerSessions = 8
 )
 
 // panelFileRelay is the target-side broker for a paired Panel. It executes
@@ -31,10 +33,11 @@ type panelFileRelay struct {
 }
 
 type panelFileRelaySession struct {
-	id      string
-	handler http.Handler
-	ctx     context.Context
-	stop    context.CancelFunc
+	id           string
+	controllerID string
+	handler      http.Handler
+	ctx          context.Context
+	stop         context.CancelFunc
 
 	events chan FileRelayEvent
 
@@ -92,6 +95,7 @@ func (r *panelFileRelay) closeAll() {
 
 func (r *panelFileRelay) poll(
 	ctx context.Context,
+	controllerID string,
 	input FileRelayPollRequest,
 	now time.Time,
 ) (FileRelayPollResponse, error) {
@@ -105,8 +109,23 @@ func (r *panelFileRelay) poll(
 	r.gcLocked(now.UTC())
 	handler := r.handler
 	session := r.sessions[input.SessionID]
+	if session != nil && session.controllerID != controllerID {
+		r.mu.Unlock()
+		return FileRelayPollResponse{}, ErrAuthentication
+	}
 	if session == nil && input.Command != nil && input.Command.Kind == "request" && handler != nil {
+		owned := 0
+		for _, current := range r.sessions {
+			if current.controllerID == controllerID {
+				owned++
+			}
+		}
+		if len(r.sessions) >= panelFileRelayMaxSessions || owned >= panelFileRelayMaxControllerSessions {
+			r.mu.Unlock()
+			return FileRelayPollResponse{}, ErrRateLimited
+		}
 		session = newPanelFileRelaySession(input.SessionID, handler, now.UTC())
+		session.controllerID = controllerID
 		r.sessions[input.SessionID] = session
 	}
 	r.mu.Unlock()
@@ -169,7 +188,7 @@ func newPanelFileRelaySession(id string, handler http.Handler, now time.Time) *p
 func (s *panelFileRelaySession) expired(now time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return !s.expiresAt.After(now)
+	return s.ctx.Err() != nil || !s.expiresAt.After(now)
 }
 
 func (s *panelFileRelaySession) touch(now time.Time) {
