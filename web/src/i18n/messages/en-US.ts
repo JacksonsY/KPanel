@@ -361,7 +361,7 @@ export const enUSMessages = {
   'tutorials.settingsHint': 'Available in Classic and Desktop mode. Restore the desktop shortcut in Manage icons.',
   'tutorials.open': 'Open user guide',
   'tutorials.back': 'Back to Settings',
-  'tutorials.feed.loading': "Updating the video list. You can still watch the tutorials below…",
+  'tutorials.feed.loading': "Fetching the video list…",
   'tutorials.feed.fallback': "Unable to refresh. Showing built-in tutorials you can watch on the video platform.",
   'tutorials.feed.failed': "Videos could not be loaded. Try again or use the platform links below.",
   'tutorials.feed.stale': "Unable to refresh. Showing the last successfully loaded videos.",
