@@ -822,7 +822,12 @@ func (s *Service) handlePanelFileRelayV2(
 		!fileRelayPayloadFits(input) {
 		return FederationEnvelopeV2{}, ErrAuthentication
 	}
-	response, err := s.panelFileRelay.poll(ctx, controller.ID, input, now)
+	response, err := s.panelFileRelay.poll(ctx, controller.ID, input, now, func() bool {
+		current, err := s.storeV2.Controller(controller.ID)
+		return err == nil && current.State == controllerStateV2Active &&
+			current.TransactionID == controller.TransactionID && current.PublicKey == controller.PublicKey &&
+			ScopeAllowsFiles(normalizedV2Scope(current.Scope))
+	})
 	if err != nil {
 		return FederationEnvelopeV2{}, err
 	}
@@ -1031,6 +1036,7 @@ func (s *Service) handleRevokeV2(
 		}
 	}
 	s.fileStreamHub.closePeer(controllerV2Principal(controller.ID))
+	s.panelFileRelay.closeController(controller.ID)
 	if err := s.filePeersV2.DeleteController(controller.ID); err != nil &&
 		!errors.Is(err, ErrNotFound) {
 		return FederationEnvelopeV2{}, err

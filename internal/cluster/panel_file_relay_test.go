@@ -59,7 +59,7 @@ func TestPanelFileRelayExecutesConstrainedRequestAndStreamsBody(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	poll := func(input FileRelayPollRequest) FileRelayPollResponse {
-		response, err := relay.poll(ctx, strings.Repeat("c", 32), input, now)
+		response, err := relay.poll(ctx, strings.Repeat("c", 32), input, now, func() bool { return true })
 		if err != nil {
 			t.Fatalf("panel file relay poll: %v", err)
 		}

@@ -96,11 +96,30 @@ func (r *panelFileRelay) closeAll() {
 	}
 }
 
+func (r *panelFileRelay) closeController(controllerID string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	var sessions []*panelFileRelaySession
+	for id, session := range r.sessions {
+		if session.controllerID == controllerID {
+			delete(r.sessions, id)
+			sessions = append(sessions, session)
+		}
+	}
+	r.mu.Unlock()
+	for _, session := range sessions {
+		session.abort(ErrAuthentication)
+	}
+}
+
 func (r *panelFileRelay) poll(
 	ctx context.Context,
 	controllerID string,
 	input FileRelayPollRequest,
 	now time.Time,
+	allowed func() bool,
 ) (FileRelayPollResponse, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -109,6 +128,13 @@ func (r *panelFileRelay) poll(
 		return FileRelayPollResponse{}, err
 	}
 	r.mu.Lock()
+	// Revocation updates the store before closing this owner's sessions under
+	// the same lock. Recheck admission here so earlier authentication cannot
+	// register a new session after revocation has already reclaimed the old ones.
+	if allowed == nil || !allowed() {
+		r.mu.Unlock()
+		return FileRelayPollResponse{}, ErrAuthentication
+	}
 	r.gcLocked(now.UTC())
 	handler := r.handler
 	session := r.sessions[input.SessionID]
@@ -210,6 +236,9 @@ func (s *panelFileRelaySession) touch(now time.Time) {
 func (s *panelFileRelaySession) handleCommand(ctx context.Context, command FileRelayCommand, now time.Time) error {
 	s.commandMu.Lock()
 	defer s.commandMu.Unlock()
+	if s.ctx.Err() != nil {
+		return ErrFileRelayUnavailable
+	}
 	s.touch(now)
 
 	s.mu.Lock()

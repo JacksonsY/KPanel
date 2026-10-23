@@ -71,25 +71,25 @@ func TestPanelFileRelayQuotasAndControllerOwnership(t *testing.T) {
 	}
 	for i := 0; i < panelFileRelayMaxSessions; i++ {
 		owner := fmt.Sprintf("controller-%d", i/panelFileRelayMaxControllerSessions)
-		if _, err := r.poll(context.Background(), owner, request(i), now); err != nil {
+		if _, err := r.poll(context.Background(), owner, request(i), now, func() bool { return true }); err != nil {
 			t.Fatalf("admit %d: %v", i, err)
 		}
 		if i == panelFileRelayMaxControllerSessions-1 {
-			if _, err := r.poll(context.Background(), owner, request(1000), now); !errors.Is(err, ErrRateLimited) {
+			if _, err := r.poll(context.Background(), owner, request(1000), now, func() bool { return true }); !errors.Is(err, ErrRateLimited) {
 				t.Fatalf("controller quota: %v", err)
 			}
 		}
 	}
-	if _, err := r.poll(context.Background(), "new-controller", request(2000), now); !errors.Is(err, ErrRateLimited) {
+	if _, err := r.poll(context.Background(), "new-controller", request(2000), now, func() bool { return true }); !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("global quota: %v", err)
 	}
-	if _, err := r.poll(context.Background(), "other-controller", request(0), now); !errors.Is(err, ErrAuthentication) {
+	if _, err := r.poll(context.Background(), "other-controller", request(0), now, func() bool { return true }); !errors.Is(err, ErrAuthentication) {
 		t.Fatalf("ownership: %v", err)
 	}
 	// Existing sessions still accept control frames when capacity is full.
 	control := request(0)
 	control.Command = &FileRelayCommand{ID: fmt.Sprintf("%032x", 3000), RequestID: control.SessionID, Kind: "cancel", ExpiresAt: now.Add(time.Minute).Unix()}
-	if _, err := r.poll(context.Background(), "controller-0", control, now); errors.Is(err, ErrRateLimited) {
+	if _, err := r.poll(context.Background(), "controller-0", control, now, func() bool { return true }); errors.Is(err, ErrRateLimited) {
 		t.Fatal("cancel denied by quota")
 	}
 	r.mu.Lock()
@@ -99,7 +99,7 @@ func TestPanelFileRelayQuotasAndControllerOwnership(t *testing.T) {
 	if count != 0 {
 		t.Fatalf("expired sessions retained: %d", count)
 	}
-	if _, err := r.poll(context.Background(), "new-controller", request(2001), now); err != nil {
+	if _, err := r.poll(context.Background(), "new-controller", request(2001), now, func() bool { return true }); err != nil {
 		t.Fatalf("capacity not reclaimed: %v", err)
 	}
 }

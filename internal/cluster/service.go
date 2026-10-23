@@ -856,6 +856,7 @@ func (s *Service) DeleteController(id string) error {
 		return err
 	}
 	s.fileStreamHub.closePeer(controllerV2Principal(id))
+	s.panelFileRelay.closeController(id)
 	if err := s.filePeersV2.DeleteController(id); err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	}
