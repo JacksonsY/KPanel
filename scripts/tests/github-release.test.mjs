@@ -237,15 +237,44 @@ case "$*" in
   *) return 1;;
 esac
 }\n`;
-  for (const [ref, wrongTag, expected] of [['refs/heads/main', '0', 0], ['refs/heads/feature/unreviewed', '0', 1], ['refs/heads/main', '1', 1]]) {
+  const scenarios = [
+    { ref: 'refs/heads/main', run: '123', attempt: '1', expected: 0 },
+    { ref: 'refs/heads/feature/unreviewed', run: '123', attempt: '1', expected: 1 },
+    { ref: 'refs/heads/main', run: '123', attempt: '1', wrongTag: '1', expected: 1 },
+    // A called verifier inherits Publish preview's workflow_dispatch event.
+    { ref: 'refs/heads/main', snapshot: '{"tag":"v1.27.2"}', expected: 0 },
+    { ref: 'refs/tags/v1.27.2', snapshot: '{"tag":"v1.27.1"}', expected: 0 },
+    { ref: 'refs/heads/main', expected: 1 },
+    { ref: 'refs/heads/main', snapshot: '{}', run: '123', expected: 1 },
+    { ref: 'refs/heads/main', snapshot: '{}', attempt: '1', expected: 1 },
+    { ref: 'refs/heads/main', run: 'invalid', attempt: '1', expected: 1 },
+  ];
+  for (const { ref, wrongTag = '0', run = '', attempt = '', snapshot = '', expected } of scenarios) {
     const result = spawnSync(resolveBash(), ['--noprofile', '--norc', '-c', prefix + workflowStep(workflow, 'Validate frozen public source')], {
       cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 10_000,
       env: { ...process.env, GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: ref, EXPECTED_VERSION: version,
-        EXPECTED_SHA: 'b'.repeat(40), IMAGE_DIGEST: 'sha256:' + 'a'.repeat(64), PUBLICATION_RUN_ID: '123',
-        PUBLICATION_ATTEMPT: '1', WRONG_TAG: wrongTag },
+        EXPECTED_SHA: 'b'.repeat(40), IMAGE_DIGEST: 'sha256:' + 'a'.repeat(64), PUBLICATION_RUN_ID: run,
+        PUBLICATION_ATTEMPT: attempt, STABLE_SNAPSHOT: snapshot, WRONG_TAG: wrongTag },
     });
     assert.ifError(result.error);
     assert.equal(result.status, expected, result.stderr);
+  }
+});
+
+test('inline publication and artifact recovery select their original snapshot source despite inherited events', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/release-public-verify.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+  const download = workflow.split('      - name: Download original publication snapshot\n')[1].split('\n      - ')[0];
+  assert.match(download, /if: inputs\['publication-run-id'\] != ''/);
+  assert.doesNotMatch(download, /github\.event_name/);
+  const restore = workflowStep(workflow.slice(workflow.indexOf('      - name: Download original publication snapshot')), 'Restore frozen publication identity');
+  for (const [run, expected] of [['', 'restore-snapshot'], ['123', 'restore-artifact']]) {
+    const result = spawnSync(resolveBash(), ['--noprofile', '--norc', '-c', 'node() { printf "%s" "$2"; };\n' + restore], {
+      encoding: 'utf8', timeout: 10_000,
+      env: { ...process.env, GITHUB_EVENT_NAME: 'workflow_dispatch', PUBLICATION_RUN_ID: run },
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, expected);
   }
 });
 
