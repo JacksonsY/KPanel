@@ -424,13 +424,15 @@ func (m *Manager) open(ctx context.Context, owner string, rows, columns uint16, 
 	}
 	m.sessions[id] = item
 	m.mu.Unlock()
+	// Every started process needs one Wait, including failed or revoked opens.
+	// Close terminates its scope and PTY; capture owns reaping the child.
+	go m.capture(item)
 	if spawnErr != nil {
 		// A started process whose cleanup fails still occupies the same owner
 		// and global capacity. The reaper retries it even though Open failed.
 		_ = m.Close(owner, id)
 		return Snapshot{}, spawnErr
 	}
-	go m.capture(item)
 	return item.snapshot(), nil
 }
 
