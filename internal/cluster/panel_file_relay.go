@@ -135,14 +135,18 @@ func (r *panelFileRelay) poll(
 	if handler == nil || session == nil {
 		return FileRelayPollResponse{}, ErrFileRelayUnavailable
 	}
+	if input.Command != nil && input.Command.Kind == "cancel" {
+		// Cancellation must bypass a full response queue and any body writer
+		// holding commandMu. Ownership was checked while looking up the session.
+		r.removeSession(input.SessionID, session)
+		session.abort(io.ErrClosedPipe)
+		return FileRelayPollResponse{Events: []FileRelayEvent{{RequestID: session.id, CommandID: input.Command.ID, Kind: "accepted"}}}, nil
+	}
 	if input.Command != nil {
 		if err := session.handleCommand(ctx, *input.Command, now.UTC()); err != nil {
 			r.removeSession(input.SessionID, session)
 			session.abort(err)
 			return FileRelayPollResponse{}, err
-		}
-		if input.Command.Kind == "cancel" {
-			r.removeSession(input.SessionID, session)
 		}
 	}
 	events, err := session.collect(ctx)
@@ -751,6 +755,20 @@ func (c *RemoteClient) runFileRelay(
 	}
 
 	knownCommands := map[string]struct{}{initial.ID: {}}
+	knownIDs := []string{initial.ID}
+	knownNext := 0
+	rememberKnown := func(id string) {
+		// Responses are queued on the target. Retain two queue windows so
+		// delayed acknowledgements remain valid without retaining every chunk.
+		if len(knownIDs) < panelFileRelayQueueLimit*2 {
+			knownIDs = append(knownIDs, id)
+		} else {
+			delete(knownCommands, knownIDs[knownNext])
+			knownIDs[knownNext] = id
+			knownNext = (knownNext + 1) % len(knownIDs)
+		}
+		knownCommands[id] = struct{}{}
+	}
 	nextCommand := &initial
 	accepted := false
 	bodyDone := initial.BodyLength == 0
@@ -849,7 +867,7 @@ func (c *RemoteClient) runFileRelay(
 				fail(err)
 				return
 			}
-			knownCommands[bodyCommand.ID] = struct{}{}
+			rememberKnown(bodyCommand.ID)
 			nextCommand = &bodyCommand
 			bodyOffset += int64(len(data))
 			if final {

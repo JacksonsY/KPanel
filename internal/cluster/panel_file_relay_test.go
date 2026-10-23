@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 )
 
@@ -214,7 +215,7 @@ func TestPanelFileRelayCanceledDownloadsReleaseQuota(t *testing.T) {
 	// local unread response while the target has queued its terminal events.
 	center.streams.markLegacy(host.ID)
 	target.SetFileRelayHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(bytes.Repeat([]byte("x"), lightFileChunkBytes*2))
+		_, _ = w.Write(bytes.Repeat([]byte("x"), lightFileChunkBytes*(panelFileRelayQueueLimit+8)))
 	}))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -225,6 +226,22 @@ func TestPanelFileRelayCanceledDownloadsReleaseQuota(t *testing.T) {
 		}
 		if _, err := io.ReadFull(response.Body, make([]byte, 1)); err != nil {
 			t.Fatal(err)
+		}
+		fullDeadline := time.Now().Add(2 * time.Second)
+		for {
+			target.panelFileRelay.mu.Lock()
+			full := false
+			for _, session := range target.panelFileRelay.sessions {
+				full = len(session.events) == panelFileRelayQueueLimit
+			}
+			target.panelFileRelay.mu.Unlock()
+			if full {
+				break
+			}
+			if time.Now().After(fullDeadline) {
+				t.Fatal("target output queue did not fill")
+			}
+			time.Sleep(time.Millisecond)
 		}
 		_ = response.Body.Close()
 		deadline := time.Now().Add(3 * time.Second)
@@ -240,5 +257,23 @@ func TestPanelFileRelayCanceledDownloadsReleaseQuota(t *testing.T) {
 			}
 			time.Sleep(time.Millisecond)
 		}
+	}
+	// A long upload with tiny reads crosses both replay windows. Evicting old
+	// acknowledgements must not truncate or duplicate legitimate request bytes.
+	payload := bytes.Repeat([]byte("x"), panelFileRelayProcessedLimit*3)
+	target.SetFileRelayHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil || !bytes.Equal(body, payload) {
+			t.Errorf("upload bytes=%d error=%v", len(body), err)
+		}
+		_, _ = w.Write([]byte("ok"))
+	}))
+	response, err := center.OpenRemotePanelFile(ctx, host.ID, LightFileRequest{Method: http.MethodPost, Path: "/v1/files/actions", Body: io.NopCloser(iotest.OneByteReader(bytes.NewReader(payload))), BodyLength: int64(len(payload))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if body, err := io.ReadAll(response.Body); err != nil || string(body) != "ok" {
+		t.Fatalf("upload response=%q error=%v", body, err)
 	}
 }
