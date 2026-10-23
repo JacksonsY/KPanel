@@ -145,7 +145,7 @@ GitHub Latest ID420434596仍为v1.27.2，Docker latest `sha256:5369dc9a2b8151314
 <!-- kpanel-release-metrics:end -->
 
 <!-- kpanel-release-process-metrics:start -->
-- 已记录发布流程异常或无效证据拦截次数：9
+- 已记录发布流程异常或无效证据拦截次数：10
 - 其中生产写操作开始后异常次数：0
 <!-- kpanel-release-process-metrics:end -->
 
@@ -165,9 +165,9 @@ GitHub Latest ID420434596仍为v1.27.2，Docker latest `sha256:5369dc9a2b8151314
   {
     "fingerprint": "qualification/dependency-report/local-tool-and-network",
     "position": "before-production-write",
-    "count": 1,
-    "impact": "Local dependency report could not discover six required sources: missing Go PATH and failed external fetches. No complete report or scanner pass claimed.",
-    "recoveryEvidence": "Original local dependency-report.json/log retained; exact frozen-candidate GitHub report39996547912/job120561442184 succeeded with9/9 sources.",
+    "count": 2,
+    "impact": "Local dependency report could not discover six required sources: missing Go PATH and failed external fetches. No complete report or scanner pass claimed. Supplemental local readonly registry refresh also failed with direct-fetch connection timeout after successful canonical public acceptance; no local registry refresh pass claimed.",
+    "recoveryEvidence": "Original local dependency-report.json/log retained; exact frozen-candidate GitHub report39996547912/job120561442184 succeeded with9/9 sources. final-local-registry-failure.txt retains second occurrence. Canonical cloud public40011086634 verified immutable version/preview/latest manifests and script bytes; current GitHub Release/latest API reads succeeded. No further local registry retry or publication write.",
     "permanentAction": "Release maintainer uses existing fixed-toolchain GitHub-hosted dependency workflow, and explicit Go PATH for local qualification; no partial-source acceptance or policy extension.",
     "historicalReleases": []
   },
@@ -240,3 +240,5 @@ GitHub Latest ID420434596仍为v1.27.2，Docker latest `sha256:5369dc9a2b8151314
 <!-- kpanel-release-process-incidents:end -->
 
 流程复核已读取本轮失败原始日志，并比较最近5个正式版本验收记录（v1.27.2、v1.27.1、v1.27.0、v1.26.0、v1.25.1）的异常明细；本轮前8个指纹没有同名历史复发；第9项文档固定标记错误与v1.25.1同名复发，已保留历史关联和永久处置要求，不以改名规避复发。网络瞬时例外在同配置完整公开测试通过后关闭，原失败与复核日期继续保留。该比较不将相似但不同根因强行合并。
+
+收尾补充本地镜像仓库直连刷新因连接超时未取得新结果，已计入相同本地工具/网络指纹第二次；镜像摘要结论来自成功的canonical公开验收40011086634，不声称该本地刷新成功。GitHub Release正文、15附件身份与Latest已再次只读核对。
