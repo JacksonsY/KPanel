@@ -183,3 +183,62 @@ func mustJSONQuote(value []byte) []byte {
 	}
 	return encoded
 }
+
+func TestPanelFileRelayCanceledDownloadsReleaseQuota(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	newService := func(name string, remote *RemoteClient) *Service {
+		s, err := NewService(ServiceConfig{DataDir: filepath.Join(t.TempDir(), name), PanelVersion: "v0.40.0", Hostname: name,
+			Telemetry: serviceTestTelemetry{now: func() time.Time { return now }, hostname: name}, Remote: remote,
+			Now: func() time.Time { return now }, Jitter: func(d time.Duration) time.Duration { return d }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = s.Close() })
+		return s
+	}
+	targetRemote, _ := newServiceV2Remote(t)
+	target := newService("target", targetRemote)
+	centerRemote, route := newServiceV2Remote(t)
+	centerRemote.streamClient = centerRemote.client
+	route.target = target
+	center := newService("center", centerRemote)
+	code, err := target.CreatePairingCodeV2()
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := center.AddHost(context.Background(), AddHostInput{Name: "target", Origin: "http://8.8.8.8:1801", PairingCode: code.Code})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Force the v2 polling transport, and leave output.Write blocked on the
+	// local unread response while the target has queued its terminal events.
+	center.streams.markLegacy(host.ID)
+	target.SetFileRelayHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(bytes.Repeat([]byte("x"), lightFileChunkBytes*2))
+	}))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for i := 0; i <= panelFileRelayMaxControllerSessions; i++ {
+		response, err := center.OpenRemotePanelFile(ctx, host.ID, LightFileRequest{Method: http.MethodGet, Path: "/v1/files", Body: http.NoBody})
+		if err != nil {
+			t.Fatalf("download %d: %v", i, err)
+		}
+		if _, err := io.ReadFull(response.Body, make([]byte, 1)); err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			target.panelFileRelay.mu.Lock()
+			count := len(target.panelFileRelay.sessions)
+			target.panelFileRelay.mu.Unlock()
+			if count == 0 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("download %d retained %d sessions", i, count)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+}

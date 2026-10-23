@@ -1,10 +1,38 @@
 package terminal
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 )
+
+func TestFinishedCacheRetainsExitedProcessUntilCleanup(t *testing.T) {
+	now := time.Now().UTC()
+	p := &pendingCleanupProcess{fakeProcess: newFakeProcess(), fail: true}
+	m := New(Config{Now: func() time.Time { return now }, MaxSessions: 1})
+	defer m.CloseAll()
+	item := &session{id: "exited", owner: "owner", process: p, notify: make(chan struct{}), exitedAt: &now, finishedAt: now, buffer: make([]byte, maxFinishedBufferBytes+1)}
+	m.sessions[item.id] = item
+	m.trimFinished()
+	if _, err := m.lookup(item.owner, item.id); err != nil || !m.Busy() {
+		t.Fatal("exited process owner was evicted before cleanup")
+	}
+	if _, err := m.Open("other", 24, 80); !errors.Is(err, ErrLimit) {
+		t.Fatalf("exited process released quota: %v", err)
+	}
+	m.reap(now.Add(finishedRetention + time.Second))
+	if _, err := m.lookup(item.owner, item.id); err != nil || !m.Busy() {
+		t.Fatal("failed cleanup lost ownership at retention expiry")
+	}
+	p.cleanupMu.Lock()
+	p.fail = false
+	p.cleanupMu.Unlock()
+	m.reap(now.Add(finishedRetention + 2*time.Second))
+	if m.Busy() || !item.snapshot().Closed {
+		t.Fatal("successful cleanup did not release the process")
+	}
+}
 
 func TestFinishedCacheBoundsCountAndAllocatedBytes(t *testing.T) {
 	for _, test := range []struct {
@@ -18,6 +46,7 @@ func TestFinishedCacheBoundsCountAndAllocatedBytes(t *testing.T) {
 			now := time.Now().UTC()
 			m := New(Config{Now: func() time.Time { return now }})
 			defer m.CloseAll()
+			defer func() { delete(m.sessions, "pending") }()
 			for i := 0; i < test.count; i++ {
 				id := fmt.Sprintf("finished-%03d", i)
 				m.sessions[id] = &session{id: id, closed: true, finishedAt: now.Add(time.Duration(i) * time.Millisecond), buffer: make([]byte, 1, test.bytes)}

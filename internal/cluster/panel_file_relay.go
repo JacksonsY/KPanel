@@ -21,6 +21,7 @@ const (
 	panelFileRelayQueueTimeout          = 30 * time.Second
 	panelFileRelayMaxSessions           = 32
 	panelFileRelayMaxControllerSessions = 8
+	panelFileRelayProcessedLimit        = 128
 )
 
 // panelFileRelay is the target-side broker for a paired Panel. It executes
@@ -41,9 +42,11 @@ type panelFileRelaySession struct {
 
 	events chan FileRelayEvent
 
-	commandMu sync.Mutex
-	mu        sync.Mutex
-	processed map[string]FileRelayEvent
+	commandMu     sync.Mutex
+	mu            sync.Mutex
+	processed     map[string]FileRelayEvent
+	processedIDs  []string
+	processedNext int
 
 	started          bool
 	requestCommandID string
@@ -137,6 +140,9 @@ func (r *panelFileRelay) poll(
 			r.removeSession(input.SessionID, session)
 			session.abort(err)
 			return FileRelayPollResponse{}, err
+		}
+		if input.Command.Kind == "cancel" {
+			r.removeSession(input.SessionID, session)
 		}
 	}
 	events, err := session.collect(ctx)
@@ -359,9 +365,24 @@ func (s *panelFileRelaySession) handleCancel(command FileRelayCommand) error {
 
 func (s *panelFileRelaySession) remember(commandID string, event FileRelayEvent) error {
 	s.mu.Lock()
-	s.processed[commandID] = event
+	s.rememberLocked(commandID, event)
 	s.mu.Unlock()
 	return s.queue(event)
+}
+
+// Retries are sequential and recent. Older body retries remain protected by
+// the monotonic body offset even after leaving this bounded replay window.
+func (s *panelFileRelaySession) rememberLocked(commandID string, event FileRelayEvent) {
+	if _, exists := s.processed[commandID]; !exists {
+		if len(s.processedIDs) < panelFileRelayProcessedLimit {
+			s.processedIDs = append(s.processedIDs, commandID)
+		} else {
+			delete(s.processed, s.processedIDs[s.processedNext])
+			s.processedIDs[s.processedNext] = commandID
+			s.processedNext = (s.processedNext + 1) % panelFileRelayProcessedLimit
+		}
+	}
+	s.processed[commandID] = event
 }
 
 func (s *panelFileRelaySession) rememberError(commandID, message string) error {
@@ -372,7 +393,7 @@ func (s *panelFileRelaySession) rememberError(commandID, message string) error {
 		RequestID: s.id, CommandID: commandID, Kind: "error", Error: message,
 	}
 	s.mu.Lock()
-	s.processed[commandID] = event
+	s.rememberLocked(commandID, event)
 	s.mu.Unlock()
 	_ = s.queue(event)
 	s.abort(errors.New(message))
@@ -697,6 +718,22 @@ func (c *RemoteClient) runFileRelay(
 	ready chan<- fileRelayOpenResult,
 ) {
 	defer cancel()
+	completed := false
+	defer func() {
+		if completed {
+			return
+		}
+		// A closed browser body may interrupt a local pipe write, with no
+		// target poll in flight to observe cancellation. Release its quota too.
+		cleanup, stop := context.WithTimeout(context.Background(), 2*time.Second)
+		defer stop()
+		id, err := randomHex(16)
+		if err != nil {
+			return
+		}
+		command := FileRelayCommand{ID: id, Kind: "cancel", RequestID: sessionID, ExpiresAt: time.Now().UTC().Add(lightFileCommandTTL).Unix()}
+		_, _ = c.pollFileRelayV2(cleanup, origin, controllerID, targetID, controllerKey, targetPublicKey, time.Now().UTC(), FileRelayPollRequest{SessionID: sessionID, Command: &command})
+	}()
 	readySent := false
 	deliver := func(result fileRelayOpenResult) {
 		if readySent {
@@ -773,6 +810,7 @@ func (c *RemoteClient) runFileRelay(
 					return
 				}
 				_ = output.Close()
+				completed = true
 				return
 			case "error":
 				if event.Error == "" {

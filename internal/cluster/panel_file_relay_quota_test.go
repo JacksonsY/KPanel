@@ -4,10 +4,61 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"testing"
 	"time"
 )
+
+func TestPanelFileRelayBoundsRetryHistoryWithoutRepeatingBody(t *testing.T) {
+	now := time.Now().UTC()
+	sid := fmt.Sprintf("%032x", 1)
+	s := newPanelFileRelaySession(sid, http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+		_, _ = io.Copy(io.Discard, req.Body)
+		<-req.Context().Done()
+	}), now)
+	defer s.abort(nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	run := func(command FileRelayCommand) FileRelayEvent {
+		if err := s.handleCommand(ctx, command, now); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case event := <-s.events:
+			return event
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+			return FileRelayEvent{}
+		}
+	}
+	run(FileRelayCommand{ID: fmt.Sprintf("%032x", 2), RequestID: sid, Kind: "request", Method: http.MethodPost, Path: "/v1/files/actions", BodyLength: -1})
+	var first, last FileRelayCommand
+	for i := 0; i < panelFileRelayProcessedLimit*3; i++ {
+		last = FileRelayCommand{ID: fmt.Sprintf("%032x", i+3), RequestID: sid, Kind: "body", Offset: int64(i), Data: []byte("x")}
+		if i == 0 {
+			first = last
+		}
+		if event := run(last); event.Kind != "accepted" {
+			t.Fatalf("body event=%v", event)
+		}
+	}
+	if len(s.processed) > panelFileRelayProcessedLimit {
+		t.Fatalf("retained commands=%d", len(s.processed))
+	}
+	if event := run(last); event.Kind != "accepted" {
+		t.Fatalf("recent retry=%v", event)
+	}
+	if s.bodyOffset != panelFileRelayProcessedLimit*3 {
+		t.Fatal("recent retry repeated body bytes")
+	}
+	if event := run(first); event.Kind != "error" {
+		t.Fatalf("expired retry=%v", event)
+	}
+	if s.bodyOffset != panelFileRelayProcessedLimit*3 {
+		t.Fatal("expired retry repeated body bytes")
+	}
+}
 
 func TestPanelFileRelayQuotasAndControllerOwnership(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)

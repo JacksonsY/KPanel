@@ -425,7 +425,9 @@ func (m *Manager) capture(item *session) {
 		err = readErr
 	}
 	item.setExit(err, m.config.Now().UTC())
-	m.trimFinished()
+	// EOF/Wait does not close the PTY or prove that the shell's process group
+	// is gone. Keep ownership and capacity until Close confirms cleanup.
+	_ = m.Close(item.owner, item.id)
 }
 
 func (m *Manager) Output(ctx context.Context, owner, id string, offset int64, wait time.Duration) (Output, error) {
@@ -627,8 +629,7 @@ func (m *Manager) reap(now time.Time) {
 	for id, item := range m.sessions {
 		item.mu.Lock()
 		inactive := (!item.retained && now.Sub(item.updatedAt) >= m.config.IdleTimeout) || now.Sub(item.createdAt) >= m.config.Lifetime
-		finished := item.closed || (item.exitedAt != nil && !item.closeFailed)
-		if (inactive || item.closeFailed) && !finished {
+		if !item.closed && (inactive || item.closeFailed || item.exitedAt != nil) {
 			stale = append(stale, staleSession{owner: item.owner, id: id})
 		}
 		item.mu.Unlock()
@@ -657,7 +658,7 @@ func (m *Manager) trimFinishedLocked(now time.Time) {
 	total := 0
 	for id, item := range m.sessions {
 		item.mu.Lock()
-		done := (item.closed || item.exitedAt != nil) && !item.closeFailed
+		done := item.closed && !item.closeFailed
 		at, size := item.finishedAt, cap(item.buffer)
 		item.mu.Unlock()
 		if !done {
@@ -703,7 +704,7 @@ func (m *Manager) lookup(owner, id string) (*session, error) {
 func (item *session) isActive() bool {
 	item.mu.Lock()
 	defer item.mu.Unlock()
-	return !item.closed && (item.exitedAt == nil || item.closeFailed)
+	return !item.closed
 }
 
 func (item *session) snapshot() Snapshot {
