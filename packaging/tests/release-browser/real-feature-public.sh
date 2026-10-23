@@ -5,6 +5,7 @@ set -Eeuo pipefail
 test "${GITHUB_ACTIONS:-}" = true && test "${RUNNER_ENVIRONMENT:-}" = github-hosted
 : "${RUNNER_TEMP:?}" "${EXPECTED_VERSION:?}" "${EXPECTED_SHA:?}" "${RELEASE_TEST_RUNNER:?}" "${RELEASE_BROWSER_RUNTIME:?}"
 image=${1:?immutable image};publication=${2:?candidate or public};root=${3:?unique owned root};digest=${4:?image identity}
+repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 [[ "$root" == "$RUNNER_TEMP"/kpanel-real-* ]]
 case "$publication:$image" in candidate:sha256:*|public:docker.io/kjlion/kejilion-panel@sha256:*) ;; *) exit 2;; esac
 test ! -e "$root"
@@ -25,7 +26,10 @@ trap cleanup EXIT
 if [ "$publication" = public ];then docker pull "$image";fi
 test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "$EXPECTED_VERSION"
 if [ "$publication" = public ];then test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$EXPECTED_SHA";fi
-test "$(docker image inspect "$image" --format '{{index .Config.Labels "io.kejilion.script.sha256"}}')" = 39837815ce0eb23021fd4d8e8b5898000f5309b709bdc48b2713e18f78f3eaf1
+script_identity=$(KPANEL_REPO_ROOT="$repo" bash "$repo/scripts/check-managed-script-contract.sh" "$image")
+script_sha256=${script_identity##* sha256=}
+[[ "$script_sha256" =~ ^[0-9a-f]{64}$ ]]
+printf '%s\n' "$script_identity"
 docker inspect "$image" > "$out/image.json"
 mkdir -p "$data/ipc" "$data/agent" "$data/update" "$data/panel" "$data/private" "$data/app-home/kpanel/bin" "$data/apps-local" "$data/apps-official" "$out/initial" "$out/restart"
 chmod 755 "$data/apps-local" "$data/apps-official"
@@ -38,7 +42,7 @@ docker cp "$extract:/release/kejilion.sh" "$data/app-home/kpanel/bin/kejilion.sh
 docker cp "$extract:/etc/ssl/certs/ca-certificates.crt" "$fixture/system-ca.crt"
 docker rm "$extract" >/dev/null
 chmod 755 "$data/agent-binary";chmod 700 "$data/app-home/kpanel/bin/kejilion.sh"
-printf '%s  %s\n' 39837815ce0eb23021fd4d8e8b5898000f5309b709bdc48b2713e18f78f3eaf1 "$data/app-home/kpanel/bin/kejilion.sh" | sha256sum -c -
+printf '%s  %s\n' "$script_sha256" "$data/app-home/kpanel/bin/kejilion.sh" | sha256sum -c -
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout "$fixture/ca.key" -out "$fixture/ca.crt" -days 2 -subj /CN=KPanel-RC2-Isolated-Test-CA -addext basicConstraints=critical,CA:TRUE >/dev/null 2>&1
 openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout "$fixture/server.key" -out "$fixture/server.csr" -subj /CN=rc2-panel.test >/dev/null 2>&1
 printf 'subjectAltName=DNS:rc2-panel.test,DNS:rc2-other.test,DNS:rc2-wrong.test,DNS:rc2-redirect.test\nextendedKeyUsage=serverAuth\n' > "$fixture/server.ext"

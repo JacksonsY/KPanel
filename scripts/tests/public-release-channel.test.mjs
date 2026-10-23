@@ -14,6 +14,77 @@ const releaseApi = `${repositoryApi}/releases`;
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const digestOf = bytes => 'sha256:' + sha256(bytes);
 
+function runControllerOverlay(options = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'kpanel-verifier-overlay-'));
+  const evidence = mkdtempSync(join(tmpdir(), 'kpanel-verifier-proof-'));
+  const runner = 'packaging/release-runner/Dockerfile';
+  const fixturePath = 'packaging/tests/release-browser/real-feature-public.sh';
+  const git = (...args) => {
+    const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  try {
+    git('init', '--quiet');
+    for (const path of [runner, fixturePath]) {
+      mkdirSync(join(root, path, '..'), { recursive: true });
+      writeFileSync(join(root, path), 'original verifier\n');
+    }
+    writeFileSync(join(root, 'VERSION'), '1.28.0-rc.3\n');
+    writeFileSync(join(root, 'Dockerfile'), 'immutable product\n');
+    git('add', '.');
+    const commit = message => git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+      'commit', '--quiet', '-m', message);
+    commit('published candidate');
+    const candidate = git('rev-parse', 'HEAD');
+    writeFileSync(join(root, fixturePath), 'corrected verifier\n');
+    git('add', fixturePath); commit('trusted verifier');
+    const controller = git('rev-parse', 'HEAD');
+    git('update-ref', 'refs/remotes/origin/main', options.untrusted ? candidate : controller);
+    git('checkout', '--quiet', '--detach', candidate);
+    if (options.dirty) writeFileSync(join(root, 'Dockerfile'), 'unapproved edit\n');
+    const workflow = readFileSync(new URL('../../.github/workflows/release-public-verify.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    const source = workflow.split('name: Bind controller-owned test runner recipe')[1]
+      .split("<<'NODE'\n")[1].split('\n          NODE')[0].replace(/^          /gm, '');
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
+      cwd: root, encoding: 'utf8', env: { ...process.env, GITHUB_SHA: controller, EXPECTED_SHA: candidate,
+        EXPECTED_VERSION: '1.28.0-rc.3', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', PUBLIC_EVIDENCE: evidence },
+    });
+    if (options.dirty || options.untrusted) {
+      assert.notEqual(result.status, 0);
+      assert.equal(existsSync(join(evidence, 'test-fixture-source.json')), false);
+      assert.equal(readFileSync(join(root, fixturePath), 'utf8'), 'original verifier\n');
+    } else {
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(git('rev-parse', 'HEAD'), candidate);
+      assert.equal(git('diff', '--name-only'), fixturePath);
+      assert.equal(readFileSync(join(root, 'Dockerfile'), 'utf8'), 'immutable product\n');
+      assert.equal(readFileSync(join(root, 'VERSION'), 'utf8'), '1.28.0-rc.3\n');
+      const record = JSON.parse(readFileSync(join(evidence, 'test-fixture-source.json')));
+      assert.equal(record.candidate, candidate); assert.equal(record.controller, controller);
+      assert.equal(record.path, fixturePath); assert.equal(record.productImageUnchanged, true);
+      assert.equal(record.original, 'original verifier\n'); assert.equal(record.recipe, 'corrected verifier\n');
+      assert.equal(record.originalSha256, sha256(Buffer.from(record.original)));
+      assert.equal(record.recipeSha256, sha256(Buffer.from(record.recipe)));
+      assert.match(record.diff, /corrected verifier/);
+      assert.ok(existsSync(join(evidence, 'test-runner-recipe.json')));
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true }); rmSync(evidence, { recursive: true, force: true });
+  }
+}
+
+test('read-only controller fixture overlay preserves product identity and records exact bytes', () => runControllerOverlay());
+test('read-only controller fixture overlay rejects dirty product source', () => runControllerOverlay({ dirty: true }));
+test('read-only controller fixture overlay rejects a controller outside trusted main', () => runControllerOverlay({ untrusted: true }));
+
+test('real public fixture binds script checks to the canonical frozen-source contract', () => {
+  const source = readFileSync(new URL('../../packaging/tests/release-browser/real-feature-public.sh', import.meta.url), 'utf8');
+  assert.match(source, /KPANEL_REPO_ROOT="\$repo" bash "\$repo\/scripts\/check-managed-script-contract\.sh" "\$image"/);
+  assert.match(source, /printf '%s  %s\\n' "\$script_sha256" "\$data\/app-home\/kpanel\/bin\/kejilion\.sh" \| sha256sum -c -/);
+  assert.doesNotMatch(source, /39837815ce0eb23021fd4d8e8b5898000f5309b709bdc48b2713e18f78f3eaf1/);
+});
+
 function fixture(version, options = {}) {
   const routes = {};
   const addRaw = (url, bytes, headers = {}, status = 200) => {
