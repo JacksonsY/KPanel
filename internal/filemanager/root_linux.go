@@ -69,11 +69,43 @@ func (r *fileRoot) OpenFile(name string, flag int, mode os.FileMode) (*os.File, 
 		return nil, err
 	}
 	defer parent.Close()
-	file, err := parent.OpenFile(base, flag|unix.O_NOFOLLOW|unix.O_NONBLOCK, mode)
+	directory, err := parent.Open(".")
+	if err != nil {
+		return nil, err
+	}
+	defer directory.Close()
+	permissions := uint32(mode.Perm())
+	if mode&os.ModeSetuid != 0 {
+		permissions |= unix.S_ISUID
+	}
+	if mode&os.ModeSetgid != 0 {
+		permissions |= unix.S_ISGID
+	}
+	if mode&os.ModeSticky != 0 {
+		permissions |= unix.S_ISVTX
+	}
+	// os.Root resolves a leaf link itself even when O_NOFOLLOW was supplied.
+	// The native operation must consume that flag on the held parent instead.
+	fd, err := unix.Openat(int(directory.Fd()), base, flag|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, permissions)
 	if errors.Is(err, unix.ELOOP) {
 		return nil, ErrSymlink
 	}
-	return file, err
+	if err != nil {
+		return nil, err
+	}
+	file := os.NewFile(uintptr(fd), path.Join(parent.Name(), base))
+	if flag&unix.O_PATH != 0 {
+		info, err := file.Stat()
+		if err != nil {
+			_ = file.Close()
+			return nil, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			_ = file.Close()
+			return nil, ErrSymlink
+		}
+	}
+	return file, nil
 }
 
 func (r *fileRoot) Lstat(name string) (os.FileInfo, error) {
