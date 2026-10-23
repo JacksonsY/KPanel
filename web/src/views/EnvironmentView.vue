@@ -60,14 +60,15 @@ const sections: Array<{ id: Section; label: string }> = [
 const section = ref<Section>('overview')
 const summary = ref<WebEnvironmentSummary>()
 const wafMode = computed(() => summary.value?.protection.wafMode || (summary.value?.protection.waf ? 'legacy' : 'off'))
-const wafLabel = computed(() => phrase(({
-  on: '拦截模式',
-  off: '已关闭',
-  detect: '检测模式',
-  mixed: '按站点配置',
-  legacy: '旧配置已启用',
-  unknown: '状态待核验',
-} as Record<string, string>)[wafMode.value] || '状态待核验'))
+const wafModeLabels = new Map<string, string>([
+  ['on', '拦截模式'],
+  ['off', '已关闭'],
+  ['detect', '检测模式'],
+  ['mixed', '按站点配置'],
+  ['legacy', '旧配置已启用'],
+  ['unknown', '状态待核验'],
+])
+const wafLabel = computed(() => phrase(wafModeLabels.get(wafMode.value) || '状态待核验'))
 const wafBadge = computed(() => wafMode.value === 'on' || wafMode.value === 'legacy' ? 'healthy'
   : wafMode.value === 'mixed' || wafMode.value === 'detect' ? 'warning'
     : wafMode.value === 'off' ? 'stopped' : 'unknown')

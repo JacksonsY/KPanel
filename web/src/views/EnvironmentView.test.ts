@@ -121,6 +121,9 @@ describe('EnvironmentView background jobs', () => {
     expect(view.wafLabel.value).toBe('按站点配置')
     view.summary.value.protection.wafMode = 'unknown'
     expect(view.wafBadge.value).toBe('unknown')
+    view.summary.value.protection.wafMode = 'constructor' as WebEnvironmentSummary['protection']['wafMode']
+    expect(view.wafLabel.value).toBe('状态待核验')
+    expect(view.wafBadge.value).toBe('unknown')
     view.summary.value.protection.wafMode = 'on'
     expect(view.wafLabel.value).toBe('拦截模式')
     expect(view.wafBadge.value).toBe('healthy')
