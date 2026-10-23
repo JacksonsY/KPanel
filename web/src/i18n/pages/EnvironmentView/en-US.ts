@@ -1,6 +1,11 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ["拦截模式", "Blocking mode"],
+  ["检测模式", "Detection mode"],
+  ["按站点配置", "Per-site policy"],
+  ["旧配置已启用", "Legacy configuration enabled"],
+  ["状态待核验", "Status needs verification"],
   ["，环境状态与可用管理功能不受影响。", ", the state of the environment and available management functions are not affected."],
   ["；修改后执行配置与容器健康校验。", ";modified to perform configuration and container health verification."],
   ["{0} 还原会短暂停止环境并替换 /home/web，失败时自动回滚。确认继续？", "Restoring {0} briefly stops the environment and replaces /home/web. Failures roll back automatically. Continue?"],

@@ -1663,6 +1663,7 @@ export interface WebEnvironmentComponent {
 export interface WebProtectionSummary {
   fail2ban: boolean
   waf: boolean
+  wafMode?: 'on' | 'off' | 'detect' | 'mixed' | 'legacy' | 'unknown'
   cloudflare: boolean
   ddos: boolean
 }

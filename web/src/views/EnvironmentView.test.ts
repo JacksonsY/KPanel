@@ -35,6 +35,8 @@ vi.mock('@/stores/toast', () => ({
 }))
 
 interface EnvironmentBindings {
+  wafLabel: Readonly<Ref<string>>
+  wafBadge: Readonly<Ref<string>>
   summary: Ref<WebEnvironmentSummary | undefined>
   backups: Ref<WebEnvironmentBackup[]>
   jobs: Ref<WebEnvironmentJob[]>
@@ -109,6 +111,21 @@ afterEach(() => {
 })
 
 describe('EnvironmentView background jobs', () => {
+  it('distinguishes detection, mixed and unknown WAF state from blocking', () => {
+    const view = setupView()
+    view.summary.value = summary()
+    view.summary.value.protection.wafMode = 'detect'
+    expect(view.wafLabel.value).toBe('检测模式')
+    expect(view.wafBadge.value).toBe('warning')
+    view.summary.value.protection.wafMode = 'mixed'
+    expect(view.wafLabel.value).toBe('按站点配置')
+    view.summary.value.protection.wafMode = 'unknown'
+    expect(view.wafBadge.value).toBe('unknown')
+    view.summary.value.protection.wafMode = 'on'
+    expect(view.wafLabel.value).toBe('拦截模式')
+    expect(view.wafBadge.value).toBe('healthy')
+  })
+
   it('renders the environment summary without requesting heavy section data', async () => {
     vi.mocked(api.webEnvironment.summary).mockResolvedValueOnce(summary())
     vi.mocked(api.webEnvironment.jobs).mockImplementationOnce(() => new Promise(() => undefined))

@@ -61,10 +61,11 @@ type Component struct {
 }
 
 type Protection struct {
-	Fail2Ban   bool `json:"fail2ban"`
-	WAF        bool `json:"waf"`
-	Cloudflare bool `json:"cloudflare"`
-	DDoS       bool `json:"ddos"`
+	Fail2Ban   bool   `json:"fail2ban"`
+	WAF        bool   `json:"waf"`
+	WAFMode    string `json:"wafMode,omitempty"`
+	Cloudflare bool   `json:"cloudflare"`
+	DDoS       bool   `json:"ddos"`
 }
 
 type Optimization struct {
