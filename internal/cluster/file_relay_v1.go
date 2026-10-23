@@ -143,10 +143,10 @@ func (s *Service) AuthorizeFileRelayV1(
 	if err := verifyFileRelayV1Binding(request, publicKey, input); err != nil {
 		return LightFileRequest{}, err
 	}
-	if !s.fileRequests.Allow(controllerID, now) {
+	if !s.fileRequests.Allow(controllerV1Principal(controllerID), now) {
 		return LightFileRequest{}, ErrRateLimited
 	}
-	if err := s.replays.Accept(replayControllerPrincipal(controllerID), nonce, now); err != nil {
+	if err := s.replays.Accept(controllerV1Principal(controllerID), nonce, now); err != nil {
 		return LightFileRequest{}, err
 	}
 	s.store.TouchController(controllerID, now)

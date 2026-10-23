@@ -40,7 +40,7 @@ func TestReplayGuardIsolatesPrincipalCapacityAndBoundsGlobalEntries(t *testing.T
 func TestReplayGuardProductionPrincipalLimitLeavesOtherNodesAvailable(t *testing.T) {
 	now := time.Date(2026, 10, 23, 11, 0, 0, 0, time.UTC)
 	guard := newReplayGuard(replayGuardTotalEntries, replayGuardEntriesPerPrincipal, 5*time.Minute)
-	principal := replayLightPrincipal("node-a")
+	principal := lightNodePrincipal("node-a")
 
 	for i := 0; i < replayGuardEntriesPerPrincipal; i++ {
 		if err := guard.Accept(principal, strconv.Itoa(i), now); err != nil {
@@ -50,7 +50,41 @@ func TestReplayGuardProductionPrincipalLimitLeavesOtherNodesAvailable(t *testing
 	if err := guard.Accept(principal, "over-limit", now); !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("over-limit light principal error = %v, want ErrRateLimited", err)
 	}
-	if err := guard.Accept(replayLightPrincipal("node-b"), "first", now); err != nil {
+	if err := guard.Accept(lightNodePrincipal("node-b"), "first", now); err != nil {
 		t.Fatalf("a full light principal must leave another node available: %v", err)
+	}
+}
+
+func TestPrincipalNamespacesIsolateReplayAndRateLimits(t *testing.T) {
+	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	id := "same-text-controller-id"
+	principals := []string{
+		controllerV1Principal(id),
+		controllerV2Principal(id),
+		lightNodePrincipal(id),
+		linkedPeerPrincipal(id),
+	}
+	guard := newReplayGuard(len(principals), 1, 5*time.Minute)
+	limiter := newFixedWindowLimiter(1, time.Minute, len(principals))
+	seen := make(map[string]struct{}, len(principals))
+	for _, principal := range principals {
+		if _, ok := seen[principal]; ok {
+			t.Fatalf("principal namespace collision for %q", principal)
+		}
+		seen[principal] = struct{}{}
+		if err := guard.Accept(principal, "same-nonce", now); err != nil {
+			t.Fatalf("Accept(%q, shared nonce) error = %v, want isolated principal capacity", principal, err)
+		}
+		if !limiter.Allow(principal, now) {
+			t.Fatalf("Allow(%q) = false, want isolated rate-limit capacity", principal)
+		}
+	}
+	for _, principal := range principals {
+		if err := guard.Accept(principal, "next-nonce", now); !errors.Is(err, ErrRateLimited) {
+			t.Fatalf("Accept(%q, over-quota) error = %v, want ErrRateLimited", principal, err)
+		}
+		if limiter.Allow(principal, now) {
+			t.Fatalf("Allow(%q) exceeded its independent rate limit", principal)
+		}
 	}
 }

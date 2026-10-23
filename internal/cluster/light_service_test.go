@@ -161,6 +161,62 @@ func TestLightFileCapabilityUpgradeUsesTheExistingReportingCredential(t *testing
 	}
 }
 
+func TestAuthenticateLightRequestRejectsExtremeTimestamps(t *testing.T) {
+	now := time.Date(2026, 10, 23, 12, 0, 0, 500_000_000, time.UTC)
+	clock := &serviceTestClock{now: now}
+	service := newLightServiceForTest(t, clock)
+	enrollment := enrollLightHostForTest(t, service, "edge-timestamp")
+	reportLinuxLightHostForTest(t, service, enrollment, now)
+
+	input := LightReportRequest{Platform: "linux", Telemetry: serviceTelemetry(now, "edge-timestamp")}
+	body, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := base64.RawURLEncoding.DecodeString(enrollment.ReportingKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, timestamp := range []string{
+		strconv.FormatInt(-1<<63, 10),
+		strconv.FormatInt(1<<63-1, 10),
+	} {
+		requestID := strings.Repeat("a", 32)
+		auth := LightReportAuth{
+			Source: "198.51.100.10", NodeID: enrollment.NodeID,
+			Timestamp: timestamp, RequestID: requestID,
+			Signature: LightRequestSignature(key, "POST", lightReportPath, enrollment.NodeID, timestamp, requestID, body),
+		}
+		if _, _, err := service.authenticateLightRequest(auth, lightReportPath, body, MaxSummaryBytes, now); !errors.Is(err, ErrAuthentication) {
+			t.Errorf("authenticateLightRequest(timestamp=%s) error = %v, want ErrAuthentication", timestamp, err)
+		}
+	}
+}
+
+func TestLightRequestTimestampWindowPreservesTwoMinuteBoundary(t *testing.T) {
+	base := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name      string
+		now       time.Time
+		timestamp int64
+		want      bool
+	}{
+		{name: "exact lower boundary", now: base, timestamp: base.Unix() - 120, want: true},
+		{name: "fractional time crosses lower boundary", now: base.Add(500 * time.Millisecond), timestamp: base.Unix() - 120, want: false},
+		{name: "inside lower boundary", now: base.Add(500 * time.Millisecond), timestamp: base.Unix() - 119, want: true},
+		{name: "exact upper second", now: base.Add(500 * time.Millisecond), timestamp: base.Unix() + 120, want: true},
+		{name: "outside upper boundary", now: base.Add(500 * time.Millisecond), timestamp: base.Unix() + 121, want: false},
+		{name: "extreme past", now: base, timestamp: -1 << 63, want: false},
+		{name: "extreme future", now: base, timestamp: 1<<63 - 1, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := lightRequestTimestampWithinWindow(test.now, test.timestamp); got != test.want {
+				t.Fatalf("lightRequestTimestampWithinWindow(%s, %d) = %v, want %v", test.now, test.timestamp, got, test.want)
+			}
+		})
+	}
+}
+
 func TestLightEnrollmentIsHTTPSBoundOneUseAndPreservesValidTokenAfterBadInput(t *testing.T) {
 	now := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
 	clock := &serviceTestClock{now: now}

@@ -212,7 +212,7 @@ func (s *Service) AcceptLightReport(auth LightReportAuth, rawBody []byte, input 
 	if !s.lightReports.Allow(auth.NodeID, now) {
 		return LightReportResponse{}, ErrRateLimited
 	}
-	if err := s.replays.Accept(replayLightPrincipal(auth.NodeID), auth.RequestID, now); err != nil {
+	if err := s.replays.Accept(lightNodePrincipal(auth.NodeID), auth.RequestID, now); err != nil {
 		return LightReportResponse{}, err
 	}
 	if err := validateTelemetry(input.Telemetry, now); err != nil {
@@ -267,7 +267,7 @@ func (s *Service) UpgradeLightFileCapability(
 	if !s.lightReports.Allow(auth.NodeID, now) {
 		return LightFileCapabilityResponse{}, ErrRateLimited
 	}
-	if err := s.replays.Accept(replayLightPrincipal(auth.NodeID), auth.RequestID, now); err != nil {
+	if err := s.replays.Accept(lightNodePrincipal(auth.NodeID), auth.RequestID, now); err != nil {
 		return LightFileCapabilityResponse{}, err
 	}
 	terminalPublicKey, err := decodeTerminalRelayPublicKey(input.TerminalPublicKey)
@@ -298,7 +298,7 @@ func (s *Service) authenticateLightRequest(
 		return lightHostRecord{}, nil, ErrAuthentication
 	}
 	timestamp, err := strconv.ParseInt(auth.Timestamp, 10, 64)
-	if err != nil || absDuration(now.Sub(time.Unix(timestamp, 0).UTC())) > 2*time.Minute {
+	if err != nil || !lightRequestTimestampWithinWindow(now, timestamp) {
 		return lightHostRecord{}, nil, ErrAuthentication
 	}
 	secret, err := s.light.ReadSecret(record)
@@ -414,11 +414,15 @@ func validateLightOrigin(value string) (string, error) {
 	return value, nil
 }
 
-func absDuration(value time.Duration) time.Duration {
-	if value < 0 {
-		return -value
+func lightRequestTimestampWithinWindow(now time.Time, timestamp int64) bool {
+	const skewSeconds = int64((2 * time.Minute) / time.Second)
+	nowUnix := now.Unix()
+	if timestamp < nowUnix-skewSeconds || timestamp > nowUnix+skewSeconds {
+		return false
 	}
-	return value
+	// A wire timestamp has whole-second precision. At the lower boundary,
+	// fractional server time would make the request older than the allowed skew.
+	return timestamp != nowUnix-skewSeconds || now.Nanosecond() == 0
 }
 
 func parseLightReportLatency(value string) int64 {

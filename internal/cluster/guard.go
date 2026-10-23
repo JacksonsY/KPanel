@@ -80,15 +80,19 @@ func newReplayGuard(capacity, perPrincipalCapacity int, ttl time.Duration) *repl
 	}
 }
 
-func replayControllerPrincipal(controllerID string) string {
-	return "controller:" + controllerID
+func controllerV1Principal(controllerID string) string {
+	return "controller:v1:" + controllerID
 }
 
-func replayLightPrincipal(nodeID string) string {
+func controllerV2Principal(controllerID string) string {
+	return "controller:v2:" + controllerID
+}
+
+func lightNodePrincipal(nodeID string) string {
 	return "light:" + nodeID
 }
 
-func replayLinkedPeerPrincipal(nodeID string) string {
+func linkedPeerPrincipal(nodeID string) string {
 	return "linked-peer:" + nodeID
 }
 

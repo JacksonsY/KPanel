@@ -907,10 +907,10 @@ func (s *Service) SignedSummary(ctx context.Context, request *http.Request) (Fed
 	if err != nil {
 		return FederationSummary{}, "", err
 	}
-	if !s.requestLimiter.Allow(controllerID, now) {
+	if !s.requestLimiter.Allow(controllerV1Principal(controllerID), now) {
 		return FederationSummary{}, "", ErrRateLimited
 	}
-	if err := s.replays.Accept(replayControllerPrincipal(controllerID), nonce, now); err != nil {
+	if err := s.replays.Accept(controllerV1Principal(controllerID), nonce, now); err != nil {
 		return FederationSummary{}, "", err
 	}
 	telemetry, err := s.localTelemetry(ctx)
@@ -965,7 +965,7 @@ func (s *Service) SignedRevoke(request *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := s.replays.Accept(replayControllerPrincipal(controllerID), nonce, now); err != nil {
+	if err := s.replays.Accept(controllerV1Principal(controllerID), nonce, now); err != nil {
 		return err
 	}
 	if err := s.fileRelayV1Grants.Delete(controllerID); err != nil {

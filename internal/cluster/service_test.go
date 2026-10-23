@@ -250,7 +250,7 @@ func TestServiceTwoNodePairSummaryReplayAndRevoke(t *testing.T) {
 		t.Fatalf("SignRequest() error = %v", err)
 	}
 	target.requestLimiter = newFixedWindowLimiter(1, time.Minute, 16)
-	if !target.requestLimiter.Allow(record.ControllerID, clock.Now()) {
+	if !target.requestLimiter.Allow(controllerV1Principal(record.ControllerID), clock.Now()) {
 		t.Fatal("failed to seed controller rate limit")
 	}
 	target.replays.mu.Lock()
