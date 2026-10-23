@@ -98,6 +98,61 @@ func (f *streamFixture) dial(ctx context.Context, key noise.DHKey, hello fileStr
 	return dialFileStream(ctx, f.client.streamClient, f.server.URL, f.controller, f.service.NodeID(), key, nodeNoiseKeyV2(f.service.nodeIdentityV2).Public, time.Now(), hello)
 }
 
+func TestV2ControllerDeletionClosesPanelTerminalStream(t *testing.T) {
+	f := newStreamFixture(t, nil)
+	f.service.terminal = managerTerminalBackend{manager: newEchoManager(t)}
+	conn, err := f.dial(context.Background(), f.key, fileStreamHello{Role: streamRolePanelTerminal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.close()
+
+	h := f.service.fileStreamHub
+	owner := controllerV2Principal(f.controller)
+	deadline := time.Now().Add(time.Second)
+	for {
+		h.mu.Lock()
+		registered := false
+		for _, peer := range h.connections {
+			if peer == owner {
+				registered = true
+				break
+			}
+		}
+		h.mu.Unlock()
+		if registered {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("panel terminal stream was not registered under its v2 principal")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	if err := f.service.DeleteController(f.controller); err != nil {
+		t.Fatalf("DeleteController() error = %v", err)
+	}
+	deadline = time.Now().Add(time.Second)
+	for {
+		h.mu.Lock()
+		registered := false
+		for _, peer := range h.connections {
+			if peer == owner {
+				registered = true
+				break
+			}
+		}
+		h.mu.Unlock()
+		if !registered {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("revoked v2 controller retained its panel terminal stream")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestFileStreamPanelUsesLegacyRelayAndCannotUpgrade(t *testing.T) {
 	f := newStreamFixture(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"items":[]}`))

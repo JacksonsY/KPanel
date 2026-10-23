@@ -1030,7 +1030,7 @@ func (s *Service) handleRevokeV2(
 			return FederationEnvelopeV2{}, err
 		}
 	}
-	s.fileStreamHub.closePeer("controller:" + controller.ID)
+	s.fileStreamHub.closePeer(controllerV2Principal(controller.ID))
 	if err := s.filePeersV2.DeleteController(controller.ID); err != nil &&
 		!errors.Is(err, ErrNotFound) {
 		return FederationEnvelopeV2{}, err
