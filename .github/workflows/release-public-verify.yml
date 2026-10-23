@@ -86,7 +86,9 @@ jobs:
           [[ "$EXPECTED_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
           [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]]
           [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
-          if [[ "$GITHUB_EVENT_NAME" = workflow_dispatch ]]; then
+          # A reusable workflow inherits its caller's event. Snapshot inputs,
+          # rather than workflow_dispatch, distinguish publication from recovery.
+          if [[ -n "$PUBLICATION_RUN_ID" || -n "$PUBLICATION_ATTEMPT" || -z "$STABLE_SNAPSHOT" ]]; then
             test "$GITHUB_REF" = refs/heads/main
             [[ "$PUBLICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
             [[ "$PUBLICATION_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
@@ -104,7 +106,7 @@ jobs:
           echo "PUBLIC_EVIDENCE=$RUNNER_TEMP/kpanel-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
           echo "SNAPSHOT_ARTIFACT_DIR=$RUNNER_TEMP/kpanel-publication-snapshot" >> "$GITHUB_ENV"
       - name: Download original publication snapshot
-        if: github.event_name == 'workflow_dispatch'
+        if: inputs['publication-run-id'] != ''
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.0
         with:
           name: snapshot-${{ inputs['publication-run-id'] }}-${{ inputs['publication-attempt'] }}
@@ -115,7 +117,7 @@ jobs:
       - name: Restore frozen publication identity
         shell: bash
         run: |
-          if [[ "$GITHUB_EVENT_NAME" = workflow_dispatch ]]; then
+          if [[ -n "$PUBLICATION_RUN_ID" ]]; then
             node scripts/verify-github-public-release.mjs restore-artifact
           else
             node scripts/verify-github-public-release.mjs restore-snapshot
