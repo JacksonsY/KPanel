@@ -3,6 +3,7 @@ package appmarket
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -109,9 +110,13 @@ func TestKejilionStandardAppsBecomeDirectlyInstallable(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	service.scriptInteractiveFinder = func() (string, error) {
-		return "/usr/local/bin/k", nil
+	// This test exercises exclusive legacy jobs. A real host's /usr/local/bin/k
+	// may advertise parallel jobs and must not select this fixture's behavior.
+	legacyScript := filepath.Join(t.TempDir(), "legacy-k")
+	if err := os.WriteFile(legacyScript, []byte("#!/bin/bash\n"), 0700); err != nil {
+		t.Fatal(err)
 	}
+	service.scriptInteractiveFinder = func() (string, error) { return legacyScript, nil }
 
 	item, err := service.Find(context.Background(), "builtin-4")
 	if err != nil {

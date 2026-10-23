@@ -235,6 +235,9 @@ func TestFirewallSnapshotParsesCountryRulesWithoutRawTechnicalText(t *testing.T)
 		}
 	}}
 	manager, _, _, _ := testManager(t, runner)
+	// This parsing test has no writer adapter. A host-installed v3 script
+	// must not switch its combined iptables/ipset version to the legacy hash.
+	manager.resourceScript = func() (string, error) { return "", ErrUnsupported }
 	snapshot, err := manager.Firewall(context.Background())
 	if err != nil {
 		t.Fatal(err)
