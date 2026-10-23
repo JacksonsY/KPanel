@@ -779,7 +779,7 @@ func (m *Manager) extractZIP(
 			archiveProgress(ctx, budget)
 			continue
 		}
-		if err := budget.reserveArchivePath(name); err != nil {
+		if err := budget.reserveArchivePath(tempVirtual, name); err != nil {
 			return err
 		}
 		if operation := archiveOptions(ctx); operation != nil && operation.export != nil {
@@ -885,7 +885,7 @@ func (m *Manager) extractTAR(
 			archiveProgress(ctx, budget)
 			continue
 		}
-		if err := budget.reserveArchivePath(name); err != nil {
+		if err := budget.reserveArchivePath(tempVirtual, name); err != nil {
 			return err
 		}
 		if operation := archiveOptions(ctx); operation != nil && operation.export != nil {
@@ -972,18 +972,21 @@ func (m *Manager) writeExtractedFile(
 
 // Header count and payload bytes do not account for implicit parent
 // directories. Bound distinct expanded objects before MkdirAll or export.
-func (b *copyBudget) reserveArchivePath(name string) error {
+func (b *copyBudget) reserveArchivePath(target, name string) error {
 	if b.archiveObjects == nil {
 		b.archiveObjects = make(map[string]struct{})
 	}
 	for current := name; current != "." && current != "/"; current = path.Dir(current) {
-		if _, exists := b.archiveObjects[current]; exists {
+		// A batch shares its budget across distinct extraction destinations.
+		// Equal member names in separate outputs still create separate objects.
+		key := target + "\x00" + current
+		if _, exists := b.archiveObjects[key]; exists {
 			return nil
 		}
 		if len(b.archiveObjects) >= b.maxEntries {
 			return ErrTooLarge
 		}
-		b.archiveObjects[current] = struct{}{}
+		b.archiveObjects[key] = struct{}{}
 	}
 	return nil
 }

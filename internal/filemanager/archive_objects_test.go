@@ -79,3 +79,34 @@ func TestArchiveBudgetCountsImplicitParents(t *testing.T) {
 		}
 	}
 }
+
+func TestArchiveBatchCountsEqualMembersInSeparateOutputs(t *testing.T) {
+	m, root := newTestManager(t)
+	for _, name := range []string{"one", "two"} {
+		mustMkdirAll(t, filepath.Join(root, name))
+	}
+	var data bytes.Buffer
+	writer := zip.NewWriter(&data)
+	if _, err := writer.Create("a/b/file"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(data.Bytes()), int64(data.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := &copyBudget{maxEntries: 5, maxBytes: 1024}
+	var times []archiveDirectoryTime
+	if err := m.extractZIP(context.Background(), reader, "/one", budget, map[string]struct{}{}, &times); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.extractZIP(context.Background(), reader, "/two", budget, map[string]struct{}{}, &times); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("second extraction reused first output's object allowance: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "two"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("over-budget output created objects: %v %v", entries, err)
+	}
+}
