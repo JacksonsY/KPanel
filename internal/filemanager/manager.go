@@ -1709,10 +1709,11 @@ func (reader *contextReader) Read(buffer []byte) (int, error) {
 }
 
 type copyBudget struct {
-	entries    int
-	bytes      int64
-	maxEntries int
-	maxBytes   int64
+	entries        int
+	bytes          int64
+	maxEntries     int
+	maxBytes       int64
+	archiveObjects map[string]struct{}
 }
 
 func (m *Manager) copyTree(

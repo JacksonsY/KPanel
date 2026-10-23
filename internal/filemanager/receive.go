@@ -15,7 +15,6 @@ import (
 	"path"
 	"sort"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -58,7 +57,7 @@ type receiveSessions struct {
 	mu          cancellableMutex
 	initialized bool
 	closed      bool
-	store       *os.Root
+	store       *fileRoot
 	records     map[string]*receiveRecord
 }
 
@@ -387,56 +386,7 @@ func (m *Manager) pinReceiveParent(record *receiveRecord) (*fileRoot, os.FileInf
 }
 
 func (m *Manager) openReceiveDirectory(directory string, create bool) (*fileRoot, os.FileInfo, error) {
-	normalized, err := normalizeVirtual(directory)
-	if err != nil || normalized != directory {
-		return nil, nil, ErrInvalidPath
-	}
-	cursor, err := m.rootFS.OpenRoot(".")
-	if err != nil {
-		return nil, nil, err
-	}
-	info, err := cursor.Stat(".")
-	if err != nil {
-		_ = cursor.Close()
-		return nil, nil, err
-	}
-	for _, component := range strings.Split(strings.TrimPrefix(directory, "/"), "/") {
-		if component == "" {
-			continue
-		}
-		if create {
-			if err := cursor.Mkdir(component, 0700); err != nil && !errors.Is(err, os.ErrExist) {
-				_ = cursor.Close()
-				return nil, nil, err
-			}
-		}
-		before, err := cursor.Lstat(component)
-		if err != nil {
-			_ = cursor.Close()
-			return nil, nil, err
-		}
-		if before.Mode()&os.ModeSymlink != 0 {
-			_ = cursor.Close()
-			return nil, nil, ErrSymlink
-		}
-		if !before.IsDir() {
-			_ = cursor.Close()
-			return nil, nil, ErrNotDirectory
-		}
-		next, err := cursor.OpenRoot(component)
-		if err != nil {
-			_ = cursor.Close()
-			return nil, nil, err
-		}
-		opened, err := next.Stat(".")
-		_ = cursor.Close()
-		if err != nil || !os.SameFile(before, opened) {
-			_ = next.Close()
-			return nil, nil, ErrConflict
-		}
-		cursor, info = next, opened
-	}
-	return cursor, info, nil
+	return openDirectoryRoot(m.rootFS, directory, create)
 }
 
 func (m *Manager) BeginReceive(ctx context.Context, input contract.FileReceiveInput) (contract.FileReceiveSession, error) {

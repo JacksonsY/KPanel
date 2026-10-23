@@ -37,7 +37,7 @@ type archiveJobs struct {
 	records     map[string]*archiveJobRecord
 	cancels     map[string]context.CancelFunc
 	gate        chan struct{}
-	store       *os.Root
+	store       *fileRoot
 	wg          sync.WaitGroup
 }
 

@@ -66,10 +66,18 @@ func openOffice(ctx context.Context, data []byte) (*officePackage, error) {
 	if len(data) > MaxOfficeBytes {
 		return nil, ErrTooLarge
 	}
-	z, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	directory, err := boundedZIPDirectory(ctx, bytes.NewReader(data), int64(len(data)), 2048)
+	if err != nil {
+		if errors.Is(err, ErrTooLarge) || ctx.Err() != nil {
+			return nil, err
+		}
+		return nil, ErrOfficeUnsupported
+	}
+	z, err := zip.NewReader(directory, directory.offset+int64(len(directory.frozen)))
 	if err != nil {
 		return nil, ErrOfficeUnsupported
 	}
+	z.Comment = directory.comment
 	if len(z.File) > 2048 {
 		return nil, ErrTooLarge
 	}

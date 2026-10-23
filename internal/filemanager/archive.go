@@ -701,14 +701,15 @@ func boundedZIPDirectory(ctx context.Context, reader io.ReaderAt, size int64, ma
 	// signature search must not pick a fake EOCD embedded in the original comment.
 	frozen = frozen[:directorySize+endRecordSize]
 	binary.LittleEndian.PutUint16(frozen[directorySize+20:], 0)
-	return &archiveDirectoryReader{ctx: ctx, source: reader, offset: directoryOffset, frozen: frozen}, nil
+	return &archiveDirectoryReader{ctx: ctx, source: reader, offset: directoryOffset, frozen: frozen, comment: string(record[endRecordSize:])}, nil
 }
 
 type archiveDirectoryReader struct {
-	ctx    context.Context
-	source io.ReaderAt
-	offset int64
-	frozen []byte
+	ctx     context.Context
+	source  io.ReaderAt
+	offset  int64
+	frozen  []byte
+	comment string
 }
 
 func (r *archiveDirectoryReader) ReadAt(p []byte, offset int64) (int, error) {
@@ -777,6 +778,9 @@ func (m *Manager) extractZIP(
 			budget.bytes += int64(entry.UncompressedSize64)
 			archiveProgress(ctx, budget)
 			continue
+		}
+		if err := budget.reserveArchivePath(name); err != nil {
+			return err
 		}
 		if operation := archiveOptions(ctx); operation != nil && operation.export != nil {
 			var input io.ReadCloser
@@ -881,6 +885,9 @@ func (m *Manager) extractTAR(
 			archiveProgress(ctx, budget)
 			continue
 		}
+		if err := budget.reserveArchivePath(name); err != nil {
+			return err
+		}
 		if operation := archiveOptions(ctx); operation != nil && operation.export != nil {
 			if err := operation.export(name, header.FileInfo(), header.Size, reader); err != nil {
 				return err
@@ -960,6 +967,24 @@ func (m *Manager) writeExtractedFile(
 		}
 	}
 	success = true
+	return nil
+}
+
+// Header count and payload bytes do not account for implicit parent
+// directories. Bound distinct expanded objects before MkdirAll or export.
+func (b *copyBudget) reserveArchivePath(name string) error {
+	if b.archiveObjects == nil {
+		b.archiveObjects = make(map[string]struct{})
+	}
+	for current := name; current != "." && current != "/"; current = path.Dir(current) {
+		if _, exists := b.archiveObjects[current]; exists {
+			return nil
+		}
+		if len(b.archiveObjects) >= b.maxEntries {
+			return ErrTooLarge
+		}
+		b.archiveObjects[current] = struct{}{}
+	}
 	return nil
 }
 
