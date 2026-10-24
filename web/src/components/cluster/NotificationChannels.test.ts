@@ -32,6 +32,20 @@ function open() {
   return wrapper
 }
 describe('independent notification channels', () => {
+  it('shows the session challenge and keeps an unfinished discovery actionable', async () => {
+    const pending = { ...snapshot, channels: [{ provider: 'telegram', enabled: true, configured: true, ready: false, status: 'waiting_for_chat' }], telegramBinding: { command: '/start random-proof', expiresAt: '2026-10-25T01:05:00Z' } } as ClusterNotificationSnapshot
+    const wrapper = open()
+    await wrapper.setProps({ snapshot: pending })
+    mocks.action.mockResolvedValue(pending)
+    expect(wrapper.text()).toContain('/start random-proof')
+    expect(wrapper.text()).toContain('验证截止时间')
+    expect(wrapper.text()).not.toContain('保存新凭据时会发送验证消息。')
+    await wrapper.findAll('button').find(button => button.text() === '重新发现私聊')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('请发送验证命令，再点击发现私聊。')
+    expect(wrapper.text()).not.toContain('已找到私聊会话，通知通道已就绪。')
+    expect(mocks.action).toHaveBeenCalledWith('discover', { provider: 'telegram', expectedResourceVersion: 'v1' })
+  })
   it('retains credentials and an unsaved toggle when switching channels and refreshing snapshots', async () => {
     const wrapper = open()
     await wrapper.get('input[type="password"]').setValue('draft-token')
@@ -55,6 +69,28 @@ describe('independent notification channels', () => {
     expect((wrapper.get('input[placeholder="https://ntfy.sh"]').element as HTMLInputElement).value).toBe(
       'https://ntfy.sh',
     )
+  })
+  it('reports the selected channel operation while a Telegram challenge remains pending', async () => {
+    const pending = {
+      ...snapshot,
+      channels: [...snapshot.channels!, { provider: 'ntfy', enabled: true, configured: true, ready: true, status: 'ready' }],
+      telegramBinding: { command: '/start pending-proof', expiresAt: '2026-10-25T01:05:00Z' },
+    } as ClusterNotificationSnapshot
+    const wrapper = open()
+    await wrapper.setProps({ snapshot: pending })
+    await wrapper.findAll('button').find(button => button.text().startsWith('ntfy'))!.trigger('click')
+    mocks.update.mockResolvedValue(pending)
+    mocks.action.mockResolvedValue(pending)
+    for (const [button, feedback] of [['保存渠道', '渠道设置已保存。'], ['发送测试消息', '测试消息已发送。'], ['移除渠道', '渠道已移除。']]) {
+      await wrapper.findAll('button').find(item => item.text() === button)!.trigger('click')
+      await flushPromises()
+      expect(wrapper.get('[role="status"]').text()).toBe(feedback)
+      expect(wrapper.text()).not.toContain('请发送验证命令，再点击发现私聊。')
+    }
+    await wrapper.findAll('button').find(button => button.text().startsWith('Telegram'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '发送测试消息')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('[role="status"]').at(-1)!.text()).toBe('测试消息已发送。')
   })
   it('keeps Telegram failures actionable and reports mutation activity to the dialog', async () => {
     mocks.update.mockRejectedValue(new ApiError('failed', 422, 'cluster_notifications_webhook_active'))

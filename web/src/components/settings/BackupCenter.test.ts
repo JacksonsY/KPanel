@@ -51,7 +51,7 @@ describe('backup center user flow', () => {
     const imported = { ...record, modules: ['docker'] as ['docker'] }
     vi.mocked(backups.list).mockResolvedValue({ items: [imported], maxBytes: 1000 })
     vi.mocked(backups.preview).mockResolvedValue(imported)
-    vi.mocked(backups.review).mockResolvedValue({ available: true, review: { version: 1, revision: 'host', modules: [{ module: 'docker', origin: 'foreign', roots: [{ path: '/usr/share/data', systemPath: true }], containers: [{ name: 'foreign-container', image: 'example:1', privileged: true, binds: [{ source: '/', destination: '/host', live: true }] }], networks: [{ name: 'external', driver: 'bridge', config: { IPAM: { Driver: 'custom-ipam' } } }] }] } })
+    vi.mocked(backups.review).mockResolvedValue({ available: true, review: { version: 2, revision: 'host', modules: [{ module: 'docker', origin: 'foreign', roots: [{ path: '/usr/share/data', systemPath: true }], containers: [{ name: 'foreign-container', image: 'example:1', privileged: true, binds: [{ source: '/', destination: '/host', live: true }] }], networks: [{ name: 'external', driver: 'bridge', config: { IPAM: { Driver: 'custom-ipam' } } }], volumes: [{ name: 'database-volume', driver: 'local', config: { Name: 'database-volume', Driver: 'local' } }] }] } })
     render(); await flushPromises()
     await wrapper.get('.backup-record-status button').trigger('click'); await flushPromises()
     expect(wrapper.text()).toContain('外来备份的宿主机配置')
@@ -59,6 +59,7 @@ describe('backup center user flow', () => {
     expect(wrapper.text()).toContain('/usr/share/data')
     expect(wrapper.text()).toContain('/host')
     expect(wrapper.text()).toContain('custom-ipam')
+    expect(wrapper.text()).toContain('database-volume')
     expect(backups.restore).not.toHaveBeenCalled()
     await wrapper.get('form').trigger('submit'); await flushPromises()
     expect(backups.restore).toHaveBeenCalledWith(imported, ['docker'], true)

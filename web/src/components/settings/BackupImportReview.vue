@@ -10,7 +10,7 @@ const reviews = computed(() => props.result?.review?.modules.filter(m => props.m
 <template>
   <section class="import-review" aria-labelledby="import-review-title">
     <h4 id="import-review-title">{{ phrase('外来备份的宿主机配置') }}</h4>
-    <p>{{ phrase('无法验证为本机导出的备份。确认恢复即同意下面的目录覆盖、容器权限和网络配置；文件属主与特殊权限也会原样恢复。') }}</p>
+    <p>{{ phrase('无法验证为本机导出的备份。确认恢复即同意下面的目录覆盖、容器权限、网络和数据卷配置；文件属主与特殊权限也会原样恢复。') }}</p>
     <p v-if="!completeBackupReview(result, modules)">{{ phrase('无法取得完整备份配置，请更新 Agent 并重新导入备份') }}</p>
     <article v-for="review in reviews" :key="review.module">
       <h5>{{ review.module }}</h5>
@@ -47,13 +47,21 @@ const reviews = computed(() => props.result?.review?.modules.filter(m => props.m
         <p v-for="option in network.options" :key="option"><code>{{ option }}</code></p>
         <details v-if="network.config"><summary>NetworkConfig</summary><pre data-i18n-ignore>{{ JSON.stringify(network.config, null, 2) }}</pre></details>
       </details>
+      <section v-if="review.volumes?.length" class="volume-review">
+        <h6>{{ phrase('恢复所需数据卷') }}</h6>
+        <p>{{ phrase('复用同名本地数据卷；不存在时按以下配置创建。') }}</p>
+        <details v-for="volume in review.volumes" :key="volume.name" open>
+          <summary><code>{{ volume.name }}</code> · {{ volume.driver }}</summary>
+          <details><summary>{{ phrase('数据卷配置') }}</summary><pre data-i18n-ignore>{{ JSON.stringify(volume.config, null, 2) }}</pre></details>
+        </details>
+      </section>
     </article>
   </section>
 </template>
 
 <style scoped>
 .import-review { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
-h4, h5 { margin: 0 0 8px; font-size: 14px; }
+h4, h5, h6 { margin: 0 0 8px; font-size: 14px; }
 p { margin: 8px 0; }
 article, details { margin-top: 12px; }
 summary { cursor: pointer; }

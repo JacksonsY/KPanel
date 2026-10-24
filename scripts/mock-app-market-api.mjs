@@ -1929,8 +1929,48 @@ function mockTrafficInterfacesSnapshot() {
 let mockPreferences = { resourceVersion: mockRevision(1) }
 let mockPreferencesRevision = 1
 
+// Explicit UI-only approval fixture: no provider or host operation is invoked.
+const mockAISession = {
+  id: 'mock-security', title: 'Mock · 文件内容授权', providerId: 'mock-provider', modelId: 'mock-model',
+  providerName: 'Mock', modelName: 'Mock', modelAvailable: true, approvalMode: 'auto', thinkingLevel: 'medium',
+  pinned: false, archived: false, running: true, activeRunId: 'mock-security-run',
+  createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastMessageAt: new Date().toISOString(),
+}
+const mockAIRead = {
+  id: 'mock-security-read', runId: 'mock-security-run', sessionId: mockAISession.id, name: 'host_file_read',
+  status: 'pending_approval', requiresApproval: true, argumentsPreview: '{"path":"/root/.docker/config.json"}',
+  approvalPreview: '{"path":"/root/.docker/config.json"}', createdAt: new Date().toISOString(),
+}
+async function mockAIApproval(request, response, url) {
+  const prefix = '/api/v1/ai/'
+  if (!url.pathname.startsWith(prefix)) return false
+  const route = url.pathname.slice(prefix.length)
+  const run = { id: mockAIRead.runId, sessionId: mockAISession.id, status: mockAISession.running ? 'pending_approval' : 'completed', providerId: mockAISession.providerId, modelId: mockAISession.modelId, approvalMode: 'auto' }
+  if (request.method === 'GET' && route === 'providers') send(response, 200, [{ id: mockAISession.providerId, name: 'Mock · 无外部服务', enabled: true }])
+  else if (request.method === 'GET' && route === 'models') send(response, 200, [{ id: mockAISession.modelId, providerId: mockAISession.providerId, modelId: 'mock', displayName: 'Mock', contextWindow: 8192, enabled: true, isDefault: true, toolCalling: true }])
+  else if (request.method === 'GET' && route === 'sessions') send(response, 200, [mockAISession])
+  else if (request.method === 'GET' && route === `sessions/${mockAISession.id}/messages`) send(response, 200, { items: [], toolCalls: [mockAIRead] })
+  else if (request.method === 'GET' && route === `runs/${run.id}/events`) {
+    response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' })
+    response.write(`event: run.snapshot\ndata: ${JSON.stringify({ run, toolCalls: [mockAIRead], messages: [] })}\n\n`)
+    if (!mockAISession.running) response.write(`event: run.completed\ndata: ${JSON.stringify(run)}\n\n`)
+    response.end()
+  } else if (request.method === 'POST' && route === `runs/${run.id}/decision`) {
+    const input = await readJSON(request)
+    if (input.toolCallId !== mockAIRead.id || typeof input.approve !== 'boolean') send(response, 400, { code: 'mock_approval_invalid', title: 'Mock · 请检查授权请求' })
+    else {
+      mockAIRead.status = input.approve ? 'completed' : 'rejected'
+      mockAIRead.resultPreview = 'Mock · 仅演示授权状态，没有读取文件或请求模型。'
+      mockAISession.running = false
+      send(response, 200, { accepted: true })
+    }
+  } else send(response, 422, { code: 'mock_ai_unsupported', title: 'Mock · 此预览只演示文件内容授权' })
+  return true
+}
+
 createServer(async (request, response) => {
   const url = new URL(request.url, 'http://127.0.0.1:8080')
+  if (await mockAIApproval(request, response, url)) return
   if (mockTutorials(request, response, url, send)) return
   if (await mockBackups(request, response, url, send, readJSON)) return
   if (await mockShareThemes(request, response, url, send, readJSON)) return
@@ -2243,14 +2283,28 @@ createServer(async (request, response) => {
     const channels = [...mockNotificationSnapshot.channels]
     const index = channels.findIndex(item => item.provider === input.provider)
     if (request.method === 'PUT') {
-      if (input.remove) { if (index >= 0) channels.splice(index, 1) }
+      if (input.remove) {
+        if (index >= 0) channels.splice(index, 1)
+        if (input.provider === 'telegram') delete mockNotificationSnapshot.telegramBinding
+      }
       else {
         if (index < 0 && !input.credential) { send(response, 422, { code: 'cluster_notifications_credential_required' }); return }
         if (input.credential?.includes('fail.example')) { send(response, 502, { code: 'cluster_notifications_channel_unavailable' }); return }
-        const channel = { provider: input.provider, enabled: Boolean(input.enabled), configured: true, ready: true, status: 'ready', lastCheckedAt: new Date().toISOString() }
+        const waiting = input.provider === 'telegram' && (Boolean(input.credential) || !channels[index]?.ready)
+        const channel = { provider: input.provider, enabled: Boolean(input.enabled), configured: true, ready: !waiting, status: waiting ? 'waiting_for_chat' : 'ready', lastCheckedAt: new Date().toISOString() }
+        if (waiting) mockNotificationSnapshot.telegramBinding = { command: `/start mock-${randomBytes(12).toString('hex')}`, expiresAt: new Date(Date.now() + 300_000).toISOString() }
         if (index < 0) channels.push(channel); else channels[index] = channel
       }
     } else if (index < 0) { send(response, 422, { code: 'cluster_notifications_channel_not_configured' }); return }
+    else if (input.provider === 'telegram' && url.pathname.endsWith('/discover')) {
+      if (!mockNotificationSnapshot.telegramBinding) {
+        mockNotificationSnapshot.telegramBinding = { command: `/start mock-${randomBytes(12).toString('hex')}`, expiresAt: new Date(Date.now() + 300_000).toISOString() }
+      } else {
+        // Simulate receipt of the displayed proof; this fixture never contacts Telegram.
+        channels[index] = { ...channels[index], ready: true, status: 'ready' }
+        delete mockNotificationSnapshot.telegramBinding
+      }
+    } else if (!channels[index].ready) { send(response, 422, { code: 'cluster_notifications_channel_not_ready' }); return }
     mockNotificationRevision += 1
     mockNotificationSnapshot = { ...mockNotificationSnapshot, multiChannel: true, channels, resourceVersion: mockRevision(mockNotificationRevision) }
     send(response, 200, mockNotificationSnapshot); return

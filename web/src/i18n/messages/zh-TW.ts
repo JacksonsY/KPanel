@@ -3,6 +3,9 @@ import { passkeyZhTW } from '../passkeys'
 import { panelAccessZhTW } from '../panelAccess'
 
 export const zhTWMessages = {
+  'ai.approval.fileDisclosure': "批准後，KPanel 會讀取上方路徑，並將本次檔案內容交給目前 AI 模型處理。請核對路徑與參數；此授權僅限本次呼叫。",
+  'ai.approval.manualHint': "所有寫入操作及檔案內容讀取逐次確認",
+  'ai.approval.autoHint': "一般結構化寫入操作自動執行；檔案內容讀取、核心、刪除、exec 及受保護路徑仍需確認",
   'settings.preferencesSyncFailed': '介面狀態尚未同步至伺服器',
   'settings.preferencesLoadFailed': '無法讀取伺服器介面狀態',
   'settings.preferencesLoadRetry': '目前使用本機介面；連線恢復後可重新整理頁面，還原已儲存的視窗。',

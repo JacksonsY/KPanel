@@ -364,6 +364,7 @@ export interface ClusterNotificationChannel extends ClusterNotificationTelegram 
 }
 
 export interface ClusterNotificationSnapshot {
+	telegramBinding?: { command: string; expiresAt: string }
 	 multiChannel?: boolean
 	 channels?: ClusterNotificationChannel[]
   localRecording?: boolean

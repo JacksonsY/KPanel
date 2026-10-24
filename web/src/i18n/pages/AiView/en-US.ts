@@ -134,8 +134,6 @@ export default [
   ["移除 {0}", "Remove {0}"],
   ["可继续补充要求，将加入当前任务…", "Add more instructions to the current task…"],
   ["告诉 AI 你想完成什么…", "Tell the AI what you want to do…"],
-  ["所有写操作逐次确认，只读自动执行", "Confirm every write; reads run automatically"],
-  ["常规结构化写操作自动执行；核心、删除、exec 和受保护路径仍需确认", "Routine structured writes run automatically; core, delete, exec, and protected paths still need confirmation"],
   ["使用模型原生思考强度", "Use the model’s native reasoning effort"],
   ["使用通用规划强度提示", "Use generic planning-effort hints"],
   ["切换后从下一轮开始使用", "Takes effect from the next turn"],

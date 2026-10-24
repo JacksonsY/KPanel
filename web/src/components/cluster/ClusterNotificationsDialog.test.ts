@@ -216,6 +216,11 @@ describe('notification channels', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('检查网络')
   })
   it('enables robot providers and saves a validated Webhook without rendering the secret', async () => {
+    mocks.save.mockResolvedValueOnce({
+      ...snapshot(), provider: 'feishu',
+      channel: { provider: 'feishu', configured: true, ready: true, status: 'ready' },
+      telegramBinding: { command: '/start unrelated-proof', expiresAt: '2026-10-25T01:05:00Z' },
+    })
     const wrapper = await open()
     const feishu = wrapper.findAll('button').find((button) => button.text().includes('飞书'))
     expect(feishu?.attributes('disabled')).toBeUndefined()
@@ -232,6 +237,7 @@ describe('notification channels', () => {
       expectedResourceVersion: 'v1',
     }))
     expect(wrapper.text()).toContain('渠道凭据已保存并通过发送验证。')
+    expect(wrapper.text()).not.toContain('请发送验证命令，再点击发现私聊。')
     expect(wrapper.html()).not.toContain('supersecret123')
   })
 

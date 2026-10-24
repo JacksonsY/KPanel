@@ -127,6 +127,7 @@ describe('Panel access settings', () => {
     await flushPromises()
 
     expect(mocks.updateSelfSignedTLS).toHaveBeenCalledWith({ enabled: true, regenerate: false })
+    expect(mocks.navigate).toHaveBeenCalledWith('https://203.0.113.5:8080/settings?section=panel-access')
     expect(wrapper.text()).toContain('AA:BB')
     expect(wrapper.text()).toContain('203.0.113.5, 127.0.0.1')
     expect(wrapper.text()).toContain('2028')

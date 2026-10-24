@@ -87,6 +87,19 @@ function makeRouter(path='/ai/s/s1') {
 }
 
 describe('AI workspace reconnect', () => {
+  it('explains file sharing and shows the pending approval details', async () => {
+    const router=await makeRouter();const wrapper=mount(AiView,{global:{plugins:[router]}});await flushPromises()
+    MockEventSource.instances[0]?.emit('approval.required',{
+      id:'read-sensitive',runId:'run-active',sessionId:'s1',name:'host_file_read',status:'pending_approval',requiresApproval:true,
+      argumentsPreview:'{"path":"/root/.docker/config.json"}',approvalPreview:'{"path":"/root/.docker/config.json"}',
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('将本次文件内容交给当前 AI 模型处理')
+    expect(wrapper.text()).toContain('/root/.docker/config.json')
+    expect(wrapper.get('[data-tool-call-id="read-sensitive"] details').attributes('open')).toBeDefined()
+    wrapper.unmount()
+  })
+
   it.each(['available','missing','denied'])('copies the complete answer when the Clipboard API is %s', async mode => {
     const content='**完整回答**\n\n```sh\necho 中文\n```'
     const writeText=vi.fn().mockImplementation(()=>mode==='denied'?Promise.reject(new Error('denied')):Promise.resolve())

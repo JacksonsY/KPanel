@@ -241,7 +241,7 @@ async function save(): Promise<void> {
       expectedResourceVersion: snapshot.value.resourceVersion,
     })
     applySnapshot(value)
-    statusMessage.value = credentialProvided
+    statusMessage.value = selectedProvider.value === 'telegram' && value.telegramBinding ? '请发送验证命令，再点击发现私聊。' : credentialProvided
       ? (selectedProvider.value === 'telegram' ? 'Bot API key 已保存并完成连接。' : '渠道凭据已保存并通过发送验证。')
       : '通知设置已保存。'
   } catch (reason) {
@@ -258,7 +258,7 @@ async function discover(): Promise<void> {
   statusMessage.value = ''
   try {
     applySnapshot(await api.cluster.discoverNotifications(snapshot.value.resourceVersion))
-    statusMessage.value = '已找到私聊会话，通知通道已就绪。'
+    statusMessage.value = snapshot.value?.telegramBinding ? '请发送验证命令，再点击发现私聊。' : '已找到私聊会话，通知通道已就绪。'
   } catch (reason) {
     await load(true)
     errorMessage.value = notificationErrorMessage(reason)
@@ -385,8 +385,13 @@ onBeforeUnmount(() => {
           <p v-if="selectedProvider === 'telegram' && selectedChannel.botUsername" class="cluster-notifications__provider-detail">
             @{{ selectedChannel.botUsername }}<span v-if="selectedChannel.lastCheckedAt"> · {{ phrase('最近检查') }} {{ formatDateTime(selectedChannel.lastCheckedAt) }}</span>
           </p>
-          <p v-else-if="selectedProvider === 'telegram'" class="cluster-notifications__provider-detail">{{ phrase('私聊机器人发送 /start，KPanel 会自动发现接收会话。') }}</p>
-          <p v-else class="cluster-notifications__provider-detail">
+          <p v-else-if="selectedProvider === 'telegram'" class="cluster-notifications__provider-detail">{{ phrase('保存后，在机器人私聊中发送本次验证命令，再点击发现私聊。验证命令五分钟内有效，仅当前登录会话可完成绑定。') }}</p>
+          <div v-if="selectedProvider === 'telegram' && snapshot?.telegramBinding" role="status">
+            <p>{{ phrase('请发送验证命令，再点击发现私聊。') }}</p>
+            <code>{{ snapshot.telegramBinding.command }}</code>
+            <p>{{ phrase('验证截止时间') }}: <time :datetime="snapshot.telegramBinding.expiresAt">{{ new Date(snapshot.telegramBinding.expiresAt).toLocaleTimeString() }}</time></p>
+          </div>
+          <p v-if="selectedProvider !== 'telegram'" class="cluster-notifications__provider-detail">
             <strong>{{ phrase(selectedProviderName) }}</strong> ·
             <span v-if="selectedChannel.ready">{{ phrase('渠道已就绪') }}<span v-if="selectedChannel.lastCheckedAt"> · {{ phrase('最近检查') }} {{ formatDateTime(selectedChannel.lastCheckedAt) }}</span></span>
             <span v-else>{{ phrase('粘贴群机器人 Webhook 地址；保存时会先发送一条验证消息。') }}</span>

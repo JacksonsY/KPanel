@@ -1779,4 +1779,7 @@ export default [
   ["台主机","hosts"],
   ["已结束","Finished"],
   ["本次执行输出已不可用。","Output from this run is no longer available."],
+  ["保存后，在机器人私聊中发送本次验证命令，再点击发现私聊。验证命令五分钟内有效，仅当前登录会话可完成绑定。","After saving, send this verification command in a private chat with the bot, then discover the chat. The command expires in five minutes and can only be completed by this signed-in session."],
+  ["请发送验证命令，再点击发现私聊。","Send the verification command, then discover the private chat."],
+  ["验证截止时间","Verification expires"],
 ] as const satisfies PhraseCatalog

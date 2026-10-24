@@ -99,14 +99,16 @@ export interface BackupContainerReview {
 }
 export interface BackupRootReview { path: string; systemPath?: boolean; existing?: boolean; usedBy?: Array<{ container: string; readOnly?: boolean }> }
 export interface BackupNetworkReview { name: string; driver: string; internal?: boolean; subnets?: string[]; options?: string[]; config?: Record<string, unknown> }
+export interface BackupVolumeReview { name: string; driver: string; config: Record<string, unknown> }
 export interface BackupModuleReview {
   module: BackupModule; origin: 'local' | 'foreign'; unreviewed?: boolean; setIdFiles?: number
-  roots?: BackupRootReview[]; containers?: BackupContainerReview[]; networks?: BackupNetworkReview[]
+  roots?: BackupRootReview[]; containers?: BackupContainerReview[]; networks?: BackupNetworkReview[]; volumes?: BackupVolumeReview[]
 }
 export interface BackupReviewResult { available: boolean; review: { version: number; revision: string; modules: BackupModuleReview[] } | null }
 
 export function completeBackupReview(result: BackupReviewResult | undefined, modules: BackupModule[]): boolean {
-  return modules.filter(module => module !== 'panel').every(module => result?.available && result.review?.modules.some(m => m.module === module && !m.unreviewed && (m.origin === 'local' || m.origin === 'foreign')))
+  const review = result?.available ? result.review : null
+  return modules.filter(module => module !== 'panel').every(module => review?.modules.some(m => m.module === module && !m.unreviewed && (m.origin === 'local' || (m.origin === 'foreign' && review.version === 2))))
 }
 
 // Host modules that need the one confirmation before restore. A module the

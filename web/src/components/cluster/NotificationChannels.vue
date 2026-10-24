@@ -115,7 +115,8 @@ async function operate(action: ChannelOperation): Promise<void> {
       draft.value.enabled = value.channels?.find((channel) => channel.provider === provider)?.enabled ?? true
       draft.value.savedEnabled = draft.value.enabled
     }
-    status.value = operationMessages[action]
+    status.value = provider === 'telegram' && (action === 'save' || action === 'discover') && value.telegramBinding
+      ? '请发送验证命令，再点击发现私聊。' : operationMessages[action]
   } catch (reason) {
     error.value = notificationErrorMessage(reason)
   } finally {
@@ -147,7 +148,12 @@ async function operate(action: ChannelOperation): Promise<void> {
         ><input v-model="enabled" type="checkbox" :disabled="busy" />{{ phrase('启用此渠道') }}</label
       >
       <p v-if="channel?.configured">{{ phrase('凭据已保存。留空可保留；修改时请完整填写该渠道配置。') }}</p>
-      <p v-if="selected === 'telegram'">{{ phrase('私聊机器人发送 /start，KPanel 会自动发现接收会话。') }}</p>
+      <p v-if="selected === 'telegram'">{{ phrase('保存后，在机器人私聊中发送本次验证命令，再点击发现私聊。验证命令五分钟内有效，仅当前登录会话可完成绑定。') }}</p>
+      <div v-if="selected === 'telegram' && snapshot.telegramBinding" role="status">
+        <p>{{ phrase('请发送验证命令，再点击发现私聊。') }}</p>
+        <code>{{ snapshot.telegramBinding.command }}</code>
+        <p>{{ phrase('验证截止时间') }}: <time :datetime="snapshot.telegramBinding.expiresAt">{{ new Date(snapshot.telegramBinding.expiresAt).toLocaleTimeString() }}</time></p>
+      </div>
       <template v-if="selected === 'telegram' || isWebhook">
         <label class="field"
           ><span>{{ phrase(selected === 'telegram' ? 'Bot API key' : 'Webhook 地址') }}</span
@@ -210,7 +216,7 @@ async function operate(action: ChannelOperation): Promise<void> {
         <p>{{ phrase('使用隐式 TLS，通常为 465 端口；多个收件人以逗号分隔。') }}</p>
       </template>
       <p v-if="isServer">{{ phrase('填写 HTTPS 服务地址，支持自建服务。') }}</p>
-      <p>{{ phrase('保存新凭据时会发送验证消息。渠道开关与下方外部推送总开关同时开启后，才会自动推送。') }}</p>
+      <p v-if="selected !== 'telegram'">{{ phrase('保存新凭据时会发送验证消息。渠道开关与下方外部推送总开关同时开启后，才会自动推送。') }}</p>
     </div>
     <div class="notification-channels__actions">
       <button

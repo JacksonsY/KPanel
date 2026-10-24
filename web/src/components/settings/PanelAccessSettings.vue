@@ -155,10 +155,16 @@ async function updateSelfSigned(enabled: boolean, regenerate = false): Promise<v
   try {
     status.value = await api.settings.panelAccess.updateSelfSignedTLS({ enabled, regenerate })
     confirmingRegenerate.value = false
+	if (enabled) {
+	  navigatePanel(`https://${pageLocation.host}/settings?section=${panelAccessSection}`)
+	  return
+	}
     // Disabling stops new TLS handshakes; leave the self-signed address
     // before the current keep-alive connection is closed.
     if (!enabled && accessKind.value === 'self-signed') {
       navigatePanel(`http://${pageLocation.host}/settings?section=${panelAccessSection}`)
+    } else {
+      navigatePanel(`${pageLocation.origin}/settings?section=${panelAccessSection}`)
     }
   } catch (reason) {
     tlsError.value = problemMessage(reason, 'panelAccess.selfSignedFailed')

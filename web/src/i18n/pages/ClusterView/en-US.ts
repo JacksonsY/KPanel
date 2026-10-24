@@ -266,7 +266,6 @@ export default [
   ['粘贴 BotFather 提供的 key', 'Paste the key from BotFather'],
   ['凭据仅保存在当前 KPanel 的受保护数据目录，不会显示在页面或通知内容中。', 'The credential is stored only in this KPanel\'s protected data directory and never shown in the page or notification content.'],
   ['切换渠道并保存时会替换已存凭据。', 'Switching channels and saving replaces the stored credential.'],
-  ['私聊机器人发送 /start，KPanel 会自动发现接收会话。', 'Send /start to the bot in a private chat; KPanel will discover the receiving chat automatically.'],
   ['最近检查', 'Last checked'],
   ['渠道已就绪', 'Channel ready'],
   ['粘贴群机器人 Webhook 地址；保存时会先发送一条验证消息。', 'Paste the group bot Webhook URL. Saving first sends a verification message.'],
