@@ -77,7 +77,9 @@ func historyMemoryFixture(t *testing.T, points int, pad bool) (*Server, *http.Re
 	if err != nil {
 		t.Fatal(err)
 	}
-	center, tokenPath := newTestServerWithPublicURL(t, "https://panel.test")
+	// Browser-side memory fixtures use a local HTTP server; the remote node
+	// above still uses real TLS/Noise. Declare the center's actual transport.
+	center, tokenPath := newTestServerWithPublicURL(t, "http://panel.test")
 	_ = center.cluster.Close()
 	center.cluster, err = cluster.NewService(cluster.ServiceConfig{DataDir: t.TempDir(), Telemetry: historyTestTelemetry{}, Remote: remote})
 	if err != nil {
@@ -91,7 +93,7 @@ func historyMemoryFixture(t *testing.T, points int, pad bool) (*Server, *http.Re
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, csrf := bootstrapCookiesForOrigin(t, center, tokenPath, "https://panel.test")
+	session, csrf := bootstrapCookiesForOrigin(t, center, tokenPath, "http://panel.test")
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/monitoring/cluster-history?hostId="+host.ID+"&range=6h", nil)
 	request.Host = "panel.test"
 	request.AddCookie(session)
@@ -102,13 +104,17 @@ func historyMemoryFixture(t *testing.T, points int, pad bool) (*Server, *http.Re
 
 type historyBlockedWriter struct {
 	header           http.Header
+	status           int
 	entered, release chan struct{}
 	enter, unblock   sync.Once
 }
 
-func (w *historyBlockedWriter) Header() http.Header { return w.header }
-func (w *historyBlockedWriter) WriteHeader(int)     {}
+func (w *historyBlockedWriter) Header() http.Header    { return w.header }
+func (w *historyBlockedWriter) WriteHeader(status int) { w.status = status }
 func (w *historyBlockedWriter) Write([]byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
 	w.enter.Do(func() { close(w.entered) })
 	<-w.release
 	return 0, io.ErrClosedPipe
@@ -129,6 +135,7 @@ func TestClusterHistorySlowBrowserBudgetAndCancellation(t *testing.T) {
 		cancels = append(cancels, cancel)
 		t.Cleanup(cancel)
 		writer := &historyBlockedWriter{header: make(http.Header), entered: make(chan struct{}), release: make(chan struct{})}
+		t.Cleanup(func() { writer.unblock.Do(func() { close(writer.release) }) })
 		go func() {
 			center.ServeHTTP(writer, request.Clone(ctx))
 			done <- struct{}{}
@@ -137,6 +144,9 @@ func TestClusterHistorySlowBrowserBudgetAndCancellation(t *testing.T) {
 		case <-writer.entered:
 		case <-time.After(5 * time.Second):
 			t.Fatal("history never reached browser write")
+		}
+		if writer.status != http.StatusOK {
+			t.Fatalf("history fixture failed before slow-browser admission: %d", writer.status)
 		}
 	}
 	for range 10 {
