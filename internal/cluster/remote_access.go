@@ -242,10 +242,21 @@ func (s *Service) remoteTerminalParent(ctx context.Context, id string) context.C
 }
 
 func (s *Service) OpenRemoteFileV2(ctx context.Context, id string, input FederationFileOpenRequest) (io.ReadCloser, contract.FileTransferMetadata, error) {
-	ctx, cancel, err := s.BeginRemoteOperation(ctx, "files", id)
+	ctx, cancelGlobal, err := s.BeginRemoteOperation(ctx, "files")
 	if err != nil {
 		return nil, contract.FileTransferMetadata{}, err
 	}
+	hostID, err := s.FileSourceHostID(id)
+	if err != nil {
+		cancelGlobal()
+		return nil, contract.FileTransferMetadata{}, err
+	}
+	ctx, cancelHost, err := s.BeginRemoteOperation(ctx, "files", hostID)
+	if err != nil {
+		cancelGlobal()
+		return nil, contract.FileTransferMetadata{}, err
+	}
+	cancel := func() { cancelHost(); cancelGlobal() }
 	body, metadata, err := s.openRemoteFileV2(ctx, id, input)
 	if err != nil {
 		cancel()

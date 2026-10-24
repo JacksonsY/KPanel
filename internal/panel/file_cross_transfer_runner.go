@@ -19,11 +19,20 @@ import (
 func (s *Server) startCrossFileTransferJob(w http.ResponseWriter, r *http.Request, input contract.FileTransferRequest, hostID string, kind cluster.HostKind, actorID string) {
 	var accessLifetime context.Context
 	var hostAccessLifetimes []context.Context
+	sourceHostID := input.SourceNodeID
+	if input.SourceNodeID != s.cluster.NodeID() {
+		var err error
+		sourceHostID, err = s.cluster.FileSourceHostID(input.SourceNodeID)
+		if err != nil {
+			s.writeProblem(w, r, 400, "source_unavailable", "来源主机无效。", "")
+			return
+		}
+	}
 	if input.SourceNodeID != s.cluster.NodeID() || hostID != "" && hostID != cluster.LocalHostID {
 		accessLifetime = s.cluster.RemoteOperationLifetime("files")
 	}
 	if input.SourceNodeID != s.cluster.NodeID() {
-		hostAccessLifetimes = append(hostAccessLifetimes, s.cluster.RemoteOperationLifetime("files", input.SourceNodeID))
+		hostAccessLifetimes = append(hostAccessLifetimes, s.cluster.RemoteOperationLifetime("files", sourceHostID))
 	}
 	if hostID != "" && hostID != cluster.LocalHostID {
 		hostAccessLifetimes = append(hostAccessLifetimes, s.cluster.RemoteOperationLifetime("files", hostID))
@@ -85,7 +94,17 @@ func (s *Server) executeCrossFileTransfer(ctx context.Context, input contract.Fi
 		defer cancel()
 		ctx = operation
 	}
-	for _, id := range []string{input.SourceNodeID, targetHostID} {
+	sourceHostID := input.SourceNodeID
+	if sourceHostID != s.cluster.NodeID() {
+		var err error
+		sourceHostID, err = s.cluster.FileSourceHostID(input.SourceNodeID)
+		if err != nil {
+			event := contract.FileTransferEvent{State: "error", Code: "source_unavailable", Detail: "来源主机无效。"}
+			emit(event)
+			return event
+		}
+	}
+	for _, id := range []string{sourceHostID, targetHostID} {
 		if id == "" || id == cluster.LocalHostID || id == s.cluster.NodeID() {
 			continue
 		}

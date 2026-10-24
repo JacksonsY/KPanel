@@ -30,6 +30,38 @@ type HostRemoteAccess struct {
 	EffectiveFilesEnabled    bool   `json:"effectiveFilesEnabled"`
 }
 
+// File transfer descriptors use the peer's node identity, while center settings
+// use the local pairing record ID. Reverse-only peers have no local Host record
+// and remain governed by the global switch plus their existing route grant.
+func (s *Service) FileSourceHostID(nodeID string) (string, error) {
+	if !validID(nodeID) {
+		return "", ErrNotFound
+	}
+	id := ""
+	if s.storeV2 != nil {
+		for _, record := range s.storeV2.Hosts() {
+			if record.RemoteNodeID == nodeID {
+				if id != "" {
+					return "", ErrNotFound
+				}
+				id = record.ID
+			}
+		}
+	}
+	if s.light != nil {
+		if _, err := s.light.Host(nodeID); err == nil {
+			if id != "" {
+				return "", ErrNotFound
+			}
+			id = nodeID
+		}
+	}
+	if id == "" {
+		id = nodeID
+	}
+	return id, nil
+}
+
 func validRemoteHostPreferences(items []remoteHostPreference) bool {
 	if len(items) > maxRemoteHostPreferences {
 		return false
