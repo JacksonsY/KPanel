@@ -887,6 +887,7 @@ export const enUSMessages = {
   'cluster.confirm.removeHost': 'Remove {name} from the current KPanel? The target host services will not be affected.',
   'cluster.confirm.openHttpPanel': 'Cluster monitoring data is encrypted end to end, but this management page is still opened over plain HTTP. Login passwords and the Session are not protected by the encrypted direct channel. Configure HTTPS on the target Panel first if possible. Open it anyway?',
 
+  'error.siteTrafficUnavailable': "Website monitoring is unavailable. Saved history is preserved.",
   'error.network': 'Network connection failed. Check the connection and try again.',
   'error.authenticationRequired': 'Your session has expired. Sign in again.',
   'error.invalidCredentials': 'The username or password is incorrect.',

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Activity, ArrowUpRight, BarChart3, CircleHelp, Database, Globe2, LoaderCircle, Pause, Play, RefreshCw, ShieldCheck, ShieldAlert, Trash2 } from '@lucide/vue'
 import { useI18n } from '@/i18n'
+import { localizeError } from '@/i18n/errors'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
 import { api } from '@/lib/api'
 import { formatBytes, formatDateTime } from '@/lib/format'
@@ -93,7 +94,7 @@ async function load(): Promise<void> {
   data.value = snapshot; error.value = ''
  } catch (reason) {
   if (disposed || current !== sequence || requestController.signal.aborted) return
-  error.value = reason instanceof Error ? reason.message : phrase('监控数据读取失败')
+  error.value = reason instanceof Error ? localizeError(reason) : phrase('监控数据读取失败')
  } finally { if (current === sequence) { loading.value = false; refreshing.value = false } }
 }
 async function perform(action: 'enable' | 'pause' | 'clear'): Promise<void> {
@@ -103,7 +104,7 @@ async function perform(action: 'enable' | 'pause' | 'clear'): Promise<void> {
   await api.siteTraffic.action(action); clearOpen.value = false
   notice.value = phrase(action === 'enable' ? '监控已开启，正在采集网站日志。' : action === 'pause' ? '采集已暂停，历史统计保留。' : '历史统计已清空，原始日志保持不变。')
   await load()
- } catch (reason) { error.value = reason instanceof Error ? reason.message : phrase('监控操作失败') }
+ } catch (reason) { error.value = reason instanceof Error ? localizeError(reason) : phrase('监控操作失败') }
  finally { busy.value = false }
 }
 function schedule(): void { timer = setTimeout(async () => { if (!disposed && document.visibilityState !== 'hidden' && data.value?.enabled && !busy.value) await load(); if (!disposed) schedule() }, 10000) }

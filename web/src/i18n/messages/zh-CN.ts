@@ -888,6 +888,7 @@ export const zhCNMessages = {
   'cluster.confirm.removeHost': '从当前 KPanel 移除 {name}？目标主机业务不会受到影响。',
   'cluster.confirm.openHttpPanel': '集群监控数据已端到端加密，但这个管理页面仍通过普通 HTTP 打开，登录密码和 Session 不受加密直连保护。建议先为目标面板配置 HTTPS。仍然打开？',
 
+  'error.siteTrafficUnavailable': "网站监控暂不可用，已保存的历史统计不会被自动删除。",
   'error.network': '网络连接失败，请检查连接后重试。',
   'error.authenticationRequired': '登录状态已失效，请重新登录。',
   'error.invalidCredentials': '用户名或密码错误。',

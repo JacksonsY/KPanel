@@ -9,6 +9,9 @@ interface CodedError {
 
 const errorMessageKeys: Readonly<Record<string, MessageKey>> = {
   network_error: 'error.network',
+  site_traffic_unavailable: 'error.siteTrafficUnavailable',
+  invalid_traffic_request: 'error.validationFailed',
+  invalid_traffic_action: 'error.validationFailed',
   unauthenticated: 'error.authenticationRequired',
   authentication_required: 'error.authenticationRequired',
   invalid_credentials: 'error.invalidCredentials',
