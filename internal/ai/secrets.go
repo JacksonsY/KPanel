@@ -31,7 +31,7 @@ func OpenSecretBox(path string, encryptedSecretsExist bool) (*SecretBox, error) 
 		return &SecretBox{key: append([]byte(nil), content...)}, nil
 	case errors.Is(err, os.ErrNotExist):
 		if encryptedSecretsExist {
-			return nil, errors.New("AI secret key is missing while encrypted provider keys exist")
+			return nil, errors.New("AI secret key is missing while encrypted AI state exists")
 		}
 	default:
 		return nil, fmt.Errorf("read AI secret key: %w", err)

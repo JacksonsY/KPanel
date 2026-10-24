@@ -166,9 +166,12 @@ func isBlockedIP(ip net.IP) bool {
 }
 
 func keyHint(value string) string {
+	if value == "" {
+		return ""
+	}
 	runes := []rune(value)
 	if len(runes) <= 4 {
-		return string(runes)
+		return "[REDACTED]"
 	}
 	return string(runes[len(runes)-4:])
 }

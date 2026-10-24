@@ -114,6 +114,7 @@ const (
 )
 
 type Message struct {
+	contextPrivateBytes int
 	RequiredAttachments bool `json:"-"`
 
 	ID           string       `json:"id"`
@@ -193,7 +194,7 @@ type ToolCall struct {
 	RunID            string          `json:"runId"`
 	SessionID        string          `json:"sessionId"`
 	Name             string          `json:"name"`
-	Arguments        json.RawMessage `json:"arguments,omitempty"`
+	Arguments        json.RawMessage `json:"-"`
 	ProviderData     json.RawMessage `json:"-"`
 	ArgumentsPreview string          `json:"argumentsPreview,omitempty"`
 	ResultPreview    string          `json:"resultPreview,omitempty"`

@@ -49,6 +49,7 @@ type CompletionRequest struct {
 }
 
 type CompletionEvent struct {
+	err       error
 	Delta     string
 	ToolCalls []ToolCall
 	Usage     Usage
@@ -158,6 +159,7 @@ func chatMessageHasImage(message ChatMessage) bool {
 }
 
 func (c *HTTPModelClient) Stream(ctx context.Context, provider Provider, apiKey string, request CompletionRequest, emit func(CompletionEvent) error) error {
+	emit = boundedCompletion(emit)
 	switch provider.Protocol {
 	case ProtocolOpenAICompatible:
 		if provider.APIMode == OpenAIResponses {
@@ -309,7 +311,7 @@ func (c *HTTPModelClient) streamOpenAIResponsesAttempt(ctx context.Context, prov
 			}
 			completed = true
 			items := sortedResponsesOutputItems(outputItems)
-			return emit(responsesCompletionEvent(provider.ID, request.Model, toolParts, items, responsesOutputItemsComplete(items, toolParts, textEmitted), Usage{}))
+			return finishSSE(emit(responsesCompletionEvent(provider.ID, request.Model, toolParts, items, responsesOutputItemsComplete(items, toolParts, textEmitted), Usage{})))
 		}
 		var envelope struct {
 			Item json.RawMessage `json:"item"`
@@ -355,20 +357,23 @@ func (c *HTTPModelClient) streamOpenAIResponsesAttempt(ctx context.Context, prov
 				if id == "" {
 					id = chunk.Item.ID
 				}
-				toolParts[chunk.OutputIndex] = &ToolCall{ID: id, Name: chunk.Item.Name, Arguments: json.RawMessage(chunk.Item.Arguments)}
+				if err := updateTool(toolParts, chunk.OutputIndex, id, chunk.Item.Name, chunk.Item.Arguments, false, false); err != nil {
+					return err
+				}
 			}
 		case "response.function_call_arguments.delta":
 			if call := toolParts[chunk.OutputIndex]; call != nil {
-				call.Arguments = append(call.Arguments, chunk.Delta...)
+				if err := updateTool(toolParts, chunk.OutputIndex, "", "", chunk.Delta, false, true); err != nil {
+					return err
+				}
 			}
 		case "response.function_call_arguments.done":
 			if call := toolParts[chunk.OutputIndex]; call != nil && chunk.Arguments != "" {
-				call.Arguments = json.RawMessage(chunk.Arguments)
+				if err := updateTool(toolParts, chunk.OutputIndex, "", "", chunk.Arguments, false, false); err != nil {
+					return err
+				}
 			}
 		case "response.output_item.done":
-			if err := storeResponsesOutputItem(outputItems, &outputItemBytes, chunk.OutputIndex, envelope.Item); err != nil {
-				return err
-			}
 			if chunk.Item.Type == "function_call" {
 				call := toolParts[chunk.OutputIndex]
 				if call == nil {
@@ -376,31 +381,34 @@ func (c *HTTPModelClient) streamOpenAIResponsesAttempt(ctx context.Context, prov
 					if id == "" {
 						id = chunk.Item.ID
 					}
-					call = &ToolCall{ID: id}
-					toolParts[chunk.OutputIndex] = call
+					if err := updateTool(toolParts, chunk.OutputIndex, id, "", "", false, false); err != nil {
+						return err
+					}
+					call = toolParts[chunk.OutputIndex]
 				}
 				if chunk.Item.CallID != "" {
-					call.ID = chunk.Item.CallID
+					if err := updateTool(toolParts, chunk.OutputIndex, chunk.Item.CallID, "", "", false, false); err != nil {
+						return err
+					}
 				}
 				if chunk.Item.Name != "" {
-					call.Name = chunk.Item.Name
+					if err := updateTool(toolParts, chunk.OutputIndex, "", chunk.Item.Name, "", false, false); err != nil {
+						return err
+					}
 				}
 				if chunk.Item.Arguments != "" {
-					call.Arguments = json.RawMessage(chunk.Item.Arguments)
-				}
-			}
-		case "response.completed":
-			completed = true
-			var fallbackText strings.Builder
-			if len(chunk.Response.Output) > 0 && responsesCompletedOutputSupersedes(outputItems, chunk.Response.Output) {
-				outputItems = map[int]json.RawMessage{}
-				outputItemBytes = 0
-				for index, item := range chunk.Response.Output {
-					if err := storeResponsesOutputItem(outputItems, &outputItemBytes, index, item); err != nil {
+					if err := updateTool(toolParts, chunk.OutputIndex, "", "", chunk.Item.Arguments, false, false); err != nil {
 						return err
 					}
 				}
 			}
+			if err := storeResponsesOutputItem(outputItems, &outputItemBytes, chunk.OutputIndex, envelope.Item); err != nil {
+				return err
+			}
+		case "response.completed":
+			completed = true
+			var fallbackText strings.Builder
+			replaceOutput := len(chunk.Response.Output) > 0 && responsesCompletedOutputSupersedes(outputItems, chunk.Response.Output)
 			for index, item := range chunk.Response.Output {
 				var output struct {
 					Type      string `json:"type"`
@@ -418,20 +426,32 @@ func (c *HTTPModelClient) streamOpenAIResponsesAttempt(ctx context.Context, prov
 				}
 				switch output.Type {
 				case "function_call":
-					if toolParts[index] == nil {
-						id := output.CallID
-						if id == "" {
-							id = output.ID
-						}
-						toolParts[index] = &ToolCall{ID: id, Name: output.Name, Arguments: json.RawMessage(output.Arguments)}
+					id := output.CallID
+					if id == "" {
+						id = output.ID
+					}
+					if err := updateTool(toolParts, index, id, output.Name, output.Arguments, false, false); err != nil {
+						return err
 					}
 				case "message":
 					if !textEmitted {
 						for _, part := range output.Content {
 							if part.Type == "output_text" {
+								if fallbackText.Len() > MaxAssistantBytes-len(part.Text) {
+									return errors.New("AI provider output exceeds the response budget")
+								}
 								fallbackText.WriteString(part.Text)
 							}
 						}
+					}
+				}
+			}
+			if replaceOutput {
+				outputItems = map[int]json.RawMessage{}
+				outputItemBytes = 0
+				for index, item := range chunk.Response.Output {
+					if err := storeResponsesOutputItem(outputItems, &outputItemBytes, index, item); err != nil {
+						return err
 					}
 				}
 			}
@@ -446,7 +466,7 @@ func (c *HTTPModelClient) streamOpenAIResponsesAttempt(ctx context.Context, prov
 				usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 			}
 			items := sortedResponsesOutputItems(outputItems)
-			return emit(responsesCompletionEvent(provider.ID, request.Model, toolParts, items, responsesOutputItemsComplete(items, toolParts, textEmitted), usage))
+			return finishSSE(emit(responsesCompletionEvent(provider.ID, request.Model, toolParts, items, responsesOutputItemsComplete(items, toolParts, textEmitted), usage)))
 		case "response.failed", "response.incomplete":
 			message := chunk.Response.Error.Message
 			code := chunk.Response.Error.Code
@@ -565,10 +585,11 @@ func responsesCompletionEvent(providerID, model string, parts map[int]*ToolCall,
 		outputItems = reasoningItems
 	}
 	if len(calls) > 0 && len(outputItems) > 0 {
-		raw, err := json.Marshal(responsesNativeContext{Type: "openai_responses_output", ProviderID: providerID, Model: model, Complete: complete, Items: outputItems})
-		if err == nil {
-			calls[0].ProviderData = raw
+		raw, err := marshalProviderJSON(responsesNativeContext{Type: "openai_responses_output", ProviderID: providerID, Model: model, Complete: complete, Items: outputItems}, maxProviderNativeBytes)
+		if err != nil {
+			return CompletionEvent{err: err}
 		}
+		calls[0].ProviderData = raw
 	}
 	return CompletionEvent{Done: true, ToolCalls: calls, Usage: usage}
 }
@@ -577,11 +598,23 @@ func storeResponsesOutputItem(items map[int]json.RawMessage, totalBytes *int, in
 	if len(raw) == 0 || !json.Valid(raw) {
 		return nil
 	}
+	if index < 0 || (items[index] == nil && len(items) >= 128) {
+		return errors.New("AI provider exceeds the output item budget")
+	}
 	var item struct {
-		Type string `json:"type"`
+		Type      string `json:"type"`
+		ID        string `json:"id"`
+		CallID    string `json:"call_id"`
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
 	}
 	if json.Unmarshal(raw, &item) != nil || item.Type == "" {
 		return nil
+	}
+	if item.Type == "function_call" {
+		if len(item.ID) > maxToolIDBytes || len(item.CallID) > maxToolIDBytes || len(item.Name) > maxToolNameBytes || len(item.Arguments) > MaxToolResultBytes {
+			return errors.New("AI provider exceeds the tool fragment budget")
+		}
 	}
 	if previous := items[index]; len(previous) > 0 {
 		*totalBytes -= len(previous)
@@ -723,7 +756,7 @@ func (c *HTTPModelClient) client(provider Provider) *http.Client {
 func (c *HTTPModelClient) do(ctx context.Context, provider Provider, apiKey, method, endpoint string, payload any, headers map[string]string) (*http.Response, error) {
 	var body io.Reader
 	if payload != nil {
-		encoded, err := json.Marshal(payload)
+		encoded, err := marshalProviderJSON(payload, maxProviderRequestBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -731,7 +764,7 @@ func (c *HTTPModelClient) do(ctx context.Context, provider Provider, apiKey, met
 	}
 	request, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(provider.BaseURL, "/")+endpoint, body)
 	if err != nil {
-		return nil, err
+		return nil, safeProviderTransportError(err, apiKey)
 	}
 	request.Header.Set("Accept", "text/event-stream")
 	if payload != nil {
@@ -742,19 +775,60 @@ func (c *HTTPModelClient) do(ctx context.Context, provider Provider, apiKey, met
 	}
 	response, err := c.client(provider).Do(request)
 	if err != nil {
-		return nil, err
+		return nil, safeProviderTransportError(err, apiKey)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		defer response.Body.Close()
-		data, _ := io.ReadAll(io.LimitReader(response.Body, 32<<10))
-		providerErr := providerHTTPError(response.StatusCode, data).(*ProviderError)
-		if apiKey != "" {
-			providerErr.Message = strings.ReplaceAll(providerErr.Message, apiKey, "[REDACTED]")
+		data, _ := io.ReadAll(io.LimitReader(response.Body, (32<<10)+1))
+		if len(data) > 32<<10 {
+			data = []byte("Provider error response exceeds the body budget")
 		}
+		providerErr := providerHTTPError(response.StatusCode, data, apiKey).(*ProviderError)
 		providerErr.Message = redactAndLimit(providerErr.Message, 1000)
 		return nil, providerErr
 	}
 	return response, nil
+}
+
+// A provider can copy its received credential into a redirect path before the
+// transport fails. Generic credential-pattern redaction cannot recognize it.
+// Keep the url.Error/net.Error chain and cancellation identity for callers.
+type providerTransportError struct {
+	cause   error
+	message string
+}
+
+func (e *providerTransportError) Error() string { return e.message }
+func (e *providerTransportError) Unwrap() error { return e.cause }
+func (e *providerTransportError) Timeout() bool {
+	var n net.Error
+	return errors.As(e.cause, &n) && n.Timeout()
+}
+func (e *providerTransportError) Temporary() bool {
+	var n interface{ Temporary() bool }
+	return errors.As(e.cause, &n) && n.Temporary()
+}
+
+func safeProviderTransportError(err error, apiKey string) error {
+	safe := func(message string) string {
+		if apiKey != "" {
+			// Redirects may percent-encode even otherwise URL-safe key bytes.
+			if decoded, err := url.PathUnescape(message); err == nil && strings.Contains(decoded, apiKey) {
+				message = decoded
+			}
+			if decoded, err := url.QueryUnescape(message); err == nil && strings.Contains(decoded, apiKey) {
+				message = decoded
+			}
+			for _, form := range []string{apiKey, url.PathEscape(apiKey), url.QueryEscape(apiKey)} {
+				message = strings.ReplaceAll(message, form, "[REDACTED]")
+			}
+		}
+		return redactAndLimit(message, 1000)
+	}
+	if e, ok := err.(*url.Error); ok {
+		return &url.Error{Op: safe(e.Op), URL: safe(e.URL), Err: &providerTransportError{cause: e.Err, message: safe(e.Err.Error())}}
+	}
+	return &providerTransportError{cause: err, message: safe(err.Error())}
 }
 
 func (c *HTTPModelClient) streamOpenAI(ctx context.Context, provider Provider, apiKey string, request CompletionRequest, emit func(CompletionEvent) error) error {
@@ -850,9 +924,11 @@ func (c *HTTPModelClient) streamOpenAIAttempt(ctx context.Context, provider Prov
 			completed = true
 			calls := sortedToolCalls(toolParts)
 			if reasoningSeen && len(calls) > 0 {
-				attachOpenAIChatReasoning(provider.ID, request.Model, calls, reasoningField, reasoning.String())
+				if err := attachOpenAIChatReasoning(provider.ID, request.Model, calls, reasoningField, reasoning.String()); err != nil {
+					return err
+				}
 			}
-			return emit(CompletionEvent{Done: true, ToolCalls: calls})
+			return finishSSE(emit(CompletionEvent{Done: true, ToolCalls: calls}))
 		}
 		var chunk struct {
 			Choices []struct {
@@ -888,16 +964,9 @@ func (c *HTTPModelClient) streamOpenAIAttempt(ctx context.Context, provider Prov
 				reasoning.WriteString(*part)
 			}
 			for _, part := range delta.ToolCalls {
-				call := toolParts[part.Index]
-				if call == nil {
-					call = &ToolCall{ID: part.ID}
-					toolParts[part.Index] = call
+				if err := updateTool(toolParts, part.Index, part.ID, part.Function.Name, part.Function.Arguments, true, true); err != nil {
+					return err
 				}
-				if part.ID != "" {
-					call.ID = part.ID
-				}
-				call.Name += part.Function.Name
-				call.Arguments = append(call.Arguments, part.Function.Arguments...)
 			}
 		}
 		return emit(result)
@@ -916,14 +985,16 @@ type openAIChatNativeContext struct {
 	Text       string `json:"text"`
 }
 
-func attachOpenAIChatReasoning(providerID, model string, calls []ToolCall, field, reasoning string) {
+func attachOpenAIChatReasoning(providerID, model string, calls []ToolCall, field, reasoning string) error {
 	if !validOpenAIChatReasoningField(field) || len(calls) == 0 {
-		return
+		return nil
 	}
-	raw, err := json.Marshal(openAIChatNativeContext{Type: "openai_chat_reasoning", ProviderID: providerID, Model: model, Field: field, Text: reasoning})
-	if err == nil {
-		calls[0].ProviderData = raw
+	raw, err := marshalProviderJSON(openAIChatNativeContext{Type: "openai_chat_reasoning", ProviderID: providerID, Model: model, Field: field, Text: reasoning}, maxProviderNativeBytes)
+	if err != nil {
+		return err
 	}
+	calls[0].ProviderData = raw
+	return nil
 }
 
 func openAIChatReasoningContext(calls []ToolCall, providerID, model string) (string, bool) {
@@ -1119,7 +1190,9 @@ func (c *HTTPModelClient) streamAnthropic(ctx context.Context, provider Provider
 	defer response.Body.Close()
 	toolParts := map[int]*ToolCall{}
 	contentParts := map[int]*anthropicContentBlock{}
+	textParts := map[int]*anthropicTextParts{}
 	contentComplete := true
+	nativeBytes := 0
 	thinkingBytes := 0
 	completed := false
 	err = scanSSE(response.Body, func(event, data string) error {
@@ -1127,13 +1200,14 @@ func (c *HTTPModelClient) streamAnthropic(ctx context.Context, provider Provider
 			Type         string `json:"type"`
 			Index        int    `json:"index"`
 			ContentBlock struct {
-				Type      string `json:"type"`
-				ID        string `json:"id"`
-				Name      string `json:"name"`
-				Text      string `json:"text"`
-				Thinking  string `json:"thinking"`
-				Signature string `json:"signature"`
-				Data      string `json:"data"`
+				Type      string          `json:"type"`
+				ID        string          `json:"id"`
+				Name      string          `json:"name"`
+				Input     json.RawMessage `json:"input"`
+				Text      string          `json:"text"`
+				Thinking  string          `json:"thinking"`
+				Signature string          `json:"signature"`
+				Data      string          `json:"data"`
 			} `json:"content_block"`
 			Delta struct {
 				Type        string `json:"type"`
@@ -1157,9 +1231,22 @@ func (c *HTTPModelClient) streamAnthropic(ctx context.Context, provider Provider
 		}
 		switch chunk.Type {
 		case "content_block_start":
+			delete(textParts, chunk.Index)
+			if len(contentParts) >= 128 {
+				return errors.New("AI provider exceeds the content block budget")
+			}
+			if err := consumeBytes(&nativeBytes, len(chunk.ContentBlock.Text)+len(chunk.ContentBlock.Thinking)+len(chunk.ContentBlock.Signature)+len(chunk.ContentBlock.Data), MaxAssistantBytes); err != nil {
+				return err
+			}
 			switch chunk.ContentBlock.Type {
 			case "tool_use":
-				toolParts[chunk.Index] = &ToolCall{ID: chunk.ContentBlock.ID, Name: chunk.ContentBlock.Name}
+				initial := ""
+				if len(chunk.ContentBlock.Input) > 0 && string(chunk.ContentBlock.Input) != "{}" && string(chunk.ContentBlock.Input) != "null" {
+					initial = string(chunk.ContentBlock.Input)
+				}
+				if err := updateTool(toolParts, chunk.Index, chunk.ContentBlock.ID, chunk.ContentBlock.Name, initial, false, false); err != nil {
+					return err
+				}
 				contentParts[chunk.Index] = &anthropicContentBlock{Type: "tool_use", ID: chunk.ContentBlock.ID, Name: chunk.ContentBlock.Name}
 			case "thinking":
 				contentParts[chunk.Index] = &anthropicContentBlock{Type: "thinking", Thinking: chunk.ContentBlock.Thinking, Signature: chunk.ContentBlock.Signature}
@@ -1176,18 +1263,31 @@ func (c *HTTPModelClient) streamAnthropic(ctx context.Context, provider Provider
 				return errors.New("provider thinking context exceeds 1 MiB")
 			}
 		case "content_block_delta":
+			if err := consumeBytes(&nativeBytes, len(chunk.Delta.Text)+len(chunk.Delta.Thinking)+len(chunk.Delta.Signature), MaxAssistantBytes); err != nil {
+				return err
+			}
 			if call := toolParts[chunk.Index]; call != nil {
-				call.Arguments = append(call.Arguments, chunk.Delta.PartialJSON...)
+				if err := updateTool(toolParts, chunk.Index, "", "", chunk.Delta.PartialJSON, false, true); err != nil {
+					return err
+				}
 			}
 			if block := contentParts[chunk.Index]; block != nil {
+				parts := textParts[chunk.Index]
+				if parts == nil {
+					parts = &anthropicTextParts{}
+					parts.text.WriteString(block.Text)
+					parts.thinking.WriteString(block.Thinking)
+					parts.signature.WriteString(block.Signature)
+					textParts[chunk.Index] = parts
+				}
 				switch chunk.Delta.Type {
 				case "text_delta":
-					block.Text += chunk.Delta.Text
+					parts.text.WriteString(chunk.Delta.Text)
 				case "thinking_delta":
-					block.Thinking += chunk.Delta.Thinking
+					parts.thinking.WriteString(chunk.Delta.Thinking)
 					thinkingBytes += len(chunk.Delta.Thinking)
 				case "signature_delta":
-					block.Signature += chunk.Delta.Signature
+					parts.signature.WriteString(chunk.Delta.Signature)
 					thinkingBytes += len(chunk.Delta.Signature)
 				}
 				if thinkingBytes > MaxAssistantBytes {
@@ -1203,6 +1303,11 @@ func (c *HTTPModelClient) streamAnthropic(ctx context.Context, provider Provider
 			return emit(CompletionEvent{Usage: Usage{OutputTokens: chunk.Usage.OutputTokens}})
 		case "message_stop":
 			completed = true
+			for index, parts := range textParts {
+				if block := contentParts[index]; block != nil {
+					block.Text, block.Thinking, block.Signature = parts.text.String(), parts.thinking.String(), parts.signature.String()
+				}
+			}
 			calls := sortedToolCalls(toolParts)
 			for index, call := range toolParts {
 				if block := contentParts[index]; block != nil && block.Type == "tool_use" && call != nil {
@@ -1212,8 +1317,10 @@ func (c *HTTPModelClient) streamAnthropic(ctx context.Context, provider Provider
 					}
 				}
 			}
-			attachAnthropicContent(provider.ID, request.Model, calls, contentParts, contentComplete)
-			return emit(CompletionEvent{Done: true, ToolCalls: calls})
+			if err := attachAnthropicContent(provider.ID, request.Model, calls, contentParts, contentComplete); err != nil {
+				return err
+			}
+			return finishSSE(emit(CompletionEvent{Done: true, ToolCalls: calls}))
 		}
 		return nil
 	})
@@ -1250,9 +1357,9 @@ type anthropicNativeContext struct {
 	Blocks     []anthropicThinkingBlock `json:"blocks,omitempty"`
 }
 
-func attachAnthropicContent(providerID, model string, calls []ToolCall, parts map[int]*anthropicContentBlock, complete bool) {
+func attachAnthropicContent(providerID, model string, calls []ToolCall, parts map[int]*anthropicContentBlock, complete bool) error {
 	if len(calls) == 0 || len(parts) == 0 {
-		return
+		return nil
 	}
 	indices := make([]int, 0, len(parts))
 	for index := range parts {
@@ -1292,22 +1399,23 @@ func attachAnthropicContent(providerID, model string, calls []ToolCall, parts ma
 	} else {
 		native.Blocks = anthropicThinkingFromContent(content)
 		if len(native.Blocks) == 0 {
-			return
+			return nil
 		}
 	}
-	raw, err := json.Marshal(native)
-	if err != nil {
-		return
-	}
-	if len(raw) > MaxAssistantBytes && complete {
+	raw, err := marshalProviderJSON(native, maxProviderNativeBytes)
+	if errors.Is(err, errProviderJSONBudget) && complete {
 		native.Complete = false
 		native.Content = nil
 		native.Blocks = anthropicThinkingFromContent(content)
-		raw, err = json.Marshal(native)
+		raw, err = marshalProviderJSON(native, maxProviderNativeBytes)
 	}
-	if err == nil && len(raw) <= MaxAssistantBytes && len(native.Content)+len(native.Blocks) > 0 {
+	if err != nil {
+		return err
+	}
+	if len(native.Content)+len(native.Blocks) > 0 {
 		calls[0].ProviderData = raw
 	}
+	return nil
 }
 
 func anthropicProviderContent(providerID, model string, calls []ToolCall) ([]map[string]any, bool) {
@@ -1459,7 +1567,7 @@ func (c *HTTPModelClient) streamGemini(ctx context.Context, provider Provider, a
 	}
 	defer response.Body.Close()
 	thoughtSignatureBytes := 0
-	toolCalls := make([]ToolCall, 0)
+	toolParts := map[int]*ToolCall{}
 	err = scanSSE(response.Body, func(event, data string) error {
 		var chunk struct {
 			Candidates []struct {
@@ -1484,9 +1592,13 @@ func (c *HTTPModelClient) streamGemini(ctx context.Context, provider Provider, a
 			return err
 		}
 		result := CompletionEvent{Usage: Usage{InputTokens: chunk.Usage.Prompt, OutputTokens: chunk.Usage.Candidates}}
+		var text strings.Builder
 		if len(chunk.Candidates) > 0 {
 			for _, part := range chunk.Candidates[0].Content.Parts {
-				result.Delta += part.Text
+				if text.Len() > MaxAssistantBytes-len(part.Text) {
+					return errors.New("AI provider output exceeds the response budget")
+				}
+				text.WriteString(part.Text)
 				if part.FunctionCall.Name != "" {
 					thoughtSignatureBytes += len(part.ThoughtSignature)
 					if thoughtSignatureBytes > MaxAssistantBytes {
@@ -1496,18 +1608,23 @@ func (c *HTTPModelClient) streamGemini(ctx context.Context, provider Provider, a
 					if callID == "" {
 						callID = newID("call")
 					}
-					call := ToolCall{ID: callID, Name: part.FunctionCall.Name, Arguments: part.FunctionCall.Args}
-					attachGeminiThoughtSignature(provider.ID, request.Model, &call, part.ThoughtSignature)
-					toolCalls = append(toolCalls, call)
+					index := len(toolParts)
+					if err := updateTool(toolParts, index, callID, part.FunctionCall.Name, string(part.FunctionCall.Args), false, false); err != nil {
+						return err
+					}
+					if err := attachGeminiThoughtSignature(provider.ID, request.Model, toolParts[index], part.ThoughtSignature); err != nil {
+						return err
+					}
 				}
 			}
 		}
+		result.Delta = text.String()
 		return emit(result)
 	})
 	if err != nil {
 		return err
 	}
-	return emit(CompletionEvent{Done: true, ToolCalls: toolCalls})
+	return emit(CompletionEvent{Done: true, ToolCalls: sortedToolCalls(toolParts)})
 }
 
 func geminiThinkingConfig(model string, level ThinkingLevel) map[string]any {
@@ -1525,14 +1642,16 @@ type geminiNativeContext struct {
 	ThoughtSignature string `json:"thoughtSignature"`
 }
 
-func attachGeminiThoughtSignature(providerID, model string, call *ToolCall, signature string) {
+func attachGeminiThoughtSignature(providerID, model string, call *ToolCall, signature string) error {
 	if call == nil || signature == "" {
-		return
+		return nil
 	}
-	raw, err := json.Marshal(geminiNativeContext{Type: "gemini_thought_signature", ProviderID: providerID, Model: model, ThoughtSignature: signature})
-	if err == nil {
-		call.ProviderData = raw
+	raw, err := marshalProviderJSON(geminiNativeContext{Type: "gemini_thought_signature", ProviderID: providerID, Model: model, ThoughtSignature: signature}, maxProviderNativeBytes)
+	if err != nil {
+		return err
 	}
+	call.ProviderData = raw
+	return nil
 }
 
 func geminiThoughtSignature(providerID, model string, raw json.RawMessage) string {
@@ -1563,24 +1682,49 @@ func (c *HTTPModelClient) Models(ctx context.Context, provider Provider, apiKey 
 	}
 	defer response.Body.Close()
 	var raw struct {
-		Data []struct {
-			ID, Name, DisplayName string
-			InputTokenLimit       int `json:"inputTokenLimit"`
-		} `json:"data"`
-		Models []struct {
-			Name, DisplayName string
-			InputTokenLimit   int `json:"inputTokenLimit"`
-		} `json:"models"`
+		Data   json.RawMessage `json:"data"`
+		Models json.RawMessage `json:"models"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&raw); err != nil {
 		return nil, err
 	}
 	items := []Model{}
-	for _, item := range raw.Data {
-		items = append(items, Model{ModelID: item.ID, DisplayName: item.ID, ContextWindow: 32_000, ToolCalling: true, Enabled: true})
-	}
-	for _, item := range raw.Models {
-		items = append(items, Model{ModelID: strings.TrimPrefix(item.Name, "models/"), DisplayName: item.DisplayName, ContextWindow: item.InputTokenLimit, ToolCalling: true, Enabled: true})
+	for _, list := range []struct {
+		raw    json.RawMessage
+		gemini bool
+	}{{raw.Data, false}, {raw.Models, true}} {
+		if len(list.raw) == 0 || string(list.raw) == "null" {
+			continue
+		}
+		decoder := json.NewDecoder(bytes.NewReader(list.raw))
+		if token, err := decoder.Token(); err != nil || token != json.Delim('[') {
+			return nil, errors.New("invalid provider model list")
+		}
+		for decoder.More() {
+			// Count before decoding another item or growing the Model slice.
+			// A wire-byte cap alone permits over a million tiny JSON objects.
+			if len(items) >= maxDiscoveredModels {
+				return nil, errors.New("provider exceeds the model count budget")
+			}
+			var item struct {
+				ID, Name, DisplayName string
+				InputTokenLimit       int `json:"inputTokenLimit"`
+			}
+			if err := decoder.Decode(&item); err != nil {
+				return nil, err
+			}
+			model := Model{ModelID: item.ID, DisplayName: item.ID, ContextWindow: 32_000, ToolCalling: true, Enabled: true}
+			if list.gemini {
+				model.ModelID, model.DisplayName, model.ContextWindow = strings.TrimPrefix(item.Name, "models/"), item.DisplayName, item.InputTokenLimit
+			}
+			if modelContainsCredential(model, apiKey) {
+				return nil, errors.New("provider authentication credential in model metadata")
+			}
+			items = append(items, model)
+		}
+		if _, err := decoder.Token(); err != nil {
+			return nil, err
+		}
 	}
 	return items, nil
 }
@@ -1588,34 +1732,57 @@ func (c *HTTPModelClient) Models(ctx context.Context, provider Provider, apiKey 
 func scanSSE(reader io.Reader, handler func(event, data string) error) error {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64<<10), 2<<20)
-	event, data := "", ""
+	event := ""
+	var data strings.Builder
+	streamBytes, eventBytes := 0, 0
 	flush := func() error {
-		if data == "" {
+		if data.Len() == 0 {
+			event = ""
 			return nil
 		}
-		err := handler(event, strings.TrimSuffix(data, "\n"))
-		event, data = "", ""
+		err := handler(event, strings.TrimSuffix(data.String(), "\n"))
+		event = ""
+		data.Reset()
 		return err
 	}
 	for scanner.Scan() {
 		line := scanner.Text()
+		if err := consumeBytes(&streamBytes, len(line)+1, maxSSEStreamBytes); err != nil {
+			return err
+		}
 		if line == "" {
+			eventBytes = 0
 			if err := flush(); err != nil {
+				if errors.Is(err, errSSEComplete) {
+					return nil
+				}
 				return err
 			}
 			continue
+		}
+		if err := consumeBytes(&eventBytes, len(line)+1, maxSSEEventBytes); err != nil {
+			return err
 		}
 		if strings.HasPrefix(line, "event:") {
 			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
 		}
 		if strings.HasPrefix(line, "data:") {
-			data += strings.TrimSpace(strings.TrimPrefix(line, "data:")) + "\n"
+			part := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data.Len() > maxSSEEventBytes-len(part)-1 {
+				return errors.New("AI provider SSE event exceeds the event budget")
+			}
+			data.WriteString(part)
+			data.WriteByte('\n')
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	return flush()
+	err := flush()
+	if errors.Is(err, errSSEComplete) {
+		return nil
+	}
+	return err
 }
 
 func sortedToolCalls(parts map[int]*ToolCall) []ToolCall {
@@ -1633,7 +1800,7 @@ func sortedToolCalls(parts map[int]*ToolCall) []ToolCall {
 	return items
 }
 
-func providerHTTPError(status int, body []byte) error {
+func providerHTTPError(status int, body []byte, credentials ...string) error {
 	message := strings.TrimSpace(string(body))
 	var payload struct {
 		Message string `json:"message"`
@@ -1659,6 +1826,11 @@ func providerHTTPError(status int, body []byte) error {
 			message = "模型 API 拒绝了过大的请求（HTTP 413），请上传更小的图片或检查 API 网关请求体上限"
 		} else {
 			message = fmt.Sprintf("模型 API 拒绝了请求（HTTP %d），请确认所选模型支持当前输入（如图片）并检查 API 端点协议", status)
+		}
+	}
+	for _, credential := range credentials {
+		if credential != "" {
+			message = strings.ReplaceAll(message, credential, "[REDACTED]")
 		}
 	}
 	if len(message) > 1000 {

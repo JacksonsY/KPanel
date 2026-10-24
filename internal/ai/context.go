@@ -64,21 +64,69 @@ func (s *Store) contextSnapshot(ctx context.Context, sessionID, runID string, wi
 	if summaryLimit < 512 {
 		summaryLimit = 512
 	}
-	for count > 200 {
-		batch, err := readContextBatch(ctx, tx, sessionID, cursor, min(count-200, 100), true)
+	boundary := Message{}
+	for count > 200 || boundary.ID != "" {
+		limit := min(count-200, 100)
+		if boundary.ID != "" {
+			limit = 100
+		}
+		batch, err := readContextBatchProjected(ctx, tx, sessionID, cursor, limit, true, true)
 		if err != nil {
 			return ContextSnapshot{}, err
 		}
 		if len(batch) == 0 {
+			if count == 0 {
+				break
+			}
 			return ContextSnapshot{}, errors.New("AI context summary cursor did not advance")
+		}
+		if boundary.ID != "" {
+			end := 0
+			for end < len(batch) && !contextMessageAfter(batch[end], boundary) {
+				end++
+			}
+			batch = batch[:end]
+			if end == 0 {
+				boundary = Message{}
+				continue
+			}
+		} else {
+			boundary = batch[len(batch)-1]
+		}
+		for _, message := range batch {
+			if message.RunID == runID && runID != "" {
+				return ContextSnapshot{}, ErrContextPrivateLimit
+			}
+		}
+		boundary, err = expandContextBoundary(ctx, tx, sessionID, batch, boundary)
+		if err != nil {
+			return ContextSnapshot{}, err
 		}
 		summary = appendContextSummary(summary, batch, summaryLimit)
 		cursor = batch[len(batch)-1].ID
+		if cursor == boundary.ID {
+			boundary = Message{}
+		}
 		count -= len(batch)
+	}
+	split, charges, err := planContextBudget(ctx, tx, sessionID, cursor, runID)
+	if err != nil {
+		return ContextSnapshot{}, err
+	}
+	if split > 0 {
+		batch, err := readContextBatchProjected(ctx, tx, sessionID, cursor, split, true, true)
+		if err != nil {
+			return ContextSnapshot{}, err
+		}
+		summary = appendContextSummary(summary, batch, summaryLimit)
+		cursor = batch[len(batch)-1].ID
 	}
 	messages, err := readContextBatch(ctx, tx, sessionID, cursor, 200, textOnly)
 	if err != nil {
 		return ContextSnapshot{}, err
+	}
+	for i := range messages {
+		messages[i].contextPrivateBytes = charges[messages[i].ID]
 	}
 	if window >= 1024 {
 		requiredChars := 0
@@ -104,6 +152,24 @@ func (s *Store) contextSnapshot(ctx context.Context, sessionID, runID string, wi
 				}
 			}
 			if split > 0 && split < len(messages) {
+				// Native tool batches may not be split into orphan results.
+				runIDs := make([]string, len(messages))
+				for i, message := range messages {
+					runIDs[i] = message.RunID
+				}
+				for _, end := range contextRunSpans(runIDs) {
+					if end >= split {
+						split = end
+						break
+					}
+				}
+			}
+			if split > 0 && split < len(messages) {
+				for _, message := range messages[:split] {
+					if message.RunID == runID && runID != "" {
+						return ContextSnapshot{}, ErrContextPrivateLimit
+					}
+				}
 				summary = appendContextSummary(summary, messages[:split], summaryLimit)
 				cursor = messages[split-1].ID
 				messages = messages[split:]
@@ -134,7 +200,7 @@ func (s *Store) contextSnapshot(ctx context.Context, sessionID, runID string, wi
 }
 
 func contextMessageChars(message Message) int {
-	chars := len(message.Content)
+	chars := len(message.Content) + message.contextPrivateBytes
 	for _, attachment := range message.Attachments {
 		if attachment.Kind == "text" {
 			chars += attachment.Size
@@ -146,12 +212,20 @@ func contextMessageChars(message Message) int {
 }
 
 func readContextBatch(ctx context.Context, tx *sql.Tx, sessionID, cursor string, limit int, textOnly bool) ([]Message, error) {
+	return readContextBatchProjected(ctx, tx, sessionID, cursor, limit, textOnly, false)
+}
+
+func readContextBatchProjected(ctx context.Context, tx *sql.Tx, sessionID, cursor string, limit int, textOnly, summaryOnly bool) ([]Message, error) {
 	attachmentColumn, lengthColumn := "X''", "0"
+	contentColumn := "content"
+	if summaryOnly {
+		contentColumn = "CAST(substr(CAST(content AS BLOB),1,1024) AS TEXT)"
+	}
 	if !textOnly {
 		lengthColumn = "length(CAST(attachments_json AS BLOB))"
 		attachmentColumn = attachmentMetadataProjectionSQL()
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,run_id,role,content,tool_call_id,provider_id,provider_name,model_id,model_name,created_at,`+attachmentColumn+`,`+lengthColumn+` FROM messages WHERE session_id=? AND
+	rows, err := tx.QueryContext(ctx, `SELECT id,run_id,role,`+contentColumn+`,tool_call_id,provider_id,provider_name,model_id,model_name,created_at,`+attachmentColumn+`,`+lengthColumn+` FROM messages WHERE session_id=? AND
 		(?='' OR (created_at,id)>(SELECT created_at,id FROM messages WHERE id=? AND session_id=?)) ORDER BY created_at ASC,id ASC LIMIT ?`, sessionID, cursor, cursor, sessionID, limit)
 	if err != nil {
 		return nil, err

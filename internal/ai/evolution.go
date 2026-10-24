@@ -41,8 +41,22 @@ func (s *Store) SaveProposal(ctx context.Context, proposal EvolutionProposal) (E
 	proposal.Version = 1
 	proposal.CreatedAt = now
 	proposal.UpdatedAt = now
-	_, err := s.db.ExecContext(ctx, `INSERT INTO evolution_proposals(id,user_id,session_id,run_id,type,title,content,payload,status,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, proposal.ID, proposal.UserID, proposal.SessionID, proposal.RunID, proposal.Type, proposal.Title, proposal.Content, []byte(proposal.Payload), proposal.Status, proposal.Version, millis(now), millis(now))
-	return proposal, err
+	encrypted, err := s.sealLearningState("evolution_proposals", proposal.ID, proposal.UserID, learningPrivateState{Title: proposal.Title, Content: proposal.Content, Payload: proposal.Payload})
+	if err != nil {
+		return EvolutionProposal{}, err
+	}
+	tx, err := beginLearningWrite(ctx, s.db)
+	if err != nil {
+		return EvolutionProposal{}, err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `INSERT INTO evolution_proposals(id,user_id,session_id,run_id,type,title,content,payload,status,version,created_at,updated_at,private_state) VALUES(?,?,?,?,?,'','',?,?,?,?,?,?)`, proposal.ID, proposal.UserID, proposal.SessionID, proposal.RunID, proposal.Type, []byte(privateStatePlaceholder), proposal.Status, proposal.Version, millis(now), millis(now), encrypted); err != nil {
+		return EvolutionProposal{}, err
+	}
+	if err = validateLearningStorage(ctx, tx); err != nil {
+		return EvolutionProposal{}, err
+	}
+	return proposal, tx.Commit()
 }
 
 type ProcedureStep struct {
@@ -51,14 +65,19 @@ type ProcedureStep struct {
 }
 
 func (s *Store) Proposals(ctx context.Context, userID string, status EvolutionStatus) ([]EvolutionProposal, error) {
-	query := `SELECT id,user_id,session_id,run_id,type,title,content,payload,status,version,created_at,updated_at FROM evolution_proposals WHERE user_id=?`
+	tx, err := beginLearningRead(ctx, s.db, "evolution_proposals", userID)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	query := `SELECT id,user_id,session_id,run_id,type,CASE WHEN length(private_state)<=10486784 THEN private_state END,status,version,created_at,updated_at FROM evolution_proposals WHERE user_id=?`
 	args := []any{userID}
 	if status != "" {
 		query += ` AND status=?`
 		args = append(args, status)
 	}
 	query += ` ORDER BY created_at DESC`
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -68,10 +87,14 @@ func (s *Store) Proposals(ctx context.Context, userID string, status EvolutionSt
 		var item EvolutionProposal
 		var payload []byte
 		var created, updated int64
-		if err := rows.Scan(&item.ID, &item.UserID, &item.SessionID, &item.RunID, &item.Type, &item.Title, &item.Content, &payload, &item.Status, &item.Version, &created, &updated); err != nil {
+		if err := rows.Scan(&item.ID, &item.UserID, &item.SessionID, &item.RunID, &item.Type, &payload, &item.Status, &item.Version, &created, &updated); err != nil {
 			return nil, err
 		}
-		item.Payload = append(json.RawMessage(nil), payload...)
+		value, err := s.openLearningState("evolution_proposals", item.ID, item.UserID, payload)
+		if err != nil {
+			return nil, err
+		}
+		item.Title, item.Content, item.Payload = value.Title, value.Content, value.Payload
 		item.CreatedAt, item.UpdatedAt = fromMillis(created), fromMillis(updated)
 		items = append(items, item)
 	}
@@ -79,14 +102,14 @@ func (s *Store) Proposals(ctx context.Context, userID string, status EvolutionSt
 }
 
 func (s *Store) DecideProposal(ctx context.Context, userID, id string, approve bool, validTools map[string]bool) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginLearningWrite(ctx, s.db)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	var proposal EvolutionProposal
 	var payload []byte
-	err = tx.QueryRowContext(ctx, `SELECT id,user_id,type,title,content,payload,status,version FROM evolution_proposals WHERE id=? AND user_id=?`, id, userID).Scan(&proposal.ID, &proposal.UserID, &proposal.Type, &proposal.Title, &proposal.Content, &payload, &proposal.Status, &proposal.Version)
+	err = tx.QueryRowContext(ctx, `SELECT id,user_id,type,CASE WHEN length(private_state)<=10486784 THEN private_state END,status,version FROM evolution_proposals WHERE id=? AND user_id=?`, id, userID).Scan(&proposal.ID, &proposal.UserID, &proposal.Type, &payload, &proposal.Status, &proposal.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -96,14 +119,24 @@ func (s *Store) DecideProposal(ctx context.Context, userID, id string, approve b
 	if proposal.Status != EvolutionPending {
 		return ErrConflict
 	}
-	proposal.Payload = payload
+	value, err := s.openLearningState("evolution_proposals", proposal.ID, proposal.UserID, payload)
+	if err != nil {
+		return err
+	}
+	proposal.Title, proposal.Content, proposal.Payload = value.Title, value.Content, value.Payload
+	payload = value.Payload
 	now := s.now().UTC()
 	status := EvolutionRejected
 	if approve {
 		status = EvolutionActive
 		switch proposal.Type {
 		case EvolutionMemory:
-			_, err = tx.ExecContext(ctx, `INSERT INTO memories(id,user_id,title,content,enabled,version,created_at,updated_at) VALUES(?,?,?,?,1,1,?,?)`, newID("mem"), userID, proposal.Title, proposal.Content, millis(now), millis(now))
+			memoryID := newID("mem")
+			encrypted, sealErr := s.sealLearningState("memories", memoryID, userID, learningPrivateState{Title: proposal.Title, Content: proposal.Content})
+			if sealErr != nil {
+				return sealErr
+			}
+			_, err = tx.ExecContext(ctx, `INSERT INTO memories(id,user_id,title,content,enabled,version,created_at,updated_at,private_state) VALUES(?,?,'','',1,1,?,?,?)`, memoryID, userID, millis(now), millis(now), encrypted)
 		case EvolutionProcedure:
 			var body struct {
 				Condition string          `json:"condition"`
@@ -119,9 +152,19 @@ func (s *Store) DecideProposal(ctx context.Context, userID, id string, approve b
 			}
 			encoded, _ := json.Marshal(body.Steps)
 			procedureID := newID("proc")
-			_, err = tx.ExecContext(ctx, `INSERT INTO procedures(id,user_id,title,condition_text,steps,enabled,version,created_at,updated_at) VALUES(?,?,?,?,?,1,1,?,?)`, procedureID, userID, proposal.Title, body.Condition, encoded, millis(now), millis(now))
+			versionID := newID("pver")
+			value := learningPrivateState{Title: proposal.Title, Condition: body.Condition, Steps: encoded}
+			encrypted, sealErr := s.sealLearningState("procedures", procedureID, userID, value)
+			if sealErr != nil {
+				return sealErr
+			}
+			versionEncrypted, sealErr := s.sealLearningState("procedure_versions", versionID+"\x00"+procedureID, userID, value)
+			if sealErr != nil {
+				return sealErr
+			}
+			_, err = tx.ExecContext(ctx, `INSERT INTO procedures(id,user_id,title,condition_text,steps,enabled,version,created_at,updated_at,private_state) VALUES(?,?,'','',?,1,1,?,?,?)`, procedureID, userID, []byte(privateStatePlaceholder), millis(now), millis(now), encrypted)
 			if err == nil {
-				_, err = tx.ExecContext(ctx, `INSERT INTO procedure_versions(id,procedure_id,user_id,title,condition_text,steps,version,created_at) VALUES(?,?,?,?,?,?,1,?)`, newID("pver"), procedureID, userID, proposal.Title, body.Condition, encoded, millis(now))
+				_, err = tx.ExecContext(ctx, `INSERT INTO procedure_versions(id,procedure_id,user_id,title,condition_text,steps,version,created_at,private_state) VALUES(?,?,?,'','',?,1,?,?)`, versionID, procedureID, userID, []byte(privateStatePlaceholder), millis(now), versionEncrypted)
 			}
 		default:
 			return errors.New("invalid proposal type")
@@ -138,11 +181,19 @@ func (s *Store) DecideProposal(ctx context.Context, userID, id string, approve b
 	if changed != 1 {
 		return ErrConflict
 	}
+	if err := validateLearningStorage(ctx, tx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 func (s *Store) Memories(ctx context.Context, userID string) ([]Memory, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,user_id,title,content,enabled,retired,version,created_at,updated_at FROM memories WHERE user_id=? ORDER BY updated_at DESC`, userID)
+	tx, err := beginLearningRead(ctx, s.db, "memories", userID)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT id,user_id,CASE WHEN length(private_state)<=10486784 THEN private_state END,enabled,retired,version,created_at,updated_at FROM memories WHERE user_id=? ORDER BY updated_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -150,10 +201,16 @@ func (s *Store) Memories(ctx context.Context, userID string) ([]Memory, error) {
 	items := []Memory{}
 	for rows.Next() {
 		var item Memory
+		var encrypted []byte
 		var created, updated int64
-		if err := rows.Scan(&item.ID, &item.UserID, &item.Title, &item.Content, &item.Enabled, &item.Retired, &item.Version, &created, &updated); err != nil {
+		if err := rows.Scan(&item.ID, &item.UserID, &encrypted, &item.Enabled, &item.Retired, &item.Version, &created, &updated); err != nil {
 			return nil, err
 		}
+		value, err := s.openLearningState("memories", item.ID, item.UserID, encrypted)
+		if err != nil {
+			return nil, err
+		}
+		item.Title, item.Content = value.Title, value.Content
 		item.CreatedAt, item.UpdatedAt = fromMillis(created), fromMillis(updated)
 		items = append(items, item)
 	}
@@ -200,7 +257,12 @@ func (s *Store) DeleteMemory(ctx context.Context, userID, id string) error {
 }
 
 func (s *Store) Procedures(ctx context.Context, userID string) ([]Procedure, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,user_id,title,condition_text,steps,enabled,retired,version,created_at,updated_at FROM procedures WHERE user_id=? ORDER BY updated_at DESC`, userID)
+	tx, err := beginLearningRead(ctx, s.db, "procedures", userID)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT id,user_id,CASE WHEN length(private_state)<=10486784 THEN private_state END,enabled,retired,version,created_at,updated_at FROM procedures WHERE user_id=? ORDER BY updated_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -210,10 +272,14 @@ func (s *Store) Procedures(ctx context.Context, userID string) ([]Procedure, err
 		var item Procedure
 		var steps []byte
 		var created, updated int64
-		if err := rows.Scan(&item.ID, &item.UserID, &item.Title, &item.Condition, &steps, &item.Enabled, &item.Retired, &item.Version, &created, &updated); err != nil {
+		if err := rows.Scan(&item.ID, &item.UserID, &steps, &item.Enabled, &item.Retired, &item.Version, &created, &updated); err != nil {
 			return nil, err
 		}
-		item.Steps = append(json.RawMessage(nil), steps...)
+		value, err := s.openLearningState("procedures", item.ID, item.UserID, steps)
+		if err != nil {
+			return nil, err
+		}
+		item.Title, item.Condition, item.Steps = value.Title, value.Condition, value.Steps
 		item.CreatedAt, item.UpdatedAt = fromMillis(created), fromMillis(updated)
 		items = append(items, item)
 	}
@@ -264,7 +330,7 @@ func (s *Store) ReviseProcedure(ctx context.Context, userID, id, title, conditio
 	if current.Retired {
 		return Procedure{}, ErrConflict
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := beginLearningWrite(ctx, s.db)
 	if err != nil {
 		return Procedure{}, err
 	}
@@ -272,15 +338,20 @@ func (s *Store) ReviseProcedure(ctx context.Context, userID, id, title, conditio
 	now := s.now().UTC()
 	if rollbackVersion > 0 {
 		var version Procedure
+		var versionID string
 		var raw []byte
-		err = tx.QueryRowContext(ctx, `SELECT title,condition_text,steps,version FROM procedure_versions WHERE procedure_id=? AND user_id=? AND version=?`, id, userID, rollbackVersion).Scan(&version.Title, &version.Condition, &raw, &version.Version)
+		err = tx.QueryRowContext(ctx, `SELECT id,CASE WHEN length(private_state)<=10486784 THEN private_state END,version FROM procedure_versions WHERE procedure_id=? AND user_id=? AND version=?`, id, userID, rollbackVersion).Scan(&versionID, &raw, &version.Version)
 		if errors.Is(err, sql.ErrNoRows) {
 			return Procedure{}, ErrNotFound
 		}
 		if err != nil {
 			return Procedure{}, err
 		}
-		title, condition, steps = version.Title, version.Condition, raw
+		value, err := s.openLearningState("procedure_versions", versionID+"\x00"+id, userID, raw)
+		if err != nil {
+			return Procedure{}, err
+		}
+		title, condition, steps = value.Title, value.Condition, value.Steps
 	}
 	if strings.TrimSpace(title) == "" {
 		title = current.Title
@@ -296,10 +367,27 @@ func (s *Store) ReviseProcedure(ctx context.Context, userID, id, title, conditio
 		return Procedure{}, errors.New("procedure steps must contain 1 to 10 registered tool calls")
 	}
 	newVersion := current.Version + 1
-	if _, err = tx.ExecContext(ctx, `UPDATE procedures SET title=?,condition_text=?,steps=?,version=?,updated_at=? WHERE id=? AND user_id=? AND version=?`, title, condition, []byte(steps), newVersion, millis(now), id, userID, current.Version); err != nil {
+	versionID := newID("pver")
+	value := learningPrivateState{Title: title, Condition: condition, Steps: steps}
+	encrypted, err := s.sealLearningState("procedures", id, userID, value)
+	if err != nil {
 		return Procedure{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO procedure_versions(id,procedure_id,user_id,title,condition_text,steps,version,created_at) VALUES(?,?,?,?,?,?,?,?)`, newID("pver"), id, userID, title, condition, []byte(steps), newVersion, millis(now)); err != nil {
+	versionEncrypted, err := s.sealLearningState("procedure_versions", versionID+"\x00"+id, userID, value)
+	if err != nil {
+		return Procedure{}, err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE procedures SET private_state=?,version=?,updated_at=? WHERE id=? AND user_id=? AND version=?`, encrypted, newVersion, millis(now), id, userID, current.Version)
+	if err != nil {
+		return Procedure{}, err
+	}
+	if changed, _ := result.RowsAffected(); changed != 1 {
+		return Procedure{}, ErrConflict
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO procedure_versions(id,procedure_id,user_id,title,condition_text,steps,version,created_at,private_state) VALUES(?,?,?,'','',?,?,?,?)`, versionID, id, userID, []byte(privateStatePlaceholder), newVersion, millis(now), versionEncrypted); err != nil {
+		return Procedure{}, err
+	}
+	if err = validateLearningStorage(ctx, tx); err != nil {
 		return Procedure{}, err
 	}
 	if err = tx.Commit(); err != nil {

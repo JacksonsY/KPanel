@@ -1,17 +1,20 @@
 package panel
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/ai"
 	"github.com/kejilion/kejilion-panel/internal/auth"
@@ -22,22 +25,37 @@ type aiSnapshotRecorder struct {
 	cancel context.CancelFunc
 }
 
+type aiDeadlineRecorder struct {
+	*httptest.ResponseRecorder
+	deadlines int
+}
+
+func (w *aiDeadlineRecorder) SetWriteDeadline(time.Time) error {
+	w.deadlines++
+	return nil
+}
+
 func (w *aiSnapshotRecorder) Flush() {
 	w.ResponseRecorder.Flush()
 	w.cancel()
 }
 
 func TestAIHistoryAndStreamAttachmentMetadata(t *testing.T) {
-	server, _ := newTestServer(t)
+	server, tokenPath := newTestServer(t)
+	sessionCookie, _ := bootstrapCookies(t, server, tokenPath)
+	authSession, err := server.auth.Authenticate(sessionCookie.Value)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := server.EnableAI(); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	session, err := server.ai.Store.CreateSession(ctx, ai.Session{UserID: "admin", ProviderID: "provider", ModelID: "model"})
+	session, err := server.ai.Store.CreateSession(ctx, ai.Session{UserID: authSession.User.ID, ProviderID: "provider", ModelID: "model"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := server.ai.Store.CreateRun(ctx, ai.Run{SessionID: session.ID, UserID: "admin", ProviderID: "provider", ModelID: "model"})
+	run, err := server.ai.Store.CreateRun(ctx, ai.Run{SessionID: session.ID, UserID: authSession.User.ID, ProviderID: "provider", ModelID: "model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,14 +65,16 @@ func TestAIHistoryAndStreamAttachmentMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	response := httptest.NewRecorder()
-	server.aiMessages(response, httptest.NewRequest(http.MethodGet, "/", nil), "admin", session.ID)
+	server.aiMessages(response, httptest.NewRequest(http.MethodGet, "/", nil), authSession.User.ID, session.ID)
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"size":5`) || strings.Contains(response.Body.String(), "aGVsbG8=") {
 		t.Fatalf("history=%d %s", response.Code, response.Body.String())
 	}
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream := &aiSnapshotRecorder{ResponseRecorder: httptest.NewRecorder(), cancel: cancel}
-	server.aiRunEvents(stream, httptest.NewRequest(http.MethodGet, "/", nil).WithContext(streamCtx), auth.Session{User: auth.PublicUser{ID: "admin"}}, run.ID)
+	request := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(streamCtx)
+	request.AddCookie(sessionCookie)
+	server.aiRunEvents(stream, request, authSession, run.ID)
 	if stream.Code != http.StatusOK || !strings.Contains(stream.Body.String(), "event: run.snapshot") || !strings.Contains(stream.Body.String(), `"size":5`) || strings.Contains(stream.Body.String(), "aGVsbG8=") {
 		t.Fatalf("stream=%d %s", stream.Code, stream.Body.String())
 	}
@@ -69,14 +89,234 @@ func TestAIHistoryAndStreamAttachmentMetadata(t *testing.T) {
 	for _, streamRequest := range []bool{false, true} {
 		response := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "/", nil)
+		request.AddCookie(sessionCookie)
 		if streamRequest {
-			server.aiRunEvents(response, request, auth.Session{User: auth.PublicUser{ID: "admin"}}, run.ID)
+			server.aiRunEvents(response, request, authSession, run.ID)
 		} else {
-			server.aiMessages(response, request, "admin", session.ID)
+			server.aiMessages(response, request, authSession.User.ID, session.ID)
 		}
 		if response.Code != http.StatusUnprocessableEntity || strings.Contains(response.Body.String(), "run.snapshot") || !strings.Contains(response.Body.String(), "ai_request_failed") {
 			t.Fatalf("corrupt stream=%v: %d %s", streamRequest, response.Code, response.Body.String())
 		}
+	}
+}
+
+type aiStreamFixture struct {
+	server  *Server
+	cookie  *http.Cookie
+	csrf    *http.Cookie
+	session auth.Session
+	run     ai.Run
+}
+
+func newAIStreamFixture(t *testing.T) aiStreamFixture {
+	t.Helper()
+	server, tokenPath := newTestServer(t)
+	if err := server.EnableAI(); err != nil {
+		t.Fatal(err)
+	}
+	cookie, csrf := bootstrapCookies(t, server, tokenPath)
+	session, err := server.auth.Authenticate(cookie.Value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := server.ai.Store.CreateSession(context.Background(), ai.Session{UserID: session.User.ID, ProviderID: "provider", ModelID: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := server.ai.Store.CreateRun(context.Background(), ai.Run{SessionID: conversation.ID, UserID: session.User.ID, ProviderID: "provider", ModelID: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return aiStreamFixture{server: server, cookie: cookie, csrf: csrf, session: session, run: run}
+}
+
+func TestAIStreamRejectsOversizedToolStateSnapshot(t *testing.T) {
+	fixture := newAIStreamFixture(t)
+	native := json.RawMessage(`{"text":"` + strings.Repeat("x", 900<<10) + `"}`)
+	for i := 0; i < 6; i++ {
+		_, err := fixture.server.ai.Store.SaveToolCall(context.Background(), ai.ToolCall{ID: string(rune('a' + i)), RunID: fixture.run.ID, SessionID: fixture.run.SessionID, Name: "host_read", Arguments: json.RawMessage(`{}`), ProviderData: native, Status: ai.ToolCompleted})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	response := &aiSnapshotRecorder{ResponseRecorder: httptest.NewRecorder(), cancel: cancel}
+	request := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+	request.AddCookie(fixture.cookie)
+	fixture.server.aiRunEvents(response, request, fixture.session, fixture.run.ID)
+	if response.Code != http.StatusUnprocessableEntity || strings.Contains(response.Body.String(), "run.snapshot") || strings.Contains(response.Header().Get("Content-Type"), "event-stream") {
+		t.Fatalf("oversized snapshot did not fail before streaming: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func openAIHTTPStream(t *testing.T, fixture aiStreamFixture) (<-chan string, <-chan struct{}, context.CancelFunc) {
+	t.Helper()
+	handlerDone := make(chan struct{})
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(handlerDone)
+		fixture.server.ServeHTTP(w, r)
+	}))
+	t.Cleanup(httpServer.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	t.Cleanup(cancel)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, httpServer.URL+"/api/v1/ai/runs/"+fixture.run.ID+"/events", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Host = "panel.test"
+	request.AddCookie(fixture.cookie)
+	response, err := httpServer.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "text/event-stream" {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("stream status=%d body=%s", response.StatusCode, body)
+	}
+	lines := make(chan string, 32)
+	go func() {
+		defer close(lines)
+		reader := bufio.NewScanner(response.Body)
+		for reader.Scan() {
+			select {
+			case lines <- reader.Text():
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return lines, handlerDone, cancel
+}
+
+func waitAIStreamReady(t *testing.T, fixture aiStreamFixture, lines <-chan string) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	snapshot := false
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				t.Fatal("stream closed before normal output")
+			}
+			snapshot = snapshot || line == "event: run.snapshot"
+			if strings.Contains(line, "normal-output-marker") {
+				if !snapshot {
+					t.Fatal("normal output preceded snapshot")
+				}
+				return
+			}
+		case <-tick.C:
+			fixture.server.ai.Events.Publish(ai.RunEvent{RunID: fixture.run.ID, Type: "message.delta", Data: "normal-output-marker"})
+		case <-deadline.C:
+			t.Fatal("normal stream output did not arrive")
+		}
+	}
+}
+
+func assertAIStreamClosed(t *testing.T, lines <-chan string, handlerDone <-chan struct{}, timeout time.Duration) {
+	t.Helper()
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				select {
+				case <-handlerDone:
+					return
+				case <-deadline.C:
+					t.Fatal("stream body closed but handler did not exit")
+				}
+			}
+			if strings.Contains(line, "revoked-output-marker") || strings.HasPrefix(line, ": heartbeat") {
+				t.Fatalf("revoked stream received output: %s", line)
+			}
+		case <-deadline.C:
+			t.Fatal("stream did not close within its bound")
+		}
+	}
+}
+
+func TestAIStreamStopsAfterSessionRevocation(t *testing.T) {
+	for _, action := range []string{"logout", "password", "transport"} {
+		t.Run(action, func(t *testing.T) {
+			fixture := newAIStreamFixture(t)
+			lines, handlerDone, _ := openAIHTTPStream(t, fixture)
+			waitAIStreamReady(t, fixture, lines)
+			headers := map[string]string{"Origin": "http://panel.test", "X-CSRF-Token": fixture.csrf.Value, "Content-Type": "application/json"}
+			switch action {
+			case "logout":
+				response := authenticatedRequest(fixture.server, http.MethodPost, "/api/v1/auth/logout", nil, fixture.cookie, fixture.csrf, headers)
+				if response.Code != http.StatusOK {
+					t.Fatalf("logout=%d %s", response.Code, response.Body.String())
+				}
+			case "password":
+				response := authenticatedRequest(fixture.server, http.MethodPut, "/api/v1/settings/password", []byte(`{"currentPassword":"a-strong-password-1","newPassword":"another-strong-password-2"}`), fixture.cookie, fixture.csrf, headers)
+				if response.Code != http.StatusOK {
+					t.Fatalf("password change=%d %s", response.Code, response.Body.String())
+				}
+			case "transport":
+				if err := fixture.server.auth.ChangeTransportBoundary(func() error { return nil }); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := fixture.server.auth.Authenticate(fixture.cookie.Value); !errors.Is(err, auth.ErrInvalidSession) {
+				t.Fatalf("session still valid after %s: %v", action, err)
+			}
+			fixture.server.ai.Events.Publish(ai.RunEvent{RunID: fixture.run.ID, Type: "message.delta", Data: "revoked-output-marker"})
+			fixture.server.ai.Events.Publish(ai.RunEvent{RunID: fixture.run.ID, Type: "tool.updated", Data: "revoked-output-marker"})
+			assertAIStreamClosed(t, lines, handlerDone, 2*time.Second)
+		})
+	}
+}
+
+func TestAIStreamIdleRevocationStopsAtHeartbeat(t *testing.T) {
+	fixture := newAIStreamFixture(t)
+	lines, handlerDone, _ := openAIHTTPStream(t, fixture)
+	if err := fixture.server.auth.Logout(fixture.cookie.Value); err != nil {
+		t.Fatal(err)
+	}
+	assertAIStreamClosed(t, lines, handlerDone, 18*time.Second)
+}
+
+func TestAIStreamContextCancelExits(t *testing.T) {
+	fixture := newAIStreamFixture(t)
+	lines, handlerDone, cancel := openAIHTTPStream(t, fixture)
+	waitAIStreamReady(t, fixture, lines)
+	cancel()
+	assertAIStreamClosed(t, lines, handlerDone, 2*time.Second)
+}
+
+func TestAIStreamSnapshotRequiresOriginalLiveSession(t *testing.T) {
+	for _, action := range []string{"revoked", "different-token"} {
+		t.Run(action, func(t *testing.T) {
+			fixture := newAIStreamFixture(t)
+			cookie := fixture.cookie
+			if action == "revoked" {
+				if err := fixture.server.auth.Logout(cookie.Value); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				credentials, err := fixture.server.auth.Login("192.0.2.1", "admin", "a-strong-password-1", "")
+				if err != nil {
+					t.Fatal(err)
+				}
+				cookie = &http.Cookie{Name: cookie.Name, Value: credentials.Token}
+			}
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request.AddCookie(cookie)
+			response := &aiDeadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+			fixture.server.aiRunEvents(response, request, fixture.session, fixture.run.ID)
+			if response.Body.Len() != 0 || response.deadlines != 0 {
+				t.Fatalf("invalid original session received snapshot/deadline: body=%s deadlines=%d", response.Body.String(), response.deadlines)
+			}
+		})
 	}
 }
 
@@ -298,7 +538,7 @@ func TestAIFileToolsUseBoundedAgentRoutesAndRedactContent(t *testing.T) {
 	agent := &stubAgent{response: AgentResponse{StatusCode: 200, ContentType: "application/json", Body: []byte(`{"ok":true}`)}}
 	server.agent = agent
 	tools := &panelAITools{server: server}
-	execution := ai.ToolExecutionContext{UserID: "admin", SessionID: "ses", RunID: "run", ToolCallID: "call"}
+	execution := ai.ToolExecutionContext{UserID: "admin", SessionID: "ses", RunID: "run", ToolCallID: "call", Approved: true}
 	if _, err := tools.Execute(context.Background(), execution, "host_file_read", json.RawMessage(`{"path":"/tmp/kpanel-ai-test.txt"}`)); err != nil {
 		t.Fatal(err)
 	}

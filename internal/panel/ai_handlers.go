@@ -620,6 +620,11 @@ func (s *Server) aiRunEvents(w http.ResponseWriter, r *http.Request, session aut
 		s.aiJSON(w, r, nil, err, 0)
 		return
 	}
+	calls, err := s.ai.Store.ToolCalls(r.Context(), id)
+	if err != nil {
+		s.aiJSON(w, r, nil, err, 0)
+		return
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Accel-Buffering", "no")
@@ -628,16 +633,29 @@ func (s *Server) aiRunEvents(w http.ResponseWriter, r *http.Request, session aut
 		s.writeProblem(w, r, 500, "stream_unavailable", "Streaming unavailable", "")
 		return
 	}
+	cookie, err := r.Cookie(s.config.CookieName)
+	if err != nil {
+		return
+	}
+	validSession := func() bool {
+		if r.Context().Err() != nil {
+			return false
+		}
+		current, err := s.auth.Authenticate(cookie.Value)
+		return err == nil && current.TokenHash == session.TokenHash && current.User.ID == session.User.ID
+	}
 	write := func(event string, value any) bool {
-		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(20 * time.Second))
 		data, _ := json.Marshal(value)
+		if !validSession() {
+			return false
+		}
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(20 * time.Second))
 		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data); err != nil {
 			return false
 		}
 		flusher.Flush()
 		return true
 	}
-	calls, _ := s.ai.Store.ToolCalls(r.Context(), id)
 	if !write("run.snapshot", map[string]any{"run": run, "toolCalls": calls, "messages": page.Items}) {
 		return
 	}
@@ -649,15 +667,15 @@ func (s *Server) aiRunEvents(w http.ResponseWriter, r *http.Request, session aut
 		select {
 		case <-r.Context().Done():
 			return
-		case event := <-channel:
-			if !write(event.Type, event.Data) {
+		case event, ok := <-channel:
+			if !ok || !write(event.Type, event.Data) {
 				return
 			}
 		case <-heartbeat.C:
-			if time.Now().After(session.ExpiresAt) {
-				write("auth.expired", map[string]string{"message": "Session expired"})
+			if !validSession() {
 				return
 			}
+			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(20 * time.Second))
 			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
 				return
 			}

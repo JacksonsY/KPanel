@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -27,6 +28,50 @@ var (
 	ErrToolRejected  = errors.New("host operation was rejected")
 )
 
+const maxProviders = 128
+
+// Inspect legacy catalogs in SQLite before copying any configuration into Go.
+// The same read snapshot is used for validation and materialization.
+func validateCatalog(ctx context.Context, tx *sql.Tx) error {
+	if err := validateProviderCatalog(ctx, tx); err != nil {
+		return err
+	}
+	var models, oversized int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM models LIMIT 5001)`).Scan(&models); err != nil {
+		return err
+	}
+	if models > maxDiscoveredModels {
+		return errors.New("AI model catalog exceeds the storage budget; remove excess providers or restore a bounded configuration backup")
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM models WHERE length(CAST(id AS BLOB))>128 OR length(CAST(provider_id AS BLOB))>128
+	 OR length(CAST(model_id AS BLOB))>256 OR length(CAST(display_name AS BLOB))>256)`).Scan(&oversized); err != nil {
+		return err
+	}
+	if oversized != 0 {
+		return errors.New("AI model catalog contains oversized configuration fields")
+	}
+	return nil
+}
+
+func validateProviderCatalog(ctx context.Context, tx *sql.Tx) error {
+	var providers, oversized int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (SELECT 1 FROM providers LIMIT 129)`).Scan(&providers); err != nil {
+		return err
+	}
+	if providers > maxProviders {
+		return errors.New("AI provider catalog exceeds the storage budget; remove excess providers or restore a bounded configuration backup")
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM providers WHERE length(CAST(id AS BLOB))>128 OR length(CAST(name AS BLOB))>80
+	 OR length(CAST(protocol AS BLOB))>64 OR length(CAST(api_mode AS BLOB))>64 OR length(CAST(base_url AS BLOB))>2048
+	 OR length(CAST(endpoint_scope AS BLOB))>64 OR length(encrypted_key)>5120 OR length(CAST(api_key_hint AS BLOB))>256)`).Scan(&oversized); err != nil {
+		return err
+	}
+	if oversized != 0 {
+		return errors.New("AI provider catalog contains oversized configuration fields")
+	}
+	return nil
+}
+
 // ToolRejectedError carries only the Agent problem fields that are safe to
 // return to the model. Agent detail text is intentionally never included.
 type ToolRejectedError struct {
@@ -52,8 +97,9 @@ func (e *ToolRejectedError) Error() string {
 func (*ToolRejectedError) Unwrap() error { return ErrToolRejected }
 
 type Store struct {
-	db  *sql.DB
-	now func() time.Time
+	db      *sql.DB
+	now     func() time.Time
+	secrets *SecretBox
 }
 
 func OpenStore(path string) (*Store, error) {
@@ -66,7 +112,7 @@ func OpenStore(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create AI database directory: %w", err)
 	}
-	dsn := path + "?_busy_timeout=5000&_foreign_keys=on&_journal_mode=wal&_synchronous=normal"
+	dsn := path + "?_busy_timeout=5000&_foreign_keys=on&_journal_mode=wal&_synchronous=normal&_pragma=secure_delete(1)&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open AI database: %w", err)
@@ -80,19 +126,26 @@ func OpenStore(path string) (*Store, error) {
 			_ = db.Close()
 		}
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	for _, statement := range []string{
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA busy_timeout=5000",
 		"PRAGMA synchronous=NORMAL",
+		"PRAGMA secure_delete=ON",
 	} {
 		if _, err := db.ExecContext(ctx, statement); err != nil {
 			return nil, fmt.Errorf("configure AI database: %w", err)
 		}
 	}
 	if err := store.migrate(ctx); err != nil {
+		return nil, err
+	}
+	if err := store.protectToolState(ctx, path); err != nil {
+		return nil, err
+	}
+	if err := store.protectLearningState(ctx); err != nil {
 		return nil, err
 	}
 	if _, err := db.ExecContext(ctx, `UPDATE runs SET status = 'interrupted', error_code = 'panel_restarted',
@@ -195,6 +248,11 @@ func (s *Store) migrate(ctx context.Context) error {
 		{"procedures", "retired", "INTEGER NOT NULL DEFAULT 0"},
 		{"providers", "api_mode", "TEXT NOT NULL DEFAULT 'chat_completions'"},
 		{"tool_calls", "provider_data", "BLOB NOT NULL DEFAULT X''"},
+		{"tool_calls", "private_state", "BLOB NOT NULL DEFAULT X''"},
+		{"evolution_proposals", "private_state", "BLOB NOT NULL DEFAULT X''"},
+		{"memories", "private_state", "BLOB NOT NULL DEFAULT X''"},
+		{"procedures", "private_state", "BLOB NOT NULL DEFAULT X''"},
+		{"procedure_versions", "private_state", "BLOB NOT NULL DEFAULT X''"},
 		{"sessions", "approval_mode", "TEXT NOT NULL DEFAULT 'manual'"},
 		{"runs", "approval_mode", "TEXT NOT NULL DEFAULT 'manual'"},
 		{"models", "vision", "INTEGER NOT NULL DEFAULT 1"},
@@ -285,13 +343,21 @@ func ensureAIColumn(ctx context.Context, tx *sql.Tx, table, name, definition str
 
 func (s *Store) EncryptedSecretCount(ctx context.Context) (int, error) {
 	var count int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM providers WHERE length(encrypted_key) > 0`).Scan(&count)
+	err := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM providers WHERE length(encrypted_key) > 0) + (SELECT COUNT(*) FROM tool_calls WHERE length(private_state) > 0) + (SELECT COUNT(*) FROM evolution_proposals WHERE length(private_state)>0) + (SELECT COUNT(*) FROM memories WHERE length(private_state)>0) + (SELECT COUNT(*) FROM procedures WHERE length(private_state)>0) + (SELECT COUNT(*) FROM procedure_versions WHERE length(private_state)>0)`).Scan(&count)
 	return count, err
 }
 
 func (s *Store) ListProviders(ctx context.Context) ([]Provider, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,name,protocol,api_mode,base_url,endpoint_scope,enabled,encrypted_key,
-		api_key_hint,version,created_at,updated_at FROM providers ORDER BY name COLLATE NOCASE`)
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := validateProviderCatalog(ctx, tx); err != nil {
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id,name,protocol,api_mode,base_url,endpoint_scope,enabled,encrypted_key,
+		api_key_hint,version,created_at,updated_at FROM providers ORDER BY name COLLATE NOCASE LIMIT 129`)
 	if err != nil {
 		return nil, err
 	}
@@ -344,10 +410,18 @@ func (s *Store) SaveProvider(ctx context.Context, provider Provider, expectedVer
 		provider.APIKeySet = len(provider.EncryptedKey) > 0
 		provider.CreatedAt = now
 		provider.UpdatedAt = now
-		_, err := s.db.ExecContext(ctx, `INSERT INTO providers(id,name,protocol,api_mode,base_url,endpoint_scope,enabled,
-			encrypted_key,api_key_hint,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		result, err := s.db.ExecContext(ctx, `INSERT INTO providers(id,name,protocol,api_mode,base_url,endpoint_scope,enabled,
+			encrypted_key,api_key_hint,version,created_at,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?
+			WHERE (SELECT count(*) FROM (SELECT 1 FROM providers LIMIT 128)) < ?`,
 			provider.ID, provider.Name, provider.Protocol, provider.APIMode, provider.BaseURL, provider.EndpointScope, provider.Enabled,
-			provider.EncryptedKey, provider.APIKeyHint, provider.Version, millis(now), millis(now))
+			provider.EncryptedKey, provider.APIKeyHint, provider.Version, millis(now), millis(now), maxProviders)
+		if err == nil {
+			if changed, countErr := result.RowsAffected(); countErr != nil {
+				err = countErr
+			} else if changed != 1 {
+				err = errors.New("AI provider catalog exceeds the storage budget")
+			}
+		}
 		return provider, err
 	}
 	provider.Version = expectedVersion + 1
@@ -446,7 +520,7 @@ func (s *Store) SaveModels(ctx context.Context, providerID string, models []Mode
 	if active {
 		return ErrBusy
 	}
-	if len(models) > 5000 {
+	if len(models) > maxDiscoveredModels {
 		return errors.New("provider returned too many models")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -454,12 +528,42 @@ func (s *Store) SaveModels(ctx context.Context, providerID string, models []Mode
 		return err
 	}
 	defer tx.Rollback()
+	// Acquire the SQLite writer lock before counting. Separate read-then-write
+	// transactions must not race past the cumulative catalog quota.
+	locked, err := tx.ExecContext(ctx, `UPDATE providers SET id=id WHERE id=?`, providerID)
+	if err != nil {
+		return err
+	}
+	if changed, err := locked.RowsAffected(); err != nil {
+		return err
+	} else if changed != 1 {
+		return ErrNotFound
+	}
+	if err := validateCatalog(ctx, tx); err != nil {
+		return err
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM models`).Scan(&count); err != nil {
+		return err
+	}
 	now := s.now().UTC()
+	seen := make(map[string]bool, len(models))
 	for _, model := range models {
 		model.ModelID = strings.TrimSpace(model.ModelID)
 		model.DisplayName = strings.TrimSpace(model.DisplayName)
 		if model.ModelID == "" || len(model.ModelID) > 256 || strings.IndexFunc(model.ModelID, unicode.IsControl) >= 0 {
 			return errors.New("model ID is invalid")
+		}
+		if !seen[model.ModelID] {
+			var existing int
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM models WHERE provider_id=? AND model_id=?`, providerID, model.ModelID).Scan(&existing); err != nil {
+				return err
+			}
+			count += 1 - existing
+			if count > maxDiscoveredModels {
+				return errors.New("AI model catalog exceeds the storage budget")
+			}
+			seen[model.ModelID] = true
 		}
 		if model.DisplayName == "" {
 			model.DisplayName = model.ModelID
@@ -490,14 +594,22 @@ func (s *Store) SaveModels(ctx context.Context, providerID string, models []Mode
 }
 
 func (s *Store) ListModels(ctx context.Context, providerID string) ([]Model, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := validateCatalog(ctx, tx); err != nil {
+		return nil, err
+	}
 	query := `SELECT id,provider_id,model_id,display_name,context_window,tool_calling,vision,reasoning,enabled,is_default,created_at,updated_at FROM models`
 	args := []any{}
 	if providerID != "" {
 		query += ` WHERE provider_id=?`
 		args = append(args, providerID)
 	}
-	query += ` ORDER BY is_default DESC, display_name COLLATE NOCASE`
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	query += ` ORDER BY is_default DESC, display_name COLLATE NOCASE LIMIT 5001`
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -666,6 +778,9 @@ func (s *Store) DeleteSession(ctx context.Context, userID, id string) error {
 }
 
 func (s *Store) AddMessage(ctx context.Context, message Message) (Message, error) {
+	if message.Role == RoleTool {
+		message.Content = redactAndLimit(message.Content, MaxToolResultBytes+1024)
+	}
 	if message.ID == "" {
 		message.ID = newID("msg")
 	}
@@ -729,7 +844,10 @@ func (s *Store) messagesPage(ctx context.Context, sessionID string, limit int, b
 		// Validate inside SQLite so the driver copies only metadata into Go.
 		attachmentColumn = attachmentMetadataProjectionSQL()
 	}
-	columns := `id,session_id,run_id,role,content,provider_id,provider_name,model_id,model_name,tool_call_id,` + attachmentColumn + `,length(CAST(attachments_json AS BLOB)),created_at,messages.rowid`
+	// Charge raw UTF-8 bytes inside SQLite before the driver copies content.
+	// JSON can escape each byte to six bytes, bounding content encoding to 12 MiB.
+	const contentPageBytes = 2 << 20
+	columns := `id,session_id,run_id,role,CASE WHEN content_bytes<=2097152 THEN content ELSE '' END,provider_id,provider_name,model_id,model_name,tool_call_id,CASE WHEN content_bytes<=2097152 THEN ` + attachmentColumn + ` ELSE '[]' END,length(CAST(attachments_json AS BLOB)),created_at,messages.rowid,content_bytes,page_position`
 	selection := ` FROM messages WHERE session_id=?`
 	args := []any{sessionID}
 	if conversationOnly {
@@ -741,14 +859,14 @@ func (s *Store) messagesPage(ctx context.Context, sessionID string, limit int, b
 	}
 	selection += ` ORDER BY created_at DESC,rowid DESC LIMIT ?`
 	args = append(args, limit+1)
-	query := `SELECT ` + columns + selection
-	if metadataOnly {
-		// The existing index breaks timestamp ties by id, while pagination uses
-		// rowid. Sort only rowids: carrying encoded attachments through SQLite's
-		// temporary sort can exhaust /tmp during overlapping history reads.
-		query = `WITH selected AS MATERIALIZED (SELECT rowid AS message_rowid` + selection + `)
-			SELECT ` + columns + ` FROM selected CROSS JOIN messages ON messages.rowid=selected.message_rowid`
-	}
+	// Window/sort carries only rowids, timestamps and lengths, never bodies.
+	// Over-budget rows are cheap sentinels; the last returned row remains the
+	// cursor, so the first excluded message is retried intact on the next page.
+	query := `WITH selected AS MATERIALIZED (SELECT rowid AS message_rowid,created_at,length(CAST(content AS BLOB)) AS raw_bytes` + selection + `),
+	 budgeted AS MATERIALIZED (SELECT message_rowid,
+	 sum(raw_bytes) OVER (ORDER BY created_at DESC,message_rowid DESC) AS content_bytes,
+	 row_number() OVER (ORDER BY created_at DESC,message_rowid DESC) AS page_position FROM selected)
+	 SELECT ` + columns + ` FROM budgeted CROSS JOIN messages ON messages.rowid=budgeted.message_rowid`
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return Page[Message]{}, err
@@ -756,15 +874,24 @@ func (s *Store) messagesPage(ctx context.Context, sessionID string, limit int, b
 	defer rows.Close()
 	items := []Message{}
 	rowIDs := make(map[string]int64)
+	hasMore := false
 	for rows.Next() {
 		var item Message
 		var created, rowID int64
 		// Decode before Next; neither metadata nor decoded Data aliases this row.
 		var attachments sql.RawBytes
 		var attachmentBytes int64
+		var contentBytes, position int64
 		if err := rows.Scan(&item.ID, &item.SessionID, &item.RunID, &item.Role, &item.Content, &item.ProviderID,
-			&item.ProviderName, &item.ModelID, &item.ModelName, &item.ToolCallID, &attachments, &attachmentBytes, &created, &rowID); err != nil {
+			&item.ProviderName, &item.ModelID, &item.ModelName, &item.ToolCallID, &attachments, &attachmentBytes, &created, &rowID, &contentBytes, &position); err != nil {
 			return Page[Message]{}, err
+		}
+		if contentBytes > contentPageBytes {
+			if position == 1 {
+				return Page[Message]{}, errors.New("message content exceeds the page read budget")
+			}
+			hasMore = true
+			continue
 		}
 		if metadataOnly {
 			if attachmentBytes > maxAttachmentReadBytes {
@@ -784,20 +911,20 @@ func (s *Store) messagesPage(ctx context.Context, sessionID string, limit int, b
 	if err := rows.Err(); err != nil {
 		return Page[Message]{}, err
 	}
-	if metadataOnly {
-		// Do not depend on the join's output order or sort attachment bodies in
-		// SQL. Only the bounded metadata page remains here.
-		sort.Slice(items, func(i, j int) bool {
-			if !items[i].CreatedAt.Equal(items[j].CreatedAt) {
-				return items[i].CreatedAt.After(items[j].CreatedAt)
-			}
-			return rowIDs[items[i].ID] > rowIDs[items[j].ID]
-		})
-	}
+	// Do not depend on the join's output order or sort attachment bodies in
+	// SQL. Only the bounded page remains here.
+	sort.Slice(items, func(i, j int) bool {
+		if !items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].CreatedAt.After(items[j].CreatedAt)
+		}
+		return rowIDs[items[i].ID] > rowIDs[items[j].ID]
+	})
 	next := ""
 	if len(items) > limit {
 		next = items[limit-1].ID
 		items = items[:limit]
+	} else if hasMore && len(items) > 0 {
+		next = items[len(items)-1].ID
 	}
 	for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
 		items[left], items[right] = items[right], items[left]
@@ -985,6 +1112,9 @@ func (s *Store) UpdateRun(ctx context.Context, run Run) error {
 }
 
 func (s *Store) SaveToolCall(ctx context.Context, call ToolCall) (ToolCall, error) {
+	if len(call.Arguments) > MaxToolResultBytes || len(call.ProviderData) > maxProviderNativeBytes {
+		return call, ErrContextPrivateLimit
+	}
 	now := s.now().UTC()
 	if call.ID == "" {
 		call.ID = newID("tool")
@@ -993,21 +1123,83 @@ func (s *Store) SaveToolCall(ctx context.Context, call ToolCall) (ToolCall, erro
 		call.CreatedAt = now
 	}
 	call.UpdatedAt = now
-	providerData := []byte(call.ProviderData)
-	if providerData == nil {
-		providerData = []byte{}
+	encrypted, err := s.sealCurrentToolState(call)
+	if err != nil {
+		return call, err
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO tool_calls(id,run_id,session_id,name,arguments,arguments_preview,
-		provider_data,result_preview,status,requires_approval,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET result_preview=excluded.result_preview,status=excluded.status,updated_at=excluded.updated_at`,
-		call.ID, call.RunID, call.SessionID, call.Name, []byte(call.Arguments), call.ArgumentsPreview, providerData, call.ResultPreview,
+	call.ArgumentsPreview = safeToolArgumentsPreview(call.Arguments)
+	call.ResultPreview = redactAndLimit(call.ResultPreview, MaxToolResultBytes)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return call, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `INSERT INTO tool_calls(id,run_id,session_id,name,arguments,arguments_preview,
+		provider_data,private_state,result_preview,status,requires_approval,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(id) DO NOTHING`,
+		call.ID, call.RunID, call.SessionID, call.Name, []byte(privateStatePlaceholder), call.ArgumentsPreview, []byte{}, encrypted, call.ResultPreview,
 		call.Status, call.RequiresApproval, millis(call.CreatedAt), millis(now))
-	return call, err
+	if err != nil {
+		return call, err
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return call, err
+	}
+	if inserted == 1 {
+		return call, tx.Commit()
+	}
+	var existing ToolCall
+	var private []byte
+	existing.ID = call.ID
+	err = tx.QueryRowContext(ctx, `SELECT run_id,session_id,name,CASE WHEN length(private_state)<=10486784 THEN private_state END,status,requires_approval FROM tool_calls WHERE id=?`, call.ID).Scan(&existing.RunID, &existing.SessionID, &existing.Name, &private, &existing.Status, &existing.RequiresApproval)
+	if err == nil {
+		if existing.RunID != call.RunID || existing.SessionID != call.SessionID || existing.Name != call.Name || existing.RequiresApproval != call.RequiresApproval {
+			return call, ErrConflict
+		}
+		if err := s.openToolState(&existing, private); err != nil {
+			return call, err
+		}
+		oldPlain, err := marshalToolState(existing)
+		if err != nil {
+			return call, err
+		}
+		newPlain, err := marshalToolState(call)
+		if err != nil {
+			return call, err
+		}
+		if !bytes.Equal(oldPlain, newPlain) {
+			return call, ErrConflict
+		}
+		if (existing.Status == ToolCompleted || existing.Status == ToolRejected || existing.Status == ToolFailed) && call.Status != existing.Status {
+			return call, ErrConflict
+		}
+	} else {
+		return call, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `UPDATE tool_calls SET result_preview=?,status=?,updated_at=? WHERE id=?`, call.ResultPreview, call.Status, millis(now), call.ID); err != nil {
+		return call, err
+	}
+	return call, tx.Commit()
 }
 
 func (s *Store) ToolCalls(ctx context.Context, runID string) ([]ToolCall, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,run_id,session_id,name,arguments,arguments_preview,provider_data,result_preview,
-		status,requires_approval,created_at,updated_at FROM tool_calls WHERE run_id=? ORDER BY created_at`, runID)
+	// Aggregate guards are evaluated in SQLite before any retained
+	// ciphertext/preview is copied by the driver. A legacy run cannot allocate
+	// twenty individually valid but cumulatively oversized private records.
+	rows, err := s.db.QueryContext(ctx, `WITH budget AS (
+		SELECT count(*) AS records,
+		COALESCE(sum(length(private_state)),0) AS total
+		FROM tool_calls WHERE run_id=?)
+		SELECT id,run_id,session_id,name,
+		CASE WHEN records<=? AND total<=? AND length(private_state)<=? AND length(CAST(arguments_preview AS BLOB))<=? AND length(CAST(result_preview AS BLOB))<=? THEN private_state END,
+		CASE WHEN records<=? AND total<=? AND length(CAST(arguments_preview AS BLOB))<=? THEN arguments_preview ELSE '' END,
+		CASE WHEN records<=? AND total<=? AND length(CAST(result_preview AS BLOB))<=? THEN result_preview ELSE '' END,
+		status,requires_approval,created_at,updated_at FROM tool_calls CROSS JOIN budget WHERE run_id=? ORDER BY created_at`, runID,
+		MaxToolCalls, maxContextPrivateBytes, maxToolReadStateBytes, maxToolArgumentsPreviewBytes, maxToolResultPreviewBytes,
+		MaxToolCalls, maxContextPrivateBytes, maxToolArgumentsPreviewBytes,
+		MaxToolCalls, maxContextPrivateBytes, maxToolResultPreviewBytes, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -1015,14 +1207,21 @@ func (s *Store) ToolCalls(ctx context.Context, runID string) ([]ToolCall, error)
 	items := []ToolCall{}
 	for rows.Next() {
 		var item ToolCall
-		var raw, providerData []byte
+		var encrypted []byte
 		var created, updated int64
-		if err := rows.Scan(&item.ID, &item.RunID, &item.SessionID, &item.Name, &raw, &item.ArgumentsPreview, &providerData,
+		if err := rows.Scan(&item.ID, &item.RunID, &item.SessionID, &item.Name, &encrypted, &item.ArgumentsPreview,
 			&item.ResultPreview, &item.Status, &item.RequiresApproval, &created, &updated); err != nil {
 			return nil, err
 		}
-		item.Arguments = append(json.RawMessage(nil), raw...)
-		item.ProviderData = append(json.RawMessage(nil), providerData...)
+		if len(encrypted) == 0 {
+			return nil, ErrContextPrivateLimit
+		}
+		if err := s.openToolState(&item, encrypted); err != nil {
+			return nil, err
+		}
+		if len(item.Arguments) > MaxToolResultBytes || len(item.ProviderData) > maxProviderNativeBytes {
+			return nil, ErrContextPrivateLimit
+		}
 		item.CreatedAt, item.UpdatedAt = fromMillis(created), fromMillis(updated)
 		items = append(items, item)
 	}
@@ -1031,17 +1230,30 @@ func (s *Store) ToolCalls(ctx context.Context, runID string) ([]ToolCall, error)
 
 func (s *Store) ToolCall(ctx context.Context, runID, id string) (ToolCall, error) {
 	var item ToolCall
-	var raw, providerData []byte
+	var encrypted []byte
 	var created, updated int64
-	err := s.db.QueryRowContext(ctx, `SELECT id,run_id,session_id,name,arguments,arguments_preview,provider_data,result_preview,
-		status,requires_approval,created_at,updated_at FROM tool_calls WHERE run_id=? AND id=?`, runID, id).Scan(
-		&item.ID, &item.RunID, &item.SessionID, &item.Name, &raw, &item.ArgumentsPreview, &providerData, &item.ResultPreview,
+	err := s.db.QueryRowContext(ctx, `SELECT id,run_id,session_id,name,CASE WHEN length(private_state)<=? AND length(CAST(arguments_preview AS BLOB))<=? AND length(CAST(result_preview AS BLOB))<=? THEN private_state END,
+		CASE WHEN length(CAST(arguments_preview AS BLOB))<=? THEN arguments_preview ELSE '' END,
+		CASE WHEN length(CAST(result_preview AS BLOB))<=? THEN result_preview ELSE '' END,
+		status,requires_approval,created_at,updated_at FROM tool_calls WHERE run_id=? AND id=?`,
+		maxToolReadStateBytes, maxToolArgumentsPreviewBytes, maxToolResultPreviewBytes, maxToolArgumentsPreviewBytes, maxToolResultPreviewBytes, runID, id).Scan(
+		&item.ID, &item.RunID, &item.SessionID, &item.Name, &encrypted, &item.ArgumentsPreview, &item.ResultPreview,
 		&item.Status, &item.RequiresApproval, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ToolCall{}, ErrNotFound
 	}
-	item.Arguments = append(json.RawMessage(nil), raw...)
-	item.ProviderData = append(json.RawMessage(nil), providerData...)
+	if err != nil {
+		return ToolCall{}, err
+	}
+	if len(encrypted) == 0 {
+		return ToolCall{}, ErrContextPrivateLimit
+	}
+	if err := s.openToolState(&item, encrypted); err != nil {
+		return ToolCall{}, err
+	}
+	if len(item.Arguments) > MaxToolResultBytes || len(item.ProviderData) > maxProviderNativeBytes {
+		return ToolCall{}, ErrContextPrivateLimit
+	}
 	item.CreatedAt, item.UpdatedAt = fromMillis(created), fromMillis(updated)
 	return item, err
 }

@@ -203,7 +203,10 @@ func TestCompletionMessagesPreserveStableIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	messages := (&NativeRuntime{store: store}).completionMessages(ctx, []Message{userMessage, toolMessage}, toolMessage.RunID)
+	messages, err := (&NativeRuntime{store: store}).completionMessages(ctx, []Message{userMessage, toolMessage}, toolMessage.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(messages) != 3 {
 		t.Fatalf("messages=%#v", messages)
 	}
@@ -218,6 +221,59 @@ func TestCompletionMessagesPreserveStableIDs(t *testing.T) {
 	}
 	if messages[0].CurrentRun || !messages[1].CurrentRun || !messages[2].CurrentRun {
 		t.Fatalf("current run markers were not preserved: %#v", messages)
+	}
+}
+
+func TestCompletionMessagesMissingRequiredStateFailsClosed(t *testing.T) {
+	store, _, run := contextFixture(t)
+	history := []Message{{RunID: run.ID, Role: RoleTool, ToolCallID: "missing", Content: "result must not lose native call context"}}
+	if messages, err := (&NativeRuntime{store: store}).completionMessages(context.Background(), history, run.ID); err == nil || len(messages) != 0 {
+		t.Fatalf("required tool state was silently omitted: messages=%v err=%v", messages, err)
+	}
+}
+
+type cumulativeNativeClient struct{ scriptedClient }
+
+func (c *cumulativeNativeClient) Stream(_ context.Context, _ Provider, _ string, _ CompletionRequest, emit func(CompletionEvent) error) error {
+	c.mu.Lock()
+	c.calls++
+	count := c.calls
+	c.mu.Unlock()
+	native := json.RawMessage(`{"text":"` + strings.Repeat("x", 900<<10) + `"}`)
+	return emit(CompletionEvent{Done: true, ToolCalls: []ToolCall{{ID: fmt.Sprintf("call_%d", count), Name: "host_action", Arguments: json.RawMessage(fmt.Sprintf(`{"attempt":%d}`, count)), ProviderData: native}}})
+}
+
+func TestRuntimePrivateBudgetRejectsBeforeNextToolExecution(t *testing.T) {
+	s, providers, provider, model := runtimeFixture(t)
+	defer s.Close()
+	ctx := context.Background()
+	session, err := s.CreateSession(ctx, Session{UserID: "admin", ProviderID: provider.ID, ModelID: model.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := s.CreateRun(ctx, Run{SessionID: session.ID, UserID: "admin", ProviderID: provider.ID, ModelID: model.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddMessage(ctx, Message{SessionID: session.ID, RunID: run.ID, Role: RoleUser, Content: "inspect"}); err != nil {
+		t.Fatal(err)
+	}
+	client, tools := &cumulativeNativeClient{}, &fakeTools{readOnly: true}
+	r, err := NewNativeRuntime(s, providers, client, tools, NewEventHub())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if err := r.Run(ctx, run.ID); !errors.Is(err, ErrContextPrivateLimit) {
+		t.Fatalf("expected cumulative admission failure: %v", err)
+	}
+	calls, err := s.ToolCalls(ctx, run.ID)
+	if err != nil || len(calls) != 4 || tools.executed != 4 {
+		t.Fatalf("over-budget call executed or made previous state unreadable: calls=%d executed=%d err=%v", len(calls), tools.executed, err)
+	}
+	stored, err := s.RunByID(ctx, run.ID)
+	if err != nil || stored.Status != RunFailed || stored.ErrorCode != "context_private_limit" {
+		t.Fatalf("budget status=%#v err=%v", stored, err)
 	}
 }
 
@@ -255,7 +311,10 @@ func TestCompletionMessagesReconstructToolCallBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	messages := (&NativeRuntime{store: store}).completionMessages(ctx, []Message{assistantMessage, firstResult, secondResult}, run.ID)
+	messages, err := (&NativeRuntime{store: store}).completionMessages(ctx, []Message{assistantMessage, firstResult, secondResult}, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(messages) != 3 {
 		t.Fatalf("messages=%#v", messages)
 	}
@@ -301,7 +360,10 @@ func TestCompletionMessagesKeepSequentialToolBatchesSeparate(t *testing.T) {
 	secondAssistant, _ := store.AddMessage(ctx, Message{SessionID: session.ID, RunID: run.ID, Role: RoleAssistant, Content: "second step"})
 	secondResult, _ := store.AddMessage(ctx, Message{SessionID: session.ID, RunID: run.ID, Role: RoleTool, ToolCallID: secondCall.ID, Content: `{"second":true}`})
 
-	messages := (&NativeRuntime{store: store}).completionMessages(ctx, []Message{firstAssistant, firstResult, secondAssistant, secondResult}, run.ID)
+	messages, err := (&NativeRuntime{store: store}).completionMessages(ctx, []Message{firstAssistant, firstResult, secondAssistant, secondResult}, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(messages) != 4 {
 		t.Fatalf("messages=%#v", messages)
 	}
@@ -796,7 +858,7 @@ func TestNativeRuntimeDoesNotSilentlyLearnProtectedProcedure(t *testing.T) {
 	for _, id := range []string{"protected-1", "protected-2"} {
 		_, _ = store.SaveToolCall(ctx, ToolCall{ID: id, RunID: run.ID, SessionID: session.ID, Name: "host_action", Arguments: json.RawMessage(`{}`), Status: ToolCompleted})
 	}
-	output := `{"decision":"procedure","confidence":0.99,"title":"核心维护","content":"执行维护","condition":"需要维护时","steps":[{"tool":"host_action","arguments":{}}]}`
+	output := `{"decision":"procedure","confidence":0.99,"approved":true,"requiresApproval":false,"title":"核心维护","content":"执行维护","condition":"需要维护时","steps":[{"tool":"host_action","approved":true,"requiresApproval":false,"arguments":{}}]}`
 	runtime, _ := NewNativeRuntime(store, providers, &learningClient{output: output}, &fakeTools{}, NewEventHub())
 	defer runtime.Close()
 	history, _, _ := store.ContextMessages(ctx, session.ID, model.ContextWindow)

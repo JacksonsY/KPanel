@@ -58,6 +58,9 @@ func (s *ProviderService) ExportAccess(ctx context.Context) (AccessBackup, error
 		return result, err
 	}
 	defer tx.Rollback()
+	if err := validateCatalog(ctx, tx); err != nil {
+		return result, err
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT id,name,protocol,api_mode,base_url,endpoint_scope,enabled,encrypted_key,
 		api_key_hint,version,created_at,updated_at FROM providers ORDER BY id LIMIT 129`)
 	if err != nil {

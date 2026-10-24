@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/kejilion/kejilion-panel/internal/ai"
-	"github.com/kejilion/kejilion-panel/internal/auth"
 )
 
 func TestAIHistoryAndSnapshotAllocatedBytes(t *testing.T) {
@@ -28,16 +27,21 @@ func TestAIHistoryAndSnapshotAllocatedBytes(t *testing.T) {
 	}
 	for _, count := range []int{1, 16} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
-			server, _ := newTestServer(t)
+			server, tokenPath := newTestServer(t)
+			sessionCookie, _ := bootstrapCookies(t, server, tokenPath)
+			authSession, err := server.auth.Authenticate(sessionCookie.Value)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if err := server.EnableAI(); err != nil {
 				t.Fatal(err)
 			}
 			ctx := context.Background()
-			session, err := server.ai.Store.CreateSession(ctx, ai.Session{UserID: "admin", ProviderID: "provider", ModelID: "model"})
+			session, err := server.ai.Store.CreateSession(ctx, ai.Session{UserID: authSession.User.ID, ProviderID: "provider", ModelID: "model"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			run, err := server.ai.Store.CreateRun(ctx, ai.Run{SessionID: session.ID, UserID: "admin", ProviderID: "provider", ModelID: "model"})
+			run, err := server.ai.Store.CreateRun(ctx, ai.Run{SessionID: session.ID, UserID: authSession.User.ID, ProviderID: "provider", ModelID: "model"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,9 +57,11 @@ func TestAIHistoryAndSnapshotAllocatedBytes(t *testing.T) {
 						streamCtx, cancel := context.WithCancel(ctx)
 						defer cancel()
 						writer := &aiSnapshotRecorder{ResponseRecorder: response, cancel: cancel}
-						server.aiRunEvents(writer, httptest.NewRequest(http.MethodGet, "/", nil).WithContext(streamCtx), auth.Session{User: auth.PublicUser{ID: "admin"}}, run.ID)
+						request := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(streamCtx)
+						request.AddCookie(sessionCookie)
+						server.aiRunEvents(writer, request, authSession, run.ID)
 					} else {
-						server.aiMessages(response, httptest.NewRequest(http.MethodGet, "/", nil), "admin", session.ID)
+						server.aiMessages(response, httptest.NewRequest(http.MethodGet, "/", nil), authSession.User.ID, session.ID)
 					}
 					if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), fmt.Sprintf(`"size":%d`, encoded.Len())) || strings.Contains(response.Body.String(), "iVBORw0KGgo") {
 						t.Fatalf("metadata response status=%d bytes=%d", response.Code, response.Body.Len())

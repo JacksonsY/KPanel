@@ -68,6 +68,11 @@ func (t *panelAITools) RequiresApproval(ctx context.Context, name string, argume
 	if err != nil {
 		return true
 	}
+	if name == "host_file_read" || name == "host_file_tail" {
+		// Reading host data and disclosing it to a model are different grants.
+		// A directory name cannot establish that arbitrary file content is public.
+		return true
+	}
 	for _, definition := range t.Definitions() {
 		if definition.Name == name && definition.ReadOnly {
 			return false
@@ -267,6 +272,9 @@ func (t *panelAITools) Execute(ctx context.Context, execution ai.ToolExecutionCo
 		}
 		if name != "host_file_list" && !aiFileReadable(input.Path) {
 			return "", errors.New("AI access to sensitive file content is forbidden")
+		}
+		if name != "host_file_list" && !execution.Approved {
+			return "", fmt.Errorf("%w: administrator approval is required before sharing this file with the AI provider", ai.ErrToolRejected)
 		}
 		values := url.Values{"path": []string{input.Path}}
 		path := "/v1/files/text"
@@ -546,7 +554,14 @@ func (t *panelAITools) finish(execution ai.ToolExecutionContext, name, target, r
 		}
 		return "", fmt.Errorf("Agent request failed (HTTP %d)", response.StatusCode)
 	}
-	return string(response.Body), nil
+	if len(response.Body) > 512<<10 {
+		return "", errors.New("AI tool response exceeds the result budget")
+	}
+	safe, err := redact.JSON(response.Body)
+	if err != nil {
+		return "", errors.New("invalid AI tool response")
+	}
+	return string(safe), nil
 }
 
 func classifyAgentToolProblem(name string, problem contract.Problem) error {
@@ -697,7 +712,8 @@ var topSecretSummaries = map[string]struct{}{
 
 func safeArgumentSummary(raw json.RawMessage) map[string]any {
 	var value map[string]any
-	if json.Unmarshal(raw, &value) != nil {
+	safe, err := redact.JSON(raw)
+	if err != nil || json.Unmarshal(safe, &value) != nil {
 		return map[string]any{"valid": false}
 	}
 	return redactSummaryValue(value).(map[string]any)
