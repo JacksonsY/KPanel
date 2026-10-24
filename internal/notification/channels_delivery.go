@@ -8,6 +8,7 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/cluster"
 )
 
+// Caller holds opMu while the bounded batch runs, including parallel sends.
 func (s *Service) deliverChannels(ctx context.Context, state persistedState, hosts []cluster.Host, now time.Time) error {
 	history, err := s.history.snapshot()
 	if err != nil {
@@ -36,6 +37,11 @@ func (s *Service) deliverChannels(ctx context.Context, state persistedState, hos
 		// Existing pending events migrate only to their original channel. New
 		// destinations must never receive pre-configuration historical messages.
 		if len(event.Deliveries) == 0 && (event.Delivery == "pending" || event.Delivery == "failed") {
+			if !validProvider(event.Provider) || !validHexString(event.ChannelFingerprint, 64) {
+				event.Delivery = "cancelled"
+				event.LastErrorCode = "channel_changed"
+				continue
+			}
 			event.Deliveries = []ChannelDelivery{{Provider: event.Provider, Status: event.Delivery, Attempts: event.Attempts, LastAttemptAt: cloneTime(event.LastAttemptAt), LastErrorCode: event.LastErrorCode}}
 			event.ChannelFingerprints = map[Provider]string{event.Provider: event.ChannelFingerprint}
 		}

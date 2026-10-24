@@ -763,6 +763,20 @@ func (s *Store) SessionByTokenHash(tokenHash string, now time.Time) (Session, er
 	return Session{}, ErrNotFound
 }
 
+// RevokeAllSessions persists transport-boundary revocation atomically. Failure
+// restores memory so callers can refuse the settings change instead.
+func (s *Store) RevokeAllSessions() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous := s.data.Sessions
+	s.data.Sessions = []Session{}
+	if err := s.persistLocked(); err != nil {
+		s.data.Sessions = previous
+		return err
+	}
+	return nil
+}
+
 func (s *Store) DeleteSession(tokenHash string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -99,7 +99,7 @@ func NewCheckAlerts(parent *Service) (*CheckAlerts, error) {
 	for key, value := range s.state.Incidents {
 		if value.Pending != nil {
 			seen := map[Provider]bool{}
-			if len(value.Pending.Targets) > MaxChannels || (!value.Pending.MultiChannel && len(value.Pending.Targets) > 0) {
+			if len(value.Pending.Targets) > MaxChannels || (!value.Pending.MultiChannel && len(value.Pending.Targets) > 1) {
 				return nil, ErrInvalidSettings
 			}
 			for _, target := range value.Pending.Targets {
@@ -234,6 +234,8 @@ func currentCheckTargets(hosts []cluster.Host, incidents map[string]checkInciden
 
 func (s *CheckAlerts) evaluate(ctx context.Context) error {
 	defer s.reportErrorChange()
+	s.parent.opMu.Lock()
+	defer s.parent.opMu.Unlock()
 	settings := s.parent.store.stateSnapshot().Settings
 	s.mu.Lock()
 	if !settings.Enabled || !settings.Rules.ServiceChecksEnabled {
@@ -248,7 +250,12 @@ func (s *CheckAlerts) evaluate(ctx context.Context) error {
 	defer cancel()
 	hosts := s.parent.hosts.Hosts(fetch)
 	now := s.parent.now()
-	settings = s.parent.store.stateSnapshot().Settings
+	state := s.parent.store.stateSnapshot()
+	settings = state.Settings
+	channels, err := s.parent.configuredChannels(state)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	next := cloneCheckDisk(s.state)
@@ -266,13 +273,10 @@ func (s *CheckAlerts) evaluate(ctx context.Context) error {
 	queue := func(item *checkIncident, kind string) {
 		next.Generation++
 		item.Pending = &checkDelivery{ID: next.Generation, Kind: kind, CreatedAt: now, NextAttempt: now}
-		state := s.parent.store.stateSnapshot()
-		if state.MultiChannel {
-			item.Pending.MultiChannel = true
-			for _, ch := range state.Channels {
-				if ch.Enabled {
-					item.Pending.Targets = append(item.Pending.Targets, checkChannelTarget{ch.Provider, channelFingerprint(ch)})
-				}
+		item.Pending.MultiChannel = state.MultiChannel
+		for _, ch := range channels {
+			if ch.Enabled {
+				item.Pending.Targets = append(item.Pending.Targets, checkChannelTarget{ch.Provider, channelFingerprint(ch)})
 			}
 		}
 	}
@@ -410,10 +414,12 @@ func (s *CheckAlerts) evaluate(ctx context.Context) error {
 	return s.commit(next)
 }
 
-// Network I/O never holds the configuration/state lock. Outbox transitions are
-// committed before delivery, with at-least-once semantics on crash after send.
+// The operation lock serializes destination configuration with queueing and
+// sending. Store/state locks are released before bounded network I/O.
 func (s *CheckAlerts) deliver(ctx context.Context) error {
 	defer s.reportErrorChange()
+	s.parent.opMu.Lock()
+	defer s.parent.opMu.Unlock()
 	settings := s.parent.store.stateSnapshot()
 	if settings.MultiChannel {
 		return s.enqueueChannelHistory(ctx)
@@ -424,7 +430,22 @@ func (s *CheckAlerts) deliver(ctx context.Context) error {
 	}
 	provider, _ := DetectProvider(credential)
 	now := s.parent.now()
+	destination := legacyDestination(provider, credential, settings.Telegram)
 	s.mu.Lock()
+	next := cloneCheckDisk(s.state)
+	for key, item := range next.Incidents {
+		if pending := item.Pending; pending != nil && (pending.MultiChannel || len(pending.Targets) != 1 ||
+			pending.Targets[0].Provider != provider || pending.Targets[0].Fingerprint != destination) {
+			// An unbound legacy intent cannot be reconstructed from today's
+			// configuration. Cancel it instead of selecting a new recipient.
+			item.Pending = nil
+			next.Incidents[key] = item
+		}
+	}
+	if err := s.commit(next); err != nil {
+		s.mu.Unlock()
+		return err
+	}
 	keys := []string{}
 	for key, item := range s.state.Incidents {
 		if item.Pending != nil && !item.Pending.NextAttempt.After(now) {

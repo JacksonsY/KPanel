@@ -102,7 +102,7 @@ func (s *Service) recordPanelLogins(parent context.Context, logins []PanelLogin)
 		if canDeliver {
 			event.Delivery = "pending"
 			event.Provider = provider
-			event.ChannelFingerprint = tokenFingerprint(credential)
+			event.ChannelFingerprint = legacyDestination(provider, credential, state.Telegram)
 		}
 		prepareChannelDeliveries(&event, state)
 		history.Events = append(history.Events, event)

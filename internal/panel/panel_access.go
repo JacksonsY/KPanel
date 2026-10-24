@@ -122,9 +122,18 @@ func (s *Server) handleSelfSignedTLSUpdate(w http.ResponseWriter, r *http.Reques
 	}
 	var err error
 	if input.Enabled {
-		_, err = s.selfTLS.Enable(hosts, input.Regenerate)
+		err = s.auth.ChangeTransportBoundary(func() error {
+			if err := s.selfTLS.markSessionsSecured(); err != nil {
+				return err
+			}
+			_, enableErr := s.selfTLS.Enable(hosts, input.Regenerate)
+			return enableErr
+		})
 	} else {
-		_, err = s.selfTLS.Disable()
+		err = s.auth.ChangeTransportBoundary(func() error {
+			_, disableErr := s.selfTLS.Disable()
+			return disableErr
+		})
 	}
 	if err != nil {
 		_ = s.audit(r, session.User.ID, "settings.self_signed_tls.update", "panel", "self-signed-tls", "failure", change)
@@ -133,6 +142,7 @@ func (s *Server) handleSelfSignedTLSUpdate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	change["fingerprintSha256"] = s.selfTLS.Info().Fingerprint
+	s.clearAuthCookies(w, r)
 	_ = s.audit(r, session.User.ID, "settings.self_signed_tls.update", "panel", "self-signed-tls", "success", change)
 	s.writeJSON(w, http.StatusOK, s.panelAccessStatus(r))
 }

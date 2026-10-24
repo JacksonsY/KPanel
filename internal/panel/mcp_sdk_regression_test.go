@@ -128,7 +128,7 @@ func TestMCPRealLoopbackHTTPSProxyAndRebindingDefense(t *testing.T) {
 		status                        int
 	}{
 		{"trusted-https-proxy", "panel.test", "https", "https://panel.test", 200},
-		{"plain-http", "panel.test", "", "", 403},
+		{"plain-http", "panel.test", "", "", 426},
 		{"dns-rebinding", "evil.test", "", "", 421},
 		{"cross-origin", "panel.test", "https", "https://evil.test", 403},
 	} {
@@ -163,7 +163,7 @@ func TestMCPRealLoopbackHTTPSProxyAndRebindingDefense(t *testing.T) {
 	r.Header.Set("X-Forwarded-Proto", "https")
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)
-	if w.Code != http.StatusForbidden {
+	if w.Code != http.StatusUpgradeRequired {
 		t.Fatalf("forged proxy accepted: %d", w.Code)
 	}
 }

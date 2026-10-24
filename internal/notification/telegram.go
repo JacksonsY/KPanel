@@ -115,10 +115,11 @@ func (c *TelegramClient) ValidateAndDiscover(ctx context.Context, token string) 
 	}
 	var chatID int64
 	var newest int64
+	command, _ := ctx.Value(telegramProofKey{}).(string)
 	for _, update := range updates {
 		if update.UpdateID < newest || update.Message == nil ||
 			update.Message.Chat.Type != "private" || update.Message.Chat.ID == 0 ||
-			!isStartCommand(update.Message.Text) {
+			command == "" || update.Message.Text != command {
 			continue
 		}
 		chatID = update.Message.Chat.ID
@@ -210,15 +211,6 @@ func telegramResponseError(statusCode, apiCode int) error {
 	default:
 		return &Error{Code: "api_error", Retryable: true, Cause: ErrTelegramUnavailable}
 	}
-}
-
-func isStartCommand(value string) bool {
-	fields := strings.Fields(value)
-	if len(fields) == 0 {
-		return false
-	}
-	command := strings.ToLower(fields[0])
-	return command == "/start" || strings.HasPrefix(command, "/start@")
 }
 
 func cleanBotText(value string) string {

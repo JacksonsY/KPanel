@@ -29,6 +29,7 @@ const (
 // channelState is shared by all delivery adapters. Historical JSON field names
 // stay unchanged so existing notification state and backups remain readable.
 type channelState struct {
+	Binding          string         `json:"binding,omitempty"`
 	TokenFingerprint string         `json:"tokenFingerprint,omitempty"`
 	BotID            int64          `json:"botId,omitempty"`
 	BotUsername      string         `json:"botUsername,omitempty"`
@@ -164,6 +165,9 @@ func decodeState(content []byte, state *persistedState) error {
 	if state.Telegram.TokenFingerprint != "" && !validHexString(state.Telegram.TokenFingerprint, sha256.Size*2) {
 		return errors.New("notification state token fingerprint is invalid")
 	}
+	if state.Telegram.Binding != "" && !validHexString(state.Telegram.Binding, 64) {
+		return errors.New("notification state binding is invalid")
+	}
 	if state.Telegram.Status == "" {
 		state.Telegram.Status = TelegramNotConfigured
 	}
@@ -220,6 +224,9 @@ func decodeStateForCommit(state persistedState) error {
 	}
 	if !validTelegramStatus(state.Telegram.Status) {
 		return errors.New("notification state telegram status is invalid")
+	}
+	if state.Telegram.Binding != "" && !validHexString(state.Telegram.Binding, 64) {
+		return errors.New("notification state binding is invalid")
 	}
 	return nil
 }

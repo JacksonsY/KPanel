@@ -38,6 +38,7 @@ func ruleEnabled(r Rules, rule string) bool {
 	return false
 }
 
+// Caller holds opMu through destination selection, sending and state commit.
 func (s *Service) deliverHistory(ctx context.Context, state persistedState, hosts []cluster.Host, credential string, ready bool, now time.Time) error {
 	if state.MultiChannel {
 		return s.deliverChannels(ctx, state, hosts, now)
@@ -47,6 +48,7 @@ func (s *Service) deliverHistory(ctx context.Context, state persistedState, host
 		return historyError(err)
 	}
 	before := cloneHistory(history)
+	provider, _ := DetectProvider(credential)
 	expiries := s.expirySnapshot()
 	limits := s.trafficLimitsSnapshot()
 	present := map[string]bool{}
@@ -78,7 +80,7 @@ func (s *Service) deliverHistory(ctx context.Context, state persistedState, host
 			reason = "host_removed"
 		case (event.Rule == cumulativeTrafficReceivedRuleKey || event.Rule == cumulativeTrafficSentRuleKey) && !cycleUnavailable[event.HostID] && event.TrafficCycle != cycles[event.HostID]:
 			reason = "traffic_cycle_changed"
-		case credential != "" && event.ChannelFingerprint != tokenFingerprint(credential):
+		case credential != "" && event.ChannelFingerprint != legacyDestination(provider, credential, state.Telegram):
 			reason = "channel_changed"
 		case now.Sub(event.CreatedAt) >= 24*time.Hour:
 			reason = "retry_expired"

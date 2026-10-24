@@ -51,7 +51,8 @@ func validateChannels(state persistedState) error {
 	}
 	seen := map[Provider]bool{}
 	for _, channel := range state.Channels {
-		if channel.Binding != "" && !validHexString(channel.Binding, 64) {
+		if (channel.Binding != "" && !validHexString(channel.Binding, 64)) ||
+			(channel.Meta.Binding != "" && !validHexString(channel.Meta.Binding, 64)) {
 			return ErrInvalidSettings
 		}
 		if seen[channel.Provider] || !ValidChannelCredential(channel.Provider, channel.Credential) ||
@@ -143,6 +144,9 @@ func (s *Service) UpdateChannel(ctx context.Context, input ChannelUpdateInput) (
 		}
 	}
 	if input.Remove {
+		if input.Provider == ProviderTelegram {
+			s.cancelBinding()
+		}
 		if index >= 0 {
 			channels = append(channels[:index], channels[index+1:]...)
 		}
@@ -156,6 +160,9 @@ func (s *Service) UpdateChannel(ctx context.Context, input ChannelUpdateInput) (
 		if credential != "" {
 			if !ValidChannelCredential(input.Provider, credential) {
 				return Snapshot{}, ErrInvalidCredential
+			}
+			if input.Provider == ProviderTelegram {
+				ctx = s.bindingContext(ctx, credential, true)
 			}
 			meta, sent, err := s.connectChannel(ctx, input.Provider, credential, state.Settings.Locale)
 			if err != nil {
@@ -224,8 +231,12 @@ func (s *Service) ChannelAction(ctx context.Context, input ChannelActionInput, d
 		if ch.Provider != ProviderTelegram {
 			return Snapshot{}, ErrDiscoverUnsupported
 		}
-		ch.Meta, _, err = s.connectChannel(ctx, ch.Provider, ch.Credential, state.Settings.Locale)
-		if err == nil {
+		var meta telegramState
+		meta, _, err = s.connectChannel(ctx, ch.Provider, ch.Credential, state.Settings.Locale)
+		if err == nil && (meta.hasDestination() || !ch.Meta.hasDestination()) {
+			ch.Meta = meta
+		}
+		if err == nil && meta.hasDestination() {
 			ch.Binding = tokenFingerprint(ch.Credential + rand.Text())
 		}
 	} else {
@@ -237,9 +248,13 @@ func (s *Service) ChannelAction(ctx context.Context, input ChannelActionInput, d
 	if err != nil {
 		return Snapshot{}, err
 	}
-	ch.Meta.Status = ChannelReady
+	if ch.Meta.hasDestination() {
+		ch.Meta.Status = ChannelReady
+	}
 	ch.Meta.LastCheckedAt = timePtr(s.now().UTC())
-	ch.Meta.LastSuccessAt = timePtr(s.now().UTC())
+	if ch.Meta.hasDestination() {
+		ch.Meta.LastSuccessAt = timePtr(s.now().UTC())
+	}
 	ch.Meta.LastErrorCode = ""
 	state.MultiChannel = true
 	state.Channels = channels
@@ -296,13 +311,6 @@ func prepareChannelDeliveries(event *storedEvent, state persistedState) {
 	if len(event.Deliveries) > 0 {
 		event.Delivery = "pending"
 	}
-}
-
-func channelFingerprint(ch storedChannel) string {
-	if ch.Binding != "" {
-		return ch.Binding
-	}
-	return tokenFingerprint(ch.Credential)
 }
 
 func aggregateDelivery(event *storedEvent) {

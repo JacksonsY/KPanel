@@ -1031,6 +1031,9 @@ func authenticatedRequest(
 	sessionCookie, csrfCookie *http.Cookie,
 	headers map[string]string,
 ) *httptest.ResponseRecorder {
+	if server, ok := handler.(*Server); ok && strings.HasPrefix(path, "/") && strings.HasPrefix(server.config.PublicURL, "https://") {
+		path = strings.TrimRight(server.config.PublicURL, "/") + path
+	}
 	request := httptest.NewRequest(method, path, bytes.NewReader(body))
 	request.Host = "panel.test"
 	for name, value := range headers {
@@ -1044,6 +1047,9 @@ func authenticatedRequest(
 }
 
 func performRequest(handler http.Handler, method, path string, body []byte, headers map[string]string) *httptest.ResponseRecorder {
+	if server, ok := handler.(*Server); ok && strings.HasPrefix(path, "/") && strings.HasPrefix(server.config.PublicURL, "https://") {
+		path = strings.TrimRight(server.config.PublicURL, "/") + path
+	}
 	request := httptest.NewRequest(method, path, bytes.NewReader(body))
 	request.Host = "panel.test"
 	for name, value := range headers {

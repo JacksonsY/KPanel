@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -303,7 +305,7 @@ func TestSelfSignedTLSRedirectsOnlyDirectIPNavigations(t *testing.T) {
 	if response.Code != http.StatusTemporaryRedirect || response.Header().Get("Location") != "https://203.0.113.5:8080/files?path=%2Fhome" {
 		t.Fatalf("direct IP navigation not upgraded: %d %q", response.Code, response.Header().Get("Location"))
 	}
-	for name, path := range map[string]string{"api": "/api/v1/health", "share": "/share/file/abc", "raw": "/f/abc"} {
+	for name, path := range map[string]string{"api": "/api/v1/health"} {
 		if response := performRequest(server, http.MethodGet, path, nil, navigate); response.Code == http.StatusTemporaryRedirect {
 			t.Fatalf("%s path must not be redirected", name)
 		}
@@ -318,8 +320,8 @@ func TestSelfSignedTLSRedirectsOnlyDirectIPNavigations(t *testing.T) {
 	request.Header.Set("Sec-Fetch-Mode", "navigate")
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder, request)
-	if recorder.Code == http.StatusTemporaryRedirect {
-		t.Fatal("trusted proxy or loopback peers must keep plain HTTP")
+	if recorder.Code != http.StatusTemporaryRedirect {
+		t.Fatal("loopback without authenticated proxy HTTPS must not bypass the transport gate")
 	}
 	domain := map[string]string{"Host": "panel.test", "Sec-Fetch-Mode": "navigate"}
 	if response := performRequest(server, http.MethodGet, "/", nil, domain); response.Code == http.StatusTemporaryRedirect {
@@ -364,18 +366,32 @@ func TestPanelAccessSelfSignedTLSSettings(t *testing.T) {
 	if !response.SelfSignedTLS.Enabled || response.SelfSignedTLS.Fingerprint == "" {
 		t.Fatalf("enable response incomplete: %+v", response)
 	}
-	certificate := authenticatedRequest(server, http.MethodGet, panelAccessCertificatePath, nil, sessionCookie, csrfCookie, nil)
+	if _, err := server.auth.Authenticate(sessionCookie.Value); err == nil {
+		t.Fatal("enabling HTTPS retained an old HTTP session")
+	}
+	credentials, err := server.auth.Login("192.0.2.1", "admin", "a-strong-password-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionCookie.Value, csrfCookie.Value = credentials.Token, credentials.CSRFToken
+	server.config.PublicURL = "https://panel.test"
+	headers["Origin"] = "https://panel.test"
+	headers["X-CSRF-Token"] = credentials.CSRFToken
+	certificate := authenticatedRequest(server, http.MethodGet, "https://panel.test"+panelAccessCertificatePath, nil, sessionCookie, csrfCookie, nil)
 	if certificate.Code != http.StatusOK || !bytes.HasPrefix(certificate.Body.Bytes(), []byte("-----BEGIN CERTIFICATE-----")) ||
 		strings.Contains(certificate.Body.String(), "PRIVATE KEY") {
 		t.Fatalf("certificate download wrong: %d", certificate.Code)
 	}
-	anonymous := performRequest(server, http.MethodGet, panelAccessCertificatePath, nil, nil)
+	anonymous := performRequest(server, http.MethodGet, "https://panel.test"+panelAccessCertificatePath, nil, nil)
 	if anonymous.Code != http.StatusUnauthorized {
 		t.Fatalf("certificate download must require a session: %d", anonymous.Code)
 	}
-	disabled := authenticatedRequest(server, http.MethodPut, panelAccessSelfSignedTLSPath, []byte(`{"enabled":false}`), sessionCookie, csrfCookie, headers)
+	disabled := authenticatedRequest(server, http.MethodPut, "https://panel.test"+panelAccessSelfSignedTLSPath, []byte(`{"enabled":false}`), sessionCookie, csrfCookie, headers)
 	if disabled.Code != http.StatusOK || strings.Contains(disabled.Body.String(), `"enabled":true`) {
 		t.Fatalf("disable failed: %d %s", disabled.Code, disabled.Body.String())
+	}
+	if _, err := server.auth.Authenticate(sessionCookie.Value); err == nil {
+		t.Fatal("disabling HTTPS retained a secure session")
 	}
 	if files, err := readPanelBackupFiles(server.config.DataDir); err != nil {
 		t.Fatal(err)
@@ -516,6 +532,186 @@ func TestPanelDomainProbeWorksBehindSecurityEntrance(t *testing.T) {
 	}
 	if response := performRequest(server, http.MethodGet, "/api/v1/settings/panel-access", nil, nil); response.Code == http.StatusOK {
 		t.Fatal("settings must stay behind the security entrance")
+	}
+}
+
+func TestSecureTransportRejectsPlainAPIsAndUnprovenProxyHeaders(t *testing.T) {
+	s, _ := newTestServer(t)
+	s.config.AllowIPHosts = true
+	s.config.SecureCookie = true // Cookie policy is not evidence of TLS.
+	if _, err := s.selfTLS.Enable(nil, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/v1/auth/login", "/api/v1/auth/session", "/api/v1/settings/panel-access", "/api/v1/cluster/hosts", "/mcp", "/f/abc"} {
+		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		r.Host = "panel.test"
+		r.RemoteAddr = "192.0.2.4:1234"
+		r.Header.Set("X-Forwarded-Proto", "https")
+		r.Header.Set("X-Forwarded-Host", "panel.test")
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code != http.StatusUpgradeRequired {
+			t.Fatalf("plain %s accepted: %d", path, w.Code)
+		}
+	}
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	r.Host = "panel.test"
+	r.RemoteAddr = "127.0.0.1:1234"
+	r.Header.Set("X-Forwarded-Proto", "https")
+	r.Header.Set("X-Forwarded-Host", "panel.test")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("trusted HTTPS proxy was blocked: %d %s", w.Code, w.Body.String())
+	}
+	for _, path := range []string{"/api/v1/health", "/api/v2/federation/summary"} {
+		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		if strings.HasSuffix(path, "health") {
+			r.Method = http.MethodGet
+		}
+		r.Host = "panel.test"
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Code == http.StatusUpgradeRequired {
+			t.Fatalf("independent protocol blocked: %s", path)
+		}
+	}
+}
+
+func TestCorruptEnabledTLSRemainsClosedAndOfflineRecoveryWorks(t *testing.T) {
+	s, _ := newTestServer(t)
+	if _, err := s.selfTLS.Enable(nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.selfTLS.dir, selfSignedTLSCertFile), []byte("broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := openSelfSignedTLS(s.selfTLS.dir)
+	if err == nil || !m.Info().Enabled || m.TLSConfig() != nil {
+		t.Fatalf("corruption lost secure mode: %+v %v", m.Info(), err)
+	}
+	s.selfTLS = m
+	if res := performRequest(s, http.MethodPost, "/api/v1/auth/login", []byte(`{}`), nil); res.Code != http.StatusUpgradeRequired {
+		t.Fatalf("corruption opened plaintext login: %d", res.Code)
+	}
+	if err := DisableSelfSignedTLS(s.config); err != nil {
+		t.Fatal(err)
+	}
+	m, _ = openSelfSignedTLS(s.selfTLS.dir)
+	if m.Info().Enabled {
+		t.Fatal("offline recovery did not clear policy")
+	}
+}
+
+func TestHTTPSConfigurationRequiresActualSecureTransport(t *testing.T) {
+	for _, policy := range []string{"public-url", "secure-cookie"} {
+		t.Run(policy, func(t *testing.T) {
+			s, _ := newTestServer(t)
+			if policy == "public-url" {
+				s.config.PublicURL = "https://panel.test"
+			} else {
+				s.config.SecureCookie = true
+			}
+			r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`))
+			r.Host = "panel.test"
+			r.RemoteAddr = "192.0.2.4:1234"
+			r.Header.Set("Origin", "https://panel.test")
+			r.Header.Set("X-Forwarded-Proto", "https")
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			if w.Code != http.StatusUpgradeRequired {
+				t.Fatalf("configured HTTPS accepted unproven plaintext: %d", w.Code)
+			}
+			r = httptest.NewRequest(http.MethodGet, "https://panel.test/api/v1/auth/session", nil)
+			r.Host = "panel.test"
+			w = httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("actual TLS was blocked: %d", w.Code)
+			}
+		})
+	}
+}
+
+func TestExistingEnabledTLSMigratesSessionsOnce(t *testing.T) {
+	s, tokenPath := newTestServer(t)
+	session, _ := bootstrapCookies(t, s, tokenPath)
+	if _, err := s.selfTLS.Enable(nil, false); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := NewServer(s.config, s.auth, s.store, NewAgentClient(s.config.AgentSocket, s.config.AgentTokenFile, s.config.MaxAgentBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	if _, err := s.auth.Authenticate(session.Value); err == nil {
+		t.Fatal("legacy HTTP session survived secure startup migration")
+	}
+	if !restarted.selfTLS.sessionsSecured() {
+		t.Fatal("migration marker missing")
+	}
+	credentials, err := s.auth.Login("192.0.2.6", "admin", "a-strong-password-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := NewServer(s.config, s.auth, s.store, NewAgentClient(s.config.AgentSocket, s.config.AgentTokenFile, s.config.MaxAgentBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if _, err := s.auth.Authenticate(credentials.Token); err != nil {
+		t.Fatal("completed migration revoked later secure sessions")
+	}
+}
+
+func TestTLSBoundaryActivationFailureKeepsSessionsRevoked(t *testing.T) {
+	s, tokenPath := newTestServer(t)
+	session, _ := bootstrapCookies(t, s, tokenPath)
+	err := s.auth.ChangeTransportBoundary(func() error { return errors.New("activation failed") })
+	if err == nil {
+		t.Fatal("expected transition failure")
+	}
+	if _, err := s.auth.Authenticate(session.Value); err == nil {
+		t.Fatal("failed activation restored revoked session")
+	}
+}
+
+func TestTLSBoundaryRevocationFailureDoesNotActivate(t *testing.T) {
+	s, tokenPath := newTestServer(t)
+	session, _ := bootstrapCookies(t, s, tokenPath)
+	saved := s.config.StorePath + ".saved"
+	if err := os.Rename(s.config.StorePath, saved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(s.config.StorePath, 0700); err != nil {
+		t.Fatal(err)
+	}
+	blocker := filepath.Join(s.config.StorePath, "blocker")
+	if err := os.WriteFile(blocker, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	previous := s.config.StorePath + ".previous"
+	if err := os.Mkdir(previous, 0700); err != nil {
+		t.Fatal(err)
+	}
+	previousBlocker := filepath.Join(previous, "blocker")
+	if err := os.WriteFile(previousBlocker, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.Remove(previousBlocker)
+		_ = os.Remove(previous)
+		_ = os.Remove(blocker)
+		_ = os.Remove(s.config.StorePath)
+		_ = os.Rename(saved, s.config.StorePath)
+	}()
+	activated := false
+	err := s.auth.ChangeTransportBoundary(func() error { activated = true; return nil })
+	if err == nil || activated {
+		t.Fatal("transport activated without durable revocation")
+	}
+	if _, err := s.auth.Authenticate(session.Value); err != nil {
+		t.Fatal("failed revocation changed memory")
 	}
 }
 

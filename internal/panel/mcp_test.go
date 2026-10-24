@@ -104,7 +104,7 @@ func TestMCPOriginTLSRequestLimitsAndHostScope(t *testing.T) {
 		{"cross-origin", "https://evil.example", "", false, 403},
 		{"null-origin", "null", "", false, 403},
 		{"query-token", "", "?token=x", false, 400},
-		{"plain-http", "", "", true, 403},
+		{"plain-http", "", "", true, 426},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRequest("POST", "https://panel.test/mcp"+tc.query, strings.NewReader(mcpInfoCall))

@@ -63,6 +63,7 @@ type Service struct {
 	credentialMu sync.RWMutex
 	loginMu      sync.Mutex
 	pending      map[string]int
+	compute      map[string]computeBudget
 	hashSlots    chan struct{}
 	enrollmentMu sync.Mutex
 	enrollments  map[string]pendingTOTPEnrollment
@@ -154,6 +155,7 @@ func NewService(storage *store.Store, hasher PasswordHasher, config Config) (*Se
 		now:         func() time.Time { return time.Now().UTC() },
 		dummyHash:   dummyHash,
 		pending:     make(map[string]int),
+		compute:     make(map[string]computeBudget),
 		hashSlots:   make(chan struct{}, config.MaxConcurrentHashes),
 		enrollments: make(map[string]pendingTOTPEnrollment),
 	}, nil
@@ -279,6 +281,9 @@ func (s *Service) Login(ip, username, password, secondFactor string) (Credential
 		return Credentials{}, &RateLimitError{RetryAfter: s.config.LoginWindow}
 	}
 	defer s.releaseLogin(ipKey, accountKey)
+	if !s.admitPasswordComputation(ipKey) {
+		return Credentials{}, &RateLimitError{RetryAfter: s.config.LoginWindow}
+	}
 	select {
 	case s.hashSlots <- struct{}{}:
 		defer func() { <-s.hashSlots }()
@@ -500,6 +505,9 @@ func (s *Service) verifyCurrentPassword(userID, currentPassword string) (store.U
 // so an authenticated session cannot use them as an unthrottled password
 // oracle. slotHeld reports that the caller already holds a hash slot.
 func (s *Service) verifyCurrentPasswordWithSlot(userID, currentPassword string, slotHeld bool) (store.User, error) {
+	if !s.admitPasswordComputation("user:" + userID) {
+		return store.User{}, &RateLimitError{RetryAfter: s.config.LoginWindow}
+	}
 	now := s.now()
 	reauthKey := "reauth:" + userID
 	if !s.reserveAuthenticationAttempt(reauthKey, now.Add(-s.config.LoginWindow), s.config.MaxLoginFailures) {
@@ -649,6 +657,18 @@ func (s *Service) Authenticate(token string) (Session, error) {
 		ExpiresAt: session.ExpiresAt,
 		User:      publicUser(user),
 	}, nil
+}
+
+// ChangeTransportBoundary serializes session revocation against password login.
+// Revocation is durable before activation; a failed activation may require a
+// fresh login, but cannot leave a pre-transition session authenticated.
+func (s *Service) ChangeTransportBoundary(change func() error) error {
+	s.credentialMu.Lock()
+	defer s.credentialMu.Unlock()
+	if err := s.store.RevokeAllSessions(); err != nil {
+		return err
+	}
+	return change()
 }
 
 func (s *Service) ValidateCSRF(session Session, token string) error {

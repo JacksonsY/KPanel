@@ -35,7 +35,7 @@ func (s *Server) handleClusterNotifications(w http.ResponseWriter, r *http.Reque
 			s.writeProblem(w, r, http.StatusServiceUnavailable, "cluster_notifications_unavailable", "Cluster notifications unavailable", "")
 			return
 		}
-		s.writeJSON(w, http.StatusOK, s.notifications.Snapshot())
+		s.writeJSON(w, http.StatusOK, s.notifications.SnapshotForSession(r.Context()))
 	case r.URL.Path == clusterNotificationsPath && r.Method == http.MethodPut:
 		s.handleClusterNotificationsUpdate(w, r)
 	case r.URL.Path == clusterNotificationsPath+"/discover" && r.Method == http.MethodPost:

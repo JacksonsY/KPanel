@@ -17,8 +17,7 @@ type checkChannelTarget struct {
 // Move service-check intents to the same bounded durable history used by host
 // alerts. The source ID makes the two-file handoff idempotent after a crash.
 func (s *CheckAlerts) enqueueChannelHistory(ctx context.Context) error {
-	s.parent.opMu.Lock()
-	defer s.parent.opMu.Unlock()
+	// Caller holds parent.opMu through the handoff and actual sends.
 	state := s.parent.store.stateSnapshot()
 	if !state.Settings.Enabled || !state.Settings.Rules.ServiceChecksEnabled {
 		return nil
@@ -72,16 +71,9 @@ func (s *CheckAlerts) enqueueChannelHistory(ctx context.Context) error {
 				event.HostName = item.HostID
 			}
 			targets := pending.Targets
-			if !pending.MultiChannel {
-				credential, present, err := s.parent.store.credential()
-				if err != nil {
-					s.mu.Unlock()
-					return err
-				}
-				if present {
-					provider, _ := DetectProvider(credential)
-					targets = []checkChannelTarget{{provider, tokenFingerprint(credential)}}
-				}
+			if !pending.MultiChannel && len(targets) == 0 {
+				event.Delivery = "cancelled"
+				event.LastErrorCode = "channel_changed"
 			}
 			for _, target := range targets {
 				event.Deliveries = append(event.Deliveries, ChannelDelivery{Provider: target.Provider, Status: "pending"})

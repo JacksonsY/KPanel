@@ -57,6 +57,11 @@ func BenchmarkLogin(b *testing.B) {
 					b.Fatal(err)
 				}
 				b.StopTimer()
+				// Measure successful verification/storage rather than the cheap
+				// admission rejection path. Budget behavior has separate tests.
+				service.loginMu.Lock()
+				clear(service.compute)
+				service.loginMu.Unlock()
 				if err := service.Logout(credentials.Token); err != nil {
 					b.Fatal(err)
 				}

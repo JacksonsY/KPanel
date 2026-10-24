@@ -21,7 +21,7 @@ func TestTelegramClientValidatesAndDiscoversPrivateStartChat(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/getMe"):
 			_, _ = w.Write([]byte(`{"ok":true,"result":{"id":42,"is_bot":true,"first_name":"KPanel","username":"kpanel_bot"}}`))
 		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
-			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":10,"message":{"text":"/start","chat":{"id":-8,"type":"group"}}},{"update_id":12,"message":{"text":"/help","chat":{"id":91,"type":"private"}}},{"update_id":13,"message":{"text":"/start@kpanel_bot extra","chat":{"id":91,"type":"private","username":"admin"}}}]}`))
+			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":10,"message":{"text":"/start proof","chat":{"id":-8,"type":"group"}}},{"update_id":13,"message":{"text":"/start proof","chat":{"id":91,"type":"private"}}},{"update_id":14,"message":{"text":"/start","chat":{"id":92,"type":"private"}}}]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -29,7 +29,7 @@ func TestTelegramClientValidatesAndDiscoversPrivateStartChat(t *testing.T) {
 	defer server.Close()
 
 	client := newTelegramClientForTest(server.URL, server.Client())
-	bot, chatID, err := client.ValidateAndDiscover(context.Background(), testBotToken)
+	bot, chatID, err := client.ValidateAndDiscover(context.WithValue(context.Background(), telegramProofKey{}, "/start proof"), testBotToken)
 	if err != nil {
 		t.Fatalf("ValidateAndDiscover() error = %v", err)
 	}

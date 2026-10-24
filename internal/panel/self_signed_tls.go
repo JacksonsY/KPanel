@@ -69,21 +69,23 @@ func selfSignedTLSDir(dataDir string) string {
 }
 
 // openSelfSignedTLS loads persisted state. A damaged certificate never blocks
-// startup: the panel falls back to plain HTTP and reports the fallback.
+// startup. The enabled marker still enforces the secure transport boundary;
+// a trusted HTTPS proxy or the offline CLI can repair a damaged certificate.
 func openSelfSignedTLS(dir string) (*selfSignedTLS, error) {
 	manager := &selfSignedTLS{dir: dir}
 	manager.state.Store(&selfSignedTLSState{})
+	enabled := manager.enabledMarker()
 	certificate, leaf, err := manager.readPair()
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, os.ErrNotExist) && !enabled {
 		return manager, nil
 	}
 	if err != nil {
-		manager.state.Store(&selfSignedTLSState{loadError: "certificate_unreadable"})
+		manager.state.Store(&selfSignedTLSState{info: selfSignedTLSInfo{Enabled: enabled}, loadError: "certificate_unreadable"})
 		return manager, err
 	}
 	info := certificateInfo(leaf)
 	state := &selfSignedTLSState{info: info}
-	if manager.enabledMarker() {
+	if enabled {
 		state.config = selfSignedTLSConfig(certificate)
 		state.info.Enabled = true
 	}
@@ -157,6 +159,9 @@ func (m *selfSignedTLS) Disable() (selfSignedTLSInfo, error) {
 	if err := disableSelfSignedTLSMarker(m.dir); err != nil {
 		return selfSignedTLSInfo{}, err
 	}
+	if err := m.clearSessionBoundary(); err != nil {
+		return selfSignedTLSInfo{}, err
+	}
 	info := m.state.Load().info
 	info.Enabled = false
 	m.state.Store(&selfSignedTLSState{info: info})
@@ -188,8 +193,40 @@ func disableSelfSignedTLSMarker(dir string) error {
 }
 
 func (m *selfSignedTLS) enabledMarker() bool {
-	info, err := os.Lstat(filepath.Join(m.dir, selfSignedTLSEnabled))
+	_, err := os.Lstat(filepath.Join(m.dir, selfSignedTLSEnabled))
+	return !errors.Is(err, os.ErrNotExist)
+}
+
+func (m *selfSignedTLS) sessionsSecured() bool {
+	info, err := os.Lstat(filepath.Join(m.dir, "session-boundary-v1"))
 	return err == nil && info.Mode().IsRegular()
+}
+
+func (m *selfSignedTLS) markSessionsSecured() error {
+	if err := os.MkdirAll(m.dir, 0o700); err != nil {
+		return err
+	}
+	return writeFileAtomic(filepath.Join(m.dir, "session-boundary-v1"), nil, 0o600)
+}
+
+func (m *selfSignedTLS) clearSessionBoundary() error {
+	err := os.Remove(filepath.Join(m.dir, "session-boundary-v1"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+func (s *Server) authenticatedTransport(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	_, ok := s.trustedProxyHTTPSOrigin(r)
+	return ok
+}
+
+func (s *Server) secureTransportRequired() bool {
+	return s.selfTLS.Info().Enabled || s.config.SecureCookie || strings.HasPrefix(strings.ToLower(s.config.PublicURL), "https://")
 }
 
 func (m *selfSignedTLS) readPair() (tls.Certificate, *x509.Certificate, error) {
@@ -500,32 +537,25 @@ func (s *Server) WrapListener(inner net.Listener) net.Listener {
 	return newSelfSignedTLSListener(inner, s.selfTLS.TLSConfig)
 }
 
-// selfSignedTLSRedirect upgrades top-level browser navigations on a direct IP
-// host once self-signed HTTPS is enabled. API calls, public share pages,
-// trusted reverse proxies and loopback healthchecks keep plain HTTP.
+// selfSignedTLSRedirect is the single transport gate, before authentication,
+// CSRF, browser APIs and public downloads. Only exact health and independently
+// encrypted Noise federation endpoints may use HTTP in secure mode.
 func (s *Server) selfSignedTLSRedirect(w http.ResponseWriter, r *http.Request) bool {
-	if r.TLS != nil || !s.config.AllowIPHosts || s.selfTLS.TLSConfig() == nil ||
-		(r.Method != http.MethodGet && r.Method != http.MethodHead) || len(r.Header.Values("Upgrade")) != 0 {
+	if !s.secureTransportRequired() || s.authenticatedTransport(r) {
 		return false
 	}
-	if mode := r.Header.Get("Sec-Fetch-Mode"); mode != "" && mode != "navigate" {
-		return false
-	} else if mode == "" && !strings.Contains(r.Header.Get("Accept"), "text/html") {
+	if (r.Method == http.MethodGet && r.URL.Path == "/api/v1/health") || isFederationV2Request(r) {
 		return false
 	}
-	path := r.URL.Path
-	if strings.HasPrefix(path, "/api/") || path == "/mcp" || path == "/f" ||
-		strings.HasPrefix(path, fileShareRawPrefix) || strings.HasPrefix(path, clusterSharePagePrefix) {
-		return false
-	}
-	if s.isTrustedProxyPeer(r) {
-		return false
-	}
-	if _, ok := directIPOrigin(r); !ok {
-		return false
-	}
-	target := "https://" + r.Host + r.URL.RequestURI()
 	w.Header().Set("Cache-Control", "no-store")
-	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+	if s.selfTLS.TLSConfig() != nil && (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+		!strings.HasPrefix(r.URL.Path, "/api/") && len(r.Header.Values("Upgrade")) == 0 &&
+		(r.Header.Get("Sec-Fetch-Mode") == "navigate" || strings.Contains(r.Header.Get("Accept"), "text/html")) {
+		if _, ok := directIPOrigin(r); ok {
+			http.Redirect(w, r, "https://"+r.Host+r.URL.RequestURI(), http.StatusTemporaryRedirect)
+			return true
+		}
+	}
+	s.writeProblem(w, r, http.StatusUpgradeRequired, "https_required", "HTTPS is required", "Use HTTPS or a trusted HTTPS reverse proxy. Repair the certificate or use the local TLS recovery command if needed.")
 	return true
 }

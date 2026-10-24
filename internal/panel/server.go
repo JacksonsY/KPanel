@@ -256,7 +256,20 @@ func NewServer(config Config, authService *auth.Service, storage *store.Store, a
 	}
 	selfTLS, selfTLSErr := openSelfSignedTLS(selfSignedTLSDir(config.DataDir))
 	if selfTLSErr != nil {
-		slog.Error("self-signed HTTPS disabled; certificate could not be loaded", "error", selfTLSErr)
+		slog.Error("self-signed certificate could not be loaded; secure transport policy retained", "error", selfTLSErr)
+	}
+	// Upgrade already-enabled installations once: sessions issued by earlier
+	// versions may have crossed HTTP. The marker follows durable revocation.
+	requireSecureTransport := selfTLS.Info().Enabled || config.SecureCookie || strings.HasPrefix(strings.ToLower(config.PublicURL), "https://")
+	if requireSecureTransport && !selfTLS.sessionsSecured() {
+		if err := authService.ChangeTransportBoundary(selfTLS.markSessionsSecured); err != nil {
+			return nil, fmt.Errorf("secure transport session migration: %w", err)
+		}
+	}
+	if !requireSecureTransport {
+		if err := selfTLS.clearSessionBoundary(); err != nil {
+			return nil, fmt.Errorf("reset transport session boundary: %w", err)
+		}
 	}
 	server := &Server{
 		selfTLS:             selfTLS,
@@ -343,9 +356,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.requestsMu.Unlock()
 	defer s.requests.Done()
 	s.setSecurityHeaders(w, r)
-	if s.selfSignedTLSRedirect(w, r) {
-		return
-	}
 	requestID := newRequestID()
 	w.Header().Set("X-Request-ID", requestID)
 	r = r.WithContext(context.WithValue(r.Context(), requestIDKey, requestID))
@@ -362,6 +372,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		!isFederationV2Request(r) &&
 		!s.checkHost(w, r) {
 		return
+	}
+	if s.selfSignedTLSRedirect(w, r) {
+		return
+	}
+	if cookie, err := r.Cookie(s.config.CookieName); err == nil {
+		if session, err := s.auth.Authenticate(cookie.Value); err == nil {
+			r = r.WithContext(notification.WithBindingSession(r.Context(), session.TokenHash))
+		}
 	}
 	// The host updater snapshots Panel data before starting the target image.
 	// Refuse writes until that snapshot is either committed or rolled back, so
@@ -1754,6 +1772,13 @@ func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, target any) 
 }
 
 func (s *Server) setAuthCookies(w http.ResponseWriter, r *http.Request, credentials auth.Credentials) {
+	// A request admitted before an HTTPS settings change may finish afterwards.
+	// Never expose a newly created session from that in-flight plaintext login.
+	if s.secureTransportRequired() && !s.authenticatedTransport(r) {
+		_ = s.auth.Logout(credentials.Token)
+		s.clearAuthCookies(w, r)
+		return
+	}
 	maxAge := max(int(time.Until(credentials.ExpiresAt).Seconds()), 1)
 	secure := s.requestUsesHTTPS(r)
 	http.SetCookie(w, &http.Cookie{

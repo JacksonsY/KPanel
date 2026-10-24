@@ -48,7 +48,7 @@ func TestPasskeyHTTPOriginSessionCSRFAndCookieBoundary(t *testing.T) {
 		t.Fatal(available.Code, available.Body.String())
 	}
 	unavailable := passkeyRequest(s, "GET", passkeyPrefix+"/status", nil, nil, nil, false)
-	if !strings.Contains(unavailable.Body.String(), `"available":false`) {
+	if unavailable.Code != http.StatusUpgradeRequired || !strings.Contains(unavailable.Body.String(), `"code":"https_required"`) {
 		t.Fatal(unavailable.Body.String())
 	}
 	anonymous := passkeyRequest(s, "GET", passkeyPrefix, nil, nil, nil, true)

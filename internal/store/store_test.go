@@ -17,6 +17,45 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/contract"
 )
 
+func TestRevokeAllSessionsPersistsAndRollsBackFailedWrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := s.CreateInitialAdmin(User{ID: "admin", Username: "admin", PasswordHash: "hash", Role: "admin", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	for _, token := range []string{"one", "two"} {
+		if err := s.PutSession(Session{TokenHash: token, CSRFHash: "csrf", UserID: "admin", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.path = filepath.Join(t.TempDir(), "missing", "state.json")
+	if err := s.RevokeAllSessions(); err == nil {
+		t.Fatal("expected persistence failure")
+	}
+	s.path = path
+	if _, err := s.SessionByTokenHash("one", now); err != nil {
+		t.Fatal("failed revocation changed memory")
+	}
+	if err := s.RevokeAllSessions(); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, token := range []string{"one", "two"} {
+		if _, err := s.SessionByTokenHash(token, now); !errors.Is(err, ErrNotFound) {
+			t.Fatal("revoked session survived restart")
+		}
+	}
+}
+
 func TestStorePersistsIdentitySessionAndAudit(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	storage, err := Open(path)

@@ -63,6 +63,7 @@ type trafficSample struct {
 }
 
 type Service struct {
+	binding           telegramBindingState
 	store             *Store
 	history           *historyStore
 	hosts             HostSource
@@ -275,6 +276,7 @@ func (s *Service) snapshot(ctx context.Context) Snapshot {
 			}
 		}
 	}
+	result.TelegramBinding = s.bindingSnapshot(ctx)
 	return result
 }
 
@@ -337,6 +339,9 @@ func (s *Service) Configure(ctx context.Context, input UpdateInput) (Snapshot, e
 	credentialChanged := false
 	delivered := false
 	if newCredential != "" {
+		if provider == ProviderTelegram {
+			ctx = s.bindingContext(ctx, newCredential, true)
+		}
 		var connectErr error
 		next.Telegram, delivered, connectErr = s.connectChannel(ctx, provider, newCredential, locale)
 		if connectErr != nil {
@@ -412,9 +417,17 @@ func resolveChannelInput(input UpdateInput, oldCredential string, oldPresent boo
 func (s *Service) connectChannel(ctx context.Context, provider Provider, credential, locale string) (telegramState, bool, error) {
 	now := s.now().UTC()
 	if provider == ProviderTelegram {
+		ctx = s.bindingContext(ctx, credential, false)
 		bot, chatID, err := s.telegram.ValidateAndDiscover(ctx, credential)
+		if errors.Is(err, ErrChatNotFound) {
+			return telegramState{TokenFingerprint: tokenFingerprint(credential), BotUsername: bot.Username, Status: TelegramWaitingChat}, false, nil
+		}
 		if err != nil {
 			return telegramState{}, false, err
+		}
+		if !s.consumeBinding(ctx) {
+			s.bindingContext(ctx, credential, true)
+			return telegramState{TokenFingerprint: tokenFingerprint(credential), BotUsername: bot.Username, Status: TelegramWaitingChat}, false, nil
 		}
 		return readyTelegramState(credential, bot, chatID, now), false, nil
 	}
@@ -459,20 +472,18 @@ func (s *Service) Discover(ctx context.Context, expectedResourceVersion string) 
 	if provider != ProviderTelegram {
 		return Snapshot{}, &Error{Code: "discover_unsupported", Cause: ErrDiscoverUnsupported}
 	}
+	ctx = s.bindingContext(ctx, credential, false)
 	bot, chatID, discoverErr := s.telegram.ValidateAndDiscover(ctx, credential)
 	now := s.now().UTC()
 	if discoverErr != nil {
-		state.Telegram.TokenFingerprint = tokenFingerprint(credential)
-		state.Telegram.HasChat = false
-		state.Telegram.Status = TelegramError
-		state.Telegram.LastCheckedAt = timePtr(now)
-		state.Telegram.LastErrorCode = channelCode(provider, discoverErr)
 		if errors.Is(discoverErr, ErrChatNotFound) {
-			state.Telegram.Status = TelegramWaitingChat
+			return s.snapshot(ctx), nil
 		}
-		state.UpdatedAt = now
-		_ = s.store.commitState(state)
 		return Snapshot{}, discoverErr
+	}
+	if !s.consumeBinding(ctx) {
+		ctx = s.bindingContext(ctx, credential, true)
+		return s.snapshot(ctx), nil
 	}
 	state.Telegram = readyTelegramState(credential, bot, chatID, now)
 	state.ResourceVersion = configResourceVersion(state.Settings, state.Telegram)
@@ -635,7 +646,7 @@ func (s *Service) evaluate(parent context.Context) error {
 		if canDeliver {
 			event.Delivery = "pending"
 			event.Provider = provider
-			event.ChannelFingerprint = tokenFingerprint(credential)
+			event.ChannelFingerprint = legacyDestination(provider, credential, state.Telegram)
 		}
 		prepareChannelDeliveries(&event, state)
 		history.Events = append(history.Events, event)
@@ -1137,6 +1148,7 @@ func snapshotFromState(state persistedState, channelState telegramState, configu
 
 func readyTelegramState(token string, bot BotInfo, chatID int64, now time.Time) telegramState {
 	return telegramState{
+		Binding:          newDestinationBinding(),
 		TokenFingerprint: tokenFingerprint(token), BotID: bot.ID, BotUsername: bot.Username,
 		ChatID: chatID, HasChat: true, Status: TelegramReady,
 		LastCheckedAt: timePtr(now), LastSuccessAt: timePtr(now),
@@ -1145,6 +1157,7 @@ func readyTelegramState(token string, bot BotInfo, chatID int64, now time.Time) 
 
 func readyRobotState(credential string, now time.Time) telegramState {
 	return telegramState{
+		Binding:          newDestinationBinding(),
 		TokenFingerprint: tokenFingerprint(credential), HasChat: true, Status: TelegramReady,
 		LastCheckedAt: timePtr(now), LastSuccessAt: timePtr(now),
 	}
@@ -1158,10 +1171,12 @@ func configResourceVersion(settings Settings, telegram telegramState) string {
 		BotUsername      string   `json:"botUsername,omitempty"`
 		ChatID           int64    `json:"chatId,omitempty"`
 		HasChat          bool     `json:"hasChat,omitempty"`
+		Binding          string   `json:"binding,omitempty"`
 	}{
 		Settings: settings, TokenFingerprint: telegram.TokenFingerprint,
 		BotID: telegram.BotID, BotUsername: telegram.BotUsername,
 		ChatID: telegram.ChatID, HasChat: telegram.HasChat,
+		Binding: telegram.Binding,
 	}
 	content, _ := json.Marshal(material)
 	hash := sha256.Sum256(content)
