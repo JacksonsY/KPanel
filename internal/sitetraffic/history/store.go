@@ -210,7 +210,7 @@ func (s *Store) Apply(ctx context.Context, batch sitetraffic.Batch) error {
 		return ErrUnavailable
 	}
 	for _, cursor := range batch.Cursors {
-		if cursor.ID == "" || len(cursor.ID) > 160 || cursor.Offset < 0 || cursor.Offset > 1<<50 || len(cursor.Name) > 255 || strings.ContainsAny(cursor.Name, "\x00\r\n") {
+		if cursor.ID == "" || len(cursor.ID) > 160 || cursor.Offset < 0 || cursor.Offset > 1<<50 || len(cursor.Source) > 64 || strings.ContainsAny(cursor.Source, "\x00\r\n") {
 			return ErrUnavailable
 		}
 	}
@@ -353,6 +353,9 @@ func (s *Store) Apply(ctx context.Context, batch sitetraffic.Batch) error {
 		}
 	}
 	cursors, _ := json.Marshal(batch.Cursors)
+	if len(cursors) > 8192 {
+		return ErrUnavailable
+	}
 	warnings, _ := json.Marshal(batch.Warnings)
 	values := map[string]string{"cursors": string(cursors), "geo": batch.GeoStatus, "warnings": string(warnings), "collected": time.Now().UTC().Format(time.RFC3339), "more": "0", "waf": "0", "access": "0"}
 	if batch.HasMore {

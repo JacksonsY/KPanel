@@ -53,7 +53,7 @@ func (r *Reader) Collect(ctx context.Context, input CollectInput) (Batch, error)
 	}
 	cursors := map[string]Cursor{}
 	for _, c := range input.Cursors {
-		if len(c.ID) > 160 || c.ID == "" || c.Offset < 0 || c.Offset > 1<<50 || len(c.Name) > 255 || strings.ContainsAny(c.Name, "\x00\r\n") {
+		if len(c.ID) > 160 || c.ID == "" || c.Offset < 0 || c.Offset > 1<<50 || len(c.Source) > 64 || strings.ContainsAny(c.Source, "\x00\r\n") {
 			return out, ErrInput
 		}
 		if _, exists := cursors[c.ID]; exists {
@@ -186,7 +186,8 @@ func (r *Reader) Collect(ctx context.Context, input CollectInput) (Batch, error)
 			}
 		}
 		cursor.ID = id
-		cursor.Name = source.name
+		sourceSum := sha256.Sum256([]byte(source.name))
+		cursor.Source = hex.EncodeToString(sourceSum[:8])
 		if strings.Contains(source.name, "access") {
 			out.AccessSource = true
 		}
@@ -480,12 +481,12 @@ func preserveCursors(out Batch, previous []Cursor) Batch {
 	names := map[string]bool{}
 	for _, cursor := range out.Cursors {
 		ids[cursor.ID] = true
-		if cursor.Name != "" {
-			names[cursor.Name] = true
+		if cursor.Source != "" {
+			names[cursor.Source] = true
 		}
 	}
 	for _, cursor := range previous {
-		if ids[cursor.ID] || (cursor.Name != "" && names[cursor.Name]) {
+		if ids[cursor.ID] || (cursor.Source != "" && names[cursor.Source]) {
 			continue
 		}
 		if len(out.Cursors) >= MaxSources {
