@@ -41,10 +41,10 @@ html[data-desktop-shell-style='xp'] {
 
 .desktop[data-shell-style='xp'] .desktop__icon-glyph--framed::before {
   display: block;
-  inset: 3px;
+  inset: calc((100% - 40px) / 2);
   background: linear-gradient(145deg, #fff 0%, #e5f0fc 45%, #adc8e9 100%);
   border: 1px solid #638bb9;
-  border-radius: 8px;
+  border-radius: 6px;
   box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #7f9fc7, 1px 2px 2px rgb(21 46 75 / 24%);
 }
 
@@ -54,8 +54,9 @@ html[data-desktop-shell-style='xp'] {
 }
 
 .desktop[data-shell-style='xp'] .desktop__icon-glyph--framed :is(.desktop__icon-img, .desktop__icon-monogram, .desktop__site-fallback-letter) {
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
+  font-size: 18px;
   object-fit: contain;
   background: transparent;
   border: 0;
