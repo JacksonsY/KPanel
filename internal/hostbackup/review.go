@@ -1,6 +1,7 @@
 package hostbackup
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/kejilion/kejilion-panel/internal/backup"
+	"github.com/kejilion/kejilion-panel/internal/redact"
 )
 
 // ErrForeignUnconfirmed rejects restoring a package this Agent did not export
@@ -47,6 +49,7 @@ type ModuleReview struct {
 	Roots      []RootReview      `json:"roots,omitempty"`
 	Containers []ContainerReview `json:"containers,omitempty"`
 	Networks   []NetworkReview   `json:"networks,omitempty"`
+	Volumes    []VolumeReview    `json:"volumes,omitempty"`
 }
 
 // RootReview is a destination directory the restore replaces. SystemPath
@@ -87,6 +90,12 @@ type BindReview struct {
 	ReadOnly    bool   `json:"readOnly,omitempty"`
 	Live        bool   `json:"live,omitempty"`
 }
+type VolumeReview struct {
+	Name   string          `json:"name"`
+	Driver string          `json:"driver"`
+	Config json.RawMessage `json:"config"`
+}
+
 type NetworkReview struct {
 	Name     string          `json:"name"`
 	Driver   string          `json:"driver"`
@@ -149,6 +158,17 @@ func moduleReview(p Payload, facts payloadFacts, restored []string) ModuleReview
 	for _, name := range names {
 		m.Networks = append(m.Networks, networkReview(name, p.Networks[name]))
 	}
+	names = names[:0]
+	for name := range p.Volumes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		v := p.Volumes[name]
+		config, _ := json.Marshal(volumeCreateBody(v))
+		m.Volumes = append(m.Volumes, VolumeReview{Name: name, Driver: v.Driver, Config: reviewJSON(config)})
+	}
+	sanitizeModuleReview(&m)
 	return m
 }
 
@@ -169,7 +189,7 @@ func containerReview(c Container, restored []string) ContainerReview {
 	}
 	if hostConfig, err := nativeMountConfig(c); err == nil {
 		raw, _ := json.Marshal(hostConfig)
-		out.HostConfig = raw
+		out.HostConfig = reviewJSON(raw)
 		_ = json.Unmarshal(raw, &host)
 	}
 	out.Privileged = host.Privileged
@@ -228,7 +248,7 @@ func networkReview(name string, raw json.RawMessage) NetworkReview {
 		return out
 	}
 	body, _ := json.Marshal(input)
-	out.Config = body
+	out.Config = reviewJSON(body)
 	_ = json.Unmarshal(body, &config)
 	out.Driver, out.Internal = config.Driver, config.Internal
 	more := 0
@@ -250,6 +270,7 @@ func networkReview(name string, raw json.RawMessage) NetworkReview {
 	}
 	sort.Strings(options)
 	out.Options = boundedList(options, &more)
+	out.Options = redact.Records(out.Options)
 	return out
 }
 
@@ -292,7 +313,10 @@ func (e *Engine) annotateReview(r *ImportReview, current Inventory) {
 }
 
 func saveReview(directory string, r ImportReview) error {
-	r.Version = 1
+	r.Version = 2
+	for i := range r.Modules {
+		sanitizeModuleReview(&r.Modules[i])
+	}
 	data, err := json.Marshal(r)
 	if err != nil {
 		return err
@@ -301,6 +325,16 @@ func saveReview(directory string, r ImportReview) error {
 		return errors.New("backup host configuration is too large to review")
 	}
 	return backup.AtomicFile(filepath.Join(directory, reviewFile), data)
+}
+
+// Reviews are display projections only. Restore always reads the original
+// payload; a projected HostConfig must never become an execution input.
+func reviewJSON(raw json.RawMessage) json.RawMessage {
+	safe, err := redact.JSON(raw)
+	if err != nil {
+		return json.RawMessage(`null`)
+	}
+	return safe
 }
 
 // loadReview treats a missing review as an import checked by an older
@@ -318,12 +352,33 @@ func loadReview(directory string, modules []string) (ImportReview, error) {
 		return ImportReview{}, err
 	}
 	var r ImportReview
-	if backup.Decode(data, &r) != nil || r.Version != 1 {
+	if backup.Decode(data, &r) != nil || r.Version != 1 && r.Version != 2 {
 		return ImportReview{}, backup.ErrInvalid
+	}
+	if r.Version == 1 {
+		for n := range r.Modules {
+			if r.Modules[n].Origin == OriginForeign {
+				r.Modules[n].Unreviewed = true
+			}
+		}
 	}
 	for _, m := range r.Modules {
 		if !slices.Contains(modules, m.Module) || m.Origin != OriginLocal && m.Origin != OriginForeign {
 			return ImportReview{}, backup.ErrInvalid
+		}
+	}
+	for i := range r.Modules {
+		sanitizeModuleReview(&r.Modules[i])
+	}
+	safe, err := json.Marshal(r)
+	if err != nil {
+		return ImportReview{}, err
+	}
+	// Old Agent versions persisted raw host configuration. Scrub that copy
+	// before returning it, and fail closed if the private file cannot be updated.
+	if !bytes.Equal(data, safe) {
+		if err := backup.AtomicFile(filepath.Join(directory, reviewFile), safe); err != nil {
+			return ImportReview{}, err
 		}
 	}
 	return r, nil

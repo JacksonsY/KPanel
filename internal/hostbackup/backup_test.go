@@ -66,6 +66,8 @@ func (f *fixtureDocker) request(r *http.Request) (*http.Response, error) {
 			f.volumes[v.Name] = v
 		}
 		value = v
+	case strings.HasPrefix(key, "DELETE /volumes/"):
+		delete(f.volumes, strings.TrimPrefix(r.URL.Path, "/volumes/"))
 	case strings.HasPrefix(key, "GET /volumes/"):
 		v, ok := f.volumes[strings.TrimPrefix(r.URL.Path, "/volumes/")]
 		if !ok {
@@ -395,7 +397,7 @@ func TestBackupRestoreRejectsRootOutsideDestinationData(t *testing.T) {
 	}
 	_ = os.RemoveAll(e.host("/home/other"))
 	err := e.Restore(context.Background(), backup.NewID(), directory, []string{"apps"}, true)
-	if err == nil || !strings.Contains(err.Error(), "not part of the destination data") {
+	if err == nil || !strings.Contains(restoreFailureCause(err).Error(), "not part of the destination data") {
 		t.Fatal("restore of inventory-external root accepted:", err)
 	}
 	if _, statErr := os.Lstat(e.host("/home/other")); !os.IsNotExist(statErr) {
@@ -488,8 +490,17 @@ func TestBackupHostInterruptedJournalRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = os.WriteFile(filepath.Join(target, "data"), []byte("uncommitted"), 0600)
-	j := restoreJournal{ID: id, Phase: "applying", Roots: []restoreRoot{{Target: target, Previous: previous, Next: next, HadPrevious: true, Applied: true}}}
+	j := restoreJournal{FilesystemVersion: 2, ID: id, Phase: "applying", Roots: []restoreRoot{{Target: target, Previous: previous, Next: next, HadPrevious: true, Applied: true}}}
 	if err := j.Roots[0].bindParent(false); err != nil {
+		t.Fatal(err)
+	}
+	r := &j.Roots[0]
+	if err := r.createWorkspace(); err != nil {
+		t.Fatal(err)
+	}
+	r.TargetIdentity, _ = restoreObjectIdentity(r.parent, filepath.Base(previous))
+	r.NextIdentity, _ = restoreObjectIdentity(r.parent, filepath.Base(target))
+	if err := renameRestoreObject(r.parent, filepath.Base(previous), r.workspace, "previous"); err != nil {
 		t.Fatal(err)
 	}
 	j.closeParents() // simulate losing the descriptor across a process restart

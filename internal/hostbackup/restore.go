@@ -24,13 +24,19 @@ var containerName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
 func validContainerName(name string) bool { return containerName.MatchString(name) }
 
 type restoreRoot struct {
-	Target         string `json:"target"`
-	Previous       string `json:"previous"`
-	Next           string `json:"next"`
-	HadPrevious    bool   `json:"hadPrevious"`
-	Applied        bool   `json:"applied"`
-	ParentIdentity string `json:"parentIdentity,omitempty"`
-	parent         *os.Root
+	Target            string `json:"target"`
+	Previous          string `json:"previous"`
+	Next              string `json:"next"`
+	HadPrevious       bool   `json:"hadPrevious"`
+	Applied           bool   `json:"applied"`
+	ParentIdentity    string `json:"parentIdentity,omitempty"`
+	Workspace         string `json:"workspace,omitempty"`
+	WorkspaceIdentity string `json:"workspaceIdentity,omitempty"`
+	TargetIdentity    string `json:"targetIdentity,omitempty"`
+	NextIdentity      string `json:"nextIdentity,omitempty"`
+	parent            *os.Root
+	workspace         *os.Root
+	workspaceParent   *os.Root
 }
 type restoreContainer struct {
 	Name       string `json:"name"`
@@ -39,12 +45,19 @@ type restoreContainer struct {
 	OldRunning bool   `json:"oldRunning"`
 	NewID      string `json:"newId"`
 }
+type restoreVolume struct {
+	Name  string `json:"name"`
+	Token string `json:"token"`
+}
+
 type restoreJournal struct {
-	ID         string             `json:"id"`
-	Phase      string             `json:"phase"`
-	Roots      []restoreRoot      `json:"roots"`
-	Containers []restoreContainer `json:"containers"`
-	Networks   []string           `json:"networks"`
+	FilesystemVersion int                `json:"filesystemVersion,omitempty"`
+	ID                string             `json:"id"`
+	Phase             string             `json:"phase"`
+	Roots             []restoreRoot      `json:"roots"`
+	Containers        []restoreContainer `json:"containers"`
+	Networks          []string           `json:"networks"`
+	Volumes           []restoreVolume    `json:"volumes,omitempty"`
 }
 
 func (e *Engine) Restore(ctx context.Context, id, directory string, modules []string, foreignConfirmed bool) (err error) {
@@ -95,11 +108,24 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 			all.Containers = append(all.Containers, c)
 		}
 		for name, value := range p.Networks {
+			if old, ok := all.Networks[name]; ok && string(networkConfiguration(old)) != string(networkConfiguration(value)) {
+				return backup.ErrInvalid
+			}
 			all.Networks[name] = value
 		}
 		for name, value := range p.Volumes {
+			if old, ok := all.Volumes[name]; ok {
+				a, _ := json.Marshal(volumeCreateBody(old))
+				b, _ := json.Marshal(volumeCreateBody(value))
+				if string(a) != string(b) || old.Mountpoint != value.Mountpoint {
+					return backup.ErrInvalid
+				}
+			}
 			all.Volumes[name] = value
 		}
+	}
+	if len(all.Roots) > 4096 || len(all.Containers) > 512 || len(all.Networks) > 512 || len(all.Volumes) > 4096 {
+		return backup.ErrInvalid
 	}
 	// Every data mount must be covered by the selected modules. An imported
 	// manifest cannot silently expand a selection to another application's data.
@@ -120,13 +146,64 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 			}
 		}
 	}
+	// A shared volume may be referenced by several module payloads, but its
+	// data root belongs to exactly one selected module. Resolve this once on
+	// the combined plan before any Docker preparation can create resources.
+	for _, volume := range all.Volumes {
+		covered := false
+		for _, root := range all.Roots {
+			if root.Path == volume.Mountpoint && root.Directory {
+				covered = true
+			}
+		}
+		if !covered {
+			return errors.New("volume requires an unselected data module")
+		}
+	}
 	if err := orderContainers(&all); err != nil {
 		return err
 	}
+	if err := e.checkRestoreDockerBinds(all, directory); err != nil {
+		return err
+	}
+	j := restoreJournal{FilesystemVersion: 2, ID: id, Phase: "preparing", Roots: []restoreRoot{}, Containers: []restoreContainer{}, Networks: []string{}}
+	defer j.closeParents()
+	if err := backup.WriteJSON(journalPath, j); err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if err == nil {
+			return
+		}
+		if committed {
+			j.Phase = "cleanup_pending"
+			err = &backup.Failure{Code: "cleanup_pending", Err: errors.Join(err, backup.WriteJSON(journalPath, j))}
+			return
+		}
+		recovery, cancel := context.WithTimeout(context.Background(), recoveryTimeout)
+		defer cancel()
+		rollbackErr := e.rollback(recovery, &j)
+		j.Phase = "rolled_back"
+		if rollbackErr != nil {
+			j.Phase = "needs_attention"
+		}
+		saveErr := backup.WriteJSON(journalPath, j)
+		if rollbackErr == nil && saveErr == nil {
+			j.releaseWorkspaces()
+		}
+		code := "rolled_back"
+		if rollbackErr != nil || saveErr != nil {
+			code = "recovery_required"
+		}
+		err = &backup.Failure{Code: code, Err: errors.Join(err, rollbackErr, saveErr)}
+	}()
+	// Pulled images are shared content-addressed cache. Rollback retains them;
+	// volumes and runtime resources are transaction-owned and recovered below.
 	if err := e.prepareImages(ctx, all.Containers); err != nil {
 		return err
 	}
-	if err := e.prepareVolumes(ctx, &all); err != nil {
+	if err := e.prepareVolumes(ctx, &all, &j, journalPath); err != nil {
 		return err
 	}
 	// Check destination writers too: restoring a directory cannot overwrite a
@@ -168,6 +245,9 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 	}
 	for _, existing := range current.Containers {
 		if names[existing.Name] {
+			if err := e.checkDockerBindSources([]Container{existing}); err != nil {
+				return err
+			}
 			var autoRemove bool
 			_ = json.Unmarshal(existing.HostConfig["AutoRemove"], &autoRemove)
 			if autoRemove && existing.Running {
@@ -226,8 +306,8 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 			return err
 		}
 	}
-	j := restoreJournal{ID: id, Phase: "prepared", Roots: []restoreRoot{}, Containers: []restoreContainer{}, Networks: []string{}}
-	defer j.closeParents()
+	plannedRoots := restoreJournal{}
+	defer plannedRoots.closeParents()
 	for _, r := range all.Roots {
 		target := e.host(r.Path)
 		if err := noNestedMounts(target); err != nil {
@@ -240,7 +320,7 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		if err := entry.bindParent(false); err != nil {
 			return err
 		}
-		j.Roots = append(j.Roots, entry)
+		plannedRoots.Roots = append(plannedRoots.Roots, entry)
 		parent := entry.parent
 		previous := target + ".kpanel-restore-" + id
 		next := target + ".kpanel-next-" + id
@@ -254,7 +334,14 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
 			return statErr
 		}
-		j.Roots[len(j.Roots)-1].HadPrevious = statErr == nil
+		plannedRoots.Roots[len(plannedRoots.Roots)-1].HadPrevious = statErr == nil
+		if statErr == nil {
+			identity, err := restoreObjectIdentity(parent, filepath.Base(target))
+			if err != nil {
+				return err
+			}
+			plannedRoots.Roots[len(plannedRoots.Roots)-1].TargetIdentity = identity
+		}
 	}
 	for _, c := range all.Containers {
 		var listed []struct {
@@ -282,38 +369,24 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 				}
 			}
 		}
-		j.Containers = append(j.Containers, r)
+		plannedRoots.Containers = append(plannedRoots.Containers, r)
 	}
-	if err := backup.WriteJSON(journalPath, j); err != nil {
-		return err
-	}
-	committed := false
-	defer func() {
-		if err == nil {
-			return
-		}
-		if committed {
-			j.Phase = "cleanup_pending"
-			err = &backup.Failure{Code: "cleanup_pending", Err: errors.Join(err, backup.WriteJSON(journalPath, j))}
-			return
-		}
-		recovery, cancel := context.WithTimeout(context.Background(), recoveryTimeout)
-		defer cancel()
-		rollbackErr := e.rollback(recovery, &j)
-		j.Phase = "rolled_back"
-		if rollbackErr != nil {
-			j.Phase = "needs_attention"
-		}
-		saveErr := backup.WriteJSON(journalPath, j)
-		code := "rolled_back"
-		if rollbackErr != nil || saveErr != nil {
-			code = "recovery_required"
-		}
-		err = &backup.Failure{Code: code, Err: errors.Join(err, rollbackErr, saveErr)}
-	}()
+	j.Roots = plannedRoots.Roots
+	j.Containers = plannedRoots.Containers
+	plannedRoots.Roots = nil
 	j.Phase = "applying"
 	if err := backup.WriteJSON(journalPath, j); err != nil {
 		return err
+	}
+	// Establish every protected same-filesystem workspace before stopping the
+	// destination's writers. Unsupported filesystems fail during preparation.
+	for n := range j.Roots {
+		if err := j.Roots[n].createWorkspace(); err != nil {
+			return err
+		}
+		if err := backup.WriteJSON(journalPath, j); err != nil {
+			return err
+		}
 	}
 	for index := len(j.Containers) - 1; index >= 0; index-- {
 		r := &j.Containers[index]
@@ -331,11 +404,15 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 	}
 	for index, r := range all.Roots {
 		entry := &j.Roots[index]
-		parent, target, previous, next, err := entry.names()
-		if err != nil {
-			return err
-		}
-		staged, err := copyTreeIn(ctx, filepath.Join(directory, "unpack-"+r.Module, "data", r.ID), parent, next)
+		parent, target := entry.parent, filepath.Base(entry.Target)
+		staged, err := copyTreeIn(ctx, filepath.Join(directory, "unpack-"+r.Module, "data", r.ID), entry.workspace, "next", func(_ os.FileInfo) error {
+			identity, err := restoreObjectIdentity(entry.workspace, "next")
+			if err != nil {
+				return err
+			}
+			entry.NextIdentity = identity
+			return backup.WriteJSON(journalPath, j)
+		})
 		if err != nil {
 			return err
 		}
@@ -343,7 +420,7 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 			return err
 		}
 		if entry.HadPrevious {
-			if err := parent.Rename(target, previous); err != nil {
+			if err := entry.capture(target, "previous", entry.TargetIdentity); err != nil {
 				return err
 			}
 		}
@@ -351,7 +428,13 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		if err := backup.WriteJSON(journalPath, j); err != nil {
 			return err
 		}
-		if err := publishStagedIn(parent, next, target, staged); err != nil {
+		if err := stagedAtIn(entry.workspace, "next", staged); err != nil {
+			return err
+		}
+		if err := renameRestoreObject(entry.workspace, "next", parent, target); err != nil {
+			return err
+		}
+		if err := stagedAtIn(parent, target, staged); err != nil {
 			return err
 		}
 		entry.Applied = true
@@ -414,6 +497,9 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		if err := j.checkParentPaths(); err != nil {
 			return err
 		}
+		if err := e.checkDockerBindSources([]Container{c}); err != nil {
+			return err
+		}
 		input := map[string]json.RawMessage{}
 		for key, value := range c.Config {
 			input[key] = value
@@ -472,7 +558,7 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 			if err := j.checkParentPaths(); err != nil {
 				return err
 			}
-			if err := e.docker(ctx, "POST", "/containers/"+j.Containers[n].NewID+"/start", nil, nil); err != nil {
+			if err := e.startContainer(ctx, j.Containers[n].NewID); err != nil {
 				return err
 			}
 		}
@@ -493,7 +579,11 @@ func (e *Engine) Restore(ctx context.Context, id, directory string, modules []st
 		return err
 	}
 	j.Phase = "completed"
-	return backup.WriteJSON(journalPath, j)
+	if err := backup.WriteJSON(journalPath, j); err != nil {
+		return err
+	}
+	j.releaseWorkspaces()
+	return nil
 }
 
 // networkCreateBody is the native configuration Restore sends to create a
@@ -591,22 +681,7 @@ func (e *Engine) rollback(ctx context.Context, j *restoreJournal) error {
 		return result
 	} // Never touch data while a new writer survives.
 	for n := len(j.Roots) - 1; n >= 0; n-- {
-		r := j.Roots[n]
-		parent, target, previous, next, err := r.names()
-		if err != nil {
-			result = errors.Join(result, err)
-			continue
-		}
-		if _, err := parent.Lstat(previous); err == nil {
-			if removeErr := removeRestoreTree(parent, target); removeErr != nil {
-				result = errors.Join(result, removeErr)
-				continue
-			}
-			result = errors.Join(result, parent.Rename(previous, target))
-		} else if r.Applied && !r.HadPrevious {
-			result = errors.Join(result, removeRestoreTree(parent, target))
-		}
-		result = errors.Join(result, removeRestoreTree(parent, next))
+		result = errors.Join(result, j.Roots[n].rollbackData())
 	}
 	if result != nil {
 		return result
@@ -631,7 +706,7 @@ func (e *Engine) rollback(ctx context.Context, j *restoreJournal) error {
 				if err := j.checkParentPaths(); err != nil {
 					return errors.Join(result, err)
 				}
-				result = errors.Join(result, e.docker(ctx, "POST", "/containers/"+r.OldID+"/start", nil, nil))
+				result = errors.Join(result, e.startContainer(ctx, r.OldID))
 			}
 		}
 	}
@@ -646,6 +721,22 @@ func (e *Engine) rollback(ctx context.Context, j *restoreJournal) error {
 		if network.Labels["io.kpanel.restore.job"] == j.ID {
 			result = errors.Join(result, e.docker(ctx, "DELETE", "/networks/"+url.PathEscape(name), nil, nil))
 		}
+	}
+	for _, volume := range j.Volumes {
+		var actual Volume
+		if err := e.docker(ctx, "GET", "/volumes/"+url.PathEscape(volume.Name), nil, &actual); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				result = errors.Join(result, err)
+			}
+			continue
+		}
+		if actual.Name != volume.Name || actual.Labels["io.kpanel.restore.job"] != j.ID || actual.Labels["io.kpanel.restore.volume"] != volume.Token {
+			// Unrelated/replaced volumes are never deleted. Retain the journal to
+			// report the unresolved ownership instead of claiming full recovery.
+			result = errors.Join(result, errors.New("restore volume ownership changed"))
+			continue
+		}
+		result = errors.Join(result, e.docker(ctx, "DELETE", "/volumes/"+url.PathEscape(volume.Name), nil, nil))
 	}
 	return result
 }
@@ -677,12 +768,10 @@ func noLinkParents(path string) error {
 }
 
 // copyTreeIn stages source at target and returns the staged object's identity.
-// target sits beside the restore root, whose parent can belong to another
-// local user who may rename entries there at any time. After creation nothing
-// is resolved by name: content, ownership and modes go through an os.Root or
-// an open descriptor, and publishStagedIn checks the identity before and after
-// the rename.
-func copyTreeIn(ctx context.Context, source string, parent *os.Root, target string) (os.FileInfo, error) {
+// Directory stages are created only in the private transaction workspace.
+// Content, ownership and modes go through an os.Root or an open descriptor;
+// the creation callback durably records identity before any content is copied.
+func copyTreeIn(ctx context.Context, source string, parent *os.Root, target string, created ...func(os.FileInfo) error) (os.FileInfo, error) {
 	info, err := os.Lstat(source)
 	if err != nil {
 		return nil, err
@@ -696,11 +785,27 @@ func copyTreeIn(ctx context.Context, source string, parent *os.Root, target stri
 		if err != nil {
 			return nil, err
 		}
+		if len(created) != 0 {
+			info, statErr := out.Stat()
+			if statErr == nil {
+				statErr = created[0](info)
+			}
+			if statErr != nil {
+				out.Close()
+				return nil, statErr
+			}
+		}
 		staged, err := writeStagedFile(ctx, source, out, info)
 		if err = errors.Join(err, out.Close()); err != nil {
 			return nil, err
 		}
 		return staged, nil
+	}
+	// mkdir does not return a descriptor. Only bootstrap below a pinned,
+	// non-writable transaction directory, so a sibling owned by root cannot
+	// be substituted between mkdir and OpenRoot.
+	if err := requireRestorePrivateParent(parent); err != nil {
+		return nil, err
 	}
 	if err := parent.Mkdir(target, 0700); err != nil {
 		return nil, err
@@ -716,6 +821,11 @@ func copyTreeIn(ctx context.Context, source string, parent *os.Root, target stri
 	}
 	if stagedAtIn(parent, target, staged) != nil || !ownedByProcess(staged) {
 		return nil, backup.ErrInvalid
+	}
+	if len(created) != 0 {
+		if err := created[0](staged); err != nil {
+			return nil, err
+		}
 	}
 	directories := map[string]os.FileInfo{}
 	err = filepath.WalkDir(source, func(path string, entry os.DirEntry, err error) error {
@@ -845,7 +955,7 @@ func publishStagedIn(parent *os.Root, next, target string, staged os.FileInfo) e
 	if err := stagedAtIn(parent, next, staged); err != nil {
 		return err
 	}
-	if err := parent.Rename(next, target); err != nil {
+	if err := renameRestoreObject(parent, next, parent, target); err != nil {
 		return err
 	}
 	return stagedAtIn(parent, target, staged)
@@ -915,14 +1025,10 @@ func (e *Engine) cleanupRecovery(ctx context.Context, j *restoreJournal) error {
 		}
 	}
 	for _, r := range j.Roots {
-		parent, _, previous, next, err := r.names()
-		if err != nil {
+		if err := r.removeOwned("previous", r.TargetIdentity); err != nil {
 			return err
 		}
-		if err := removeRestoreTree(parent, previous); err != nil {
-			return err
-		}
-		if err := removeRestoreTree(parent, next); err != nil {
+		if err := r.removeOwned("next", r.NextIdentity); err != nil {
 			return err
 		}
 	}

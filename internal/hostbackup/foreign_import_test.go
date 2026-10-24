@@ -161,7 +161,7 @@ func TestForeignReviewListsHostConfiguration(t *testing.T) {
 	e, _, p := hostFixture(t)
 	p = hostReachingPayload(p)
 	p.Networks = map[string]json.RawMessage{"lan": rawJSON(map[string]any{"Driver": "macvlan", "IPAM": map[string]any{"Config": []map[string]string{{"Subnet": "192.168.1.0/24", "Gateway": "192.168.1.1"}}}, "Options": map[string]string{"parent": "eth0"}})}
-	p.Containers[0].Networks = map[string]json.RawMessage{}
+	p.Containers[0].Networks = map[string]json.RawMessage{"lan": rawJSON(map[string]any{})}
 	path := writeFixturePayload(t, otherHost(t, e), p)
 	read, facts, err := e.readPayload(context.Background(), path, t.TempDir())
 	if err != nil {

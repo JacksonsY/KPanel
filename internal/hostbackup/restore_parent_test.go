@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -60,6 +61,9 @@ func TestRestoreParentRegularFileStageAndPublishStayPinned(t *testing.T) {
 }
 
 func TestRestoreParentRollbackAndCleanupStayPinned(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows locks ancestors of the open workspace; Linux exercises concurrent ancestor rename")
+	}
 	for _, cleanup := range []bool{false, true} {
 		t.Run(map[bool]string{false: "rollback", true: "cleanup"}[cleanup], func(t *testing.T) {
 			base, outside := t.TempDir(), t.TempDir()
@@ -77,6 +81,18 @@ func TestRestoreParentRollbackAndCleanupStayPinned(t *testing.T) {
 				}
 			}
 			if err := entry.bindParent(false); err != nil {
+				t.Fatal(err)
+			}
+			if err := entry.createWorkspace(); err != nil {
+				t.Fatal(err)
+			}
+			entry.TargetIdentity, _ = restoreObjectIdentity(entry.parent, "previous")
+			entry.NextIdentity, _ = restoreObjectIdentity(entry.parent, "data")
+			if err := renameRestoreObject(entry.parent, "previous", entry.workspace, "previous"); err != nil {
+				t.Fatal(err)
+			}
+			// The next and published paths normally refer to the same inode.
+			if err := entry.parent.Remove("next"); err != nil {
 				t.Fatal(err)
 			}
 			j := restoreJournal{Roots: []restoreRoot{entry}}
@@ -121,7 +137,7 @@ func TestRestoreParentRollbackAndCleanupStayPinned(t *testing.T) {
 }
 
 func TestRestoreParentRecoveryRejectsReplacementAndLegacyIdentity(t *testing.T) {
-	for _, mode := range []string{"symlink", "directory", "legacy"} {
+	for _, mode := range []string{"symlink", "directory", "legacy_parent", "legacy_objects"} {
 		t.Run(mode, func(t *testing.T) {
 			e := &Engine{Root: t.TempDir()}
 			parent := filepath.Join(e.Root, "home")
@@ -140,9 +156,9 @@ func TestRestoreParentRecoveryRejectsReplacementAndLegacyIdentity(t *testing.T) 
 			}
 			entry.parent.Close()
 			entry.parent = nil
-			if mode == "legacy" {
+			if mode == "legacy_parent" {
 				entry.ParentIdentity = ""
-			} else {
+			} else if mode != "legacy_objects" {
 				if err := os.Rename(parent, filepath.Join(e.Root, "original")); err != nil {
 					t.Fatal(err)
 				}
@@ -155,19 +171,23 @@ func TestRestoreParentRecoveryRejectsReplacementAndLegacyIdentity(t *testing.T) 
 			if err := os.WriteFile(target, []byte("sentinel"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			j := restoreJournal{ID: id, Phase: "applying", Roots: []restoreRoot{entry}}
+			j := restoreJournal{FilesystemVersion: 2, ID: id, Phase: "applying", Roots: []restoreRoot{entry}}
+			if mode == "legacy_objects" {
+				j.FilesystemVersion = 0
+			}
 			journal := filepath.Join(dir, "restore-journal.json")
 			if err := backup.WriteJSON(journal, j); err != nil {
 				t.Fatal(err)
 			}
-			before, _ := os.ReadFile(journal)
 			if err := e.Recover(context.Background(), id, dir); err == nil {
 				t.Fatal("recovered through unproven parent identity")
 			}
 			if data, err := os.ReadFile(target); err != nil || string(data) != "sentinel" {
 				t.Fatalf("replacement changed %q: %v", data, err)
 			}
-			if after, _ := os.ReadFile(journal); string(after) != string(before) {
+			var retained restoreJournal
+			after, _ := os.ReadFile(journal)
+			if json.Unmarshal(after, &retained) != nil || retained.Phase != "needs_attention" || len(retained.Roots) != 1 {
 				t.Fatal("lost retained recovery journal")
 			}
 		})
@@ -175,6 +195,9 @@ func TestRestoreParentRecoveryRejectsReplacementAndLegacyIdentity(t *testing.T) 
 }
 
 func TestRestoreParentSwapDuringRealRestoreDoesNotTouchOutside(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows locks ancestors of the open workspace; Linux exercises concurrent ancestor rename")
+	}
 	e, d, payload := hostFixture(t)
 	payload.Containers[0].Running = true
 	d.containers[payload.Containers[0].ID].State.Running = true
@@ -235,8 +258,14 @@ func TestRestoreParentSwapDuringRealRestoreDoesNotTouchOutside(t *testing.T) {
 	if data, err := os.ReadFile(e.host("/moved-home/app/data")); err != nil || string(data) != "old!" {
 		t.Fatalf("original data changed %q %v", data, err)
 	}
-	if entries, err := os.ReadDir(e.host("/moved-home")); err != nil || len(entries) != 1 {
-		t.Fatalf("pinned staging cleanup failed %v %v", entries, err)
+	// A pending journal retains its now-empty private workspace so a later
+	// operator-assisted recovery can still verify its identity.
+	if entries, err := os.ReadDir(e.host("/moved-home")); err != nil || len(entries) != 2 {
+		t.Fatalf("unexpected retained recovery objects %v %v", entries, err)
+	}
+	workspace := filepath.Join(e.host("/moved-home"), filepath.Base(journal.Roots[0].Workspace))
+	if entries, err := os.ReadDir(workspace); err != nil || len(entries) != 0 {
+		t.Fatalf("partial stage retained %v %v", entries, err)
 	}
 }
 
@@ -248,6 +277,7 @@ func TestRestoreParentUnchangedRollbackRestartsOldWriter(t *testing.T) {
 	if err := entry.bindParent(false); err != nil {
 		t.Fatal(err)
 	}
+	entry.TargetIdentity, _ = restoreObjectIdentity(entry.parent, filepath.Base(target))
 	j := restoreJournal{ID: id, Roots: []restoreRoot{entry}, Containers: []restoreContainer{{Name: payload.Containers[0].Name, OldID: payload.Containers[0].ID, OldRunning: true}}}
 	defer j.closeParents()
 	if err := e.rollback(context.Background(), &j); err != nil {
@@ -259,6 +289,9 @@ func TestRestoreParentUnchangedRollbackRestartsOldWriter(t *testing.T) {
 }
 
 func TestRestoreParentSwapAfterCreateDoesNotStartNewWriter(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows locks ancestors of the open workspace; Linux exercises concurrent ancestor rename")
+	}
 	e, d, payload := hostFixture(t)
 	payload.Containers[0].Running = true
 	directory := t.TempDir()

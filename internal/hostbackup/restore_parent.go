@@ -68,12 +68,20 @@ func (j *restoreJournal) closeParents() {
 			j.Roots[i].parent.Close()
 			j.Roots[i].parent = nil
 		}
+		if j.Roots[i].workspace != nil {
+			j.Roots[i].workspace.Close()
+			j.Roots[i].workspace = nil
+		}
+		if j.Roots[i].workspaceParent != nil {
+			j.Roots[i].workspaceParent.Close()
+			j.Roots[i].workspaceParent = nil
+		}
 	}
 }
 
-// Docker subsequently resolves bind sources itself. Detect a moved/replaced
-// destination before handing its original path back to the daemon. Filesystem
-// cleanup never uses this reopened handle: it keeps the transaction's parent.
+// Detect a moved/replaced destination. This identity check is not sufficient for
+// Docker's later pathname resolution: docker_handoff.go separately requires
+// trusted bind ancestors. Filesystem cleanup keeps the transaction's parent.
 func (j *restoreJournal) checkParentPaths() error {
 	for _, entry := range j.Roots {
 		parent, err := openRestoreParent(filepath.Dir(entry.Target))
@@ -87,14 +95,6 @@ func (j *restoreJournal) checkParentPaths() error {
 		}
 	}
 	return nil
-}
-
-// An active transaction must never reopen a parent by its original pathname.
-func (r *restoreRoot) names() (*os.Root, string, string, string, error) {
-	if r.parent == nil || filepath.Dir(r.Target) != filepath.Dir(r.Previous) || filepath.Dir(r.Target) != filepath.Dir(r.Next) {
-		return nil, "", "", "", backup.ErrInvalid
-	}
-	return r.parent, filepath.Base(r.Target), filepath.Base(r.Previous), filepath.Base(r.Next), nil
 }
 
 func removeRestoreTree(parent *os.Root, name string) error {

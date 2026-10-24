@@ -27,10 +27,10 @@ func (e *Engine) Recover(ctx context.Context, id, directory string) error {
 			if len(c.ID) != 64 || strings.Trim(c.ID, "0123456789abcdef") != "" {
 				return backup.ErrInvalid
 			}
-			restartErr = errors.Join(restartErr, e.docker(ctx, "POST", "/containers/"+c.ID+"/start", nil, nil))
+			restartErr = errors.Join(restartErr, e.startContainer(ctx, c.ID))
 		}
 		if restartErr != nil {
-			return restartErr
+			return &backup.Failure{Code: "recovery_required", Err: restartErr}
 		}
 		if err := os.Remove(exportPath); err != nil {
 			return err
@@ -47,28 +47,52 @@ func (e *Engine) Recover(ctx context.Context, id, directory string) error {
 		return err
 	}
 	var j restoreJournal
-	if backup.Decode(data, &j) != nil || j.ID != id || len(j.Roots) > 4096 || len(j.Containers) > 512 || len(j.Networks) > 512 {
+	if backup.Decode(data, &j) != nil || j.ID != id || len(j.Roots) > 4096 || len(j.Containers) > 512 || len(j.Networks) > 512 || len(j.Volumes) > 4096 {
 		return backup.ErrInvalid
 	}
 	if j.Phase == "completed" || j.Phase == "rolled_back" {
 		return nil
 	}
 	switch j.Phase {
-	case "prepared", "applying", "needs_attention", "cleanup_pending":
+	case "preparing", "prepared", "applying", "needs_attention", "cleanup_pending":
 	default:
 		return backup.ErrInvalid
 	}
 	defer j.closeParents()
+	attention := func(err error) error {
+		if j.Phase != "cleanup_pending" {
+			j.Phase = "needs_attention"
+		}
+		return errors.Join(err, backup.WriteJSON(path, j))
+	}
+	if len(j.Roots) != 0 && j.FilesystemVersion != 2 {
+		return attention(backup.ErrInvalid)
+	}
 	for n := range j.Roots {
 		r := &j.Roots[n]
 		relative, err := filepath.Rel(e.Root, r.Target)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) || e.excluded("/"+filepath.ToSlash(relative)) || r.Previous != r.Target+".kpanel-restore-"+id || r.Next != r.Target+".kpanel-next-"+id {
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) || e.excluded("/"+filepath.ToSlash(relative)) {
 			return backup.ErrInvalid
 		}
 		// Missing identity (an interrupted older release) or a replaced parent
 		// needs operator recovery; never guess which directory owns its data.
 		if err := r.bindParent(true); err != nil {
-			return err
+			return attention(err)
+		}
+		if r.HadPrevious && r.TargetIdentity == "" {
+			return attention(backup.ErrInvalid)
+		}
+		if r.Workspace != "" {
+			anchor := filepath.Dir(r.Workspace)
+			rel, err := filepath.Rel(anchor, filepath.Dir(r.Target))
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) || !strings.HasPrefix(filepath.Base(r.Workspace), ".kpanel-restore-") || !backup.ValidID(strings.TrimPrefix(filepath.Base(r.Workspace), ".kpanel-restore-")) {
+				return attention(backup.ErrInvalid)
+			}
+			if err := r.bindWorkspace(); err != nil {
+				return attention(err)
+			}
+		} else if r.Applied || r.NextIdentity != "" || r.Previous != r.Target+".kpanel-restore-"+id || r.Next != r.Target+".kpanel-next-"+id {
+			return attention(backup.ErrInvalid)
 		}
 	}
 	for _, r := range j.Containers {
@@ -86,9 +110,16 @@ func (e *Engine) Recover(ctx context.Context, id, directory string) error {
 			return backup.ErrInvalid
 		}
 	}
+	for _, v := range j.Volumes {
+		if !validContainerName(v.Name) || !backup.ValidID(v.Token) {
+			return backup.ErrInvalid
+		}
+	}
 	if j.Phase == "cleanup_pending" {
 		if err := e.cleanupRecovery(ctx, &j); err != nil {
-			return err
+			// Keep the commit point: attention during cleanup must never turn
+			// into rollback on the next recovery attempt.
+			return errors.Join(err, backup.WriteJSON(path, j))
 		}
 		j.Phase = "completed"
 	} else {
@@ -98,7 +129,11 @@ func (e *Engine) Recover(ctx context.Context, id, directory string) error {
 		}
 		j.Phase = "rolled_back"
 	}
-	return backup.WriteJSON(path, j)
+	if err := backup.WriteJSON(path, j); err != nil {
+		return err
+	}
+	j.releaseWorkspaces()
+	return nil
 }
 
 func recoveryPending(directory string) bool {

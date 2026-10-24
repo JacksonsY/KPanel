@@ -55,6 +55,11 @@ func (e *Engine) Create(ctx context.Context, directory string, modules []string,
 	if err := orderContainers(&selected); err != nil {
 		return err
 	}
+	// Reject an unsafe source before stopping any service. Recovery must never
+	// trade host isolation for restoring availability.
+	if err := e.checkDockerBindSources(selected.Containers); err != nil {
+		return err
+	}
 	running := []Container{}
 	for _, c := range selected.Containers {
 		if c.Running {
@@ -72,8 +77,8 @@ func (e *Engine) Create(ctx context.Context, directory string, modules []string,
 		defer cancel()
 		var restartErr error
 		for _, c := range running {
-			if startErr := e.docker(recovery, "POST", "/containers/"+c.ID+"/start", nil, nil); startErr != nil {
-				restartErr = errors.Join(restartErr, fmt.Errorf("source service %s could not restart", c.Name))
+			if startErr := e.startContainer(recovery, c.ID); startErr != nil {
+				restartErr = errors.Join(restartErr, fmt.Errorf("source service %s could not restart: %w", c.Name, startErr))
 			}
 		}
 		if restartErr == nil {
@@ -101,6 +106,8 @@ func (e *Engine) Create(ctx context.Context, directory string, modules []string,
 			}
 		}
 	}
+	// All module payloads belong to one export and share its actual limits.
+	walker := exportWalker{ctx: ctx, hook: e.exportHook}
 	for _, module := range modules {
 		if module == "panel" {
 			continue
@@ -127,7 +134,7 @@ func (e *Engine) Create(ctx context.Context, directory string, modules []string,
 		if err := e.validatePayload(payload); err != nil {
 			return err
 		}
-		if err := e.writePayload(ctx, filepath.Join(directory, module+".payload"), payload); err != nil {
+		if err := e.writePayloadWithWalker(filepath.Join(directory, module+".payload"), payload, &walker); err != nil {
 			return err
 		}
 	}
@@ -135,6 +142,11 @@ func (e *Engine) Create(ctx context.Context, directory string, modules []string,
 }
 
 func (e *Engine) writePayload(ctx context.Context, path string, p Payload) (err error) {
+	walker := exportWalker{ctx: ctx, hook: e.exportHook}
+	return e.writePayloadWithWalker(path, p, &walker)
+}
+
+func (e *Engine) writePayloadWithWalker(path string, p Payload, walker *exportWalker) (err error) {
 	key, err := e.originKey(true)
 	if err != nil {
 		return err
@@ -161,78 +173,10 @@ func (e *Engine) writePayload(ctx context.Context, path string, p Payload) (err 
 	if _, err := tw.Write(body); err != nil {
 		return err
 	}
-	count := 0
-	var total int64
+	walker.writer = tw
+	defer func() { walker.writer = nil }()
 	for _, root := range p.Roots {
-		source := e.host(root.Path)
-		err = filepath.WalkDir(source, func(path string, entry os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			info, err := entry.Info()
-			if err != nil {
-				return err
-			}
-			var linkTarget string
-			if info.Mode()&os.ModeSymlink != 0 {
-				linkTarget, err = archiveSourceSymlinkTarget(&root, source, path)
-				if err != nil {
-					return err
-				}
-			} else if !info.IsDir() && !info.Mode().IsRegular() {
-				return backup.ErrInvalid
-			}
-			rel, err := filepath.Rel(source, path)
-			if err != nil {
-				return err
-			}
-			name := "data/" + root.ID
-			if rel != "." {
-				name += "/" + filepath.ToSlash(rel)
-			}
-			header, err := tar.FileInfoHeader(info, linkTarget)
-			if err != nil {
-				return err
-			}
-			header.Name = name
-			count++
-			if count > 100000 {
-				return backup.ErrInvalid
-			}
-			if info.Mode().IsRegular() {
-				total += info.Size()
-				if total > backup.MaxBytes || info.Size() > 10<<30 {
-					return backup.ErrInvalid
-				}
-			}
-			if err := tw.WriteHeader(header); err != nil {
-				return err
-			}
-			if info.IsDir() {
-				return nil
-			}
-			if info.Mode()&os.ModeSymlink != 0 {
-				return nil
-			}
-			input, err := backup.OpenRegular(path, 10<<30)
-			if err != nil {
-				return err
-			}
-			_, err = io.CopyN(tw, input, info.Size())
-			after, statErr := input.Stat()
-			input.Close()
-			if err != nil {
-				return err
-			}
-			if statErr != nil || !os.SameFile(info, after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
-				return errors.New("source changed during backup")
-			}
-			return nil
-		})
-		if err != nil {
+		if err := walker.writeRoot(e.host(root.Path), root); err != nil {
 			return err
 		}
 	}
@@ -494,45 +438,6 @@ func (e *Engine) unpackPayload(ctx context.Context, path, directory string, fact
 	return p, nil
 }
 
-func archiveSourceSymlinkTarget(root *Root, sourceRoot, linkPath string) (string, error) {
-	info, err := os.Lstat(sourceRoot)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return "", backup.ErrInvalid
-	}
-	relative, err := filepath.Rel(sourceRoot, linkPath)
-	if err != nil || relative == "." {
-		return "", backup.ErrInvalid
-	}
-	linkTarget, err := os.Readlink(linkPath)
-	if err != nil {
-		return "", err
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(sourceRoot)
-	if err != nil {
-		return "", err
-	}
-	resolvedTarget, err := filepath.EvalSymlinks(linkPath)
-	if err != nil || !within(filepath.ToSlash(resolvedRoot), filepath.ToSlash(resolvedTarget)) {
-		return "", backup.ErrInvalid
-	}
-	if filepath.IsAbs(linkTarget) {
-		targetRelative, err := filepath.Rel(resolvedRoot, resolvedTarget)
-		if err != nil || filepath.IsAbs(targetRelative) || targetRelative == ".." || strings.HasPrefix(targetRelative, ".."+string(filepath.Separator)) {
-			return "", backup.ErrInvalid
-		}
-		linkTarget, err = filepath.Rel(filepath.Dir(relative), targetRelative)
-		if err != nil {
-			return "", backup.ErrInvalid
-		}
-		linkTarget = filepath.ToSlash(linkTarget)
-	}
-	relative = filepath.ToSlash(relative)
-	if err := validateArchiveSymlinkTarget(root.Path, relative, linkTarget); err != nil {
-		return "", err
-	}
-	return linkTarget, nil
-}
-
 func validateArchiveSymlinkTarget(rootPath, relativePath, target string) error {
 	rootPath = path.Clean(rootPath)
 	relativePath = path.Clean(filepath.ToSlash(relativePath))
@@ -584,13 +489,13 @@ func ensureArchiveParents(root, target string) error {
 }
 
 func (e *Engine) validatePayload(p Payload) error {
-	if p.Version != 1 || !slices.Contains([]string{"apps", "web", "docker"}, p.Module) || len(p.Roots) > 4096 || len(p.Containers) > 512 || len(p.Networks) > 512 {
+	if p.Version != 1 || !slices.Contains([]string{"apps", "web", "docker"}, p.Module) || len(p.Roots) > 4096 || len(p.Containers) > 512 || len(p.Networks) > 512 || len(p.Volumes) > 4096 {
 		return backup.ErrInvalid
 	}
 	ids := map[string]bool{}
 	paths := []string{}
 	for _, r := range p.Roots {
-		if !backup.ValidID(r.ID) || ids[r.ID] || r.Module != p.Module || !strings.HasPrefix(r.Path, "/") || r.Path != filepath.ToSlash(filepath.Clean(r.Path)) || e.excluded(r.Path) {
+		if !backup.ValidID(r.ID) || ids[r.ID] || r.Module != p.Module || !canonicalMountPath(r.Path) || e.excluded(r.Path) {
 			return backup.ErrInvalid
 		}
 		if !rootMatchesModule(p, r) {
@@ -607,17 +512,63 @@ func (e *Engine) validatePayload(p Payload) error {
 		ids[r.ID] = true
 		paths = append(paths, r.Path)
 	}
+	containerNames := map[string]bool{}
+	volumeRefs, networkRefs := map[string]bool{}, map[string]bool{}
+	edges := 0
 	for _, c := range p.Containers {
+		if containerNames[c.Name] {
+			return backup.ErrInvalid
+		}
+		containerNames[c.Name] = true
+		edges += len(c.Mounts) + len(c.Networks)
+		if edges > 8192 {
+			return backup.ErrInvalid
+		}
+		for name := range c.Networks {
+			if _, ok := p.Networks[name]; !ok {
+				return backup.ErrInvalid
+			}
+			networkRefs[name] = true
+		}
 		if !imageIDPattern.MatchString(c.ImageID) {
 			return backup.ErrInvalid
 		}
 		// Restore sends Config at the top of the create body and adds its own
 		// HostConfig, image and labels; none may be shadowed by the archive.
-		if !canonicalKeys(c.Config, "Image", "Labels", "Env", "Entrypoint", "Cmd", "Hostname", "Domainname", "ExposedPorts", "Healthcheck", "HostConfig", "NetworkingConfig") || c.Config["HostConfig"] != nil || c.Config["NetworkingConfig"] != nil {
+		if !canonicalKeys(c.Config, "Image", "Labels", "Env", "Entrypoint", "Cmd", "Hostname", "Domainname", "ExposedPorts", "Healthcheck", "Volumes", "HostConfig", "NetworkingConfig") || c.Config["HostConfig"] != nil || c.Config["NetworkingConfig"] != nil {
 			return backup.ErrInvalid
 		}
 		if !canonicalKeys(c.HostConfig, "Binds", "Mounts", "VolumesFrom", "NetworkMode", "PidMode", "IpcMode", "Links", "AutoRemove") {
 			return backup.ErrInvalid
+		}
+		// Image-declared/configured volumes must resolve to inspected mounts;
+		// otherwise Docker could create an anonymous resource outside this plan.
+		var configuredVolumes map[string]json.RawMessage
+		if raw, ok := c.Config["Volumes"]; ok && json.Unmarshal(raw, &configuredVolumes) != nil {
+			return backup.ErrInvalid
+		}
+		for target := range configuredVolumes {
+			covered := false
+			for _, mount := range c.Mounts {
+				if mount.Destination == target {
+					covered = true
+				}
+			}
+			if !covered {
+				return backup.ErrInvalid
+			}
+		}
+		var networkMode string
+		if raw, ok := c.HostConfig["NetworkMode"]; ok && json.Unmarshal(raw, &networkMode) != nil {
+			return backup.ErrInvalid
+		}
+		if networkMode != "" && networkMode != "default" && networkMode != "host" && networkMode != "none" && networkMode != "bridge" && !strings.HasPrefix(networkMode, "container:") {
+			if !networkRefs[networkMode] {
+				return backup.ErrInvalid
+			}
+			if _, ok := c.Networks[networkMode]; !ok {
+				return backup.ErrInvalid
+			}
 		}
 		if _, err := nativeMountConfig(c); err != nil {
 			return err
@@ -633,18 +584,40 @@ func (e *Engine) validatePayload(p Payload) error {
 			return backup.ErrInvalid
 		}
 		for _, mount := range c.Mounts {
+			if !canonicalMountPath(mount.Destination) {
+				return backup.ErrInvalid
+			}
 			if mount.Type == "tmpfs" {
 				continue
 			}
-			if mount.Type != "bind" && mount.Type != "volume" || !strings.HasPrefix(mount.Source, "/") || !strings.HasPrefix(mount.Destination, "/") {
+			if mount.Type != "bind" && mount.Type != "volume" || !canonicalMountPath(mount.Source) {
 				return backup.ErrInvalid
 			}
 			if mount.Type == "volume" {
+				volumeRefs[mount.Name] = true
 				v, ok := p.Volumes[mount.Name]
 				if !ok || v.Name != mount.Name || v.Mountpoint != mount.Source {
 					return backup.ErrInvalid
 				}
 			}
+		}
+	}
+	for name, v := range p.Volumes {
+		if !volumeRefs[name] || !validContainerName(name) || v.Name != name || v.Driver != "local" || len(v.Options) != 0 || !canonicalMountPath(v.Mountpoint) || e.excluded(v.Mountpoint) {
+			return backup.ErrInvalid
+		}
+	}
+	for name, raw := range p.Networks {
+		if !networkRefs[name] || !validContainerName(name) {
+			return backup.ErrInvalid
+		}
+		var config map[string]json.RawMessage
+		if json.Unmarshal(raw, &config) != nil || !canonicalKeys(config, "Name", "Driver", "Labels", "Options", "IPAM") {
+			return backup.ErrInvalid
+		}
+		var declared string
+		if value, ok := config["Name"]; ok && (json.Unmarshal(value, &declared) != nil || declared != name) {
+			return backup.ErrInvalid
 		}
 	}
 	return nil

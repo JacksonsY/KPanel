@@ -32,6 +32,8 @@ type Engine struct {
 	Root     string
 	StateDir string
 	Client   *http.Client
+	// Private deterministic race seam; production engines leave it nil.
+	exportHook func(stage, relative string)
 }
 type Mount struct {
 	Type        string
@@ -279,30 +281,63 @@ func (e *Engine) Inventory(ctx context.Context) (Inventory, error) {
 		}
 	}
 	candidates := map[string]string{}
-	home, err := os.ReadDir(e.host("/home"))
+	home, err := os.Open(e.host("/home"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return i, err
 	}
-	for _, entry := range home {
-		path := "/home/" + entry.Name()
-		if entry.Name() == "docker" {
-			sub, err := os.ReadDir(e.host(path))
-			if err != nil {
-				return i, err
+	if home != nil {
+		defer home.Close()
+		var discovered int
+		consume := func() error {
+			if err := ctx.Err(); err != nil {
+				return err
 			}
-			for _, child := range sub {
-				p := path + "/" + child.Name()
-				if !e.excluded(p) {
-					candidates[p] = "apps"
+			discovered++
+			if discovered > 100000 {
+				return backup.ErrInvalid
+			}
+			return nil
+		}
+		err = readDirectoryBatches(ctx, home, func(batch []os.DirEntry) error {
+			for _, entry := range batch {
+				if err := consume(); err != nil {
+					return err
+				}
+				path := "/home/" + entry.Name()
+				if entry.Name() == "docker" {
+					sub, err := os.Open(e.host(path))
+					if err != nil {
+						return err
+					}
+					err = readDirectoryBatches(ctx, sub, func(children []os.DirEntry) error {
+						for _, child := range children {
+							if err := consume(); err != nil {
+								return err
+							}
+							p := path + "/" + child.Name()
+							if !e.excluded(p) {
+								candidates[p] = "apps"
+							}
+						}
+						return nil
+					})
+					sub.Close()
+					if err != nil {
+						return err
+					}
+					continue
+				}
+				if strings.HasPrefix(entry.Name(), "web_") && strings.Contains(entry.Name(), ".tar.gz") {
+					continue
+				}
+				if !e.excluded(path) {
+					candidates[path] = owner(path)
 				}
 			}
-			continue
-		}
-		if strings.HasPrefix(entry.Name(), "web_") && strings.Contains(entry.Name(), ".tar.gz") {
-			continue
-		}
-		if !e.excluded(path) {
-			candidates[path] = owner(path)
+			return nil
+		})
+		if err != nil {
+			return i, err
 		}
 	}
 	var listed []struct {
@@ -469,6 +504,9 @@ func (e *Engine) Inventory(ctx context.Context) (Inventory, error) {
 		hash := sha256.Sum256([]byte(path))
 		r := Root{ID: hex.EncodeToString(hash[:16]), Path: path, Module: candidates[path], Directory: info.IsDir()}
 		if err := e.measure(ctx, &r); err != nil {
+			if ctx.Err() != nil {
+				return i, ctx.Err()
+			}
 			issues[r.Module] = "data_path_cannot_be_archived"
 		}
 		i.Roots = append(i.Roots, r)
@@ -550,40 +588,10 @@ func (e *Engine) measure(ctx context.Context, root *Root) error {
 	if err := noNestedMounts(sourceRoot); err != nil {
 		return err
 	}
-	rootInfo, err := os.Lstat(sourceRoot)
-	if err != nil {
-		return err
-	}
-	if rootInfo.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("backup root cannot be a symbolic link: %s", root.Path)
-	}
-	return filepath.WalkDir(sourceRoot, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			if _, err := archiveSourceSymlinkTarget(root, sourceRoot, path); err != nil {
-				return fmt.Errorf("backup contains an unsafe symbolic link: %s", path)
-			}
-		} else if !info.IsDir() && !info.Mode().IsRegular() {
-			return fmt.Errorf("backup contains an unsupported special file: %s (%s)", path, info.Mode().Type())
-		}
-		root.Entries++
-		if info.Mode().IsRegular() {
-			root.Bytes += info.Size()
-		}
-		if root.Entries > 100000 || root.Bytes > backup.MaxBytes || info.Mode().IsRegular() && info.Size() > 10<<30 {
-			return errors.New("backup file or archive limit exceeded")
-		}
-		return nil
-	})
+	walker := exportWalker{ctx: ctx, count: root.Entries, bytes: root.Bytes, hook: e.exportHook}
+	err := walker.writeRoot(sourceRoot, *root)
+	root.Entries, root.Bytes = walker.count, walker.bytes
+	return err
 }
 
 func validateSelection(i Inventory, modules []string) error {

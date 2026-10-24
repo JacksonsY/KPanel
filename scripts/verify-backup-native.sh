@@ -16,7 +16,7 @@ task=$(mktemp -d /var/tmp/kpanel-native-review.XXXXXX)
 chmod 700 "$task"
 mkdir -p "$task"/{runtime,modcache,gocache,repo/internal,fs/home,fs/opt,jobs,evidence,image-root}
 cp "$source_dir/go.mod" "$source_dir/go.sum" "$task/repo/"
-cp -a "$source_dir/internal/backup" "$source_dir/internal/hostbackup" "$task/repo/internal/"
+cp -a "$source_dir/internal/backup" "$source_dir/internal/hostbackup" "$source_dir/internal/redact" "$task/repo/internal/"
 cp "$script_dir/testdata/backup-native/main.go" "$task/fixture.go"
 cp "$0" "$task/evidence/run-native-integration.sh"
 export KPB_NATIVE_TASK="$task" KPB_NATIVE_GO="$go_dir" KPB_NATIVE_MODCACHE="$mod_dir"
