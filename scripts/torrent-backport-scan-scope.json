@@ -11,12 +11,14 @@
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "f7c89d5e862888205deb3af9331784042142e11eaec2d3e420b349f750e8ff27",
-  "firstPartySourceSha256": "f1069d1fa8b965175b4d4d5851644a70df443289da0b3973b43d56cf716601db",
+  "closureSha256": "6f9d7683e856c64d4876afcfefe7626558683f7a2956bfa46edfc2a5aae43ae3",
+  "firstPartySourceSha256": "5cff6bf522170b20de89147f0f6b9400e7497cf67ecc299e8d3a819c21761e48",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
+    "architectureClosureEvidenceSha256": "75c1954d44e865fa228e65876b886dd5dcade292a4f8de2669a93d0e3e91a445",
+    "architectureClosureSummary": "Independent read-only qualification of ce5abcc323a5e767ecddf2849182875ee21e561f re-observed all six actual/original production closures and 1079 first-party Go files against Git blobs, reproducing the previous source and closure identities as a control. Only Linux existing-package GoFiles change; the other four targets, 110 production modules, selected graph, vendored source and build-target hashes remain unchanged. Rebind derived source and closure identities only; all findings, dispositions, observation and expiry remain unchanged. This qualification is not scanner, release or deployment approval.",
     "state": "reviewed",
     "reviewerRole": "Independent stable release, source and dependency evidence reviewer",
     "evidenceSha256": "0d8d63d29777161eeb6c78af99a02ce877cec8a964b2af8b54d287230c299d83",
