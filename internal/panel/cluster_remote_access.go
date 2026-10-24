@@ -14,14 +14,43 @@ import (
 )
 
 func (s *Server) handleClusterRemoteAccess(w http.ResponseWriter, r *http.Request) {
+	s.handleClusterRemoteAccessScope(w, r, "")
+}
+
+func (s *Server) writeClusterRemoteAccess(w http.ResponseWriter, hostID string) {
+	if hostID != "" {
+		s.writeJSON(w, 200, struct {
+			cluster.HostRemoteAccess
+			PendingTerminalCleanup int `json:"pendingTerminalCleanup"`
+		}{s.cluster.HostRemoteAccess(hostID), s.remoteTerminalCleanupPending(hostID)})
+		return
+	}
+	s.writeJSON(w, 200, struct {
+		cluster.RemoteAccess
+		PendingTerminalCleanup int `json:"pendingTerminalCleanup"`
+	}{s.cluster.RemoteAccess(), s.remoteTerminalCleanupPending()})
+}
+
+func (s *Server) handleClusterRemoteAccessScope(w http.ResponseWriter, r *http.Request, hostID string) {
+	validHost := func() bool {
+		if hostID == "" {
+			return true
+		}
+		host, err := s.cluster.Host(r.Context(), hostID)
+		if err != nil || host.IsLocal {
+			s.writeProblem(w, r, 404, "host_not_found", "Remote host not found", "")
+			return false
+		}
+		return true
+	}
 	if r.Method == http.MethodGet {
 		if _, _, ok := s.requireSession(w, r); !ok {
 			return
 		}
-		s.writeJSON(w, http.StatusOK, struct {
-			cluster.RemoteAccess
-			PendingTerminalCleanup int `json:"pendingTerminalCleanup"`
-		}{s.cluster.RemoteAccess(), s.remoteTerminalCleanupPending()})
+		if !validHost() {
+			return
+		}
+		s.writeClusterRemoteAccess(w, hostID)
 		return
 	}
 	if r.Method != http.MethodPut {
@@ -30,6 +59,9 @@ func (s *Server) handleClusterRemoteAccess(w http.ResponseWriter, r *http.Reques
 	}
 	session, ok := s.requireClusterMutation(w, r)
 	if !ok {
+		return
+	}
+	if !validHost() {
 		return
 	}
 	var input struct {
@@ -45,6 +77,9 @@ func (s *Server) handleClusterRemoteAccess(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	change := map[string]any{"terminalEnabled": *input.TerminalEnabled, "filesEnabled": *input.FilesEnabled}
+	if hostID != "" {
+		change["hostId"] = hostID
+	}
 	if err := s.audit(r, session.User.ID, "cluster.remote-access.update", "cluster-settings", "remote-access", "intent", change); err != nil {
 		s.writeProblem(w, r, 503, "audit_unavailable", "Audit storage unavailable", "")
 		return
@@ -52,10 +87,20 @@ func (s *Server) handleClusterRemoteAccess(w http.ResponseWriter, r *http.Reques
 	// Registration uses this same lock and rechecks the policy. An open that
 	// raced this update can never escape the close-requested set.
 	s.terminalMu.Lock()
-	value, err := s.cluster.UpdateRemoteAccess(input.ExpectedResourceVersion, *input.TerminalEnabled, *input.FilesEnabled)
-	if err == nil && !value.TerminalEnabled {
+	var err error
+	terminalEnabled := true
+	if hostID == "" {
+		var value cluster.RemoteAccess
+		value, err = s.cluster.UpdateRemoteAccess(input.ExpectedResourceVersion, *input.TerminalEnabled, *input.FilesEnabled)
+		terminalEnabled = value.TerminalEnabled
+	} else {
+		var value cluster.HostRemoteAccess
+		value, err = s.cluster.UpdateHostRemoteAccess(hostID, input.ExpectedResourceVersion, *input.TerminalEnabled, *input.FilesEnabled)
+		terminalEnabled = value.EffectiveTerminalEnabled
+	}
+	if err == nil && !terminalEnabled {
 		for id, item := range s.terminalSessions {
-			if item.HostID == cluster.LocalHostID {
+			if item.HostID == cluster.LocalHostID || hostID != "" && item.HostID != hostID {
 				continue
 			}
 			item.CloseRequested = true
@@ -75,26 +120,22 @@ func (s *Server) handleClusterRemoteAccess(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
-	pending := 0
-	if !value.TerminalEnabled {
-		pending = s.closeDisabledRemoteTerminals(r.Context())
+	if !terminalEnabled {
+		_ = s.closeDisabledRemoteTerminals(r.Context(), hostID)
 	}
 	_ = s.audit(r, session.User.ID, "cluster.remote-access.update", "cluster-settings", "remote-access", "success", change)
-	s.writeJSON(w, 200, struct {
-		cluster.RemoteAccess
-		PendingTerminalCleanup int `json:"pendingTerminalCleanup"`
-	}{value, pending})
+	s.writeClusterRemoteAccess(w, hostID)
 }
 
 // Never lose identities on failed closure. A later save/explicit close retries
 // them, while the admission policy already rejects input and reconnection.
-func (s *Server) closeDisabledRemoteTerminals(parent context.Context) int {
+func (s *Server) closeDisabledRemoteTerminals(parent context.Context, hostIDs ...string) int {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	s.terminalMu.Lock()
 	items := make([]panelTerminalSession, 0)
 	for _, item := range s.terminalSessions {
-		if item.HostID != cluster.LocalHostID && item.CloseRequested {
+		if item.HostID != cluster.LocalHostID && item.CloseRequested && remoteCleanupIncludes(hostIDs, item.HostID) {
 			items = append(items, item)
 		}
 	}
@@ -121,15 +162,19 @@ func (s *Server) closeDisabledRemoteTerminals(parent context.Context) int {
 		}()
 	}
 	workers.Wait()
-	return s.remoteTerminalCleanupPending()
+	return s.remoteTerminalCleanupPending(hostIDs...)
 }
 
-func (s *Server) remoteTerminalCleanupPending() int {
+func remoteCleanupIncludes(hostIDs []string, id string) bool {
+	return len(hostIDs) == 0 || hostIDs[0] == "" || hostIDs[0] == id
+}
+
+func (s *Server) remoteTerminalCleanupPending(hostIDs ...string) int {
 	s.terminalMu.Lock()
 	defer s.terminalMu.Unlock()
 	pending := 0
 	for _, item := range s.terminalSessions {
-		if item.HostID != cluster.LocalHostID && item.CloseRequested {
+		if item.HostID != cluster.LocalHostID && item.CloseRequested && remoteCleanupIncludes(hostIDs, item.HostID) {
 			pending++
 		}
 	}
@@ -138,14 +183,14 @@ func (s *Server) remoteTerminalCleanupPending() int {
 
 func (s *Server) registerTerminalSession(item panelTerminalSession) bool {
 	s.terminalMu.Lock()
-	denied := item.HostID != cluster.LocalHostID && !s.cluster.RemoteAccess().TerminalEnabled
+	denied := item.HostID != cluster.LocalHostID && !s.cluster.HostRemoteAccess(item.HostID).EffectiveTerminalEnabled
 	if denied {
 		item.CloseRequested = true
 	}
 	s.terminalSessions[item.ID] = item
 	s.terminalMu.Unlock()
 	if denied {
-		_ = s.closeDisabledRemoteTerminals(context.Background())
+		_ = s.closeDisabledRemoteTerminals(context.Background(), item.HostID)
 	}
 	return !denied
 }

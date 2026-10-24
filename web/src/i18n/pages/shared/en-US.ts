@@ -1,6 +1,10 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ["仅控制当前中心对这台主机的访问。","Control access from this center to this host only."],
+  ["集群总开关已关闭，此项暂不生效。","The cluster switch is off; this setting is currently inactive."],
+  ["其他主机的独立设置不受影响，实际访问还需集群总开关允许。","Other hosts keep their own settings. Access also requires the cluster switch to be on."],
+  ["单台主机可在主机菜单的「远程操作」中进一步设置。","Configure each host through Remote operations in its host menu."],
   ["通知设置","Notification settings"],
   ["公开分享","Public sharing"],
   ["远程操作","Remote operations"],

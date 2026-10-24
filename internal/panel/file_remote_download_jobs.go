@@ -20,13 +20,14 @@ const (
 var errRemoteDownloadServerClosing = errors.New("remote download server is closing")
 
 type fileRemoteDownloadTask struct {
-	accessLifetime context.Context
-	job            contract.FileRemoteDownloadJob
-	input          contract.FileRemoteDownloadRequest
-	actorID        string
-	sourceIP       string
-	requestID      string
-	execute        func(context.Context, func(contract.FileTransferEvent) bool) contract.FileTransferEvent
+	accessLifetime      context.Context
+	hostAccessLifetimes []context.Context
+	job                 contract.FileRemoteDownloadJob
+	input               contract.FileRemoteDownloadRequest
+	actorID             string
+	sourceIP            string
+	requestID           string
+	execute             func(context.Context, func(contract.FileTransferEvent) bool) contract.FileTransferEvent
 }
 
 func (s *Server) handleFileRemoteDownloadJobs(w http.ResponseWriter, r *http.Request) {
@@ -214,6 +215,13 @@ func (s *Server) runFileRemoteDownloadJob(ctx context.Context, cancel context.Ca
 		defer stop()
 		if task.accessLifetime.Err() != nil {
 			cancel(errors.New("remote files disabled by this center"))
+		}
+	}
+	for _, lifetime := range task.hostAccessLifetimes {
+		stop := context.AfterFunc(lifetime, func() { cancel(errors.New("remote files disabled for this host")) })
+		defer stop()
+		if lifetime.Err() != nil {
+			cancel(errors.New("remote files disabled for this host"))
 		}
 	}
 	// BT resource admission precedes the common transfer slot, leaving a slot

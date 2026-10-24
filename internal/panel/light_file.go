@@ -75,7 +75,7 @@ func (s *Server) handleLightFileRelay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	operation, release, accessErr := s.cluster.BeginRemoteOperation(r.Context(), "files")
+	operation, release, accessErr := s.cluster.BeginRemoteOperation(r.Context(), "files", hostID)
 	if accessErr != nil {
 		s.writeProblem(w, r, 403, "remote_files_disabled", "Remote files disabled by this center", "")
 		return

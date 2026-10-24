@@ -6,6 +6,7 @@ export type ClusterHostMenuAction =
   | 'files'
   | 'refresh'
   | 'manage'
+  | 'remote-access'
   | 'copy-address'
   | 'remove'
 
@@ -43,6 +44,7 @@ export function clusterHostMenuGroups(host: ClusterHost, address: string): Clust
     { action: 'refresh', label: '刷新', disabled: host.polling },
     { action: 'manage', label: '管理' },
   ]
+  if (!host.isLocal) manage.push({ action: 'remote-access', label: '远程操作' })
   if (address) manage.push({ action: 'copy-address', label: '复制地址' })
   groups.push(manage)
   if (!host.isLocal) groups.push([{ action: 'remove', label: '移除主机' }])
@@ -52,7 +54,7 @@ export function clusterHostMenuGroups(host: ClusterHost, address: string): Clust
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, type Component } from 'vue'
-import { Activity, ArrowUpRight, Copy, FolderOpen, Pencil, RefreshCw, SquareTerminal, Trash2 } from '@lucide/vue'
+import { Activity, ArrowUpRight, Copy, FolderOpen, Pencil, RefreshCw, Settings, SquareTerminal, Trash2 } from '@lucide/vue'
 import {
   type ContextMenuFocusOrigin,
   focusFirstContextMenuItem,
@@ -73,6 +75,7 @@ const icons: Record<ClusterHostMenuAction, Component> = {
   files: FolderOpen,
   refresh: RefreshCw,
   manage: Pencil,
+  'remote-access': Settings,
   'copy-address': Copy,
   remove: Trash2,
 }

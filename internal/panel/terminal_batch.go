@@ -149,9 +149,17 @@ func (s *Server) handleTerminalBatch(w http.ResponseWriter, r *http.Request) {
 				}
 				target := terminalbatch.Host{ID: host.ID, Name: host.Name, Shell: shell}
 				if !host.IsLocal {
-					target.Context = accessLifetime
+					target.Context = s.cluster.RemoteOperationLifetime("terminal", id)
 				}
 				hosts = append(hosts, target)
+			}
+			if accessLifetime.Err() != nil {
+				for _, host := range hosts {
+					if host.ID != cluster.LocalHostID {
+						s.writeProblem(w, r, 403, "remote_terminal_disabled", "Remote terminal disabled by this center", "")
+						return
+					}
+				}
 			}
 			job, err := s.terminalBatches.Create(session.User.ID, input.ID, input.Command, hosts)
 			if err != nil {

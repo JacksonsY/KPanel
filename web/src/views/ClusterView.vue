@@ -127,6 +127,10 @@ const notificationBusy = ref(false)
 const remoteBusy = ref(false)
 const remoteReady = ref(false)
 const remoteFormID = `cluster-remote-access-${useId()}`
+const remoteHost = ref<ClusterHost>()
+const hostRemoteBusy = ref(false)
+const hostRemoteReady = ref(false)
+const hostRemoteFormID = `cluster-host-remote-access-${useId()}`
 const settingsBusy = computed(() => notificationBusy.value || remoteBusy.value || shareSaving.value || shareResetting.value)
 const shareError = ref('')
 let shareLoadedForOpen = false
@@ -1413,6 +1417,7 @@ async function onHostMenuSelect(action: ClusterHostMenuAction, menuHost: Cluster
   else if (action === 'files') void router.push(clusterHostFilesRoute(host))
   else if (action === 'refresh') await refreshHost(host)
   else if (action === 'manage') openManage(host)
+  else if (action === 'remote-access' && !host.isLocal) remoteHost.value = host
   else if (action === 'copy-address') {
     const address = displayHostAddress(host)
     if (address) await copyToClipboard(address, '地址已复制', '请手动选择地址复制。')
@@ -2482,6 +2487,13 @@ onBeforeUnmount(() => {
         </template>
       </template>
     </ClusterNotificationsDialog>
+    <ModalDialog :open="!!remoteHost" :title="phrase('远程操作')" :description="remoteHost?.name" size="medium" :close-disabled="hostRemoteBusy" @close="!hostRemoteBusy && (remoteHost = undefined)">
+      <ClusterRemoteAccessSettings v-if="remoteHost" :key="remoteHost.id" :open="true" :active="true" :host-id="remoteHost.id" :form-id="hostRemoteFormID" @busy="hostRemoteBusy = $event" @ready="hostRemoteReady = $event" @saved="load(true)" />
+      <template #footer>
+        <button class="button button--secondary" type="button" :disabled="hostRemoteBusy" @click="remoteHost = undefined">{{ phrase('关闭') }}</button>
+        <button class="button button--primary" type="submit" :form="hostRemoteFormID" :disabled="!hostRemoteReady || hostRemoteBusy"><LoaderCircle v-if="hostRemoteBusy" class="spin" :size="15" />{{ phrase(hostRemoteBusy ? '正在保存…' : '保存设置') }}</button>
+      </template>
+    </ModalDialog>
     <ClusterHostContextMenu ref="hostMenu" @select="onHostMenuSelect" />
   </div>
 </template>

@@ -230,6 +230,11 @@ export interface ClusterRemoteAccess {
   available: boolean
   resourceVersion: string
   pendingTerminalCleanup?: number
+  hostId?: string
+  globalTerminalEnabled?: boolean
+  globalFilesEnabled?: boolean
+  effectiveTerminalEnabled?: boolean
+  effectiveFilesEnabled?: boolean
 }
 
 export interface ClusterHost {

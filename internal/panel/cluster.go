@@ -232,6 +232,15 @@ func (s *Server) handleClusterHost(w http.ResponseWriter, r *http.Request) {
 		s.writeProblem(w, r, http.StatusNotFound, "route_not_found", "Route not found", "")
 		return
 	}
+	if strings.HasSuffix(rest, "/remote-access") {
+		id := strings.TrimSuffix(rest, "/remote-access")
+		if id == "" || strings.Contains(id, "/") {
+			s.writeProblem(w, r, 404, "route_not_found", "Route not found", "")
+			return
+		}
+		s.handleClusterRemoteAccessScope(w, r, id)
+		return
+	}
 	if strings.HasSuffix(rest, "/refresh") {
 		id := strings.TrimSuffix(rest, "/refresh")
 		if strings.Contains(id, "/") || r.Method != http.MethodPost {

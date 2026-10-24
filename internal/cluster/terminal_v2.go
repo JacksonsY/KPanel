@@ -208,7 +208,7 @@ func (s *Service) terminalOpen(ctx context.Context, hostID string, input Termina
 }
 
 func (s *Service) TerminalOutput(ctx context.Context, hostID string, input TerminalOutputRequest) (terminal.Output, error) {
-	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal")
+	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal", hostID)
 	if err != nil {
 		return terminal.Output{}, err
 	}
@@ -233,7 +233,7 @@ func (s *Service) TerminalOutput(ctx context.Context, hostID string, input Termi
 }
 
 func (s *Service) TerminalInput(ctx context.Context, hostID string, input TerminalInputRequest) error {
-	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal")
+	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal", hostID)
 	if err != nil {
 		return err
 	}
@@ -258,7 +258,7 @@ func (s *Service) TerminalInput(ctx context.Context, hostID string, input Termin
 }
 
 func (s *Service) TerminalResize(ctx context.Context, hostID string, input TerminalResizeRequest) error {
-	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal")
+	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal", hostID)
 	if err != nil {
 		return err
 	}

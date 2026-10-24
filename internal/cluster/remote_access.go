@@ -31,10 +31,11 @@ type RemoteAccess struct {
 }
 
 type remoteAccessDisk struct {
-	SchemaVersion   int    `json:"schemaVersion"`
-	TerminalEnabled *bool  `json:"terminalEnabled"`
-	FilesEnabled    *bool  `json:"filesEnabled"`
-	Revision        string `json:"revision"`
+	SchemaVersion   int                    `json:"schemaVersion"`
+	TerminalEnabled *bool                  `json:"terminalEnabled"`
+	FilesEnabled    *bool                  `json:"filesEnabled"`
+	Revision        string                 `json:"revision"`
+	Hosts           []remoteHostPreference `json:"hosts,omitempty"`
 }
 
 type remoteAccessControl struct {
@@ -46,16 +47,18 @@ type remoteAccessControl struct {
 	stopTerminal    context.CancelFunc
 	fileContext     context.Context
 	stopFiles       context.CancelFunc
+	hosts           map[string]remoteHostPreference
+	hostEpochs      map[string]*remoteHostEpochs
 }
 
 func openRemoteAccess(directory string) *remoteAccessControl {
-	c := &remoteAccessControl{path: filepath.Join(directory, remoteAccessFile), ops: defaultAtomicFileOpsV2()}
+	c := &remoteAccessControl{path: filepath.Join(directory, remoteAccessFile), ops: defaultAtomicFileOpsV2(), hosts: make(map[string]remoteHostPreference), hostEpochs: make(map[string]*remoteHostEpochs)}
 	c.terminalContext, c.stopTerminal = context.WithCancel(context.Background())
 	c.fileContext, c.stopFiles = context.WithCancel(context.Background())
 	c.value = RemoteAccess{TerminalEnabled: true, FilesEnabled: true, ResourceVersion: "initial", Available: true}
 	// Do not recover an older backup here: that could undo an explicit denial.
 	// Corrupt/incomplete settings disable remote operations without taking down telemetry.
-	content, err := readRegularFileV2(c.path, 4096, true)
+	content, err := readRegularFileV2(c.path, 1<<20, true)
 	_, previousErr := os.Lstat(c.path + ".previous")
 	if errors.Is(err, os.ErrNotExist) {
 		// A crash between the two renames must not look like an untouched install.
@@ -65,13 +68,16 @@ func openRemoteAccess(directory string) *remoteAccessControl {
 	}
 	var disk remoteAccessDisk
 	if err != nil || !errors.Is(previousErr, os.ErrNotExist) || decodeStrictJSONV2(content, &disk) != nil || disk.SchemaVersion != 1 ||
-		disk.TerminalEnabled == nil || disk.FilesEnabled == nil || !validID(disk.Revision) {
+		disk.TerminalEnabled == nil || disk.FilesEnabled == nil || !validID(disk.Revision) || !validRemoteHostPreferences(disk.Hosts) {
 		c.value = RemoteAccess{Available: false}
 		c.stopTerminal()
 		c.stopFiles()
 		return c
 	}
 	c.value = RemoteAccess{TerminalEnabled: *disk.TerminalEnabled, FilesEnabled: *disk.FilesEnabled, ResourceVersion: disk.Revision, Available: true}
+	for _, preference := range disk.Hosts {
+		c.hosts[preference.HostID] = preference
+	}
 	if !c.value.TerminalEnabled {
 		c.stopTerminal()
 	}
@@ -110,7 +116,7 @@ func (s *Service) UpdateRemoteAccess(version string, terminalEnabled, filesEnabl
 	if err != nil {
 		return c.value, ErrRemoteAccessStorage
 	}
-	content, err := json.Marshal(remoteAccessDisk{SchemaVersion: 1, TerminalEnabled: &terminalEnabled, FilesEnabled: &filesEnabled, Revision: revision})
+	content, err := json.Marshal(remoteAccessDisk{SchemaVersion: 1, TerminalEnabled: &terminalEnabled, FilesEnabled: &filesEnabled, Revision: revision, Hosts: c.hostPreferences()})
 	if err != nil {
 		return c.value, ErrRemoteAccessStorage
 	}
@@ -130,7 +136,18 @@ func (s *Service) UpdateRemoteAccess(version string, terminalEnabled, filesEnabl
 			c.fileContext, c.stopFiles = context.WithCancel(context.Background())
 		}
 	}
+	terminalChanged, filesChanged := terminalEnabled != c.value.TerminalEnabled, filesEnabled != c.value.FilesEnabled
 	c.value = RemoteAccess{TerminalEnabled: terminalEnabled, FilesEnabled: filesEnabled, ResourceVersion: revision, Available: true}
+	for id, epochs := range c.hostEpochs {
+		if terminalChanged {
+			epochs.stopTerminal()
+			epochs.terminal, epochs.stopTerminal = c.newHostEpoch(id, "terminal")
+		}
+		if filesChanged {
+			epochs.stopFiles()
+			epochs.files, epochs.stopFiles = c.newHostEpoch(id, "files")
+		}
+	}
 	return c.value, nil
 }
 
@@ -138,7 +155,7 @@ func (s *Service) UpdateRemoteAccess(version string, terminalEnabled, filesEnabl
 // a switch cancels in-flight work; reopening cannot resurrect an old request.
 type remoteAccessEpochKey string
 
-func (s *Service) BeginRemoteOperation(parent context.Context, domain string) (context.Context, context.CancelFunc, error) {
+func (s *Service) BeginRemoteOperation(parent context.Context, domain string, hostIDs ...string) (context.Context, context.CancelFunc, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -150,8 +167,8 @@ func (s *Service) BeginRemoteOperation(parent context.Context, domain string) (c
 		ctx, cancel := context.WithCancel(parent)
 		return ctx, cancel, nil
 	}
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	enabled, epoch := c.value.FilesEnabled, c.fileContext
 	if domain == "terminal" {
 		enabled, epoch = c.value.TerminalEnabled, c.terminalContext
@@ -159,13 +176,18 @@ func (s *Service) BeginRemoteOperation(parent context.Context, domain string) (c
 	if !c.value.Available || !enabled {
 		return nil, nil, ErrRemoteAccessDisabled
 	}
-	if admitted, ok := parent.Value(remoteAccessEpochKey(domain)).(context.Context); ok {
+	key := remoteAccessEpochKey(domain)
+	if len(hostIDs) > 0 && hostIDs[0] != "" && hostIDs[0] != LocalHostID {
+		key = remoteAccessEpochKey(domain + ":" + hostIDs[0])
+		epoch = c.hostEpoch(hostIDs[0], domain)
+	}
+	if admitted, ok := parent.Value(key).(context.Context); ok {
 		epoch = admitted
 	}
 	if epoch.Err() != nil {
 		return nil, nil, ErrRemoteAccessDisabled
 	}
-	parent = context.WithValue(parent, remoteAccessEpochKey(domain), epoch)
+	parent = context.WithValue(parent, key, epoch)
 	ctx, cancel := context.WithCancel(parent)
 	stop := context.AfterFunc(epoch, cancel)
 	return ctx, func() { stop(); cancel() }, nil
@@ -173,13 +195,16 @@ func (s *Service) BeginRemoteOperation(parent context.Context, domain string) (c
 
 // RemoteOperationLifetime is immutable for one enabled interval. Queued work
 // binds this lifetime at admission, so later enabling cannot replay old work.
-func (s *Service) RemoteOperationLifetime(domain string) context.Context {
+func (s *Service) RemoteOperationLifetime(domain string, hostIDs ...string) context.Context {
 	c := s.remoteAccess
 	if c == nil {
 		return context.Background()
 	}
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(hostIDs) > 0 && hostIDs[0] != "" && hostIDs[0] != LocalHostID {
+		return c.hostEpoch(hostIDs[0], domain)
+	}
 	if domain == "terminal" {
 		return c.terminalContext
 	}
@@ -187,13 +212,13 @@ func (s *Service) RemoteOperationLifetime(domain string) context.Context {
 }
 
 func (s *Service) TerminalOpen(ctx context.Context, id string, input TerminalOpenRequest) (TerminalOpenResponse, error) {
-	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal")
+	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal", id)
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
 	defer cancel()
 	opened, err := s.terminalOpen(ctx, id, input)
-	if err == nil && (ctx.Err() != nil || s.remoteTerminalParent(ctx).Err() != nil) {
+	if err == nil && (ctx.Err() != nil || s.remoteTerminalParent(ctx, id).Err() != nil) {
 		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		defer stop()
 		if closeErr := s.TerminalClose(cleanup, id, TerminalCloseRequest{SessionID: opened.SessionID}); closeErr != nil {
@@ -206,8 +231,8 @@ func (s *Service) TerminalOpen(ctx context.Context, id string, input TerminalOpe
 	return opened, err
 }
 
-func (s *Service) remoteTerminalParent(ctx context.Context) context.Context {
-	if epoch, ok := ctx.Value(remoteAccessEpochKey("terminal")).(context.Context); ok {
+func (s *Service) remoteTerminalParent(ctx context.Context, id string) context.Context {
+	if epoch, ok := ctx.Value(remoteAccessEpochKey("terminal:" + id)).(context.Context); ok {
 		return epoch
 	}
 	if s.streams != nil {
@@ -217,7 +242,7 @@ func (s *Service) remoteTerminalParent(ctx context.Context) context.Context {
 }
 
 func (s *Service) OpenRemoteFileV2(ctx context.Context, id string, input FederationFileOpenRequest) (io.ReadCloser, contract.FileTransferMetadata, error) {
-	ctx, cancel, err := s.BeginRemoteOperation(ctx, "files")
+	ctx, cancel, err := s.BeginRemoteOperation(ctx, "files", id)
 	if err != nil {
 		return nil, contract.FileTransferMetadata{}, err
 	}
@@ -233,9 +258,9 @@ func (s *Service) applyRemoteAccess(host Host) Host {
 	if host.IsLocal {
 		return host
 	}
-	policy := s.RemoteAccess()
-	host.RemoteTerminalDisabled = !policy.Available || !policy.TerminalEnabled
-	host.RemoteFilesDisabled = !policy.Available || !policy.FilesEnabled
+	policy := s.HostRemoteAccess(host.ID)
+	host.RemoteTerminalDisabled = !policy.Available || !policy.EffectiveTerminalEnabled
+	host.RemoteFilesDisabled = !policy.Available || !policy.EffectiveFilesEnabled
 	if host.RemoteTerminalDisabled {
 		host.TerminalAvailable = false
 	}
@@ -264,8 +289,8 @@ func remoteBody(ctx context.Context, cancel context.CancelFunc, body io.ReadClos
 	return b
 }
 
-func (s *Service) remoteFile(ctx context.Context, open func(context.Context) (*http.Response, error)) (*http.Response, error) {
-	ctx, cancel, err := s.BeginRemoteOperation(ctx, "files")
+func (s *Service) remoteFile(ctx context.Context, open func(context.Context) (*http.Response, error), hostIDs ...string) (*http.Response, error) {
+	ctx, cancel, err := s.BeginRemoteOperation(ctx, "files", hostIDs...)
 	if err != nil {
 		return nil, err
 	}
@@ -279,11 +304,11 @@ func (s *Service) remoteFile(ctx context.Context, open func(context.Context) (*h
 }
 
 func (s *Service) OpenLightFile(ctx context.Context, id string, input LightFileRequest) (*http.Response, error) {
-	return s.remoteFile(ctx, func(ctx context.Context) (*http.Response, error) { return s.openLightFile(ctx, id, input) })
+	return s.remoteFile(ctx, func(ctx context.Context) (*http.Response, error) { return s.openLightFile(ctx, id, input) }, id)
 }
 func (s *Service) OpenRemotePanelFile(ctx context.Context, id string, input LightFileRequest) (*http.Response, error) {
-	return s.remoteFile(ctx, func(ctx context.Context) (*http.Response, error) { return s.openRemotePanelFile(ctx, id, input) })
+	return s.remoteFile(ctx, func(ctx context.Context) (*http.Response, error) { return s.openRemotePanelFile(ctx, id, input) }, id)
 }
 func (s *Service) OpenRemotePanelFileV1(ctx context.Context, id string, input LightFileRequest) (*http.Response, error) {
-	return s.remoteFile(ctx, func(ctx context.Context) (*http.Response, error) { return s.openRemotePanelFileV1(ctx, id, input) })
+	return s.remoteFile(ctx, func(ctx context.Context) (*http.Response, error) { return s.openRemotePanelFileV1(ctx, id, input) }, id)
 }

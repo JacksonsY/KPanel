@@ -9,7 +9,7 @@ import type { ClusterRemoteAccess } from '@/types/api'
 usePhraseCatalog(locale => locale === 'en-US'
   ? import('@/i18n/pages/ClusterView/en-US').then(module => module.default)
   : import('@/i18n/pages/ClusterView/zh-TW').then(module => module.default))
-const props = defineProps<{ open: boolean; active: boolean; formId: string }>()
+const props = defineProps<{ open: boolean; active: boolean; formId: string; hostId?: string }>()
 const emit = defineEmits<{ busy: [value: boolean]; ready: [value: boolean]; saved: [] }>()
 const snapshot = ref<ClusterRemoteAccess>()
 const form = reactive({ terminalEnabled: true, filesEnabled: true })
@@ -31,7 +31,7 @@ async function load(): Promise<void> {
   controller = new AbortController()
   loading.value = true; error.value = ''; message.value = ''
   try {
-    const value = await api.cluster.remoteAccess(controller.signal)
+    const value = props.hostId ? await api.cluster.hostRemoteAccess(props.hostId, controller.signal) : await api.cluster.remoteAccess(controller.signal)
     if (current !== sequence || !props.open) return
     snapshot.value = value
     form.terminalEnabled = value.terminalEnabled; form.filesEnabled = value.filesEnabled
@@ -44,7 +44,8 @@ async function save(): Promise<void> {
   if (!canSave.value || !snapshot.value) return
   saving.value = true; error.value = ''; message.value = ''
   try {
-    const value = await api.cluster.updateRemoteAccess({ ...form, expectedResourceVersion: snapshot.value.resourceVersion })
+    const body = { ...form, expectedResourceVersion: snapshot.value.resourceVersion }
+    const value = props.hostId ? await api.cluster.updateHostRemoteAccess(props.hostId, body) : await api.cluster.updateRemoteAccess(body)
     snapshot.value = value
     form.terminalEnabled = value.terminalEnabled; form.filesEnabled = value.filesEnabled
     message.value = value.pendingTerminalCleanup
@@ -69,18 +70,19 @@ onBeforeUnmount(() => { sequence++; controller?.abort() })
   <form :id="formId" class="cluster-remote-access" @submit.prevent="save">
     <div v-if="loading && !snapshot" class="cluster-remote-access__loading" role="status"><LoaderCircle class="spin" :size="18" />{{ phrase('正在读取远程操作设置…') }}</div>
     <template v-else>
-      <header><h3>{{ phrase('远程操作') }}</h3><p>{{ phrase('统一控制当前中心对所有远程节点的访问。') }}</p></header>
+      <header><h3>{{ phrase('远程操作') }}</h3><p>{{ phrase(hostId ? '仅控制当前中心对这台主机的访问。' : '统一控制当前中心对所有远程节点的访问。') }}</p></header>
       <fieldset :disabled="loading || saving || !snapshot?.available">
         <label class="cluster-remote-access__row">
-          <span><strong>{{ phrase('允许远程终端') }}</strong><small>{{ phrase('连接远程终端、恢复会话及批量执行命令。') }}</small></span>
+          <span><strong>{{ phrase('允许远程终端') }}</strong><small>{{ phrase('连接远程终端、恢复会话及批量执行命令。') }}</small><small v-if="hostId && snapshot?.globalTerminalEnabled === false">{{ phrase('集群总开关已关闭，此项暂不生效。') }}</small></span>
           <input v-model="form.terminalEnabled" class="cluster-remote-access__switch" type="checkbox" role="switch" :aria-label="phrase('允许远程终端')" />
         </label>
         <label class="cluster-remote-access__row">
-          <span><strong>{{ phrase('允许远程文件管理') }}</strong><small>{{ phrase('浏览、编辑、上传、下载及跨节点文件互传。') }}</small></span>
+          <span><strong>{{ phrase('允许远程文件管理') }}</strong><small>{{ phrase('浏览、编辑、上传、下载及跨节点文件互传。') }}</small><small v-if="hostId && snapshot?.globalFilesEnabled === false">{{ phrase('集群总开关已关闭，此项暂不生效。') }}</small></span>
           <input v-model="form.filesEnabled" class="cluster-remote-access__switch" type="checkbox" role="switch" :aria-label="phrase('允许远程文件管理')" />
         </label>
       </fieldset>
-      <aside class="cluster-remote-access__scope"><Info :size="18" /><p>{{ phrase('适用于已接入和以后新增的远程节点。') }}<br>{{ phrase('本机管理与集群监控不受影响，不修改系统 SSH 服务。') }}</p></aside>
+      <aside class="cluster-remote-access__scope"><Info :size="18" /><p>{{ phrase(hostId ? '其他主机的独立设置不受影响，实际访问还需集群总开关允许。' : '适用于已接入和以后新增的远程节点。') }}<br>{{ phrase('本机管理与集群监控不受影响，不修改系统 SSH 服务。') }}</p></aside>
+      <p v-if="!hostId" class="cluster-remote-access__hint">{{ phrase('单台主机可在主机菜单的「远程操作」中进一步设置。') }}</p>
       <p class="cluster-remote-access__hint">{{ phrase('关闭后停止远程访问，并取消可取消的连接与传输；已完成的操作不会撤销。') }}</p>
       <p class="cluster-remote-access__hint">{{ phrase('重新开启无需重新配对，不会自动恢复命令或传输。') }}</p>
       <p v-if="message" class="cluster-remote-access__message" role="status" aria-live="polite">{{ phrase(message) }}</p>

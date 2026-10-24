@@ -385,6 +385,10 @@ func (s *Service) Close() error {
 		s.remoteAccess.mu.RLock()
 		s.remoteAccess.stopTerminal()
 		s.remoteAccess.stopFiles()
+		for _, epochs := range s.remoteAccess.hostEpochs {
+			epochs.stopTerminal()
+			epochs.stopFiles()
+		}
 		s.remoteAccess.mu.RUnlock()
 	}
 	s.localMu.Lock()

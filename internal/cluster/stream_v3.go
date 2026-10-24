@@ -302,7 +302,7 @@ func (p *panelStreams) deleteTerminal(t *streamTerminal) {
 // dialPanelHost authenticates one outbound socket to an active paired Panel.
 func (s *Service) dialPanelHost(ctx context.Context, hostID, role string) (*fileStreamConn, error) {
 	if role == streamRolePanelTerminal || role == streamRolePanelTerminalReady {
-		bound, cancel, err := s.BeginRemoteOperation(ctx, "terminal")
+		bound, cancel, err := s.BeginRemoteOperation(ctx, "terminal", hostID)
 		if err != nil {
 			return nil, &streamDialError{err}
 		}
@@ -458,7 +458,7 @@ type panelTerminalFallback struct {
 }
 
 func (f panelTerminalFallback) Output(ctx context.Context, input TerminalOutputRequest) (terminal.Output, error) {
-	ctx, cancel, err := f.service.BeginRemoteOperation(ctx, "terminal")
+	ctx, cancel, err := f.service.BeginRemoteOperation(ctx, "terminal", f.hostID)
 	if err != nil {
 		return terminal.Output{}, err
 	}
@@ -471,7 +471,7 @@ func (f panelTerminalFallback) Output(ctx context.Context, input TerminalOutputR
 }
 
 func (f panelTerminalFallback) Input(ctx context.Context, input TerminalInputRequest) error {
-	ctx, cancel, err := f.service.BeginRemoteOperation(ctx, "terminal")
+	ctx, cancel, err := f.service.BeginRemoteOperation(ctx, "terminal", f.hostID)
 	if err != nil {
 		return err
 	}
@@ -484,7 +484,7 @@ func (f panelTerminalFallback) Input(ctx context.Context, input TerminalInputReq
 }
 
 func (f panelTerminalFallback) Resize(ctx context.Context, input TerminalResizeRequest) error {
-	ctx, cancel, err := f.service.BeginRemoteOperation(ctx, "terminal")
+	ctx, cancel, err := f.service.BeginRemoteOperation(ctx, "terminal", f.hostID)
 	if err != nil {
 		return err
 	}
@@ -525,7 +525,7 @@ func (s *Service) openPanelStreamTerminal(ctx context.Context, hostID string, ro
 		}
 		return startTerminalStream(ctx, conn, first, payload)
 	}
-	t, response, err := openStreamTerminal(ctx, s.remoteTerminalParent(ctx), hostID, dial, panelTerminalFallback{service: s, hostID: hostID}, rows, columns, keep...)
+	t, response, err := openStreamTerminal(ctx, s.remoteTerminalParent(ctx, hostID), hostID, dial, panelTerminalFallback{service: s, hostID: hostID}, rows, columns, keep...)
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}
@@ -550,7 +550,7 @@ func (s *Service) openPanelStreamTerminal(ctx context.Context, hostID string, ro
 
 func (s *Service) openLightStreamTerminal(ctx context.Context, nodeID string, rows, columns uint16, keep ...bool) (TerminalOpenResponse, error) {
 	dial := func(ctx context.Context, first byte, payload any) (*fileStreamConn, terminalStreamReady, error) {
-		bound, cancel, err := s.BeginRemoteOperation(ctx, "terminal")
+		bound, cancel, err := s.BeginRemoteOperation(ctx, "terminal", nodeID)
 		if err != nil {
 			return nil, terminalStreamReady{}, err
 		}
@@ -562,7 +562,7 @@ func (s *Service) openLightStreamTerminal(ctx context.Context, nodeID string, ro
 		}
 		return startTerminalStream(ctx, conn, first, payload)
 	}
-	t, response, err := openStreamTerminal(ctx, s.remoteTerminalParent(ctx), nodeID, dial, nil, rows, columns, keep...)
+	t, response, err := openStreamTerminal(ctx, s.remoteTerminalParent(ctx, nodeID), nodeID, dial, nil, rows, columns, keep...)
 	if err != nil {
 		return TerminalOpenResponse{}, err
 	}

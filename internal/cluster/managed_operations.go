@@ -379,7 +379,7 @@ func (c *RemoteClient) ManagedV2(ctx context.Context, origin, controllerID, targ
 
 func (s *Service) ManagedRemote(ctx context.Context, hostID string, input ManagedRequest) (ManagedResponse, error) {
 	if strings.HasPrefix(input.Tool, "host_file_") {
-		bound, cancel, err := s.BeginRemoteOperation(ctx, "files")
+		bound, cancel, err := s.BeginRemoteOperation(ctx, "files", hostID)
 		if err != nil {
 			return ManagedResponse{}, err
 		}

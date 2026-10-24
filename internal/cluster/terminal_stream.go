@@ -762,6 +762,9 @@ func (t *streamTerminal) beginRequest(ctx context.Context, kind byte, payload []
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := t.ctx.Err(); err != nil {
+		return nil, err
+	}
 	t.touch()
 	t.mu.Lock()
 	conn := t.conn

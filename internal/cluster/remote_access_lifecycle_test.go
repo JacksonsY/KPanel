@@ -54,6 +54,11 @@ func TestIndependentCanceledOpenDoesNotDiscardKnownIdentity(t *testing.T) {
 }
 
 func TestIndependentDisabledStreamCannotReconnectInNewEpoch(t *testing.T) {
+	t.Run("global", func(t *testing.T) { testDisabledStreamCannotReconnect(t, false) })
+	t.Run("single host", func(t *testing.T) { testDisabledStreamCannotReconnect(t, true) })
+}
+
+func testDisabledStreamCannotReconnect(t *testing.T, hostSpecific bool) {
 	f := newStreamFixture(t, http.NotFoundHandler())
 	enrollment, err := f.service.CreateLightEnrollment()
 	if err != nil {
@@ -102,9 +107,19 @@ func TestIndependentDisabledStreamCannotReconnectInNewEpoch(t *testing.T) {
 	stream.mu.Lock()
 	old := stream.conn
 	stream.mu.Unlock()
-	disabled, err := f.service.UpdateRemoteAccess("initial", false, true)
-	if err != nil {
-		t.Fatal(err)
+	var revision string
+	if hostSpecific {
+		disabled, err := f.service.UpdateHostRemoteAccess(enrolled.NodeID, "initial", false, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		revision = disabled.ResourceVersion
+	} else {
+		disabled, err := f.service.UpdateRemoteAccess("initial", false, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		revision = disabled.ResourceVersion
 	}
 	// A cancelled settings HTTP request cannot confirm backend close. The server
 	// keeps this session pending, exactly the state represented here.
@@ -114,8 +129,14 @@ func TestIndependentDisabledStreamCannotReconnectInNewEpoch(t *testing.T) {
 		t.Fatal("cancelled cleanup unexpectedly succeeded")
 	}
 	old.close()
-	if _, err := f.service.UpdateRemoteAccess(disabled.ResourceVersion, true, true); err != nil {
-		t.Fatal(err)
+	if hostSpecific {
+		if _, err := f.service.UpdateHostRemoteAccess(enrolled.NodeID, revision, true, true); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		if _, err := f.service.UpdateRemoteAccess(revision, true, true); err != nil {
+			t.Fatal(err)
+		}
 	}
 	deadline = time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {

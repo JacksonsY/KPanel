@@ -974,6 +974,13 @@ let mockNotificationSnapshot = {
 }
 
 let mockClusterRemoteAccess = { terminalEnabled: true, filesEnabled: true, available: true, resourceVersion: 'mock-remote-1' }
+const mockHostRemotePreferences = new Map()
+function mockHostRemoteAccess(id) {
+  const own = mockHostRemotePreferences.get(id) || { terminalEnabled: true, filesEnabled: true }
+  return { ...mockClusterRemoteAccess, ...own, hostId: id, globalTerminalEnabled: mockClusterRemoteAccess.terminalEnabled,
+    globalFilesEnabled: mockClusterRemoteAccess.filesEnabled, effectiveTerminalEnabled: mockClusterRemoteAccess.terminalEnabled && own.terminalEnabled,
+    effectiveFilesEnabled: mockClusterRemoteAccess.filesEnabled && own.filesEnabled, pendingTerminalCleanup: 0 }
+}
 let mockClusterShareSettings = {
   enabled: true,
   title: 'KPanel Visual Fleet',
@@ -2316,6 +2323,19 @@ createServer(async (request, response) => {
     send(response, 200, mockNotificationSnapshot)
     return
   }
+  const hostRemoteAccessMatch = url.pathname.match(/^\/api\/v1\/cluster\/hosts\/([^/]+)\/remote-access$/)
+  if (hostRemoteAccessMatch) {
+    const id = decodeURIComponent(hostRemoteAccessMatch[1])
+    if (request.method === 'GET') { send(response, 200, mockHostRemoteAccess(id)); return }
+    if (request.method === 'PUT') {
+      const input = await readJSON(request)
+      if (input.expectedResourceVersion !== mockClusterRemoteAccess.resourceVersion) { send(response, 409, { code: 'remote_access_changed', title: 'Mock revision conflict' }); return }
+      if (typeof input.terminalEnabled !== 'boolean' || typeof input.filesEnabled !== 'boolean') { send(response, 422, { code: 'remote_access_invalid' }); return }
+      mockHostRemotePreferences.set(id, { terminalEnabled: input.terminalEnabled, filesEnabled: input.filesEnabled })
+      mockClusterRemoteAccess.resourceVersion = randomBytes(16).toString('hex')
+      send(response, 200, mockHostRemoteAccess(id)); return
+    }
+  }
   if (url.pathname === '/api/v1/cluster/remote-access') {
     if (request.method === 'GET') { send(response, 200, mockClusterRemoteAccess); return }
     if (request.method === 'PUT') {
@@ -3155,11 +3175,11 @@ createServer(async (request, response) => {
     send(response, 200, {
       items: visualClusterHosts.map(host => ({ ...host, trafficPeriod: mockTrafficPeriod(host),
         ...(!host.isLocal ? {
-          terminalAvailable: host.terminalAvailable && mockClusterRemoteAccess.terminalEnabled,
-          fileManagementAvailable: host.fileManagementAvailable && mockClusterRemoteAccess.filesEnabled,
-          fileTransferAvailable: host.fileTransferAvailable && mockClusterRemoteAccess.filesEnabled,
-          mutualFileTransferAvailable: host.mutualFileTransferAvailable && mockClusterRemoteAccess.filesEnabled,
-          remoteTerminalDisabled: !mockClusterRemoteAccess.terminalEnabled, remoteFilesDisabled: !mockClusterRemoteAccess.filesEnabled,
+          terminalAvailable: host.terminalAvailable && mockHostRemoteAccess(host.id).effectiveTerminalEnabled,
+          fileManagementAvailable: host.fileManagementAvailable && mockHostRemoteAccess(host.id).effectiveFilesEnabled,
+          fileTransferAvailable: host.fileTransferAvailable && mockHostRemoteAccess(host.id).effectiveFilesEnabled,
+          mutualFileTransferAvailable: host.mutualFileTransferAvailable && mockHostRemoteAccess(host.id).effectiveFilesEnabled,
+          remoteTerminalDisabled: !mockHostRemoteAccess(host.id).effectiveTerminalEnabled, remoteFilesDisabled: !mockHostRemoteAccess(host.id).effectiveFilesEnabled,
         } : {}),
       })),
       hostDetails: mockHostDetails,
