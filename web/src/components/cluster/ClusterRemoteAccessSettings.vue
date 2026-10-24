@@ -193,9 +193,9 @@ onBeforeUnmount(() => { sequence++; reads?.controller.abort(); reads = undefined
             <button class="button button--ghost button--small" type="button" :disabled="!selected.length" @click="selected = []">{{ phrase('清空选择') }}</button>
             <span role="status">{{ phrase('已选 {0} 台').replace('{0}', String(selectedHosts.length)) }}</span>
           </div>
-          <p class="cluster-remote-access__hint">{{ phrase('全选与反选作用于当前搜索结果，选择跨页保留。') }}</p>
+          <p v-if="pageCount > 1 || search" class="cluster-remote-access__hint">{{ phrase('全选与反选作用于当前搜索结果，选择跨页保留。') }}</p>
           <p v-if="selectedHosts.length && !selectionReady" class="cluster-remote-access__hint" role="status">{{ phrase('所选主机设置尚未全部读取，请等待或重试失败主机。') }}</p>
-          <div class="cluster-remote-access__batch-fields">
+          <div v-if="selectedHosts.length" class="cluster-remote-access__batch-fields">
             <label><span>{{ phrase('终端') }}</span><select v-model="batch.terminal" :aria-label="phrase('批量设置终端')"><option value="">{{ phrase('不调整') }}</option><option value="allow">{{ phrase('允许') }}</option><option value="deny">{{ phrase('禁用') }}</option></select></label>
             <label><span>{{ phrase('文件管理') }}</span><select v-model="batch.files" :aria-label="phrase('批量设置文件管理')"><option value="">{{ phrase('不调整') }}</option><option value="allow">{{ phrase('允许') }}</option><option value="deny">{{ phrase('禁用') }}</option></select></label>
             <button class="button button--secondary button--small" type="button" :disabled="!canApply" @click="applyBatch">{{ phrase('应用到所选主机') }}</button>
@@ -251,14 +251,14 @@ onBeforeUnmount(() => { sequence++; reads?.controller.abort(); reads = undefined
 .cluster-remote-access__switch:disabled { opacity:.5; cursor:default; }
 .cluster-remote-access__hosts { display:grid; gap:12px; padding-top:18px; border-top:1px solid var(--border); min-width:0; }
 .cluster-remote-access__search { display:flex; align-items:center; gap:8px; color:var(--muted); }
-.cluster-remote-access__search input { min-width:0; width:100%; font-size:14px; }
+.cluster-remote-access__search input { box-sizing:border-box; min-width:0; width:100%; min-height:38px; padding:8px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); color:var(--text); font:inherit; font-size:14px; }
 .cluster-remote-access__search svg { flex-shrink:0; }
 .cluster-remote-access fieldset.cluster-remote-access__batch { display:grid; gap:10px; }
 .cluster-remote-access__selection { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
 .cluster-remote-access__selection > span { margin-left:auto; color:var(--muted); font-size:13px; }
 .cluster-remote-access__batch-fields { display:flex; align-items:flex-end; flex-wrap:wrap; gap:10px; }
 .cluster-remote-access__batch-fields label { display:grid; flex:1 1 110px; gap:6px; font-size:14px; }
-.cluster-remote-access__batch-fields select { width:100%; min-width:0; min-height:36px; font-size:14px; }
+.cluster-remote-access__batch-fields select { box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); color:var(--text); font:inherit; font-size:14px; }
 .cluster-remote-access__batch-fields > button { min-height:36px; }
 .cluster-remote-access__host-list { border:1px solid var(--border); border-radius:var(--radius); background:var(--surface-subtle); }
 .cluster-remote-access__columns, .cluster-remote-access__host { display:grid; grid-template-columns:minmax(0, 1fr) 72px 88px; gap:8px; align-items:center; padding:12px; }
