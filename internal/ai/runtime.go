@@ -265,8 +265,19 @@ func (r *NativeRuntime) loop(ctx context.Context, runID string, decision *Decisi
 		request := CompletionRequest{Model: model.ModelID, System: system, Messages: messages, Tools: r.tools.Definitions(), ThinkingLevel: run.ThinkingLevel, NativeReasoning: model.Reasoning}
 		var content strings.Builder
 		draftID := newID("msg")
-		lastPersisted := 0
-		lastPersistedAt := time.Now()
+		checkpoints := draftCheckpoints{last: time.Now()}
+		var stored Message
+		persist := func(ctx context.Context) error {
+			if stored.ID != "" && len(stored.Content) == content.Len() {
+				return nil
+			}
+			message, err := r.store.AddMessage(ctx, Message{ID: draftID, SessionID: run.SessionID, RunID: run.ID, Role: RoleAssistant, Content: content.String(), ProviderID: run.ProviderID, ProviderName: run.ProviderName, ModelID: run.ModelID, ModelName: run.ModelName, CreatedAt: stored.CreatedAt})
+			if err == nil {
+				stored = message
+			}
+			return err
+		}
+		var checkpointErr error
 		var calls []ToolCall
 		var usage Usage
 		emitted := false
@@ -279,10 +290,10 @@ func (r *NativeRuntime) loop(ctx context.Context, runID string, decision *Decisi
 				emitted = true
 				content.WriteString(event.Delta)
 				r.events.Publish(RunEvent{Type: "message.delta", RunID: run.ID, Data: map[string]string{"delta": event.Delta}})
-				if content.Len()-lastPersisted >= 1024 || time.Since(lastPersistedAt) >= 2*time.Second {
-					_, _ = r.store.AddMessage(ctx, Message{ID: draftID, SessionID: run.SessionID, RunID: run.ID, Role: RoleAssistant, Content: content.String(), ProviderID: run.ProviderID, ProviderName: run.ProviderName, ModelID: run.ModelID, ModelName: run.ModelName, CreatedAt: time.Now().UTC()})
-					lastPersisted = content.Len()
-					lastPersistedAt = time.Now()
+				if checkpoints.admit(content.Len(), time.Now()) {
+					if checkpointErr = persist(ctx); checkpointErr != nil {
+						return checkpointErr
+					}
 				}
 			}
 			if len(event.ToolCalls) > 0 {
@@ -297,28 +308,40 @@ func (r *NativeRuntime) loop(ctx context.Context, runID string, decision *Decisi
 			}
 			return nil
 		}, &emitted)
-		if err != nil {
-			return r.fail(ctx, run, "provider_failed", err)
+		if checkpointErr != nil && ctx.Err() == nil {
+			return r.fail(ctx, run, "message_store_failed", checkpointErr)
 		}
-		if content.Len() == 0 && len(calls) > 0 {
+		if err == nil && ctx.Err() == nil && content.Len() == 0 && len(calls) > 0 {
 			progress := visibleToolProgress(calls)
 			content.WriteString(progress)
 			r.events.Publish(RunEvent{Type: "message.delta", RunID: run.ID, Data: map[string]string{"delta": progress}})
+		}
+		if content.Len() > 0 {
+			// Preserve accepted public output on cancellation/failure too. Cleanup
+			// is bounded and cannot be skipped by the cancelled provider context.
+			flushCtx, stopFlush := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			persistErr := persist(flushCtx)
+			stopFlush()
+			if persistErr != nil {
+				return r.fail(ctx, run, "message_store_failed", errors.Join(err, persistErr))
+			}
+		}
+		if ctx.Err() != nil {
+			return r.cancelled(ctx, run)
+		}
+		if err != nil {
+			return r.fail(ctx, run, "provider_failed", err)
 		}
 		run.Step++
 		run.Usage.InputTokens += usage.InputTokens
 		run.Usage.OutputTokens += usage.OutputTokens
 		if content.Len() > 0 {
-			message, err := r.store.AddMessage(ctx, Message{ID: draftID, SessionID: run.SessionID, RunID: run.ID, Role: RoleAssistant, Content: content.String(), ProviderID: run.ProviderID, ProviderName: run.ProviderName, ModelID: run.ModelID, ModelName: run.ModelName})
-			if err != nil {
-				return r.fail(ctx, run, "message_store_failed", err)
-			}
-			r.events.Publish(RunEvent{Type: "message.completed", RunID: run.ID, Data: message})
+			r.events.Publish(RunEvent{Type: "message.completed", RunID: run.ID, Data: stored})
 		}
 		if len(calls) == 0 {
 			completed, err := r.store.CompleteRunIfUserMessageCount(ctx, run, userMessageCount)
 			if err != nil {
-				return err
+				return r.fail(ctx, run, "run_store_failed", err)
 			}
 			if !completed {
 				continue
@@ -651,14 +674,23 @@ func toolCallSignature(name string, arguments json.RawMessage) string {
 
 func (r *NativeRuntime) fail(ctx context.Context, run Run, code string, cause error) error {
 	run.Status, run.ErrorCode, run.ErrorMessage = RunFailed, code, redactAndLimit(cause.Error(), 1000)
-	_ = r.store.UpdateRun(context.WithoutCancel(ctx), run)
+	statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := r.store.UpdateRun(statusCtx, run); err != nil {
+		cause = errors.Join(cause, fmt.Errorf("persist failed AI run: %w", err))
+		run.ErrorMessage = PublicError(cause)
+	}
 	r.events.Publish(RunEvent{Type: "run.failed", RunID: run.ID, Data: run})
 	return cause
 }
 
 func (r *NativeRuntime) cancelled(ctx context.Context, run Run) error {
 	run.Status = RunCancelled
-	_ = r.store.UpdateRun(context.WithoutCancel(ctx), run)
+	statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := r.store.UpdateRun(statusCtx, run); err != nil {
+		return r.fail(ctx, run, "run_store_failed", errors.Join(ctx.Err(), err))
+	}
 	r.events.Publish(RunEvent{Type: "run.cancelled", RunID: run.ID, Data: run})
 	return ctx.Err()
 }
