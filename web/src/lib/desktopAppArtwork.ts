@@ -1,0 +1,31 @@
+import type { DesktopApp } from './desktopApps'
+import type { DesktopShellStyle } from '@/stores/desktopShellStyle'
+
+/** Original, local artwork for the fixed system launchers only. */
+const windowsIconNames: Readonly<Record<string, string>> = {
+  '/overview': 'overview',
+  '/monitoring': 'monitoring',
+  '/processes': 'processes',
+  '/ai': 'ai',
+  '/sites': 'sites',
+  '/apps': 'apps',
+  '/docker': 'docker',
+  '/files': 'files',
+  '/gallery': 'gallery',
+  '/terminal': 'terminal',
+  '/diagnostics': 'diagnostics',
+  '/cluster': 'cluster',
+  '/system': 'system',
+  '/activity': 'activity',
+  '/settings': 'settings',
+  '/guides': 'guides',
+  '/offers': 'offers',
+}
+
+export function desktopAppIconURL(app: DesktopApp | undefined, style: DesktopShellStyle): string | undefined {
+  if (!app) return undefined
+  const name = windowsIconNames[app.path]
+  return style !== 'modern' && name
+    ? `/desktop-icons/${style}/${name}-v1.svg`
+    : app.desktopIconURL
+}

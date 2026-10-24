@@ -67,6 +67,28 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] body {
   --win-group-control-height: 18px;
 }
 
+.desktop[data-shell-style='win98'] .desktop__icon-glyph--period,
+.desktop[data-shell-style='win98'] .desktop__icon:hover .desktop__icon-glyph--period {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__icon-glyph--period::before {
+  display: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__icon-glyph--period .desktop__icon-img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: transparent;
+  border-radius: 0;
+}
+
 /* Group frames and inset titlebars match the desktop widgets. */
 .desktop[data-shell-style='win98'] .desktop-group {
   border: 0;

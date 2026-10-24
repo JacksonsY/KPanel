@@ -80,6 +80,25 @@ describe('DesktopEntryIcon touch interaction', () => {
     wrapper.unmount()
   })
 
+  it('reloads period artwork on theme changes and preserves image failure recovery', async () => {
+    const wrapper = mountIcon()
+    await wrapper.setProps({ navIconURL: '/desktop-icons/win98/overview-v1.svg' })
+    const glyph = () => wrapper.get('.desktop__icon-glyph')
+    expect(glyph().classes()).toContain('desktop__icon-glyph--period')
+    expect((glyph().element as HTMLElement).style.background).toBe('transparent')
+    await wrapper.get('img').trigger('load')
+    await wrapper.setProps({ navIconURL: '/desktop-icons/xp/overview-v1.svg' })
+    expect(wrapper.get('img').classes()).toContain('desktop__icon-img--loading')
+    await wrapper.get('img').trigger('error')
+    expect(wrapper.get('.desktop__icon-monogram').text()).toBe('概')
+    await wrapper.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('open')).toHaveLength(1)
+    await wrapper.setProps({ navIconURL: '/desktop-icons/overview-kpanel-flat-v1.webp' })
+    expect(glyph().classes()).not.toContain('desktop__icon-glyph--period')
+    expect(wrapper.find('img').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it.each(['site', 'shortcut'] as const)('uses the solid %s fallback only until its image loads', async (kind) => {
     const entry = { key: `${kind}:example`, id: 'example', kind, name: '文档', launch: 'external' as const }
     const wrapper = mount(DesktopEntryIcon, {

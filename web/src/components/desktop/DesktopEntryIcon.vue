@@ -63,6 +63,7 @@ watch(
 )
 
 const monogram = computed(() => props.label.trim().slice(0, 1).toLocaleUpperCase() || 'K')
+const periodArtwork = computed(() => /^\/desktop-icons\/(?:win98|xp)\//.test(props.navIconURL || props.entry?.iconURL || ''))
 const fileShortcutKind = computed<'file' | 'directory' | undefined>(() => {
   if (props.entry?.kind !== 'shortcut') return undefined
   return props.entry.launch === 'file' || props.entry.launch === 'directory'
@@ -75,6 +76,7 @@ const webFallbackVisible = computed(() => (props.entry?.kind === 'site'
   || (props.entry?.kind === 'shortcut' && props.entry.launch === 'external'))
   && !props.navIcon && !props.entry?.icon && (!imageLoaded.value || imageFailed.value))
 const artworkBackground = computed(() => {
+  if (periodArtwork.value) return 'transparent'
   if (fileArtworkVisible.value) return 'transparent'
   if (webFallbackVisible.value) return props.fallbackBackground ?? props.gradient
   return props.gradient
@@ -260,6 +262,7 @@ onBeforeUnmount(clearLongPress)
     <span
       class="desktop__icon-glyph"
       :class="{
+        'desktop__icon-glyph--period': periodArtwork,
         'desktop__icon-glyph--dynamic': Boolean(entry),
         'desktop__icon-glyph--shortcut': Boolean(fileShortcutKind),
         'desktop__icon-glyph--file': fileArtworkVisible,

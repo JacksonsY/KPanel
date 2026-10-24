@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><title>KPanel diagnostics — original xp inspired artwork</title><defs>
+<linearGradient id="metal" x2=".8" y2="1"><stop stop-color="#fff"/><stop offset=".5" stop-color="#dce7f0"/><stop offset="1" stop-color="#7f98b5"/></linearGradient>
+<linearGradient id="blue" x2=".8" y2="1"><stop stop-color="#8fddff"/><stop offset=".35" stop-color="#238aed"/><stop offset="1" stop-color="#1546a4"/></linearGradient>
+<linearGradient id="sky" x2=".5" y2="1"><stop stop-color="#093c9c"/><stop offset="1" stop-color="#70d8ff"/></linearGradient>
+<linearGradient id="yellow" x2=".5" y2="1"><stop stop-color="#fff8a8"/><stop offset=".35" stop-color="#ffda59"/><stop offset="1" stop-color="#efa51e"/></linearGradient>
+<linearGradient id="paper" x2=".8" y2="1"><stop stop-color="#fff"/><stop offset=".7" stop-color="#f6fbff"/><stop offset="1" stop-color="#c4d7ea"/></linearGradient>
+<linearGradient id="green" x2=".6" y2="1"><stop stop-color="#c9f88e"/><stop offset=".5" stop-color="#5db52c"/><stop offset="1" stop-color="#247716"/></linearGradient>
+<linearGradient id="red" x2=".7" y2="1"><stop stop-color="#ffb3a3"/><stop offset=".4" stop-color="#f34f35"/><stop offset="1" stop-color="#b8211e"/></linearGradient>
+<linearGradient id="dark" x2=".4" y2="1"><stop stop-color="#517093"/><stop offset="1" stop-color="#142f55"/></linearGradient>
+</defs><ellipse cx="33" cy="59" rx="23" ry="3" fill="#14355d" opacity=".16"/><path d="M23 15V8Q32 2 41 8V15H36V10Q32 7 28 10V15Z" fill="url(#metal)" stroke="#6b879e" stroke-width="1" stroke-linejoin="round"/><path d="M7 20Q7 15 12 15H51Q56 15 56 20V50Q56 55 51 55H12Q7 55 7 50Z" fill="url(#paper)" stroke="#7b91ab" stroke-width="1" stroke-linejoin="round"/><path d="M8 22Q30 28 55 22V28Q31 34 8 28Z" fill="#d9e5ef" stroke="none" stroke-width="1" stroke-linejoin="round"/><path d="M26 29H38V35H44V45H38V51H26V45H20V35H26Z" fill="url(#red)" stroke="#b22c2a" stroke-width="1" stroke-linejoin="round"/><path d="M12 18H50" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>

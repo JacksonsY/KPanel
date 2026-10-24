@@ -65,6 +65,7 @@ import { useSiteBranding } from '@/stores/branding'
 
 const siteBranding = useSiteBranding()
 import { DEFAULT_WINDOW_GRADIENT, desktopApps, desktopRoutePath, findDesktopApp, removableDesktopAppKeys, type DesktopApp } from '@/lib/desktopApps'
+import { desktopAppIconURL } from '@/lib/desktopAppArtwork'
 import {
   getCachedDesktopEntries,
   loadDesktopEntries,
@@ -383,8 +384,11 @@ const visibleDynamicEntries = computed(() =>
 const visibleDesktopApps = computed(() =>
   desktopApps.filter((app) => !hiddenEntryKeys.value.has(`nav:${app.path}`)),
 )
+function appIconURL(app: DesktopApp | undefined): string | undefined {
+  return desktopAppIconURL(app, desktopShellStyle.preference.value)
+}
 function removableNavEntry(app: DesktopApp): DesktopEntry {
-  return { key: `nav:${app.path}`, kind: 'app', id: app.path, name: i18n.t(app.labelKey), launch: 'external', iconURL: app.desktopIconURL }
+  return { key: `nav:${app.path}`, kind: 'app', id: app.path, name: i18n.t(app.labelKey), launch: 'external', iconURL: appIconURL(app) }
 }
 const visibleRemovableNavEntries = computed(() =>
   visibleDesktopApps.value.map(removableNavEntry),
@@ -563,7 +567,7 @@ function groupPreviewEntries(group: DesktopGroup, limit = 3) {
     .sort((a, b) => slots[a]! - slots[b]!).slice(0, limit).map(key => {
       const app = desktopApps.find(app => `nav:${app.path}` === key)
       const entry = [...visibleDynamicEntries.value, ...shortcutEntries.value].find(entry => entry.key === key)
-      return { key, label: iconLabel(key), iconURL: app?.desktopIconURL || entry?.iconURL, icon: app?.icon || entry?.icon }
+      return { key, label: iconLabel(key), iconURL: appIconURL(app) || entry?.iconURL, icon: app?.icon || entry?.icon }
     })
 }
 
@@ -1544,7 +1548,7 @@ function commandWindowShortcut(path: string): DesktopShortcut | undefined {
 }
 
 function windowIconURL(path: string): string | undefined {
-  return commandWindowShortcut(path)?.iconURL ?? findDesktopApp(path)?.desktopIconURL ?? scriptWindowEntry(path)?.iconURL
+  return commandWindowShortcut(path)?.iconURL ?? appIconURL(findDesktopApp(path)) ?? scriptWindowEntry(path)?.iconURL
 }
 
 const failedTaskbarIconURLs = ref(new Set<string>())
@@ -3738,7 +3742,7 @@ const startMenuItems = computed<DesktopStartMenuItem[]>(() => [
     section: 'system' as const,
     label: i18n.t(app.labelKey),
     keywords: [app.path.slice(1)],
-    iconURL: app.desktopIconURL,
+    iconURL: appIconURL(app),
     icon: app.icon,
     gradient: gradientFor(app.path),
   })),
@@ -4680,7 +4684,7 @@ function onViewportResize(): void {
         <DesktopEntryIcon
           :label="i18n.t(app.labelKey)"
           :nav-icon="app.icon"
-          :nav-icon-u-r-l="app.desktopIconURL"
+          :nav-icon-u-r-l="appIconURL(app)"
           :gradient="gradientFor(app.path)"
           :active="bouncingIcon === app.path"
           :selected="selectedIcons.has(`nav:${app.path}`)"
@@ -4843,7 +4847,7 @@ function onViewportResize(): void {
                 v-if="member.app"
                 :label="i18n.t(member.app.labelKey)"
                 :nav-icon="member.app.icon"
-                :nav-icon-u-r-l="member.app.desktopIconURL"
+                :nav-icon-u-r-l="appIconURL(member.app)"
                 :gradient="gradientFor(member.app.path)"
                 :selected="selectedIcons.has(member.key)"
                 :order="index"
