@@ -11,6 +11,26 @@ type fragmentSequence struct {
 	source int
 }
 
+func structuredFragmentAt(value string, i int) bool {
+	if value[i] == '[' {
+		return looksLikeJSON(value[i:])
+	}
+	if value[i] != '{' {
+		return false
+	}
+	tail := strings.TrimLeft(value[i+1:], " \t")
+	return len(tail) == 0 || tail[0] == '"' || tail[0] == '}' || strings.HasPrefix(tail, `\"`)
+}
+
+func containsStructuredFragment(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if structuredFragmentAt(value, i) {
+			return true
+		}
+	}
+	return false
+}
+
 // Logs can prefix/suffix a JSON value or an encoded JSON string. Decode one
 // bounded value at a time and retain the surrounding original lexical source.
 // A malformed structured fragment fails closed rather than falling back to
@@ -19,14 +39,7 @@ func (p *projection) embeddedText(value string, depth int) (any, bool, error) {
 	start := -1
 	for i := 0; i < len(value); i++ {
 		b := value[i]
-		candidate := false
-		if b == '{' {
-			tail := strings.TrimLeft(value[i+1:], " \t")
-			candidate = len(tail) == 0 || tail[0] == '"' || tail[0] == '}'
-		}
-		if b == '[' {
-			candidate = looksLikeJSON(value[i:])
-		}
+		candidate := structuredFragmentAt(value, i)
 		if b == '"' {
 			// Inspect a whole quoted token, including arbitrarily encoded JSON,
 			// rather than guessing how many backslashes precede an inner brace.
@@ -48,7 +61,7 @@ func (p *projection) embeddedText(value string, depth int) (any, bool, error) {
 			}
 			var decoded string
 			if err := json.Unmarshal([]byte(value[i:end]), &decoded); err == nil {
-				candidate = looksLikeJSON(decoded)
+				candidate = looksLikeJSON(decoded) || containsStructuredFragment(decoded)
 				if !candidate {
 					i = end - 1
 					continue

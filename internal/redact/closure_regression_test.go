@@ -47,6 +47,7 @@ func TestClosureEmbeddedJSONAndCredentialKeys(t *testing.T) {
 		`INFO {"auth":"AUTH_BODY","safe":true,"count":9007199254740993}`,
 		`INFO {"passw\u006frd":"AUTH_BODY","safe":true,"count":9007199254740993} trailer`,
 		`INFO "{\"auth\":\"AUTH_BODY\",\"safe\":true,\"count\":9007199254740993}"`,
+		`INFO "note {\"auth\":\"AUTH_BODY\",\"safe\":true,\"count\":9007199254740993}"`,
 		`{"password=AUTH_BODY":"ordinary-value","safe":true,"count":9007199254740993}`,
 	} {
 		assertNormalFormProjections(t, []string{"initial-visible", line, "final-visible"}, "AUTH_BODY")
@@ -149,7 +150,7 @@ func TestClosureEmbeddedJSONRetainsTypesAndBounds(t *testing.T) {
 		}
 		body = quoted(body)
 	}
-	for _, malformed := range []string{`INFO {"passw\u006frd":"PRIVATE_VALUE"`, `INFO "{\"auth\":\"PRIVATE_VALUE\"`} {
+	for _, malformed := range []string{`INFO {"passw\u006frd":"PRIVATE_VALUE"`, `INFO "{\"auth\":\"PRIVATE_VALUE\"`, `INFO {\"auth\":\"PRIVATE_VALUE\"}`} {
 		if safe := Text(malformed); strings.Contains(safe, "PRIVATE_VALUE") {
 			t.Errorf("malformed embedded JSON leaked: %s", safe)
 		}
