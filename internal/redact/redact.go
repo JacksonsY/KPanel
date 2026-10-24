@@ -302,6 +302,7 @@ func redactConfigurations(sources []lexicalSource, parents []int, privateHidden,
 	configurations := make(map[int]configurationContinuation)
 	hidden := make([]bool, len(sources))
 	for index, source := range sources {
+		hidden[index] = source.sensitive
 		if source.parent >= 0 && hidden[source.parent] {
 			hidden[index] = true
 		}

@@ -91,10 +91,24 @@ func (p *projection) embeddedText(value string, depth int) (any, bool, error) {
 		return nil, true, err
 	}
 	end := start + int(decoder.InputOffset())
+	// Classify the original lexical boundary before JSON decomposition. A
+	// sensitive prefix owns its following value, including JSON punctuation;
+	// known identities can also span the prefix, encoded value and suffix.
+	// Such a mixed record is conservatively hidden as one display unit.
+	sensitive := start > 0 && redactLine(value[:start]) != value[:start]
+	spans, err := p.literalSpans(value)
+	if err != nil {
+		return nil, true, err
+	}
+	for _, span := range spans {
+		if span.start < start && span.end > start || span.start < end && span.end > end {
+			sensitive = true
+		}
+	}
 	parentSource, parentLayer := p.source, p.layer
 	p.source = len(p.sources)
 	source := p.source
-	p.sources = append(p.sources, lexicalSource{value: value, channel: p.channel, layer: p.layer, indent: p.indent, parent: parentSource})
+	p.sources = append(p.sources, lexicalSource{value: value, channel: p.channel, layer: p.layer, indent: p.indent, parent: parentSource, sensitive: sensitive})
 	defer func() { p.source, p.layer = parentSource, parentLayer }()
 	parts := make([]any, 0, 3)
 	if start > 0 {

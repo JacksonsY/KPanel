@@ -6,6 +6,7 @@ import "strings"
 // Unsupported backticks and excessive nesting keep the sensitive region closed.
 type shellFrame struct {
 	quote  byte
+	ansi   bool
 	word   bool
 	parens int
 }
@@ -29,8 +30,17 @@ func (s *shellLexicalState) observe(value string) {
 		f := &s.frames[s.depth]
 		b := value[i]
 		if f.quote == '\'' {
+			if f.ansi && b == '\\' {
+				if i+1 == len(value) {
+					s.joined = true
+					return
+				}
+				i++
+				continue
+			}
 			if b == '\'' {
 				f.quote = 0
+				f.ansi = false
 			}
 			continue
 		}
@@ -68,6 +78,11 @@ func (s *shellLexicalState) observe(value string) {
 		}
 		if b == '#' && !f.word {
 			return
+		}
+		if b == '$' && i+1 < len(value) && value[i+1] == '\'' {
+			f.quote, f.ansi, f.word = '\'', true, true
+			i++
+			continue
 		}
 		if s.depth > 0 {
 			if b == '(' {
@@ -145,6 +160,16 @@ func (p *projection) logicalRecords() (map[int]string, []bool, error) {
 			}
 		}
 		delete(pending, key)
+	}
+	// A bounded window may stop before the next physical record. Its joined
+	// identifier still has to be classified before any fragment is displayed.
+	for _, r := range pending {
+		value := r.text.String()
+		if redactLine(value) != value {
+			for _, index := range r.indices {
+				hidden[index] = true
+			}
+		}
 	}
 	return final, hidden, nil
 }
