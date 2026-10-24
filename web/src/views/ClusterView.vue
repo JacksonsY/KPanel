@@ -2480,11 +2480,11 @@ onBeforeUnmount(() => {
           {{ phrase(shareSaving ? '正在保存…' : '保存分享设置') }}
         </button>
 </template>
-        <template v-else>
+        <div v-else class="cluster-settings-actions">
           <span class="cluster-settings-save-hint">{{ phrase('保存后立即生效，重启后保留') }}</span>
           <button class="button button--secondary" type="button" :disabled="settingsBusy" @click="closeShare">{{ phrase('关闭') }}</button>
           <button class="button button--primary" type="submit" :form="remoteFormID" :disabled="!remoteReady || settingsBusy"><LoaderCircle v-if="remoteBusy" class="spin" :size="15" />{{ phrase(remoteBusy ? '正在保存…' : '保存设置') }}</button>
-        </template>
+        </div>
       </template>
     </ClusterNotificationsDialog>
     <ModalDialog :open="!!remoteHost" :title="phrase('远程操作')" :description="remoteHost?.name" size="medium" :close-disabled="hostRemoteBusy" @close="!hostRemoteBusy && (remoteHost = undefined)">
@@ -2500,6 +2500,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .cluster-settings-save-hint { margin-right:auto; color:var(--muted); font-size:13px; }
+.cluster-settings-actions { display:flex; align-items:center; gap:9px; width:100%; min-width:0; flex-wrap:wrap; }
+.cluster-settings-actions .button { flex-shrink:0; white-space:nowrap; }
+@media (max-width:480px) { .cluster-settings-save-hint { flex-basis:100%; margin-right:0; } }
 .cluster-manage__details {
   padding-block: 1rem;
   border-block: 1px solid var(--border);
