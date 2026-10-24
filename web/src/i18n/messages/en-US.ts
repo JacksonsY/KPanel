@@ -342,6 +342,7 @@ export const enUSMessages = {
   'route.clusterShare': 'Cluster status',
   'route.fileShare': 'Shared file',
   'route.sites': 'Sites',
+  'route.siteMonitoring': 'Sites · Traffic & security',
   'route.environment': 'Sites · Environment',
   'route.apps': 'App marketplace',
   'route.files': 'Files',

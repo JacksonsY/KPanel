@@ -1,0 +1,4 @@
+Test-only MaxMind sample database. Not production geolocation data.
+Source: https://raw.githubusercontent.com/maxmind/MaxMind-DB/1b0113ab55f0428c00fe30b9709742ac52f4e9cc/test-data/GeoIP2-Country-Test.mmdb
+SHA256: fc12d6470b35b70bd3e4534dd433d3e262a6c73f7682f85c344e832d4190f02b
+License: Apache-2.0, https://github.com/maxmind/MaxMind-DB/blob/main/LICENSE-APACHE

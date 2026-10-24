@@ -66,6 +66,9 @@ func (s clusterTelemetrySource) Telemetry(ctx context.Context) (contract.HostTel
 }
 
 func (s *Server) StartBackground(ctx context.Context) {
+	if s.siteTraffic != nil {
+		s.siteTraffic.Start(ctx)
+	}
 	s.startBackupSchedule(ctx)
 	s.cluster.Start(ctx)
 	if s.clusterTraffic != nil {
@@ -116,6 +119,9 @@ func (s *Server) Close() error {
 		clusterErr = s.cluster.Close()
 	}
 	s.requests.Wait()
+	if s.siteTraffic != nil {
+		_ = s.siteTraffic.Close()
+	}
 	if s.btCache != nil {
 		_ = s.btCache.Close()
 	}

@@ -101,6 +101,12 @@ export const router = createRouter({
           meta: { titleKey: 'route.sites' },
         },
         {
+          path: 'sites/monitor',
+          name: 'sites-monitor',
+          component: () => loadNavigationRoute('/sites/monitor'),
+          meta: { titleKey: 'route.siteMonitoring' },
+        },
+        {
           path: 'sites/environment',
           name: 'sites-environment',
           component: () => loadNavigationRoute('/sites/environment'),

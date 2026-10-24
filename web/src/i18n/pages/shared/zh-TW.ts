@@ -1,6 +1,7 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ["流量与安全", "流量與安全"],
   ['授权已过期，请重新连接 OneDrive。', '授權已過期，請重新連接 OneDrive。'],
   ['连接未完成，请重新连接 OneDrive。', '連接未完成，請重新連接 OneDrive。'],
   ['OneDrive 已连接。', 'OneDrive 已連接。'],

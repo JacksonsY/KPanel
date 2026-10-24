@@ -1,6 +1,7 @@
 <template>
   <nav class="sites-section-tabs" aria-label="网站功能">
     <RouterLink to="/sites" exact-active-class="is-active">站点管理</RouterLink>
+    <RouterLink to="/sites/monitor" exact-active-class="is-active">流量与安全</RouterLink>
     <RouterLink to="/sites/environment" exact-active-class="is-active">环境管理</RouterLink>
   </nav>
 </template>

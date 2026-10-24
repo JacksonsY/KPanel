@@ -342,6 +342,7 @@ export const zhTWMessages = {
   "route.clusterShare": "叢集狀態",
   "route.fileShare": "檔案分享",
   "route.sites": "網站",
+  'route.siteMonitoring': '網站 · 流量與安全',
   "route.environment": "網站 · 環境管理",
   "route.apps": "應用市場",
   "route.files": "檔案",

@@ -1,5 +1,6 @@
 import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
+import { mockSiteMonitoring } from './mock-site-monitoring.mjs'
 import { mockMonitoringHistory } from './mock-monitoring-history.mjs'
 import { mockBackups } from './mock-backups.mjs'
 import { mockEditorFiles, handleMockEditor } from './mock-file-editor.mjs'
@@ -1931,6 +1932,7 @@ let mockPreferencesRevision = 1
 
 createServer(async (request, response) => {
   const url = new URL(request.url, 'http://127.0.0.1:8080')
+  if (await mockSiteMonitoring(request, response, url, send, readJSON)) return
   if (mockTutorials(request, response, url, send)) return
   if (await mockBackups(request, response, url, send, readJSON)) return
   if (await mockShareThemes(request, response, url, send, readJSON)) return

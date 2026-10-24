@@ -341,6 +341,7 @@ export const zhCNMessages = {
   'route.clusterShare': '集群状态',
   'route.fileShare': '文件分享',
   'route.sites': '网站',
+  'route.siteMonitoring': '网站 · 流量与安全',
   'route.environment': '网站 · 环境管理',
   'route.apps': '应用市场',
   'route.files': '文件',
