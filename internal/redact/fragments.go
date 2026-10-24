@@ -95,7 +95,18 @@ func (p *projection) embeddedText(value string, depth int) (any, bool, error) {
 	// sensitive prefix owns its following value, including JSON punctuation;
 	// known identities can also span the prefix, encoded value and suffix.
 	// Such a mixed record is conservatively hidden as one display unit.
-	sensitive := start > 0 && redactLine(value[:start]) != value[:start]
+	sensitive := false
+	if start > 0 {
+		// A flag/assignment can end immediately before its structured value.
+		// A fixed display-only token lets the existing classifier recognize
+		// that incomplete prefix without evaluating any source expression.
+		const probeValue = "_kpanel_projection_value_"
+		if err := p.budget.consume(start+len(probeValue), 1); err != nil {
+			return nil, true, err
+		}
+		prefixProbe := value[:start] + probeValue
+		sensitive = redactLine(prefixProbe) != prefixProbe
+	}
 	spans, err := p.literalSpans(value)
 	if err != nil {
 		return nil, true, err

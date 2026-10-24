@@ -9,6 +9,10 @@ import (
 func TestBlindFragmentAndShellBoundaries(t *testing.T) {
 	cases := []struct{ name, input, known string }{
 		{"fragment-assignment", `API_TOKEN=prefix["OPAQUE_BODY"]suffix`, ""},
+		{"fragment-inline-empty-assignment", `cmd API_TOKEN=["OPAQUE_BODY"]`, ""},
+		{"fragment-spaced-flag", `cmd --password ["OPAQUE_BODY"]`, ""},
+		{"fragment-attached-mysql", `mysql -p["OPAQUE_BODY"]`, ""},
+		{"fragment-object-flag", `cmd --password {"value":"OPAQUE_BODY"}`, ""},
 		{"fragment-url", `https://example.test/?token=["OPAQUE_BODY"]`, ""},
 		{"fragment-known", `pre["OPAQUE_BODY"]post`, `pre["OPAQUE_BODY"]post`},
 		{"pending-eof", "API_TO\\\nKEN=OPAQUE_BODY\\", ""},
