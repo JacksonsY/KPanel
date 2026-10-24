@@ -464,5 +464,61 @@ export default [
   [
     "清空网站监控统计",
     "Clear website monitoring history"
+  ],
+  [
+    "流量分析",
+    "Traffic analytics"
+  ],
+  [
+    "WAF 防御",
+    "WAF defense"
+  ],
+  [
+    "历史统计",
+    "Saved history"
+  ],
+  [
+    "暂停采集",
+    "Pause collection"
+  ],
+  [
+    "清空统计",
+    "Clear statistics"
+  ],
+  [
+    "开始监控",
+    "Start monitoring"
+  ],
+  [
+    "配置地区识别",
+    "Set up location lookup"
+  ],
+  [
+    "获取国家数据库",
+    "Get a country database"
+  ],
+  [
+    "打开文件管理",
+    "Open File Manager"
+  ],
+  [
+    "查看原始日志",
+    "View original logs"
+  ],
+  [
+    "管理 WAF",
+    "Manage WAF"
+  ],
+  [
+    "确认清空",
+    "Confirm clear"
+  ],
+  [
+    "取消选择",
+    "Clear selection"
+  ],
+  [
+    "数据覆盖说明",
+    "Data coverage"
   ]
 ] satisfies PhraseCatalog
