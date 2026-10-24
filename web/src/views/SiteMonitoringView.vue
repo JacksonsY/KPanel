@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { Activity, ArrowUpRight, BarChart3, CircleHelp, Database, Globe2, LoaderCircle, Pause, Play, RefreshCw, ShieldCheck, ShieldAlert, Trash2 } from '@lucide/vue'
+import { Activity, ArrowDownToLine, ArrowUpRight, BarChart3, CircleHelp, Compass, Database, FileText, Globe2, Layers3, Link2, LoaderCircle, MonitorSmartphone, Pause, Play, RefreshCw, ShieldCheck, ShieldAlert, ShieldX, Timer, Trash2, TriangleAlert } from '@lucide/vue'
 import { useI18n } from '@/i18n'
 import { localizeError } from '@/i18n/errors'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
@@ -10,6 +10,8 @@ import { formatBytes, formatDateTime } from '@/lib/format'
 import type { SiteTrafficSnapshot } from '@/types/siteTraffic'
 import { worldCountries } from '@/assets/worldCountries'
 import SitesSectionTabs from '@/components/sites/SitesSectionTabs.vue'
+import SiteFavicon from '@/components/sites/SiteFavicon.vue'
+import CountryFlagIcon from '@/components/overview/CountryFlagIcon.vue'
 import ErrorState from '@/components/feedback/ErrorState.vue'
 import LoadingState from '@/components/feedback/LoadingState.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
@@ -22,6 +24,19 @@ const data = ref<SiteTrafficSnapshot>()
 const loading = ref(true), refreshing = ref(false), error = ref(''), notice = ref('')
 const period = ref('24h'), host = ref(''), view = ref<'traffic' | 'security'>('traffic'), selectedCountry = ref('')
 const busy = ref(false), guideOpen = ref(false), clearOpen = ref(false)
+const siteIDs = ref(new Map<string, string>())
+const iconController = new AbortController()
+const normalizeHost = (value: string) => value.toLowerCase().replace(/\.$/, '')
+const siteID = (value: string) => siteIDs.value.get(normalizeHost(value))
+async function loadSiteIcons(): Promise<void> {
+ try {
+  const sites = await api.sites.list(undefined, iconController.signal)
+  if (disposed || iconController.signal.aborted) return
+  const ids = new Map<string, string>()
+  for (const site of sites.items) for (const domain of [site.primaryDomain, ...site.domains]) ids.set(normalizeHost(domain), site.id)
+  siteIDs.value = ids
+ } catch { /* Site metadata is optional; traffic remains usable with local globe icons. */ }
+}
 let controller: AbortController | undefined
 let timer: ReturnType<typeof setTimeout> | undefined
 let sequence = 0, disposed = false
@@ -38,6 +53,8 @@ const healthy = computed(() => data.value?.enabled && data.value.state === 'acti
 const errorRate = computed(() => data.value?.requests ? number(data.value.errors / data.value.requests * 100) + '%' : '—')
 const totalLocated = computed(() => countries.value.filter(c => c.code !== 'ZZ').reduce((sum, c) => sum + c.requests, 0))
 const totalMap = computed(() => countries.value.reduce((sum, c) => sum + c.requests, 0))
+const share = (value: number, total: number) => total > 0 ? number(value / total * 100) + '%' : '—'
+const rankingWidth = (value: number, rows: { requests: number }[]) => Math.min(100, Math.max(0, value / Math.max(1, ...rows.map(row => row.requests)) * 100)) + '%'
 const geoCoverage = computed(() => totalMap.value ? number(totalLocated.value / totalMap.value * 100) + '%' : '—')
 const sourceWarnings: Record<string, string> = {
  initial_tail_only: '首次采集从最近日志开始，早期日志不计入历史。',
@@ -60,7 +77,7 @@ function countryFill(code: string): string {
  const value = countryCounts.value.get(code) || 0
  if (!value) return 'var(--surface-subtle)'
  const intensity = 18 + Math.round(Math.log1p(value) / Math.log1p(maxCountry.value) * 65)
- return `color-mix(in srgb, var(--brand) ${intensity}%, var(--surface))`
+ return `color-mix(in srgb, var(--monitor-accent) ${intensity}%, var(--surface))`
 }
 function selectCountry(code: string): void { if (countryCounts.value.has(code)) selectedCountry.value = selectedCountry.value === code ? '' : code }
 const chart = computed(() => {
@@ -110,15 +127,15 @@ async function perform(action: 'enable' | 'pause' | 'clear'): Promise<void> {
 function schedule(): void { timer = setTimeout(async () => { if (!disposed && document.visibilityState !== 'hidden' && data.value?.enabled && !busy.value) await load(); if (!disposed) schedule() }, 10000) }
 watch([period, host], () => { selectedCountry.value = ''; data.value = undefined; loading.value = true; void load() })
 watch(view, () => { selectedCountry.value = '' })
-onMounted(() => { void load(); schedule() })
-onBeforeUnmount(() => { disposed = true; sequence++; controller?.abort(); if (timer) clearTimeout(timer) })
+onMounted(() => { void load(); void loadSiteIcons(); schedule() })
+onBeforeUnmount(() => { disposed = true; sequence++; controller?.abort(); iconController.abort(); if (timer) clearTimeout(timer) })
 </script>
 
 <template>
- <section class="monitor-page">
+ <section class="monitor-page" :class="{ 'is-security': view === 'security' }">
   <SitesSectionTabs />
   <div class="monitor-heading">
-   <div><p class="eyebrow">网站监控</p><h2>流量与安全，一目了然</h2><p class="heading-description">从访问来源到防御事件，持续了解您的网站。</p></div>
+   <div class="heading-title"><span class="heading-emblem" aria-hidden="true"><Activity :size="25" /></span><div><p class="eyebrow">网站监控</p><h2>流量与安全，一目了然</h2><p class="heading-description">从访问来源到防御事件，持续了解您的网站。</p></div></div>
    <div class="heading-actions"><span class="collection-status" :class="{ 'is-live': healthy }"><span aria-hidden="true" />{{ status }}</span><button class="button button--secondary" :disabled="refreshing || loading" @click="load"><RefreshCw :size="16" :class="{ spinning: refreshing }" /><span>刷新</span></button></div>
   </div>
   <LoadingState v-if="loading" :rows="4" cards />
@@ -128,19 +145,20 @@ onBeforeUnmount(() => { disposed = true; sequence++; controller?.abort(); if (ti
     <div class="monitor-view-switch" role="group" aria-label="监控视图"><button :class="{ active: view === 'traffic' }" :aria-pressed="view === 'traffic'" @click="view = 'traffic'"><BarChart3 :size="17" />流量分析</button><button :class="{ active: view === 'security' }" :aria-pressed="view === 'security'" @click="view = 'security'"><ShieldCheck :size="17" />WAF 防御</button></div>
     <div class="monitor-filters"><label><span class="sr-only">站点筛选</span><select v-model="host" aria-label="站点筛选"><option value="">全部站点</option><option v-for="name in data.hosts" :key="name" :value="name">{{ name }}</option></select></label><label><span class="sr-only">统计时间</span><select v-model="period" aria-label="统计时间"><option value="24h">近 24 小时</option><option value="7d">近 7 天</option><option value="30d">近 30 天</option></select></label><button class="icon-button" aria-label="统计口径与设置" title="统计口径与设置" @click="guideOpen = true"><CircleHelp :size="18" /></button></div>
    </div>
+   <div class="monitor-scope"><span class="scope-icon" aria-hidden="true"><SiteFavicon v-if="host && siteID(host)" :site-id="siteID(host)!" :domain="host" :refresh-key="0" /><Globe2 v-else-if="host" :size="22" /><Layers3 v-else :size="22" /></span><div><strong>{{ host || phrase('全部站点') }}</strong><span>{{ phrase('源站日志统计') }}</span></div><span class="scope-summary"><Globe2 :size="15" aria-hidden="true" />{{ number(visibleCountries.length ? countries.filter(item => item.code !== 'ZZ' && item.requests > 0).length : 0) }} {{ phrase('个地区') }}</span></div>
    <div v-if="!data.enabled" class="monitor-callout"><Database :size="21" /><div><strong>{{ data.startedAt ? phrase('采集已暂停') : phrase('开启您的网站监控') }}</strong><p>增量采集访问与防御日志，保留最长 30 天的聚合统计。</p></div><button class="button button--primary" :disabled="busy" @click="perform('enable')"><Play :size="15" />开始监控</button></div>
    <p v-if="notice" class="monitor-notice" role="status">{{ notice }}</p><p v-if="error && data" class="monitor-warning" role="alert">{{ error }}</p><p v-if="data.state === 'waiting'" class="monitor-warning" role="status">尚未发现可采集的网站日志。请检查站点日志是否已启用。</p>
    <div v-if="view === 'traffic'" class="metric-grid">
-    <article class="metric-card"><span>请求数</span><strong>{{ displayValue(data.requests) }}</strong><small>源站收到的访问请求</small></article>
-    <article class="metric-card"><span>独立 IP</span><strong>{{ displayValue(data.uniqueIPs) }}</strong><small>所选时间内按 IP 去重</small></article>
-    <article class="metric-card"><span>响应流量</span><strong>{{ data.collectedAt && (data.accessSource || data.requests) ? formatBytes(data.bytes) : '—' }}</strong><small>HTTP 响应正文大小</small></article>
-    <article class="metric-card"><span>HTTP 错误率</span><strong>{{ errorRate }}</strong><small>4xx 与 5xx 请求占比</small></article>
+    <article class="metric-card metric-card--brand"><span class="metric-heading"><span>请求数</span><span class="metric-icon" aria-hidden="true"><Activity :size="20" /></span></span><strong>{{ displayValue(data.requests) }}</strong><small>源站收到的访问请求</small></article>
+    <article class="metric-card metric-card--success"><span class="metric-heading"><span>独立 IP</span><span class="metric-icon" aria-hidden="true"><MonitorSmartphone :size="20" /></span></span><strong>{{ displayValue(data.uniqueIPs) }}</strong><small>所选时间内按 IP 去重</small></article>
+    <article class="metric-card metric-card--brand"><span class="metric-heading"><span>响应流量</span><span class="metric-icon" aria-hidden="true"><ArrowDownToLine :size="20" /></span></span><strong>{{ data.collectedAt && (data.accessSource || data.requests) ? formatBytes(data.bytes) : '—' }}</strong><small>HTTP 响应正文大小</small></article>
+    <article class="metric-card metric-card--warning"><span class="metric-heading"><span>HTTP 错误率</span><span class="metric-icon" aria-hidden="true"><TriangleAlert :size="20" /></span></span><strong>{{ errorRate }}</strong><small>4xx 与 5xx 请求占比</small></article>
    </div>
    <div v-else class="metric-grid">
-    <article class="metric-card"><span>安全事件</span><strong>{{ displayValue(data.protection.events) }}</strong><small>同一事务合并记录</small></article>
-    <article class="metric-card"><span>确认拦截</span><strong class="danger-number">{{ displayValue(data.protection.blocked) }}</strong><small>来自明确的拦截记录</small></article>
-    <article class="metric-card"><span>限流拒绝</span><strong>{{ displayValue(data.protection.limited) }}</strong><small>请求频率或连接数限制</small></article>
-    <article class="metric-card"><span>其他防御事件</span><strong>{{ displayValue(data.protection.matched) }}</strong><small>命中、检测与延迟处理</small></article>
+    <article class="metric-card metric-card--brand"><span class="metric-heading"><span>安全事件</span><span class="metric-icon" aria-hidden="true"><ShieldAlert :size="20" /></span></span><strong>{{ displayValue(data.protection.events) }}</strong><small>同一事务合并记录</small></article>
+    <article class="metric-card metric-card--danger"><span class="metric-heading"><span>确认拦截</span><span class="metric-icon" aria-hidden="true"><ShieldX :size="20" /></span></span><strong class="danger-number">{{ displayValue(data.protection.blocked) }}</strong><small>来自明确的拦截记录</small></article>
+    <article class="metric-card metric-card--warning"><span class="metric-heading"><span>限流拒绝</span><span class="metric-icon" aria-hidden="true"><Timer :size="20" /></span></span><strong>{{ displayValue(data.protection.limited) }}</strong><small>请求频率或连接数限制</small></article>
+    <article class="metric-card metric-card--success"><span class="metric-heading"><span>其他防御事件</span><span class="metric-icon" aria-hidden="true"><ShieldCheck :size="20" /></span></span><strong>{{ displayValue(data.protection.matched) }}</strong><small>命中、检测与延迟处理</small></article>
    </div>
    <article class="monitor-card trend-card">
     <header><div><h3>{{ view === 'traffic' ? phrase('访问趋势') : phrase('防御事件趋势') }}</h3><p>{{ view === 'traffic' ? phrase('请求变化与访问高峰') : phrase('规则命中与防御活动') }}</p></div><span class="chart-legend"><i />{{ view === 'traffic' ? phrase('请求数') : phrase('安全事件') }}</span></header>
@@ -150,21 +168,21 @@ onBeforeUnmount(() => { disposed = true; sequence++; controller?.abort(); if (ti
    <div class="geography-grid">
     <article class="monitor-card world-card">
      <header><div><h3>{{ view === 'traffic' ? phrase('世界访问来源') : phrase('安全事件来源') }}</h3><p>按 IP 归属地区统计</p></div><span class="muted-label">{{ geoCoverage }}<span> 已识别</span></span></header>
-     <div class="world-map"><svg viewBox="0 0 900 363" role="img" aria-label="世界来源分布地图"><path v-for="country in worldCountries" :key="country.code" :d="country.path" :fill="countryFill(country.code)" :class="{ 'has-data': countryCounts.has(country.code), selected: selectedCountry === country.code }" :tabindex="countryCounts.has(country.code) ? 0 : -1" :role="countryCounts.has(country.code) ? 'button' : undefined" :aria-label="countryName(country.code) + ': ' + number(countryCounts.get(country.code) || 0)" @click="selectCountry(country.code)" @keydown.enter.prevent="selectCountry(country.code)" @keydown.space.prevent="selectCountry(country.code)"><title>{{ countryName(country.code) }}: {{ number(countryCounts.get(country.code) || 0) }}</title></path></svg><div v-if="selected" class="country-detail" aria-live="polite"><strong>{{ countryName(selected.code) }}</strong><span>{{ number(selected.requests) }} {{ view === 'traffic' ? phrase('请求') : phrase('事件') }}</span><button class="text-button" @click="selectedCountry = ''">取消选择</button></div></div>
+     <div class="world-map"><svg viewBox="0 0 900 363" role="img" aria-label="世界来源分布地图"><path v-for="country in worldCountries" :key="country.code" :d="country.path" :fill="countryFill(country.code)" :class="{ 'has-data': countryCounts.has(country.code), selected: selectedCountry === country.code }" :tabindex="countryCounts.has(country.code) ? 0 : -1" :role="countryCounts.has(country.code) ? 'button' : undefined" :aria-label="countryName(country.code) + ': ' + number(countryCounts.get(country.code) || 0)" @click="selectCountry(country.code)" @keydown.enter.prevent="selectCountry(country.code)" @keydown.space.prevent="selectCountry(country.code)"><title>{{ countryName(country.code) }}: {{ number(countryCounts.get(country.code) || 0) }}</title></path></svg><div v-if="selected" class="country-detail" aria-live="polite"><CountryFlagIcon :country-code="selected.code" :label="countryName(selected.code)" /><strong>{{ countryName(selected.code) }}</strong><span>{{ number(selected.requests) }} {{ view === 'traffic' ? phrase('请求') : phrase('事件') }}</span><button class="text-button" @click="selectedCountry = ''">取消选择</button></div></div>
      <div v-if="data.geoStatus !== 'ready'" class="geo-setup"><Globe2 :size="18" /><p>{{ data.geoStatus === 'invalid' ? phrase('地区数据库无法读取，请更换有效的国家数据库。') : phrase('地区识别尚未配置，访问与防御统计仍会继续采集。') }}</p><button class="text-button" @click="guideOpen = true">配置地区识别<ArrowUpRight :size="14" /></button></div>
-     <footer class="map-caption"><span>无数据</span><span class="map-scale" aria-hidden="true"><i v-for="shade in [20,35,50,65,80]" :key="shade" :style="{ background: `color-mix(in srgb, var(--brand) ${shade}%, var(--surface))` }" /></span><span>更多</span></footer>
+     <footer class="map-caption"><span>无数据</span><span class="map-scale" aria-hidden="true"><i v-for="shade in [20,35,50,65,80]" :key="shade" :style="{ background: `color-mix(in srgb, var(--monitor-accent) ${shade}%, var(--surface))` }" /></span><span>更多</span></footer>
     </article>
-    <article class="monitor-card countries-card"><header><div><h3>国家与地区</h3><p>{{ view === 'traffic' ? phrase('按请求数排序') : phrase('按事件数排序') }}</p></div></header><div v-if="visibleCountries.length" class="ranking-list"><button v-for="country in visibleCountries" :key="country.code" class="country-row" :class="{ active: selectedCountry === country.code }" @click="selectCountry(country.code)"><span class="country-code">{{ country.code }}</span><span class="country-label">{{ countryName(country.code) }}<span class="ranking-track"><i :style="{ width: country.requests / maxCountry * 100 + '%' }" /></span></span><strong>{{ number(country.requests) }}</strong></button></div><div v-else class="ranking-empty"><Globe2 :size="24" /><p>暂无可识别的地区数据</p></div><div class="unknown-country"><span>未知地区</span><strong>{{ number(countryCounts.get('ZZ') || 0) }}</strong></div></article>
+    <article class="monitor-card countries-card"><header><div><h3><Globe2 :size="18" aria-hidden="true" />国家与地区</h3><p>{{ view === 'traffic' ? phrase('按请求数排序') : phrase('按事件数排序') }}</p></div></header><div v-if="visibleCountries.length" class="ranking-list"><button v-for="country in visibleCountries" :key="country.code" class="country-row" :class="{ active: selectedCountry === country.code }" @click="selectCountry(country.code)"><span class="country-symbol" aria-hidden="true"><CountryFlagIcon :country-code="country.code" :label="countryName(country.code)" /><span class="country-code">{{ country.code }}</span></span><span class="country-label">{{ countryName(country.code) }}<span class="ranking-track"><i :style="{ width: country.requests / maxCountry * 100 + '%' }" /></span></span><span class="ranking-value"><strong>{{ number(country.requests) }}</strong><small>{{ share(country.requests, totalMap) }}</small></span></button></div><div v-else class="ranking-empty"><Globe2 :size="24" /><p>暂无可识别的地区数据</p></div><div class="unknown-country"><span><Globe2 :size="15" aria-hidden="true" />未知地区</span><strong>{{ number(countryCounts.get('ZZ') || 0) }}</strong></div></article>
    </div>
 
    <div v-if="view === 'traffic'" class="rankings-grid">
-    <article class="monitor-card"><header><div><h3>热门路径</h3><p>已移除 URL 查询参数</p></div></header><div v-if="data.paths.length" class="ranking-list"><div v-for="row in data.paths.slice(0, 8)" :key="row.name" class="plain-ranking"><span :title="row.name">{{ row.name || '/' }}</span><strong>{{ number(row.requests) }}</strong></div></div><p v-else class="inline-empty">暂无路径统计</p></article>
-    <article class="monitor-card"><header><div><h3>访问来源</h3><p>请求中记录的来源域名</p></div></header><div v-if="data.referrers.length" class="ranking-list"><div v-for="row in data.referrers.slice(0, 8)" :key="row.name" class="plain-ranking"><span>{{ row.name || phrase('直接访问或无来源') }}</span><strong>{{ number(row.requests) }}</strong></div></div><p v-else class="inline-empty">暂无来源统计</p></article>
+    <article class="monitor-card"><header><div><h3><FileText :size="18" aria-hidden="true" />热门路径</h3><p>已移除 URL 查询参数</p></div></header><div v-if="data.paths.length" class="ranking-list"><div v-for="row in data.paths.slice(0, 8)" :key="row.name" class="plain-ranking rich-ranking"><span class="ranking-symbol" aria-hidden="true"><FileText :size="17" /></span><span class="ranking-content"><span :title="row.name">{{ row.name || '/' }}</span><span class="ranking-track"><i :style="{ width: rankingWidth(row.requests, data.paths) }" /></span></span><strong>{{ number(row.requests) }}</strong></div></div><p v-else class="inline-empty">暂无路径统计</p></article>
+    <article class="monitor-card"><header><div><h3><Compass :size="18" aria-hidden="true" />访问来源</h3><p>请求中记录的来源域名</p></div></header><div v-if="data.referrers.length" class="ranking-list"><div v-for="row in data.referrers.slice(0, 8)" :key="row.name" class="plain-ranking rich-ranking"><span class="ranking-symbol" aria-hidden="true"><SiteFavicon v-if="row.name && siteID(row.name)" :site-id="siteID(row.name)!" :domain="row.name" :refresh-key="0" /><Link2 v-else-if="row.name" :size="17" /><Compass v-else :size="17" /></span><span class="ranking-content"><span>{{ row.name || phrase('直接访问或无来源') }}</span><span class="ranking-track"><i :style="{ width: rankingWidth(row.requests, data.referrers) }" /></span></span><strong>{{ number(row.requests) }}</strong></div></div><p v-else class="inline-empty">暂无来源统计</p></article>
    </div>
    <template v-else>
     <div v-if="!data.protection.sourceAvailable" class="monitor-callout"><ShieldAlert :size="21" /><div><strong>尚未发现 WAF 事件日志</strong><p>启用兼容的 WAF 日志后，防御事件会自动汇入。</p></div><RouterLink class="button button--secondary" to="/sites/environment">管理 WAF<ArrowUpRight :size="14" /></RouterLink></div>
-    <article class="monitor-card"><header><div><h3>命中规则排行</h3><p>一次请求可能命中多条规则</p></div></header><div v-if="data.protection.rules.length" class="rules-grid"><div v-for="rule in data.protection.rules.slice(0, 8)" :key="rule.name" class="plain-ranking"><code>{{ ruleName(rule.name) }}</code><strong>{{ number(rule.requests) }}</strong></div></div><p v-else class="inline-empty">暂无规则命中记录</p></article>
-    <article class="monitor-card events-card"><header><div><h3>最近安全事件</h3><p>最近 50 条，保留最长 7 天</p></div><RouterLink class="text-button" to="/files?path=/home/web/log/nginx">查看原始日志<ArrowUpRight :size="14" /></RouterLink></header><div v-if="data.protection.recent.length" class="events-table-wrap"><table><thead><tr><th>时间</th><th>站点与路径</th><th>地区</th><th>处理结果</th><th>命中规则</th></tr></thead><tbody><tr v-for="event in data.protection.recent" :key="event.id"><td>{{ formatDateTime(event.at) }}</td><td><strong>{{ event.host || phrase('共享日志') }}</strong><span>{{ event.path || '—' }}</span></td><td>{{ countryName(event.country) }}</td><td><span class="event-action" :class="{ blocked: event.action === 'blocked' || event.action === 'limited' }">{{ actionName(event.action) }}</span></td><td><code>{{ event.rules.join(', ') || '—' }}</code></td></tr></tbody></table></div><p v-else class="inline-empty">暂无安全事件记录</p></article>
+    <article class="monitor-card"><header><div><h3><ShieldCheck :size="18" aria-hidden="true" />命中规则排行</h3><p>一次请求可能命中多条规则</p></div></header><div v-if="data.protection.rules.length" class="rules-grid"><div v-for="rule in data.protection.rules.slice(0, 8)" :key="rule.name" class="plain-ranking"><code>{{ ruleName(rule.name) }}</code><strong>{{ number(rule.requests) }}</strong></div></div><p v-else class="inline-empty">暂无规则命中记录</p></article>
+    <article class="monitor-card events-card"><header><div><h3><ShieldAlert :size="18" aria-hidden="true" />最近安全事件</h3><p>最近 50 条，保留最长 7 天</p></div><RouterLink class="text-button" to="/files?path=/home/web/log/nginx">查看原始日志<ArrowUpRight :size="14" /></RouterLink></header><div v-if="data.protection.recent.length" class="events-table-wrap"><table><thead><tr><th>时间</th><th>站点与路径</th><th>地区</th><th>处理结果</th><th>命中规则</th></tr></thead><tbody><tr v-for="event in data.protection.recent" :key="event.id"><td>{{ formatDateTime(event.at) }}</td><td><div class="event-site"><span class="event-site-icon" aria-hidden="true"><SiteFavicon v-if="siteID(event.host)" :site-id="siteID(event.host)!" :domain="event.host" :refresh-key="0" /><Globe2 v-else :size="19" /></span><div><strong>{{ event.host || phrase('共享日志') }}</strong><span>{{ event.path || '—' }}</span></div></div></td><td><div class="event-country"><CountryFlagIcon v-if="event.country !== 'ZZ'" :country-code="event.country" :label="countryName(event.country)" /><Globe2 v-else :size="17" aria-hidden="true" />{{ countryName(event.country) }}</div></td><td><span class="event-action" :class="{ blocked: event.action === 'blocked' || event.action === 'limited' }">{{ actionName(event.action) }}</span></td><td><code>{{ event.rules.join(', ') || '—' }}</code></td></tr></tbody></table></div><p v-else class="inline-empty">暂无安全事件记录</p></article>
    </template>
    <details v-if="warnings.length" class="coverage-details"><summary>数据覆盖说明 <span>{{ warnings.length }}</span></summary><ul><li v-for="warning in warnings" :key="warning">{{ warning }}</li></ul></details>
    <footer class="monitor-footer"><span><Database :size="14" />历史统计<span v-if="data.collectedAt"> · {{ formatDateTime(data.collectedAt) }}</span></span><div><button v-if="data.enabled" class="text-button" :disabled="busy" @click="perform('pause')"><Pause :size="14" />暂停采集</button><button class="text-button" :disabled="busy" @click="clearOpen = true"><Trash2 :size="14" />清空统计</button></div></footer>

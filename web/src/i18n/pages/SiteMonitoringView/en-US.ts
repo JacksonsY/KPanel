@@ -1,6 +1,8 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ["源站日志统计", "Origin log statistics"],
+  ["个地区", "regions"],
   [
     "尚未启用",
     "Not enabled"

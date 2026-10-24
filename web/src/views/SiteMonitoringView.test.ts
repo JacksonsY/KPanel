@@ -4,8 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import SiteMonitoringView from './SiteMonitoringView.vue'
 import { api } from '@/lib/api'
 import type { SiteTrafficSnapshot } from '@/types/siteTraffic'
-vi.mock('@/lib/api', () => ({ api: { siteTraffic: { summary: vi.fn(), action: vi.fn() } } }))
-interface Bindings { data: Ref<SiteTrafficSnapshot | undefined>; error: Ref<string>; loading: Ref<boolean>; host: Ref<string>; busy: Ref<boolean>; load: () => Promise<void>; perform: (action: 'enable' | 'pause' | 'clear') => Promise<void> }
+import type { Site } from '@/types/api'
+vi.mock('@/lib/api', () => ({ api: { siteTraffic: { summary: vi.fn(), action: vi.fn() }, sites: { list: vi.fn() } } }))
+interface Bindings { data: Ref<SiteTrafficSnapshot | undefined>; error: Ref<string>; loading: Ref<boolean>; host: Ref<string>; busy: Ref<boolean>; load: () => Promise<void>; loadSiteIcons: () => Promise<void>; siteID: (host: string) => string | undefined; perform: (action: 'enable' | 'pause' | 'clear') => Promise<void> }
 function setup(): Bindings {
  const app = createSSRApp({ render: () => null }); app.provide(ssrContextKey, { modules: new Set<string>() })
  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -15,6 +16,20 @@ function snapshot(requests = 1): SiteTrafficSnapshot { return { requests, enable
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r }); return { promise, resolve } }
 afterEach(() => vi.resetAllMocks())
 describe('website monitoring request lifecycle', () => {
+ it('resolves primary and alias hosts to managed icons without treating external referrers as site IDs', async () => {
+  vi.mocked(api.sites.list).mockResolvedValue({ total: 1, items: [{ id: 'managed-site', primaryDomain: 'example.com', domains: ['www.example.com'] } as Site] })
+  const view = setup(); await view.loadSiteIcons()
+  expect(view.siteID('EXAMPLE.COM.')).toBe('managed-site')
+  expect(view.siteID('www.example.com')).toBe('managed-site')
+  expect(view.siteID('external.example')).toBeUndefined()
+ })
+ it('keeps monitoring usable with fallback icons when optional site metadata is unavailable', async () => {
+  vi.mocked(api.sites.list).mockRejectedValue(new Error('sites unavailable'))
+  vi.mocked(api.siteTraffic.summary).mockResolvedValue(snapshot(9))
+  const view = setup(); await Promise.all([view.load(), view.loadSiteIcons()])
+  expect(view.data.value?.requests).toBe(9); expect(view.error.value).toBe('')
+  expect(view.siteID('example.com')).toBeUndefined()
+ })
  it('discards an older response after a newer request has completed', async () => {
   const old = deferred<SiteTrafficSnapshot>(), latest = deferred<SiteTrafficSnapshot>()
   vi.mocked(api.siteTraffic.summary).mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise)
