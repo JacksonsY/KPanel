@@ -39,7 +39,7 @@ html[data-desktop-shell-style='win98'] {
 }
 
 .desktop[data-shell-style='win98'] {
-  --desktop-window-client-background: #d4d0c8;
+  --desktop-window-client-background: var(--win98-surface);
   --desktop-group-surface: var(--win98-surface);
   --desktop-group-border: #808080;
   --desktop-group-text: var(--win98-text-color);
@@ -386,9 +386,9 @@ html[data-desktop-shell-style='win98'] .desktop-group__drop-label {
   --blue-soft: #d9e3f0;
   --control-border: var(--win98-button-shadow);
   --neutral-soft: var(--win98-button-face);
-  --surface-subtle: #d4d0c8;
-  --surface: #f6f5f1;
-  --surface-raised: #fff;
+  --surface-subtle: var(--win98-surface);
+  --surface: #d0d0d0;
+  --surface-raised: var(--win98-button-face);
   --border: #808080;
   --border-strong: #404040;
   --surface-muted: var(--surface-subtle);
