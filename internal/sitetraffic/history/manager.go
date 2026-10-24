@@ -58,39 +58,49 @@ func (m *Manager) Start(parent context.Context) {
 		m.mu.Unlock()
 		go func() {
 			defer m.wg.Done()
-			ticker := time.NewTicker(10 * time.Second)
-			defer ticker.Stop()
+			timer := time.NewTimer(10 * time.Second)
+			defer timer.Stop()
 			for {
-				m.collect(ctx)
+				delay := 10 * time.Second
+				if m.collect(ctx) {
+					delay = time.Second
+				}
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(delay)
 				select {
 				case <-ctx.Done():
 					return
-				case <-ticker.C:
+				case <-timer.C:
 				case <-m.wake:
 				}
 			}
 		}()
 	})
 }
-func (m *Manager) collect(ctx context.Context) {
+func (m *Manager) collect(ctx context.Context) bool {
 	// An unused dashboard does not create a database or consume Agent resources.
 	m.mu.Lock()
 	exists := m.store != nil
 	m.mu.Unlock()
 	if !exists {
 		if _, err := os.Lstat(filepath.Join(m.dir, "analytics.sqlite")); err != nil {
-			return
+			return false
 		}
 	}
 	store, err := m.storage()
 	if err != nil {
-		return
+		return false
 	}
 	work, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	input, enabled, err := store.State(work)
 	if err != nil || !enabled {
-		return
+		return false
 	}
 	batch, err := m.source(work, input)
 	if err == nil {
@@ -99,6 +109,7 @@ func (m *Manager) collect(ctx context.Context) {
 	m.mu.Lock()
 	m.failure = err != nil && !errors.Is(err, ErrStale)
 	m.mu.Unlock()
+	return err == nil && batch.HasMore
 }
 func (m *Manager) Query(ctx context.Context, period, host string) (sitetraffic.Snapshot, error) {
 	store, err := m.storage()

@@ -13,7 +13,7 @@ import (
 )
 
 var ruleID = regexp.MustCompile(`^[0-9]{3,10}$`)
-var rateLine = regexp.MustCompile(`^(\S+) key="([^|" ]+)\|([^" ]+)" event=rate request_limit="([A-Z_]+)" connection_limit="([A-Z_]+)"`)
+var rateLine = regexp.MustCompile(`^(\S+) key="([^|" ]+)\|([^" ]+)" event=rate request_limit="([A-Z_]*)" connection_limit="([A-Z_]*)"`)
 var deniedLine = regexp.MustCompile(`^([0-9]{4}/[0-9]{2}/[0-9]{2} [0-9:]{8}) \[\w+\] [0-9]+#[0-9]+: \*[0-9]+ ModSecurity: Access denied with code ([0-9]{3}) `)
 var fieldLine = regexp.MustCompile(`\[([a-z_]+) "((?:\\.|[^"\\])*)"\]`)
 

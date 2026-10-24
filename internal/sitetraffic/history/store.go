@@ -102,6 +102,8 @@ func Open(dir string) (*Store, error) {
 		`CREATE TABLE IF NOT EXISTS waf (hour INTEGER,host TEXT,country TEXT,action TEXT,requests INTEGER,PRIMARY KEY(hour,host,country,action)) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS rule_counts (hour INTEGER,host TEXT,name TEXT,requests INTEGER,PRIMARY KEY(hour,host,name)) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY,at INTEGER NOT NULL,host TEXT,path TEXT,country TEXT,action TEXT,severity INTEGER,rules TEXT) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY,at INTEGER NOT NULL,host TEXT,country TEXT,action TEXT) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS transactions_time ON transactions(at)`,
 		`CREATE INDEX IF NOT EXISTS events_time ON events(at DESC,id)`,
 		`CREATE TABLE IF NOT EXISTS event_rules (event TEXT,rule TEXT,PRIMARY KEY(event,rule)) WITHOUT ROWID`,
 		fmt.Sprintf("PRAGMA application_id=%d", applicationID), "PRAGMA user_version=1",
@@ -174,7 +176,7 @@ func (s *Store) Action(ctx context.Context, action string) error {
 		if _, err = tx.ExecContext(ctx, "UPDATE meta SET value='[]' WHERE key='warnings'"); err != nil {
 			return err
 		}
-		for _, table := range []string{"traffic", "pages", "referrers", "ips", "waf", "rule_counts", "events", "event_rules"} {
+		for _, table := range []string{"traffic", "pages", "referrers", "ips", "waf", "rule_counts", "events", "transactions", "event_rules"} {
 			if _, err = tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 				return err
 			}
@@ -292,7 +294,13 @@ func (s *Store) Apply(ctx context.Context, batch sitetraffic.Batch) error {
 	if _, err = tx.ExecContext(ctx, "DELETE FROM events WHERE at<? OR id IN (SELECT id FROM events ORDER BY at DESC,id LIMIT -1 OFFSET 5000)", now-7*86400); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "DELETE FROM event_rules WHERE event NOT IN (SELECT id FROM events)"); err != nil {
+	if _, err = tx.ExecContext(ctx, "DELETE FROM event_rules WHERE event NOT IN (SELECT id FROM transactions)"); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM transactions WHERE at<?", now-7*86400); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM event_rules WHERE event NOT IN (SELECT id FROM transactions)"); err != nil {
 		return err
 	}
 	var used, free int
@@ -303,7 +311,7 @@ func (s *Store) Apply(ctx context.Context, batch sitetraffic.Batch) error {
 		return err
 	}
 	var rowCount int64
-	if err = tx.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM traffic)+(SELECT COUNT(*) FROM pages)+(SELECT COUNT(*) FROM referrers)+(SELECT COUNT(*) FROM ips)+(SELECT COUNT(*) FROM rule_counts)").Scan(&rowCount); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT (SELECT COUNT(*) FROM traffic)+(SELECT COUNT(*) FROM pages)+(SELECT COUNT(*) FROM referrers)+(SELECT COUNT(*) FROM ips)+(SELECT COUNT(*) FROM rule_counts)+(SELECT COUNT(*) FROM transactions)+(SELECT COUNT(*) FROM event_rules)").Scan(&rowCount); err != nil {
 		return err
 	}
 	if used-free > 24576 || rowCount > 400000 {
@@ -315,6 +323,12 @@ func (s *Store) Apply(ctx context.Context, batch sitetraffic.Batch) error {
 			if _, err = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE hour<?", first+86400); err != nil {
 				return err
 			}
+		}
+		if _, err = tx.ExecContext(ctx, "DELETE FROM transactions WHERE at<?", first+86400); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, "DELETE FROM event_rules WHERE event NOT IN (SELECT id FROM transactions)"); err != nil {
+			return err
 		}
 		batch.Warnings = append(batch.Warnings, "history_capacity")
 	}
@@ -369,12 +383,15 @@ func applyEvent(ctx context.Context, tx *sql.Tx, record sitetraffic.Record, hour
 	}
 	var action, host, country string
 	var at int64
-	err := tx.QueryRowContext(ctx, "SELECT action,at,host,country FROM events WHERE id=?", record.EventKey).Scan(&action, &at, &host, &country)
+	err := tx.QueryRowContext(ctx, "SELECT action,at,host,country FROM transactions WHERE id=?", record.EventKey).Scan(&action, &at, &host, &country)
 	fresh := errors.Is(err, sql.ErrNoRows)
 	if err != nil && !fresh {
 		return err
 	}
 	if fresh {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO transactions VALUES(?,?,?,?,?)", record.EventKey, record.At, record.Host, record.Country, record.Action); err != nil {
+			return err
+		}
 		if _, err = tx.ExecContext(ctx, "INSERT INTO events VALUES(?,?,?,?,?,?,?,?)", record.EventKey, record.At, record.Host, record.Path, record.Country, record.Action, record.Severity, "[]"); err != nil {
 			return err
 		}
@@ -390,6 +407,9 @@ func applyEvent(ctx context.Context, tx *sql.Tx, record sitetraffic.Record, hour
 				return err
 			}
 			if _, err = tx.ExecContext(ctx, "INSERT INTO waf VALUES(?,?,?,?,1) ON CONFLICT(hour,host,country,action) DO UPDATE SET requests=requests+1", hour, host, country, record.Action); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, "UPDATE transactions SET action=? WHERE id=?", record.Action, record.EventKey); err != nil {
 				return err
 			}
 			if _, err = tx.ExecContext(ctx, "UPDATE events SET action=? WHERE id=?", record.Action, record.EventKey); err != nil {

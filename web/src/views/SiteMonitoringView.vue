@@ -107,7 +107,7 @@ async function perform(action: 'enable' | 'pause' | 'clear'): Promise<void> {
  finally { busy.value = false }
 }
 function schedule(): void { timer = setTimeout(async () => { if (!disposed && document.visibilityState !== 'hidden' && data.value?.enabled && !busy.value) await load(); if (!disposed) schedule() }, 10000) }
-watch([period, host], () => { selectedCountry.value = ''; void load() })
+watch([period, host], () => { selectedCountry.value = ''; data.value = undefined; loading.value = true; void load() })
 watch(view, () => { selectedCountry.value = '' })
 onMounted(() => { void load(); schedule() })
 onBeforeUnmount(() => { disposed = true; sequence++; controller?.abort(); if (timer) clearTimeout(timer) })
