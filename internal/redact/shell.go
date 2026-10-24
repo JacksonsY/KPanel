@@ -9,6 +9,7 @@ type shellFrame struct {
 	ansi   bool
 	word   bool
 	parens int
+	braces int
 }
 type shellLexicalState struct {
 	frames    []shellFrame
@@ -56,7 +57,7 @@ func (s *shellLexicalState) observe(value string) {
 		if b == '`' {
 			s.uncertain = true
 		}
-		if b == '$' && i+1 < len(value) && value[i+1] == '(' {
+		if b == '$' && i+1 < len(value) && (value[i+1] == '(' || value[i+1] == '{') {
 			if s.depth == maxProjectionDepth {
 				s.uncertain = true
 				return
@@ -66,7 +67,12 @@ func (s *shellLexicalState) observe(value string) {
 			if s.depth == len(s.frames) {
 				s.frames = append(s.frames, shellFrame{})
 			}
-			s.frames[s.depth] = shellFrame{parens: 1}
+			s.frames[s.depth] = shellFrame{}
+			if value[i+1] == '(' {
+				s.frames[s.depth].parens = 1
+			} else {
+				s.frames[s.depth].braces = 1
+			}
 			i++
 			continue
 		}
@@ -79,21 +85,31 @@ func (s *shellLexicalState) observe(value string) {
 		if b == '#' && !f.word {
 			return
 		}
+		if b == '<' && i+1 < len(value) && value[i+1] == '<' {
+			// Here-doc bodies have a separate delimiter grammar. Do not let
+			// body punctuation close a credential's outer command substitution;
+			// retain the uncertain boundary to the end of this bounded window.
+			s.uncertain = true
+		}
 		if b == '$' && i+1 < len(value) && value[i+1] == '\'' {
 			f.quote, f.ansi, f.word = '\'', true, true
 			i++
 			continue
 		}
 		if s.depth > 0 {
-			if b == '(' {
+			if b == '(' && f.parens > 0 {
 				f.parens++
 			}
-			if b == ')' {
+			if b == ')' && f.parens > 0 {
 				f.parens--
 				if f.parens == 0 {
 					s.depth--
 					continue
 				}
+			}
+			if b == '}' && f.braces > 0 {
+				s.depth--
+				continue
 			}
 		}
 		if b == '\'' || b == '"' {
@@ -124,8 +140,16 @@ func (p *projection) logicalRecords() (map[int]string, []bool, error) {
 	hidden := make([]bool, len(p.sources))
 	pending := make(map[logicalKey]*logicalRecord)
 	for index, source := range p.sources {
-		if !source.leaf {
+		if !source.leaf && !source.fragment {
 			continue
+		}
+		// A fragment parent is the original physical record at this layer.
+		// Do not feed its prefix/suffix again as if they were separate lines.
+		if source.parent >= 0 {
+			parent := p.sources[source.parent]
+			if parent.fragment && parent.channel == source.channel && parent.layer == source.layer {
+				continue
+			}
 		}
 		key := logicalKey{source.channel, source.layer}
 		r := pending[key]

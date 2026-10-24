@@ -13,6 +13,10 @@ func TestBlindFragmentAndShellBoundaries(t *testing.T) {
 		{"fragment-known", `pre["OPAQUE_BODY"]post`, `pre["OPAQUE_BODY"]post`},
 		{"pending-eof", "API_TO\\\nKEN=OPAQUE_BODY\\", ""},
 		{"ansi-quote", "API_TOKEN=$'first\\'\nOPAQUE_BODY\nlast'\nordinary-visible", ""},
+		{"parameter-expansion", "API_TOKEN=${UNSET:-first\nOPAQUE_BODY\nlast}\nordinary-visible", ""},
+		{"heredoc", "API_TOKEN=$(cat <<'EOF'\n)\nOPAQUE_BODY\nEOF\n)\nordinary-visible", ""},
+		{"fragment-quote", "API_TOKEN=\"first[1]\nOPAQUE_BODY\nlast\"\nordinary-visible", ""},
+		{"fragment-joined-identifier", "API_TO\\\nKEN=[\"OPAQUE_BODY\"]\\", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

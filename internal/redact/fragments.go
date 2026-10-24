@@ -108,7 +108,7 @@ func (p *projection) embeddedText(value string, depth int) (any, bool, error) {
 	parentSource, parentLayer := p.source, p.layer
 	p.source = len(p.sources)
 	source := p.source
-	p.sources = append(p.sources, lexicalSource{value: value, channel: p.channel, layer: p.layer, indent: p.indent, parent: parentSource, sensitive: sensitive})
+	p.sources = append(p.sources, lexicalSource{value: value, channel: p.channel, layer: p.layer, indent: p.indent, parent: parentSource, sensitive: sensitive, fragment: true})
 	defer func() { p.source, p.layer = parentSource, parentLayer }()
 	parts := make([]any, 0, 3)
 	if start > 0 {

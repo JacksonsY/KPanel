@@ -302,9 +302,17 @@ func redactConfigurations(sources []lexicalSource, parents []int, privateHidden,
 	configurations := make(map[int]configurationContinuation)
 	hidden := make([]bool, len(sources))
 	for index, source := range sources {
-		hidden[index] = source.sensitive
 		if source.parent >= 0 && hidden[source.parent] {
 			hidden[index] = true
+		}
+		if source.parent >= 0 {
+			parent := sources[source.parent]
+			if parent.fragment && parent.channel == source.channel && parent.layer == source.layer {
+				// Prefix/suffix are parts of the parent's physical record. Their
+				// quotes cannot be observed twice or close its continuation early.
+				sources[index].hidden = hidden[index]
+				continue
+			}
 		}
 		for channel := parents[source.channel]; channel >= 0; channel = parents[channel] {
 			if ancestor := configurations[channel]; ancestor.active() {
@@ -327,13 +335,13 @@ func redactConfigurations(sources []lexicalSource, parents []int, privateHidden,
 			hidden[index] = true
 		}
 		priorHidden := hidden[index]
-		hidden[index] = hidden[index] || logicalHidden[index]
-		if !priorHidden && source.leaf && !privateHidden[index] {
+		hidden[index] = hidden[index] || source.sensitive || logicalHidden[index]
+		if !priorHidden && (source.leaf || source.fragment) && !privateHidden[index] {
 			value := source.value
 			if joined, ok := logical[index]; ok {
 				value = joined
 			}
-			configuration.begin(value, source.indent, inlineSensitive[index] || logicalHidden[index])
+			configuration.begin(value, source.indent, inlineSensitive[index] || source.sensitive || logicalHidden[index])
 			configuration.layer = source.layer
 		}
 		if configuration.active() {

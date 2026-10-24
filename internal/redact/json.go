@@ -111,6 +111,7 @@ type lexicalSource struct {
 	hidden  bool
 	// A fragment split must not separate a sensitive lexical value/identity.
 	sensitive bool
+	fragment  bool
 }
 type channelKey struct {
 	parent int
