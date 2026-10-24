@@ -13,6 +13,7 @@ func TestBlindFragmentAndShellBoundaries(t *testing.T) {
 		{"fragment-spaced-flag", `cmd --password ["OPAQUE_BODY"]`, ""},
 		{"fragment-attached-mysql", `mysql -p["OPAQUE_BODY"]`, ""},
 		{"fragment-object-flag", `cmd --password {"value":"OPAQUE_BODY"}`, ""},
+		{"fragment-command-suffix", `mysql --init-command='[1]' -pOPAQUE_BODY database`, ""},
 		{"fragment-url", `https://example.test/?token=["OPAQUE_BODY"]`, ""},
 		{"fragment-known", `pre["OPAQUE_BODY"]post`, `pre["OPAQUE_BODY"]post`},
 		{"pending-eof", "API_TO\\\nKEN=OPAQUE_BODY\\", ""},

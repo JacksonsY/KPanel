@@ -95,18 +95,16 @@ func (p *projection) embeddedText(value string, depth int) (any, bool, error) {
 	// sensitive prefix owns its following value, including JSON punctuation;
 	// known identities can also span the prefix, encoded value and suffix.
 	// Such a mixed record is conservatively hidden as one display unit.
-	sensitive := false
-	if start > 0 {
-		// A flag/assignment can end immediately before its structured value.
-		// A fixed display-only token lets the existing classifier recognize
-		// that incomplete prefix without evaluating any source expression.
-		const probeValue = "_kpanel_projection_value_"
-		if err := p.budget.consume(start+len(probeValue), 1); err != nil {
-			return nil, true, err
-		}
-		prefixProbe := value[:start] + probeValue
-		sensitive = redactLine(prefixProbe) != prefixProbe
+	if err := p.budget.consume(4*len(value), 4); err != nil {
+		return nil, true, err
 	}
+	// Decomposition is safe only when it preserves the original classifier's
+	// lexical context. Compare before decoding or rewriting any source: both
+	// incomplete sensitive prefixes and context-dependent suffixes (mysql -p,
+	// URL userinfo) must retain the surrounding record's secrecy decision.
+	whole := redactLine(value)
+	split := redactLine(value[:start]) + redactLine(value[start:end]) + redactLine(value[end:])
+	sensitive := whole != split
 	spans, err := p.literalSpans(value)
 	if err != nil {
 		return nil, true, err
