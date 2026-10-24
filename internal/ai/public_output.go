@@ -13,18 +13,23 @@ func publicProviderText(value, key string) string {
 	if key == "" {
 		return value
 	}
-	safe := redact.TextWithSecrets(value, key)
 	if replacement := credentialReplacement(key); replacement != "[REDACTED]" {
-		// Existing display markers are trusted constants, not new secrets. A
-		// short key overlapping the default marker must not make every startup
-		// expand the same projected tool result again.
+		// Classify generic secrets before applying the known identity. Otherwise
+		// an identity contained in a generated marker can repeatedly rewrite
+		// that marker while the semantic tree is reconstructed.
+		safe := redact.Text(value)
 		if strings.HasPrefix(safe, "[REDACTED: ") && strings.HasSuffix(safe, "]") {
 			return replacement
 		}
 		safe = strings.ReplaceAll(safe, "[REDACTED PRIVATE KEY]", replacement)
 		safe = strings.ReplaceAll(safe, "[REDACTED]", replacement)
+		projected, _, err := knownCredentialText(safe, key)
+		if err != nil {
+			return replacement
+		}
+		return projected
 	}
-	return safe
+	return redact.TextWithSecrets(value, key)
 }
 
 func credentialReplacement(key string) string {
