@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { Copy, LoaderCircle } from '@lucide/vue'
 import type { DesktopEntry } from '@/lib/desktopEntries'
+import { useDesktopShellStyle } from '@/stores/desktopShellStyle'
 import DesktopShortcutArtwork from './DesktopShortcutArtwork.vue'
 
 /**
@@ -42,6 +43,7 @@ const LONG_PRESS_MOVE_TOLERANCE = 10
 const CLICK_SUPPRESSION_DURATION = 800
 
 const iconElement = ref<HTMLButtonElement>()
+const shellStyle = useDesktopShellStyle()
 const imageFailed = ref(false)
 const imageLoaded = ref(false)
 let activePointerId: number | undefined
@@ -70,13 +72,15 @@ const fileShortcutKind = computed<'file' | 'directory' | undefined>(() => {
     ? props.entry.launch
     : undefined
 })
+const framedArtwork = computed(() => Boolean(props.entry && !props.navIconURL
+  && !periodArtwork.value && !fileShortcutKind.value && shellStyle.preference.value !== 'modern'))
 const fileArtworkVisible = computed(() => fileShortcutKind.value === 'file'
   && (!imageLoaded.value || imageFailed.value))
 const webFallbackVisible = computed(() => (props.entry?.kind === 'site'
   || (props.entry?.kind === 'shortcut' && props.entry.launch === 'external'))
   && !props.navIcon && !props.entry?.icon && (!imageLoaded.value || imageFailed.value))
 const artworkBackground = computed(() => {
-  if (periodArtwork.value) return 'transparent'
+  if (periodArtwork.value || framedArtwork.value) return 'transparent'
   if (fileArtworkVisible.value) return 'transparent'
   if (webFallbackVisible.value) return props.fallbackBackground ?? props.gradient
   return props.gradient
@@ -263,6 +267,7 @@ onBeforeUnmount(clearLongPress)
       class="desktop__icon-glyph"
       :class="{
         'desktop__icon-glyph--period': periodArtwork,
+        'desktop__icon-glyph--framed': framedArtwork,
         'desktop__icon-glyph--dynamic': Boolean(entry),
         'desktop__icon-glyph--shortcut': Boolean(fileShortcutKind),
         'desktop__icon-glyph--file': fileArtworkVisible,

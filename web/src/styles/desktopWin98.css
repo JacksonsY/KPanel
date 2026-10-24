@@ -89,6 +89,38 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] body {
   border-radius: 0;
 }
 
+.desktop[data-shell-style='win98'] .desktop__icon-glyph--framed,
+.desktop[data-shell-style='win98'] .desktop__icon:hover .desktop__icon-glyph--framed {
+  color: var(--win98-dialog-blue);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__icon-glyph--framed::before {
+  display: block;
+  inset: 7px;
+  background: var(--win98-surface);
+  box-shadow: var(--win98-border-raised-outer), var(--win98-border-raised-inner);
+}
+
+.desktop[data-shell-style='win98'] .desktop__icon-glyph--framed > * {
+  position: relative;
+  z-index: 1;
+}
+
+.desktop[data-shell-style='win98'] .desktop__icon-glyph--framed :is(.desktop__icon-img, .desktop__icon-monogram, .desktop__site-fallback-letter) {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: none;
+}
+
 /* Group frames and inset titlebars match the desktop widgets. */
 .desktop[data-shell-style='win98'] .desktop-group {
   border: 0;

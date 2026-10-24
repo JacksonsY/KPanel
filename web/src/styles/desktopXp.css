@@ -30,6 +30,40 @@ html[data-desktop-shell-style='xp'] {
   border-radius: 0;
 }
 
+.desktop[data-shell-style='xp'] .desktop__icon-glyph--framed,
+.desktop[data-shell-style='xp'] .desktop__icon:hover .desktop__icon-glyph--framed {
+  color: #20588b;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon-glyph--framed::before {
+  display: block;
+  inset: 3px;
+  background: linear-gradient(145deg, #fff 0%, #e5f0fc 45%, #adc8e9 100%);
+  border: 1px solid #638bb9;
+  border-radius: 8px;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #7f9fc7, 1px 2px 2px rgb(21 46 75 / 24%);
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon-glyph--framed > * {
+  position: relative;
+  z-index: 1;
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon-glyph--framed :is(.desktop__icon-img, .desktop__icon-monogram, .desktop__site-fallback-letter) {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: none;
+}
+
 html.desktop-mode-open[data-desktop-shell-style='xp'] body {
   --scrollbar-size: 16px;
   --scrollbar-track: #f1efe6;
