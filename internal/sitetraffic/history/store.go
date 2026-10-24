@@ -324,6 +324,9 @@ func (s *Store) Apply(ctx context.Context, batch sitetraffic.Batch) error {
 				return err
 			}
 		}
+		if _, err = tx.ExecContext(ctx, "DELETE FROM events WHERE at<?", first+86400); err != nil {
+			return err
+		}
 		if _, err = tx.ExecContext(ctx, "DELETE FROM transactions WHERE at<?", first+86400); err != nil {
 			return err
 		}
