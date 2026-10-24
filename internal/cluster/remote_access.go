@@ -136,6 +136,8 @@ func (s *Service) UpdateRemoteAccess(version string, terminalEnabled, filesEnabl
 
 // BeginRemoteOperation binds a request/task to the current policy epoch. Closing
 // a switch cancels in-flight work; reopening cannot resurrect an old request.
+type remoteAccessEpochKey string
+
 func (s *Service) BeginRemoteOperation(parent context.Context, domain string) (context.Context, context.CancelFunc, error) {
 	if parent == nil {
 		parent = context.Background()
@@ -157,6 +159,13 @@ func (s *Service) BeginRemoteOperation(parent context.Context, domain string) (c
 	if !c.value.Available || !enabled {
 		return nil, nil, ErrRemoteAccessDisabled
 	}
+	if admitted, ok := parent.Value(remoteAccessEpochKey(domain)).(context.Context); ok {
+		epoch = admitted
+	}
+	if epoch.Err() != nil {
+		return nil, nil, ErrRemoteAccessDisabled
+	}
+	parent = context.WithValue(parent, remoteAccessEpochKey(domain), epoch)
 	ctx, cancel := context.WithCancel(parent)
 	stop := context.AfterFunc(epoch, cancel)
 	return ctx, func() { stop(); cancel() }, nil
@@ -184,13 +193,27 @@ func (s *Service) TerminalOpen(ctx context.Context, id string, input TerminalOpe
 	}
 	defer cancel()
 	opened, err := s.terminalOpen(ctx, id, input)
-	if err == nil && ctx.Err() != nil {
+	if err == nil && (ctx.Err() != nil || s.remoteTerminalParent(ctx).Err() != nil) {
 		cleanup, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		defer stop()
-		_ = s.TerminalClose(cleanup, id, TerminalCloseRequest{SessionID: opened.SessionID})
+		if closeErr := s.TerminalClose(cleanup, id, TerminalCloseRequest{SessionID: opened.SessionID}); closeErr != nil {
+			// A failed cleanup is not proof that the PTY never existed. Preserve
+			// its identity for the Panel's close-requested registry.
+			return opened, ErrRemoteAccessDisabled
+		}
 		return TerminalOpenResponse{}, ErrRemoteAccessDisabled
 	}
 	return opened, err
+}
+
+func (s *Service) remoteTerminalParent(ctx context.Context) context.Context {
+	if epoch, ok := ctx.Value(remoteAccessEpochKey("terminal")).(context.Context); ok {
+		return epoch
+	}
+	if s.streams != nil {
+		return s.streams.ctx
+	}
+	return context.Background()
 }
 
 func (s *Service) OpenRemoteFileV2(ctx context.Context, id string, input FederationFileOpenRequest) (io.ReadCloser, contract.FileTransferMetadata, error) {

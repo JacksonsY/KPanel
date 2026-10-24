@@ -66,6 +66,9 @@ func TestRemoteAccessDefaultsPersistenceAndEpochIsolation(t *testing.T) {
 	if current.Err() != nil {
 		t.Fatal("new interval unavailable")
 	}
+	if _, _, err := s.BeginRemoteOperation(term, "terminal"); !errors.Is(err, ErrRemoteAccessDisabled) {
+		t.Fatalf("nested old operation joined a new interval: %v", err)
+	}
 }
 
 func TestRemoteAccessCorruptSettingsFailClosedWithoutReplacingEvidence(t *testing.T) {

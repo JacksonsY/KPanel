@@ -17,11 +17,19 @@ import (
 )
 
 func (s *Server) startCrossFileTransferJob(w http.ResponseWriter, r *http.Request, input contract.FileTransferRequest, hostID string, kind cluster.HostKind, actorID string) {
+	var accessLifetime context.Context
+	if input.SourceNodeID != s.cluster.NodeID() || hostID != "" && hostID != cluster.LocalHostID {
+		accessLifetime = s.cluster.RemoteOperationLifetime("files")
+	}
 	fail := func(status int, code, detail string) {
 		_ = s.audit(r, actorID, "file.transfer.copy", "directory", input.TargetDirectory, "failure", map[string]any{
 			"sourceNodeId": input.SourceNodeID, "sourcePath": input.Path, "targetHostId": hostID, "errorCode": code,
 		})
 		s.writeProblem(w, r, status, code, detail, "")
+	}
+	if accessLifetime != nil && accessLifetime.Err() != nil {
+		fail(http.StatusForbidden, "remote_files_disabled", "当前中心已禁用远程文件管理。")
+		return
 	}
 	if s.remoteDownloadJobs == nil || !s.remoteDownloadJobs.Available() {
 		fail(http.StatusServiceUnavailable, "remote_download_jobs_unavailable", "文件传输任务暂不可用")
@@ -46,9 +54,7 @@ func (s *Server) startCrossFileTransferJob(w http.ResponseWriter, r *http.Reques
 		execute: func(ctx context.Context, emit func(contract.FileTransferEvent) bool) contract.FileTransferEvent {
 			return s.executeCrossFileTransfer(ctx, input, hostID, kind, requestID, emit)
 		}}
-	if input.SourceNodeID != s.cluster.NodeID() || hostID != "" && hostID != cluster.LocalHostID {
-		task.accessLifetime = s.cluster.RemoteOperationLifetime("files")
-	}
+	task.accessLifetime = accessLifetime
 	go s.runFileRemoteDownloadJob(ctx, cancel, task)
 	s.writeJSON(w, http.StatusAccepted, job)
 }

@@ -2,6 +2,8 @@ package panel
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"sync"
@@ -16,7 +18,10 @@ func (s *Server) handleClusterRemoteAccess(w http.ResponseWriter, r *http.Reques
 		if _, _, ok := s.requireSession(w, r); !ok {
 			return
 		}
-		s.writeJSON(w, http.StatusOK, s.cluster.RemoteAccess())
+		s.writeJSON(w, http.StatusOK, struct {
+			cluster.RemoteAccess
+			PendingTerminalCleanup int `json:"pendingTerminalCleanup"`
+		}{s.cluster.RemoteAccess(), s.remoteTerminalCleanupPending()})
 		return
 	}
 	if r.Method != http.MethodPut {
@@ -116,6 +121,10 @@ func (s *Server) closeDisabledRemoteTerminals(parent context.Context) int {
 		}()
 	}
 	workers.Wait()
+	return s.remoteTerminalCleanupPending()
+}
+
+func (s *Server) remoteTerminalCleanupPending() int {
 	s.terminalMu.Lock()
 	defer s.terminalMu.Unlock()
 	pending := 0
@@ -139,4 +148,15 @@ func (s *Server) registerTerminalSession(item panelTerminalSession) bool {
 		_ = s.closeDisabledRemoteTerminals(context.Background())
 	}
 	return !denied
+}
+
+func (s *Server) rememberRemoteTerminalOpen(user, hostID string, opened cluster.TerminalOpenResponse) {
+	if opened.SessionID == "" || hostID == cluster.LocalHostID {
+		return
+	}
+	identity := sha256.Sum256([]byte(user + "\x00" + hostID + "\x00" + opened.SessionID))
+	item := panelTerminalSession{ID: hex.EncodeToString(identity[:]), UserID: user, HostID: hostID, BackendSessionID: opened.SessionID, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(), Retained: opened.Retained, CloseRequested: true}
+	s.terminalMu.Lock()
+	s.terminalSessions[item.ID] = item
+	s.terminalMu.Unlock()
 }

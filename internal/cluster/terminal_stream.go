@@ -476,18 +476,19 @@ type streamTerminalFallback interface {
 }
 
 type streamTerminal struct {
-	retained  bool
-	createdAt time.Time
-	sendMu    sync.Mutex
-	reliable  bool
-	hostID    string
-	sessionID string
-	buffer    *terminal.Buffer
-	dial      streamTerminalDialer
-	fallback  streamTerminalFallback
-	ctx       context.Context
-	cancel    context.CancelFunc
-	seq       atomic.Uint64
+	retained    bool
+	createdAt   time.Time
+	sendMu      sync.Mutex
+	reliable    bool
+	hostID      string
+	sessionID   string
+	buffer      *terminal.Buffer
+	dial        streamTerminalDialer
+	cleanupDial streamTerminalDialer
+	fallback    streamTerminalFallback
+	ctx         context.Context
+	cancel      context.CancelFunc
+	seq         atomic.Uint64
 
 	mu       sync.Mutex
 	conn     *fileStreamConn
@@ -548,6 +549,8 @@ func openStreamTerminal(ctx, parent context.Context, hostID string, dial streamT
 }
 
 func (t *streamTerminal) attach(conn *fileStreamConn) {
+	stop := context.AfterFunc(t.ctx, conn.close)
+	context.AfterFunc(conn.ctx, func() { stop() })
 	t.mu.Lock()
 	t.conn = conn
 	t.mu.Unlock()
@@ -629,7 +632,7 @@ func (t *streamTerminal) disconnected(conn *fileStreamConn) {
 	}
 	closing := t.closing
 	t.mu.Unlock()
-	if closing || t.ctx.Err() != nil || t.buffer.Finished() {
+	if closing || t.dial == nil || t.ctx.Err() != nil || t.buffer.Finished() {
 		return
 	}
 	t.buffer.Fail(errTerminalStreamDisconnected)
@@ -637,6 +640,9 @@ func (t *streamTerminal) disconnected(conn *fileStreamConn) {
 }
 
 func (t *streamTerminal) reconnect() {
+	if t.dial == nil {
+		return
+	}
 	window := terminalStreamReconnect
 	if t.fallback != nil && !t.reliable {
 		window = terminalStreamFallbackAfter
@@ -833,6 +839,35 @@ func (t *streamTerminal) resize(ctx context.Context, input TerminalResizeRequest
 // close confirms remote termination before releasing the local handle. A
 // failed confirmation keeps the handle so the caller may retry.
 func (t *streamTerminal) close(ctx context.Context, input TerminalCloseRequest) error {
+	if t.ctx.Err() != nil && t.cleanupDial != nil {
+		// Only attach-and-close is permitted outside the retired access epoch.
+		// No open/input/output or automatic reconnection uses this dialer.
+		protocol := ""
+		if t.reliable {
+			protocol = terminal.InputProtocol
+		}
+		conn, ready, err := t.cleanupDial(ctx, termAttach, terminalStreamAttach{SessionID: t.sessionID, Offset: t.buffer.Next(), InputProtocol: protocol})
+		if err != nil {
+			if errors.Is(err, terminal.ErrNotFound) || errors.Is(err, terminal.ErrClosed) {
+				t.shutdown()
+				return nil
+			}
+			return err
+		}
+		if ready.SessionID != t.sessionID || ready.InputProtocol != protocol {
+			conn.close()
+			return ErrAuthentication
+		}
+		parent, cancel := context.WithCancel(ctx)
+		cleanup := &streamTerminal{hostID: t.hostID, sessionID: t.sessionID, ctx: parent, cancel: cancel, buffer: terminal.NewBuffer(terminal.DefaultBufferBytes, ready.Offset), pending: make(map[uint64]chan string), lastUsed: time.Now()}
+		cleanup.attach(conn)
+		defer cleanup.shutdown()
+		if err := cleanup.close(ctx, input); err != nil {
+			return err
+		}
+		t.shutdown()
+		return nil
+	}
 	var err error
 	if t.isDegraded() {
 		err = t.fallback.Close(ctx, input)

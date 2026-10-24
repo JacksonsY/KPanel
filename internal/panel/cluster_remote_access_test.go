@@ -80,4 +80,25 @@ func TestRemoteAccessCleanupKeepsUnconfirmedRemoteSessionAndLocalSession(t *test
 	if !s.terminalSessions["remote"].CloseRequested || s.terminalSessions["local"].CloseRequested {
 		t.Fatal(s.terminalSessions)
 	}
+	read := authenticatedRequest(s, http.MethodGet, "/api/v1/cluster/remote-access", nil, session, csrf, nil)
+	if read.Code != 200 || !strings.Contains(read.Body.String(), `"pendingTerminalCleanup":1`) {
+		t.Fatal("reopening settings lost pending cleanup", read.Code, read.Body.String())
+	}
+}
+
+func TestRemoteAccessRemembersFailedOpenCleanupWithoutChangingLocalSessions(t *testing.T) {
+	s, _ := newTestServer(t)
+	opened := cluster.TerminalOpenResponse{SessionID: "known-backend"}
+	s.rememberRemoteTerminalOpen("owner", "remote", opened)
+	s.rememberRemoteTerminalOpen("owner", "remote", opened)
+	s.rememberRemoteTerminalOpen("owner", cluster.LocalHostID, opened)
+	s.rememberRemoteTerminalOpen("owner", "remote", cluster.TerminalOpenResponse{})
+	if len(s.terminalSessions) != 1 {
+		t.Fatal(s.terminalSessions)
+	}
+	for _, item := range s.terminalSessions {
+		if !item.CloseRequested || item.BackendSessionID != opened.SessionID || item.UserID != "owner" || item.HostID != "remote" {
+			t.Fatal(item)
+		}
+	}
 }

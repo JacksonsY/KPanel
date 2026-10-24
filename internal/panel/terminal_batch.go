@@ -35,6 +35,7 @@ func (d batchTerminalDriver) Open(ctx context.Context, user string, host termina
 		opened, err = s.cluster.TerminalOpen(ctx, host.ID, cluster.TerminalOpenRequest{Rows: 30, Columns: 120})
 	}
 	if err != nil {
+		s.rememberRemoteTerminalOpen(user, host.ID, opened)
 		return terminalbatch.Session{}, err
 	}
 	now := time.Now().UTC()
@@ -131,6 +132,7 @@ func (s *Server) handleTerminalBatch(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			hosts := make([]terminalbatch.Host, 0, len(input.HostIDs))
+			accessLifetime := s.cluster.RemoteOperationLifetime("terminal")
 			for _, id := range input.HostIDs {
 				host := cluster.Host{ID: cluster.LocalHostID, Name: "Local", IsLocal: true, TerminalAvailable: true, TerminalShell: "posix"}
 				if id != cluster.LocalHostID {
@@ -147,7 +149,7 @@ func (s *Server) handleTerminalBatch(w http.ResponseWriter, r *http.Request) {
 				}
 				target := terminalbatch.Host{ID: host.ID, Name: host.Name, Shell: shell}
 				if !host.IsLocal {
-					target.Context = s.cluster.RemoteOperationLifetime("terminal")
+					target.Context = accessLifetime
 				}
 				hosts = append(hosts, target)
 			}
