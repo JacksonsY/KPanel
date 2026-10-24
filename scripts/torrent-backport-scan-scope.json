@@ -11,12 +11,14 @@
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "f7c89d5e862888205deb3af9331784042142e11eaec2d3e420b349f750e8ff27",
-  "firstPartySourceSha256": "f1069d1fa8b965175b4d4d5851644a70df443289da0b3973b43d56cf716601db",
+  "closureSha256": "cc27861a46f7423cb36e7b180fae639640047d8c8f467c5faa62ea81b5a26494",
+  "firstPartySourceSha256": "0e399e6805e6383a879aeea1d224e93a50770f254053c53016db9cbfa18af9e6",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
+    "clusterSettingsQualificationSha256": "76e68bf9ba677aa25a7bb45d0869ed772eef49d6107f3200bc6367837dbe6c9a",
+    "clusterSettingsSummary": "Independent qualification at c0db3024036a4d209971ff9f0466cd76a55e4332 verified 1035 first-party Go files against exact Git objects and original evidence 87c2febf49042514a7b1d5658404e358a602576d2e5d57de5c4bcdf39445840d. Six-platform actual/original Go1.27.3 closures match; Linux production GoFiles add cluster remote_access.go, remote_access_hosts.go and panel cluster_remote_access.go. The 110 production modules/versions, selected graph, vendored source, four build targets, 37 finding dispositions and original observation/expiry remain unchanged. Only source and closure identities are rebound; this is not a scanner, L2 or release pass.",
     "state": "reviewed",
     "reviewerRole": "Independent stable release, source and dependency evidence reviewer",
     "evidenceSha256": "0d8d63d29777161eeb6c78af99a02ce877cec8a964b2af8b54d287230c299d83",
