@@ -126,11 +126,12 @@ func (m *Manager) readArchive(ctx context.Context, source *os.File, size int64, 
 			defer gz.Close()
 			reader = gz
 		}
-		if err := m.extractTAR(ctx, tar.NewReader(&contextReader{ctx: ctx, reader: reader}), target, budget, seen, times); err != nil {
+		bounded := &archiveStreamReader{ctx: ctx, reader: reader, budget: budget}
+		if err := m.extractTAR(ctx, tar.NewReader(bounded), target, budget, seen, times); err != nil {
 			return err
 		}
 		// Read trailers/checksums too, with a separate bounded allowance for padding.
-		n, err := io.Copy(io.Discard, io.LimitReader(&contextReader{ctx: ctx, reader: reader}, (1<<20)+1))
+		n, err := io.Copy(io.Discard, io.LimitReader(bounded, (1<<20)+1))
 		if err != nil || n > 1<<20 {
 			return ErrInvalidArchive
 		}

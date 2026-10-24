@@ -219,13 +219,14 @@ func (m *Manager) importDirectory(ctx context.Context, input contract.FileReceiv
 	budget := &copyBudget{maxEntries: m.maxCopyEntries, maxBytes: m.maxCopyBytes}
 	seen := make(map[string]struct{})
 	directoryTimes := make([]archiveDirectoryTime, 0)
-	reader := tar.NewReader(&contextReader{ctx: ctx, reader: content})
+	bounded := &archiveStreamReader{ctx: ctx, reader: content, budget: budget}
+	reader := tar.NewReader(bounded)
 	if err := extractor.extractTAR(ctx, reader, "/", budget, seen, &directoryTimes); err != nil {
 		return contract.FileEntry{}, err
 	}
 	// TAR end blocks are not the transport end marker. Drain the underlying
 	// stream so an encrypted/truncated transfer cannot be committed early.
-	if _, err := io.Copy(io.Discard, &contextReader{ctx: ctx, reader: content}); err != nil {
+	if _, err := io.Copy(io.Discard, bounded); err != nil {
 		return contract.FileEntry{}, err
 	}
 	if err := extractor.applyArchiveDirectoryTimes(directoryTimes); err != nil {

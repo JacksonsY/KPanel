@@ -845,6 +845,9 @@ func (m *Manager) extractTAR(
 			return nil
 		}
 		if err != nil {
+			if errors.Is(err, ErrTooLarge) || ctx.Err() != nil {
+				return err
+			}
 			return ErrInvalidArchive
 		}
 		if (header.Name == "." || header.Name == "./") && header.Typeflag == tar.TypeDir {

@@ -475,18 +475,6 @@ func (m *Manager) BeginReceive(ctx context.Context, input contract.FileReceiveIn
 			}
 		}
 	}()
-	if source != nil {
-		info, err := source.Stat()
-		if err != nil {
-			return contract.FileReceiveSession{}, err
-		}
-		if err := preserveFileOwnership(temp, info); err != nil {
-			return contract.FileReceiveSession{}, err
-		}
-		if err := preserveFileExtendedAttributes(temp, source); err != nil {
-			return contract.FileReceiveSession{}, err
-		}
-	}
 	if err := temp.Sync(); err != nil {
 		return contract.FileReceiveSession{}, err
 	}
@@ -954,7 +942,22 @@ func (m *Manager) CommitReceive(ctx context.Context, id, sourceKey string, size 
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return contract.FileReceiveSession{}, err
 		}
-		if err := file.Chmod(mode); err != nil {
+		if replace {
+			source, err := parent.Open(record.Input.Name)
+			if err != nil {
+				return contract.FileReceiveSession{}, err
+			}
+			opened, statErr := source.Stat()
+			if statErr != nil || resourceVersion(target, opened) != record.OriginalVersion {
+				source.Close()
+				return contract.FileReceiveSession{}, ErrConflict
+			}
+			err = applySourceAccess(file, source, false)
+			source.Close()
+			if err != nil {
+				return contract.FileReceiveSession{}, err
+			}
+		} else if err := file.Chmod(mode); err != nil {
 			return contract.FileReceiveSession{}, err
 		}
 		if record.Input.ModifiedAt != nil {

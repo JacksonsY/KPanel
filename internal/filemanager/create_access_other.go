@@ -2,12 +2,18 @@ package filemanager
 
 import "os"
 
-// POSIX creation already applies mode before a file is visible to other users.
-// Preserve the existing ownership/xattr handling and copy semantics there.
-func createFileWithSourceAccess(root *fileRoot, name string, flags int, mode os.FileMode, _ *os.File) (*os.File, error) {
+// Source-preserving operations start private; final metadata is applied only
+// after copying content. Ordinary copies inherit the destination policy.
+func createFileWithSourceAccess(root *fileRoot, name string, flags int, mode os.FileMode, source *os.File) (*os.File, error) {
+	if source != nil {
+		mode = 0600
+	}
 	return root.OpenFile(name, flags, mode)
 }
 
-func mkdirWithSourceAccess(root *fileRoot, name string, mode os.FileMode, _ *os.File) error {
+func mkdirWithSourceAccess(root *fileRoot, name string, mode os.FileMode, source *os.File) error {
+	if source != nil {
+		mode = 0700
+	}
 	return root.Mkdir(name, mode)
 }

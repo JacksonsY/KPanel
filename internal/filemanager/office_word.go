@@ -76,15 +76,21 @@ func (p *officePackage) word() ([]contract.OfficeSection, error) {
 							return nil, err
 						}
 						item.ID = id
+						var text strings.Builder
 						for i, para := range paras {
+							part := officeText(para.all(nsWord, "t"))
 							if i > 0 {
-								item.Text += "\n"
+								if err := p.displayText("\n"); err != nil {
+									return nil, err
+								}
+								text.WriteByte('\n')
 							}
-							item.Text += officeText(para.all(nsWord, "t"))
+							if err := p.displayText(part); err != nil {
+								return nil, err
+							}
+							text.WriteString(part)
 						}
-						if err := p.displayText(item.Text); err != nil {
-							return nil, err
-						}
+						item.Text = text.String()
 					}
 					cells = append(cells, item)
 				}

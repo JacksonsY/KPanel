@@ -348,15 +348,6 @@ func (m *Manager) WriteOffice(ctx context.Context, virtual string, input contrac
 			_ = m.rootFS.Remove(rootName(tempPath))
 		}
 	}()
-	if err := temp.Chmod(info.Mode().Perm()); err != nil {
-		return contract.FileEntry{}, err
-	}
-	if err := preserveFileOwnership(temp, info); err != nil {
-		return contract.FileEntry{}, err
-	}
-	if err := preserveFileExtendedAttributes(temp, source); err != nil {
-		return contract.FileEntry{}, err
-	}
 	w := zip.NewWriter(&officeLimitedWriter{writer: temp, remaining: MaxOfficeBytes})
 	if err := w.SetComment(p.zip.Comment); err != nil {
 		return contract.FileEntry{}, err
@@ -404,6 +395,9 @@ func (m *Manager) WriteOffice(ctx context.Context, virtual string, input contrac
 		return contract.FileEntry{}, err
 	}
 	if _, err = checked.document(officeKind(current.Name)); err != nil {
+		return contract.FileEntry{}, err
+	}
+	if err := applySourceAccess(temp, source, false); err != nil {
 		return contract.FileEntry{}, err
 	}
 	if err := temp.Sync(); err != nil {

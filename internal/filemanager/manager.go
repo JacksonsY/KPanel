@@ -460,16 +460,10 @@ func (m *Manager) WriteText(
 			_ = m.rootFS.Remove(rootName(tempVirtual))
 		}
 	}()
-	if err := temp.Chmod(info.Mode().Perm()); err != nil {
-		return contract.FileEntry{}, err
-	}
-	if err := preserveFileOwnership(temp, info); err != nil {
-		return contract.FileEntry{}, err
-	}
-	if err := preserveFileExtendedAttributes(temp, source); err != nil {
-		return contract.FileEntry{}, err
-	}
 	if _, err := io.WriteString(temp, input.Content); err != nil {
+		return contract.FileEntry{}, err
+	}
+	if err := applySourceAccess(temp, source, false); err != nil {
 		return contract.FileEntry{}, err
 	}
 	if err := temp.Sync(); err != nil {
@@ -1711,6 +1705,7 @@ func (reader *contextReader) Read(buffer []byte) (int, error) {
 type copyBudget struct {
 	entries        int
 	bytes          int64
+	archiveBytes   int64
 	maxEntries     int
 	maxBytes       int64
 	archiveObjects map[archiveObjectKey]struct{}
@@ -1724,7 +1719,7 @@ func (m *Manager) copyTree(
 	return m.copyTreeWithAccess(ctx, sourceVirtual, targetVirtual, budget, false)
 }
 
-// Cross-volume moves (including trash and restore) retain the existing DACL.
+// Cross-volume moves (including trash and restore) retain exact source access.
 // Ordinary copies intentionally keep the destination's inheritance policy.
 func (m *Manager) copyTreeWithAccess(
 	ctx context.Context,
@@ -1768,13 +1763,13 @@ func (m *Manager) copyTreeWithAccess(
 		if err != nil {
 			return err
 		}
-		if err := preserveFileOwnership(targetDirectory, info); err != nil {
-			targetDirectory.Close()
-			return err
+		if !preserveAccess {
+			if err := preserveFileOwnership(targetDirectory, info); err != nil {
+				targetDirectory.Close()
+				return err
+			}
 		}
-		if err := targetDirectory.Close(); err != nil {
-			return err
-		}
+		defer targetDirectory.Close()
 		for {
 			values, readErr := directory.ReadDir(256)
 			for _, value := range values {
@@ -1795,6 +1790,11 @@ func (m *Manager) copyTreeWithAccess(
 				return readErr
 			}
 			if err := ctx.Err(); err != nil {
+				return err
+			}
+		}
+		if preserveAccess {
+			if err := applySourceAccess(targetDirectory, directory, true); err != nil {
 				return err
 			}
 		}
@@ -1820,10 +1820,12 @@ func (m *Manager) copyTreeWithAccess(
 	if err != nil {
 		return err
 	}
-	if err := preserveFileOwnership(output, info); err != nil {
-		output.Close()
-		_ = m.rootFS.Remove(rootName(targetVirtual))
-		return err
+	if !preserveAccess {
+		if err := preserveFileOwnership(output, info); err != nil {
+			output.Close()
+			_ = m.rootFS.Remove(rootName(targetVirtual))
+			return err
+		}
 	}
 	success := false
 	defer func() {
@@ -1846,6 +1848,11 @@ func (m *Manager) copyTreeWithAccess(
 		return ErrTooLarge
 	} else if err != nil && !errors.Is(err, io.EOF) {
 		return err
+	}
+	if preserveAccess {
+		if err := applySourceAccess(output, input, true); err != nil {
+			return err
+		}
 	}
 	if err := output.Sync(); err != nil {
 		return err
