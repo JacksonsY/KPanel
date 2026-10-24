@@ -7,7 +7,7 @@ import (
 )
 
 func TestKnownLiteralsCoverCompleteStructuredRepresentations(t *testing.T) {
-	for _, key := range []string{`{"a":"opaque"}`, `["opaque"]`, `{ "a" : "opaque" }`, `{"a":"<opaque>"}`} {
+	for _, key := range []string{`{"a":"opaque"}`, `["opaque"]`, `{ "a" : "opaque" }`, `{"a":"<opaque>"}`, `{"a":"opaque","token_type":"x"}`, `[{"a":"opaque","password":"x"}]`} {
 		var parsed any
 		if err := json.Unmarshal([]byte(key), &parsed); err != nil {
 			t.Fatal(err)

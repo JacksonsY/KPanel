@@ -1,9 +1,11 @@
 package ai
 
 import (
+	"bytes"
 	"encoding"
 	"encoding/json"
 	"errors"
+	"io"
 	"math"
 	"reflect"
 	"strconv"
@@ -14,9 +16,11 @@ import (
 const (
 	maxProviderNativeBytes  = 1 << 20
 	maxProviderRequestBytes = 16 << 20
+	maxProviderJSONNodes    = 16384
 )
 
 var errProviderJSONBudget = errors.New("AI provider JSON exceeds the processing budget")
+var errProviderJSONInvalid = errors.New("invalid AI provider JSON data")
 
 // encoding/json buffers an entire value even when its writer is limited. Count
 // the supported protocol payload shapes before calling it, including HTML and
@@ -34,7 +38,7 @@ func checkProviderJSONBudget(value any, limit int) error {
 }
 
 func providerJSONSize(value any, limit int) (int, error) {
-	budget := jsonSizeBudget{remaining: limit, nodes: 262144}
+	budget := jsonSizeBudget{remaining: limit, nodes: maxProviderJSONNodes}
 	err := budget.value(reflect.ValueOf(value), 0)
 	return limit - budget.remaining, err
 }
@@ -102,6 +106,9 @@ func (b *jsonSizeBudget) value(v reflect.Value, depth int) error {
 			return b.charge(4)
 		}
 		if err := b.charge(len(raw)); err != nil {
+			return err
+		}
+		if err := preflightProviderRawJSON(raw, &b.nodes); err != nil {
 			return err
 		}
 		// RawMessage is compacted and HTML-escaped by encoding/json. Whitespace
@@ -244,6 +251,48 @@ func (b *jsonSizeBudget) value(v reflect.Value, depth int) error {
 		return errors.New("unsupported AI provider JSON value")
 	}
 	return nil
+}
+
+// Token iteration bounds object expansion before Unmarshal creates slices or
+// map trees. All raw fields in one request share this admission budget.
+func preflightProviderRawJSON(raw []byte, nodes *int) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	depth, roots := 0, 0
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			if depth == 0 && roots == 1 {
+				return nil
+			}
+			return errProviderJSONInvalid
+		}
+		if err != nil {
+			return errProviderJSONInvalid
+		}
+		*nodes--
+		if *nodes < 0 {
+			return errProviderJSONBudget
+		}
+		if delim, ok := token.(json.Delim); ok {
+			if delim == '{' || delim == '[' {
+				if depth == 0 {
+					roots++
+				}
+				depth++
+				if depth > 64 {
+					return errProviderJSONBudget
+				}
+			} else {
+				depth--
+			}
+		} else if depth == 0 {
+			roots++
+		}
+		if roots > 1 {
+			return errProviderJSONInvalid
+		}
+	}
 }
 
 func jsonEmpty(v reflect.Value) bool {

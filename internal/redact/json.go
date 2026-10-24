@@ -273,9 +273,32 @@ func secretNormalizedJSONKey(key string) bool {
 	return false
 }
 
-func (p *projection) jsonValue(value any, depth int) (any, error) {
+func (p *projection) jsonValue(value any, depth int) (projected any, err error) {
 	if depth > maxProjectionDepth {
 		return nil, errProjectionLimit
+	}
+	if err := p.prepareLiteralForms(); err != nil {
+		return nil, err
+	}
+	if len(p.literalForms) > 0 {
+		// Match identity before field heuristics alter the representation. Still
+		// visit its original leaves so private-block state and source provenance
+		// continue across adjacent records.
+		raw, err := p.marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		for _, literal := range p.literalForms {
+			if string(raw) == literal {
+				first := len(p.lines)
+				defer func() {
+					if err == nil {
+						projected = maskedValue{first, len(p.lines)}
+					}
+				}()
+				break
+			}
+		}
 	}
 	switch typed := value.(type) {
 	case map[string]any:

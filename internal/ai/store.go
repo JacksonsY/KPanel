@@ -513,6 +513,10 @@ func (s *Store) DeleteProviderAndCancelPending(ctx context.Context, id string) (
 }
 
 func (s *Store) SaveModels(ctx context.Context, providerID string, models []Model) error {
+	return s.saveModels(ctx, providerID, models, false)
+}
+
+func (s *Store) saveModels(ctx context.Context, providerID string, models []Model, discovery bool) error {
 	active, err := s.ProviderHasExecutingRun(ctx, providerID)
 	if err != nil {
 		return err
@@ -553,6 +557,18 @@ func (s *Store) SaveModels(ctx context.Context, providerID string, models []Mode
 		model.DisplayName = strings.TrimSpace(model.DisplayName)
 		if model.ModelID == "" || len(model.ModelID) > 256 || strings.IndexFunc(model.ModelID, unicode.IsControl) >= 0 {
 			return errors.New("model ID is invalid")
+		}
+		if discovery {
+			// Merge after acquiring the writer lock, not from the snapshot taken
+			// before network discovery. A concurrent administrator edit wins.
+			previous := Model{ModelID: model.ModelID, ProviderID: providerID, Vision: true}
+			err := tx.QueryRowContext(ctx, `SELECT id,display_name,context_window,tool_calling,reasoning,enabled,is_default FROM models WHERE provider_id=? AND model_id=?`, providerID, model.ModelID).Scan(&previous.ID, &previous.DisplayName, &previous.ContextWindow, &previous.ToolCalling, &previous.Reasoning, &previous.Enabled, &previous.IsDefault)
+			if err == nil {
+				previous.Reasoning = previous.Reasoning || model.Reasoning
+				model = previous
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
 		}
 		if !seen[model.ModelID] {
 			var existing int

@@ -63,8 +63,7 @@ func (s *Service) Close() error {
 }
 
 func (s *Service) SyncModels(ctx context.Context, providerID string) ([]Model, error) {
-	existing, err := s.Store.ListModels(ctx, providerID)
-	if err != nil {
+	if _, err := s.Store.ListModels(ctx, providerID); err != nil {
 		return nil, err
 	}
 	provider, err := s.Store.Provider(ctx, providerID)
@@ -87,25 +86,13 @@ func (s *Service) SyncModels(ctx context.Context, providerID string) ([]Model, e
 			return nil, errors.New("provider authentication credential in model metadata")
 		}
 	}
-	known := make(map[string]Model, len(existing))
-	for _, item := range existing {
-		known[item.ModelID] = item
-	}
 	for index := range items {
 		items[index].ModelID = strings.TrimSpace(items[index].ModelID)
 		items[index].ProviderID = provider.ID
 		items[index].Vision = true
-		if previous, ok := known[items[index].ModelID]; ok {
-			// Discovery refreshes capabilities without erasing administrator
-			// configuration or replacing the stable model identity.
-			items[index] = previous
-			items[index].Vision = true
-			items[index].Reasoning = previous.Reasoning || inferredReasoning(provider.Protocol, items[index].ModelID)
-		} else {
-			items[index].Reasoning = inferredReasoning(provider.Protocol, items[index].ModelID)
-		}
+		items[index].Reasoning = inferredReasoning(provider.Protocol, items[index].ModelID)
 	}
-	if err := s.Store.SaveModels(ctx, provider.ID, items); err != nil {
+	if err := s.Store.saveModels(ctx, provider.ID, items, true); err != nil {
 		return nil, err
 	}
 	return s.Store.ListModels(ctx, provider.ID)
@@ -336,7 +323,7 @@ func (s *Service) Propose(ctx context.Context, userID, runID string) error {
 	return runtime.Propose(ctx, run.ID)
 }
 
-func (s *Service) TestProvider(ctx context.Context, id string) error {
+func (s *Service) TestProvider(ctx context.Context, id string) (result error) {
 	provider, err := s.Store.Provider(ctx, id)
 	if err != nil {
 		return err
@@ -345,6 +332,7 @@ func (s *Service) TestProvider(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	defer func() { result = safeProviderTransportError(result, key) }()
 	if provider.Protocol != ProtocolAnthropic {
 		_, err = s.client.Models(ctx, provider, key)
 		return err

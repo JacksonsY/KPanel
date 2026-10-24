@@ -159,6 +159,18 @@ func chatMessageHasImage(message ChatMessage) bool {
 }
 
 func (c *HTTPModelClient) Stream(ctx context.Context, provider Provider, apiKey string, request CompletionRequest, emit func(CompletionEvent) error) error {
+	nodes := maxProviderJSONNodes
+	for _, message := range request.Messages {
+		for _, call := range message.ToolCalls {
+			for _, raw := range []json.RawMessage{call.Arguments, call.ProviderData} {
+				if len(raw) > 0 {
+					if err := preflightProviderRawJSON(raw, &nodes); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
 	emit = boundedCompletion(emit)
 	switch provider.Protocol {
 	case ProtocolOpenAICompatible:
@@ -810,6 +822,9 @@ func (e *providerTransportError) Temporary() bool {
 }
 
 func safeProviderTransportError(err error, apiKey string) error {
+	if err == nil {
+		return nil
+	}
 	safe := func(message string) string {
 		if apiKey != "" {
 			// Redirects may percent-encode even otherwise URL-safe key bytes.
@@ -819,9 +834,14 @@ func safeProviderTransportError(err error, apiKey string) error {
 			if decoded, err := url.QueryUnescape(message); err == nil && strings.Contains(decoded, apiKey) {
 				message = decoded
 			}
-			for _, form := range []string{apiKey, url.PathEscape(apiKey), url.QueryEscape(apiKey)} {
-				message = strings.ReplaceAll(message, form, "[REDACTED]")
+			for _, form := range []string{url.PathEscape(apiKey), url.QueryEscape(apiKey)} {
+				message = strings.ReplaceAll(message, form, credentialReplacement(apiKey))
 			}
+			projected, _, err := knownCredentialText(message, apiKey)
+			if err != nil {
+				return "AI provider error exceeds the credential projection budget"
+			}
+			message = projected
 		}
 		return redactAndLimit(message, 1000)
 	}
@@ -1740,7 +1760,15 @@ func scanSSE(reader io.Reader, handler func(event, data string) error) error {
 			event = ""
 			return nil
 		}
-		err := handler(event, strings.TrimSuffix(data.String(), "\n"))
+		payload := strings.TrimSuffix(data.String(), "\n")
+		trimmed := strings.TrimSpace(payload)
+		if strings.HasPrefix(trimmed, "{") || (strings.HasPrefix(trimmed, "[") && trimmed != "[DONE]") {
+			nodes := maxProviderJSONNodes
+			if err := preflightProviderRawJSON([]byte(payload), &nodes); err != nil {
+				return err
+			}
+		}
+		err := handler(event, payload)
 		event = ""
 		data.Reset()
 		return err
@@ -1830,7 +1858,12 @@ func providerHTTPError(status int, body []byte, credentials ...string) error {
 	}
 	for _, credential := range credentials {
 		if credential != "" {
-			message = strings.ReplaceAll(message, credential, "[REDACTED]")
+			projected, _, err := knownCredentialText(message, credential)
+			if err != nil {
+				message = "AI provider error exceeds the credential projection budget"
+				break
+			}
+			message = projected
 		}
 	}
 	if len(message) > 1000 {

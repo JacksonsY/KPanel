@@ -42,7 +42,15 @@ func credentialReplacement(key string) string {
 }
 
 func modelContainsCredential(model Model, key string) bool {
-	return key != "" && (strings.Contains(model.ID, key) || strings.Contains(model.ProviderID, key) || strings.Contains(model.ModelID, key) || strings.Contains(model.DisplayName, key))
+	if key == "" {
+		return false
+	}
+	for _, value := range []string{model.ID, model.ProviderID, model.ModelID, model.DisplayName} {
+		if _, found, err := knownCredentialText(value, key); found || err != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // credentialFilter retains only a possible prefix of the known authentication
