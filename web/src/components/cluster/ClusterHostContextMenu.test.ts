@@ -26,7 +26,7 @@ describe('clusterHostMenuGroups', () => {
     expect(actions(host())).toEqual([
       ['open-panel'],
       ['history', 'terminal', 'files'],
-      ['refresh', 'manage', 'remote-access', 'copy-address'],
+      ['refresh', 'manage', 'copy-address'],
       ['remove'],
     ])
   })
@@ -39,9 +39,9 @@ describe('clusterHostMenuGroups', () => {
 
   it('hides the panel entry for a light node and tools it cannot serve', () => {
     expect(actions(host({ kind: 'light_node', terminalAvailable: false, fileManagementAvailable: false }), '203.0.113.9'))
-      .toEqual([['history'], ['refresh', 'manage', 'remote-access', 'copy-address'], ['remove']])
+      .toEqual([['history'], ['refresh', 'manage', 'copy-address'], ['remove']])
     expect(actions(host({ kind: 'light_node', terminalAvailable: true, fileManagementAvailable: false }), ''))
-      .toEqual([['history', 'terminal'], ['refresh', 'manage', 'remote-access'], ['remove']])
+      .toEqual([['history', 'terminal'], ['refresh', 'manage'], ['remove']])
   })
 
   it('shows files only when the host explicitly reports file management', () => {
@@ -76,7 +76,7 @@ describe('ClusterHostContextMenu', () => {
     const wrapper = await openMenu()
     expect(menu()?.getAttribute('aria-label')).toContain('香港8+8')
     expect(menu()?.querySelector('.cluster-host-menu__title')?.textContent).toBe('香港8+8')
-    expect(items().map((item) => item.textContent?.trim())).toEqual(['打开面板', '历史监控', '终端', '文件', '刷新', '管理', '远程操作', '复制地址', '移除主机'])
+    expect(items().map((item) => item.textContent?.trim())).toEqual(['打开面板', '历史监控', '终端', '文件', '刷新', '管理', '复制地址', '移除主机'])
     expect(items().at(-1)?.classList.contains('k-context-menu__item--danger')).toBe(true)
     expect(menu()?.querySelectorAll('hr')).toHaveLength(3)
     wrapper.unmount()
