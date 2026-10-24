@@ -610,21 +610,36 @@ func (s *Server) aiRunEvents(w http.ResponseWriter, r *http.Request, session aut
 		s.writeProblem(w, r, 405, "method_not_allowed", "Method not allowed", "")
 		return
 	}
-	run, err := s.ai.Store.Run(r.Context(), session.User.ID, id)
+	var run ai.Run
+	var messages []ai.Message
+	var calls []ai.ToolCall
+	var streamingMessageID string
+	// A single hub cut covers durable reads and the public live prefix. These
+	// reads never publish to the hub; network writes happen only after unlock.
+	snapshotCtx, stopSnapshot := context.WithTimeout(r.Context(), 2*time.Second)
+	channel, unsubscribe, err := s.ai.Events.SnapshotSubscribe(id, func(live *ai.Message) error {
+		var err error
+		run, err = s.ai.Store.Run(snapshotCtx, session.User.ID, id)
+		if err != nil {
+			return err
+		}
+		page, err := s.ai.Store.ConversationMessageMetadataPage(snapshotCtx, run.SessionID, 50, "")
+		if err != nil {
+			return err
+		}
+		messages, streamingMessageID, err = ai.ProjectLiveMessage(run, page.Items, live)
+		if err != nil {
+			return err
+		}
+		calls, err = s.ai.Store.ToolCalls(snapshotCtx, id)
+		return err
+	})
+	stopSnapshot()
 	if err != nil {
 		s.aiJSON(w, r, nil, err, 0)
 		return
 	}
-	page, err := s.ai.Store.ConversationMessageMetadataPage(r.Context(), run.SessionID, 50, "")
-	if err != nil {
-		s.aiJSON(w, r, nil, err, 0)
-		return
-	}
-	calls, err := s.ai.Store.ToolCalls(r.Context(), id)
-	if err != nil {
-		s.aiJSON(w, r, nil, err, 0)
-		return
-	}
+	defer unsubscribe()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Accel-Buffering", "no")
@@ -656,11 +671,16 @@ func (s *Server) aiRunEvents(w http.ResponseWriter, r *http.Request, session aut
 		flusher.Flush()
 		return true
 	}
-	if !write("run.snapshot", map[string]any{"run": run, "toolCalls": calls, "messages": page.Items}) {
+	snapshot := map[string]any{"run": run, "toolCalls": calls, "messages": messages}
+	if streamingMessageID != "" {
+		snapshot["streamingMessageId"] = streamingMessageID
+	}
+	if !write("run.snapshot", snapshot) {
 		return
 	}
-	channel, unsubscribe := s.ai.Events.Subscribe(id)
-	defer unsubscribe()
+	if run.Status == ai.RunCompleted || run.Status == ai.RunFailed || run.Status == ai.RunCancelled || run.Status == ai.RunInterrupted {
+		return
+	}
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 	for {

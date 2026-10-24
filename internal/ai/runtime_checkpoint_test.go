@@ -120,6 +120,18 @@ func TestRuntimeCheckpointMeasurement(t *testing.T) {
 					}
 					drain()
 				}
+				if strings.HasPrefix(sample.name, "slow_exhausted") {
+					_, stop, err := hub.SnapshotSubscribe(run.ID, func(live *Message) error {
+						if live == nil || len(live.Content) != sample.size {
+							t.Errorf("exhausted checkpoint lost live prefix: %+v", live)
+						}
+						return nil
+					})
+					if err != nil {
+						return err
+					}
+					stop()
+				}
 				if sample.stop == "cancel" {
 					cancel()
 					return ctx.Err()

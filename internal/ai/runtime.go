@@ -56,45 +56,6 @@ type RunEvent struct {
 	At    time.Time `json:"at"`
 }
 
-type EventHub struct {
-	mu          sync.Mutex
-	subscribers map[string]map[chan RunEvent]struct{}
-}
-
-func NewEventHub() *EventHub {
-	return &EventHub{subscribers: make(map[string]map[chan RunEvent]struct{})}
-}
-
-func (h *EventHub) Subscribe(runID string) (<-chan RunEvent, func()) {
-	channel := make(chan RunEvent, 32)
-	h.mu.Lock()
-	if h.subscribers[runID] == nil {
-		h.subscribers[runID] = make(map[chan RunEvent]struct{})
-	}
-	h.subscribers[runID][channel] = struct{}{}
-	h.mu.Unlock()
-	return channel, func() {
-		h.mu.Lock()
-		if _, ok := h.subscribers[runID][channel]; ok {
-			delete(h.subscribers[runID], channel)
-			close(channel)
-		}
-		h.mu.Unlock()
-	}
-}
-
-func (h *EventHub) Publish(event RunEvent) {
-	event.At = time.Now().UTC()
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for channel := range h.subscribers[event.RunID] {
-		select {
-		case channel <- event:
-		default:
-		}
-	}
-}
-
 type NativeRuntime struct {
 	store     *Store
 	providers *ProviderService
@@ -134,9 +95,9 @@ func (r *NativeRuntime) Run(ctx context.Context, runID string) error {
 	case r.semaphore <- struct{}{}:
 		defer func() { <-r.semaphore }()
 	case <-ctx.Done():
-		return ctx.Err()
+		return r.cancelWaiting(ctx, runID)
 	}
-	return r.loop(ctx, runID, nil)
+	return r.runLoop(ctx, runID, nil)
 }
 
 func (r *NativeRuntime) Resume(ctx context.Context, runID string, decision Decision) error {
@@ -154,9 +115,9 @@ func (r *NativeRuntime) Resume(ctx context.Context, runID string, decision Decis
 	case r.semaphore <- struct{}{}:
 		defer func() { <-r.semaphore }()
 	case <-ctx.Done():
-		return ctx.Err()
+		return r.cancelWaiting(ctx, runID)
 	}
-	return r.loop(ctx, runID, &decision)
+	return r.runLoop(ctx, runID, &decision)
 }
 
 func (r *NativeRuntime) Cancel(ctx context.Context, runID string) error {
@@ -165,6 +126,9 @@ func (r *NativeRuntime) Cancel(ctx context.Context, runID string) error {
 	r.mu.Unlock()
 	if cancel != nil {
 		cancel()
+		// The owner flushes accepted text before publishing its terminal state.
+		// Publishing here would erase live text before that bounded flush.
+		return nil
 	}
 	run, err := r.store.RunByID(ctx, runID)
 	if err != nil {
@@ -181,7 +145,40 @@ func (r *NativeRuntime) Cancel(ctx context.Context, runID string) error {
 	return nil
 }
 
+func (r *NativeRuntime) cancelWaiting(ctx context.Context, runID string) error {
+	statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	run, err := r.store.RunByID(statusCtx, runID)
+	if err != nil {
+		r.events.invalidateSnapshots()
+		return errors.Join(ctx.Err(), err)
+	}
+	return r.cancelled(ctx, run)
+}
+
+func (r *NativeRuntime) runLoop(ctx context.Context, runID string, decision *Decision) error {
+	err := r.loop(ctx, runID, decision)
+	if ctx.Err() == nil || r.events.snapshotsUnavailable() {
+		return err
+	}
+	// Cancellation can also interrupt the initial read or a tool-state read,
+	// outside the model-stream cleanup path. The owning worker still supplies
+	// the terminal state; a failed final flush already persisted RunFailed.
+	statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	run, readErr := r.store.RunByID(statusCtx, runID)
+	if readErr != nil {
+		r.events.invalidateSnapshots()
+		return errors.Join(err, readErr)
+	}
+	if terminalRun(run.Status) {
+		return err
+	}
+	return errors.Join(err, r.cancelled(ctx, run))
+}
+
 func (r *NativeRuntime) loop(ctx context.Context, runID string, decision *Decision) error {
+	defer r.events.clearLive(runID)
 	run, err := r.store.RunByID(ctx, runID)
 	if err != nil {
 		return err
@@ -265,13 +262,18 @@ func (r *NativeRuntime) loop(ctx context.Context, runID string, decision *Decisi
 		request := CompletionRequest{Model: model.ModelID, System: system, Messages: messages, Tools: r.tools.Definitions(), ThinkingLevel: run.ThinkingLevel, NativeReasoning: model.Reasoning}
 		var content strings.Builder
 		draftID := newID("msg")
+		draft := Message{ID: draftID, SessionID: run.SessionID, RunID: run.ID, Role: RoleAssistant, ProviderID: run.ProviderID, ProviderName: run.ProviderName, ModelID: run.ModelID, ModelName: run.ModelName, CreatedAt: time.Now().UTC()}
+		if err := r.events.beginMessage(draft); err != nil {
+			return r.fail(ctx, run, "live_message_unavailable", err)
+		}
 		checkpoints := draftCheckpoints{last: time.Now()}
 		var stored Message
 		persist := func(ctx context.Context) error {
 			if stored.ID != "" && len(stored.Content) == content.Len() {
 				return nil
 			}
-			message, err := r.store.AddMessage(ctx, Message{ID: draftID, SessionID: run.SessionID, RunID: run.ID, Role: RoleAssistant, Content: content.String(), ProviderID: run.ProviderID, ProviderName: run.ProviderName, ModelID: run.ModelID, ModelName: run.ModelName, CreatedAt: stored.CreatedAt})
+			draft.Content = content.String()
+			message, err := r.store.AddMessage(ctx, draft)
 			if err == nil {
 				stored = message
 			}
@@ -289,7 +291,9 @@ func (r *NativeRuntime) loop(ctx context.Context, runID string, decision *Decisi
 				}
 				emitted = true
 				content.WriteString(event.Delta)
-				r.events.Publish(RunEvent{Type: "message.delta", RunID: run.ID, Data: map[string]string{"delta": event.Delta}})
+				if err := r.events.publishDelta(run.ID, draftID, content.String(), event.Delta); err != nil {
+					return err
+				}
 				if checkpoints.admit(content.Len(), time.Now()) {
 					if checkpointErr = persist(ctx); checkpointErr != nil {
 						return checkpointErr
@@ -314,7 +318,9 @@ func (r *NativeRuntime) loop(ctx context.Context, runID string, decision *Decisi
 		if err == nil && ctx.Err() == nil && content.Len() == 0 && len(calls) > 0 {
 			progress := visibleToolProgress(calls)
 			content.WriteString(progress)
-			r.events.Publish(RunEvent{Type: "message.delta", RunID: run.ID, Data: map[string]string{"delta": progress}})
+			if liveErr := r.events.publishDelta(run.ID, draftID, content.String(), progress); liveErr != nil {
+				return r.fail(ctx, run, "live_message_unavailable", liveErr)
+			}
 		}
 		if content.Len() > 0 {
 			// Preserve accepted public output on cancellation/failure too. Cleanup
@@ -337,6 +343,8 @@ func (r *NativeRuntime) loop(ctx context.Context, runID string, decision *Decisi
 		run.Usage.OutputTokens += usage.OutputTokens
 		if content.Len() > 0 {
 			r.events.Publish(RunEvent{Type: "message.completed", RunID: run.ID, Data: stored})
+		} else {
+			r.events.clearLive(run.ID)
 		}
 		if len(calls) == 0 {
 			completed, err := r.store.CompleteRunIfUserMessageCount(ctx, run, userMessageCount)
@@ -676,11 +684,16 @@ func (r *NativeRuntime) fail(ctx context.Context, run Run, code string, cause er
 	run.Status, run.ErrorCode, run.ErrorMessage = RunFailed, code, redactAndLimit(cause.Error(), 1000)
 	statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
+	statusUnavailable := false
 	if err := r.store.UpdateRun(statusCtx, run); err != nil {
 		cause = errors.Join(cause, fmt.Errorf("persist failed AI run: %w", err))
 		run.ErrorMessage = PublicError(cause)
+		statusUnavailable = true
 	}
 	r.events.Publish(RunEvent{Type: "run.failed", RunID: run.ID, Data: run})
+	if statusUnavailable {
+		r.events.invalidateSnapshots()
+	}
 	return cause
 }
 

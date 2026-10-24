@@ -40,7 +40,7 @@ class MockEventSource {
   constructor(url: string) { MockEventSource.urls.push(url);MockEventSource.instances.push(this) }
   addEventListener(name:string,handler:(event:{data:string})=>void) { this.listeners.set(name,[...(this.listeners.get(name)||[]),handler]) }
   emit(name:string,value:unknown){for(const handler of this.listeners.get(name)||[])handler({data:JSON.stringify(value)})}
-  close() {}
+  close = vi.fn()
 }
 
 beforeEach(() => {
@@ -87,6 +87,61 @@ function makeRouter(path='/ai/s/s1') {
 }
 
 describe('AI workspace reconnect', () => {
+  it('replaces an old animation queue with the reconnect prefix and completes each step once', async () => {
+    const frames = new Map<number, FrameRequestCallback>()
+    let nextFrame = 0
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame })
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id) })
+    const animate = () => { for(let i=0;frames.size&&i<100;i++){ const [id,callback]=frames.entries().next().value!;frames.delete(id);callback(0) } }
+    const router = await makeRouter()
+    const wrapper = mount(AiView, { global: { plugins: [router] } })
+    await flushPromises()
+    const stream = MockEventSource.instances[0]!
+    const run = { id:'run-active',sessionId:'s1',providerId:'p1',modelId:'m1',status:'running' }
+    const draft = { id:'draft',sessionId:'s1',runId:run.id,role:'assistant',content:'complete live prefix',createdAt:'' }
+    stream.emit('run.snapshot', {run,toolCalls:[],messages:[]})
+    stream.emit('message.delta', {delta:'obsolete queued tail'})
+    expect(frames.size).toBe(1)
+    stream.onerror?.();stream.onopen?.()
+    stream.emit('run.snapshot', {run,toolCalls:[],messages:[draft],streamingMessageId:draft.id})
+    expect(frames.size).toBe(0)
+    await flushPromises()
+    expect(wrapper.get('.ai-assistant-output--streaming').text()).toBe(draft.content)
+    expect(wrapper.find('[data-message-id="draft"]').exists()).toBe(false)
+    stream.emit('message.delta', {delta:' + tail'})
+    animate();await flushPromises()
+    expect(wrapper.get('.ai-assistant-output--streaming').text()).toBe(draft.content+' + tail')
+    // Completion arrives while a further animation frame is queued. The full
+    // committed message replaces it before another step can append deltas.
+    stream.emit('message.delta', {delta:' pending'})
+    stream.emit('message.completed', {...draft,content:draft.content+' + tail pending'})
+    stream.emit('message.delta', {delta:'next step'})
+    stream.emit('message.completed', {...draft,id:'next',content:'next step'})
+    animate();await flushPromises()
+    expect(wrapper.findAll('[data-message-id="draft"]')).toHaveLength(1)
+    expect(wrapper.get('[data-message-id="draft"]').text()).toContain('complete live prefix + tail pending')
+    expect(wrapper.findAll('[data-message-id="next"]')).toHaveLength(1)
+    expect(wrapper.find('.ai-assistant-output--streaming').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('obsolete queued tail')
+    wrapper.unmount()
+  })
+
+  it.each(['completed','failed','cancelled','interrupted'])('closes a reconnect snapshot in %s state and clears old live text', async status => {
+    const router=await makeRouter();const wrapper=mount(AiView,{global:{plugins:[router]}});await flushPromises()
+    const stream=MockEventSource.instances[0]!
+    stream.emit('message.delta',{delta:'stale text'})
+    stream.emit('run.snapshot',{
+      run:{id:'run-active',sessionId:'s1',status},toolCalls:[],
+      messages:[{id:'durable',sessionId:'s1',runId:'run-active',role:'assistant',content:'durable prefix',createdAt:''}],
+    })
+    await flushPromises()
+    expect(stream.close).toHaveBeenCalledOnce()
+    expect(wrapper.get('[data-message-id="durable"]').text()).toContain('durable prefix')
+    expect(wrapper.text()).not.toContain('stale text')
+    expect(wrapper.find('.ai-assistant-output--streaming').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('explains file sharing and shows the pending approval details', async () => {
     const router=await makeRouter();const wrapper=mount(AiView,{global:{plugins:[router]}});await flushPromises()
     MockEventSource.instances[0]?.emit('approval.required',{
