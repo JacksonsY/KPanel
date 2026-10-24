@@ -12,12 +12,13 @@ import (
 const privateKeyReplacement = "[REDACTED PRIVATE KEY]"
 
 var (
+	mysqlCommand                = regexp.MustCompile(`(?i:\b(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)\b)[^\r\n]*`)
 	jsonSecretAssignment        = regexp.MustCompile(`(?i)("(?:[^"\\]|\\.)*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)(?:[^"\\]|\\.)*"\s*:\s*)("(?:\\.|[^"\\])*"|[^,\s}\]]+)`)
 	secretLineAssignment        = regexp.MustCompile(`(?i)^([ \t]*(?:-[ \t]+)*(?:export[ \t]+)?["']?[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*["']?[ \t]*[:=][ \t]*)[^\r\n]*$`)
 	secretAssignment            = regexp.MustCompile(`(?i)(^|[^?&%A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*)(\s*[:=]\s*)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|\\$|[^\s'"\\])+)`)
 	secretFlag                  = regexp.MustCompile(`(?i)(--?[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*\s+)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|\\$|[^\s'"\\])+)`)
-	mysqlPasswordAttachedOption = regexp.MustCompile(`(?i:(\b(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)\b))([^\r\n]*?\s-p)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|[^\s;&|'"\\])+)`)
-	mysqlPasswordSpacedOption   = regexp.MustCompile(`(?i:(\b(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)\b))([^\r\n]*?\s-p)(\s+)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|[^\s;&|'"\\-])(?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|[^\s;&|'"\\])*)`)
+	mysqlPasswordAttachedOption = regexp.MustCompile(`(\s-p)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|[^\s;&|'"\\])+)`)
+	mysqlPasswordSpacedOption   = regexp.MustCompile(`(\s-p)(\s+)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|[^\s;&|'"\\-])(?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|[^\s;&|'"\\])*)`)
 	authorizationHeader         = regexp.MustCompile(`(?i)\b(authorization|proxy-authorization)(\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\r\n]+)`)
 	authorizationFlag           = regexp.MustCompile(`(?i)(--?(?:proxy-)?authorization\s+)("(?:\\.|[^"\\])*"|'[^']*'|[^\r\n]+)`)
 	cookieHeader                = regexp.MustCompile(`(?i)\b(cookie|set-cookie)(\s*:\s*)[^\r\n]+`)
@@ -124,7 +125,9 @@ func redactRecords(values []string, literals ...string) ([]string, []bool) {
 		}
 		nodes = append(nodes, node)
 	}
-	p.redact()
+	if err := p.redact(); err != nil {
+		return failClosed(err)
+	}
 	result := make([]string, len(values))
 	suppressed := make([]bool, len(values))
 	for i, node := range nodes {
@@ -159,53 +162,11 @@ type configurationContinuation struct {
 	implicit   bool
 	layer      int
 	shell      bool
-	joined     bool
-	word       bool
+	lex        shellLexicalState
 }
 
 func (c configurationContinuation) active() bool {
-	return c.quote != 0 || c.block || c.joined
-}
-
-// Shell joins an odd terminal backslash to the next physical line. Quote and
-// word state must survive the join: backslashes in single quotes are literal,
-// and an unquoted # starts a comment only at a word boundary. This is lexical
-// display state, never shell execution or substitution evaluation.
-func shellLineState(value string, quote byte, word bool) (byte, bool, bool) {
-	for i := 0; i < len(value); i++ {
-		b := value[i]
-		if quote == '\'' {
-			if b == '\'' {
-				quote = 0
-			}
-			continue
-		}
-		if b == '\\' {
-			if i+1 == len(value) {
-				return quote, true, word
-			}
-			i++
-			word = true
-			continue
-		}
-		if quote == '"' {
-			if b == '"' {
-				quote = 0
-			}
-			continue
-		}
-		if b == '#' && !word {
-			return 0, false, false
-		}
-		if b == '\'' || b == '"' {
-			quote, word = b, true
-		} else if b == ' ' || b == '\t' || strings.ContainsRune(";|&()", rune(b)) {
-			word = false
-		} else {
-			word = true
-		}
-	}
-	return quote, false, word
+	return c.quote != 0 || c.block || c.shell && c.lex.active()
 }
 
 func hasClosingConfigQuote(value string, quote byte, yamlSingle bool) bool {
@@ -225,7 +186,7 @@ func hasClosingConfigQuote(value string, quote byte, yamlSingle bool) bool {
 
 func (c *configurationContinuation) suppress(value string, indent int) bool {
 	if c.shell && c.active() {
-		c.quote, c.joined, c.word = shellLineState(value, c.quote, c.word)
+		c.lex.observe(value)
 		return true
 	}
 	if c.quote != 0 {
@@ -254,9 +215,10 @@ func (c *configurationContinuation) begin(value string, indent int, inlineSensit
 	match := secretLineAssignment.FindStringSubmatchIndex(value)
 	if len(match) < 4 {
 		if inlineSensitive {
-			quote, joined, word := shellLineState(value, 0, false)
-			if joined || quote != 0 {
-				*c = configurationContinuation{quote: quote, joined: joined, word: word, shell: true, layer: c.layer}
+			var lex shellLexicalState
+			lex.observe(value)
+			if lex.active() {
+				*c = configurationContinuation{lex: lex, shell: true, layer: c.layer}
 			}
 		}
 		return
@@ -267,7 +229,8 @@ func (c *configurationContinuation) begin(value string, indent int, inlineSensit
 		// Keep whitespace after '=': it determines whether a following # is
 		// part of the assignment word or starts an ordinary shell comment.
 		separator := strings.LastIndexByte(value[:match[3]], '=')
-		c.quote, c.joined, c.word = shellLineState(value[separator+1:], 0, true)
+		c.lex.frames = []shellFrame{{word: true}}
+		c.lex.observe(value[separator+1:])
 		c.shell = true
 		return
 	}
@@ -335,7 +298,7 @@ func (c *privateContinuation) observe(index int, firstIsEnd, lastIsBegin, hasMar
 	}
 }
 
-func redactConfigurations(sources []lexicalSource, parents []int, privateHidden, inlineSensitive []bool) []bool {
+func redactConfigurations(sources []lexicalSource, parents []int, privateHidden, inlineSensitive []bool, logical map[int]string, logicalHidden []bool) []bool {
 	configurations := make(map[int]configurationContinuation)
 	hidden := make([]bool, len(sources))
 	for index, source := range sources {
@@ -362,8 +325,14 @@ func redactConfigurations(sources []lexicalSource, parents []int, privateHidden,
 			// deeper decoded quote to terminate its original source layer.
 			hidden[index] = true
 		}
-		if !hidden[index] && source.leaf && !privateHidden[index] {
-			configuration.begin(source.value, source.indent, inlineSensitive[index])
+		priorHidden := hidden[index]
+		hidden[index] = hidden[index] || logicalHidden[index]
+		if !priorHidden && source.leaf && !privateHidden[index] {
+			value := source.value
+			if joined, ok := logical[index]; ok {
+				value = joined
+			}
+			configuration.begin(value, source.indent, inlineSensitive[index] || logicalHidden[index])
 			configuration.layer = source.layer
 		}
 		if configuration.active() {
@@ -376,7 +345,7 @@ func redactConfigurations(sources []lexicalSource, parents []int, privateHidden,
 	return hidden
 }
 
-func redactPhysicalLines(values []semanticLine, parents []int, sources []lexicalSource) ([]string, []bool) {
+func redactPhysicalLines(values []semanticLine, parents []int, sources []lexicalSource, logical map[int]string, logicalHidden []bool) ([]string, []bool) {
 	result := make([]string, len(values))
 	suppressed := make([]bool, len(values))
 	privateHidden := make([]bool, len(sources))
@@ -385,7 +354,7 @@ func redactPhysicalLines(values []semanticLine, parents []int, sources []lexical
 	var chronological privateContinuation
 	for index, line := range values {
 		value := line.value
-		result[index] = redactLine(value)
+		result[index] = redactLine(line.identity)
 		inlineSensitive[line.source] = result[index] != value
 		firstIsEnd, lastIsBegin, hasMarker := privateKeyMarkerOrder(value)
 		chronological.observe(index, firstIsEnd, lastIsBegin, hasMarker, result, suppressed)
@@ -406,7 +375,7 @@ func redactPhysicalLines(values []semanticLine, parents []int, sources []lexical
 	for index, line := range values {
 		privateHidden[line.source] = suppressed[index]
 	}
-	configurationHidden := redactConfigurations(sources, parents, privateHidden, inlineSensitive)
+	configurationHidden := redactConfigurations(sources, parents, privateHidden, inlineSensitive, logical, logicalHidden)
 	for index, line := range values {
 		suppressed[index] = suppressed[index] || configurationHidden[line.source]
 	}
@@ -443,8 +412,10 @@ func redactLine(value string) string {
 	// spaces; shell-token matching alone would expose the rest of the value.
 	value = secretLineAssignment.ReplaceAllString(value, "${1}[REDACTED]")
 	value = jsonSecretAssignment.ReplaceAllString(value, `${1}"[REDACTED]"`)
-	value = mysqlPasswordAttachedOption.ReplaceAllString(value, "${1}${2}[REDACTED]")
-	value = mysqlPasswordSpacedOption.ReplaceAllString(value, "${1}${2}${3}[REDACTED]")
+	value = mysqlCommand.ReplaceAllStringFunc(value, func(command string) string {
+		command = mysqlPasswordAttachedOption.ReplaceAllString(command, "${1}[REDACTED]")
+		return mysqlPasswordSpacedOption.ReplaceAllString(command, "${1}${2}[REDACTED]")
+	})
 	value = secretAssignment.ReplaceAllString(value, "${1}${2}${3}[REDACTED]")
 	value = secretFlag.ReplaceAllString(value, "${1}[REDACTED]")
 	value = bearerSecret.ReplaceAllString(value, "Bearer [REDACTED]")

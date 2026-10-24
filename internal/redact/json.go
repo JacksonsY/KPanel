@@ -57,7 +57,9 @@ func JSON(raw []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.redact()
+	if err := p.redact(); err != nil {
+		return nil, err
+	}
 	safe, _, err := p.render(value)
 	if err != nil {
 		return nil, err
@@ -72,6 +74,7 @@ type projection struct {
 	literals          []string
 	literalForms      []string
 	literalFormsReady bool
+	keyDepth          int
 	budget            projectionBudget
 	lines             []semanticLine
 	channel           int
@@ -86,10 +89,11 @@ type projection struct {
 }
 
 type semanticLine struct {
-	value   string
-	channel int
-	indent  int
-	source  int
+	value    string
+	identity string
+	channel  int
+	indent   int
+	source   int
 }
 
 // A source is the lexical text at one representation layer, before decoding a
@@ -136,6 +140,14 @@ func (p *projection) prepareLiteralForms() error {
 		return nil
 	}
 	p.literalFormsReady = true
+	normalized := make([]string, 0, len(p.literals))
+	for _, literal := range p.literals {
+		if err := p.budget.consume(len(literal), 1); err != nil {
+			return err
+		}
+		normalized = append(normalized, normalizeRecordValue(literal))
+	}
+	p.literals = normalized
 	for _, literal := range p.literals {
 		if !looksLikeJSON(strings.TrimSpace(literal)) {
 			continue
@@ -150,7 +162,11 @@ func (p *projection) prepareLiteralForms() error {
 		if err != nil {
 			continue
 		}
-		raw, err := p.marshal(value)
+		identity, err := p.identityJSON(value, 0)
+		if err != nil {
+			return err
+		}
+		raw, err := p.marshal(identity)
 		if err != nil {
 			return err
 		}
@@ -284,7 +300,11 @@ func (p *projection) jsonValue(value any, depth int) (projected any, err error) 
 		// Match identity before field heuristics alter the representation. Still
 		// visit its original leaves so private-block state and source provenance
 		// continue across adjacent records.
-		raw, err := p.marshal(value)
+		identity, err := p.identityJSON(value, depth)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := p.marshal(identity)
 		if err != nil {
 			return nil, err
 		}
@@ -492,6 +512,9 @@ func (p *projection) unstructuredText(value string, depth int, invalidJSON bool)
 			return nil, errInvalidJSON
 		}
 	}
+	if fragments, found, err := p.embeddedText(value, depth); found || err != nil {
+		return fragments, err
+	}
 	return p.leaf(value)
 }
 
@@ -503,17 +526,25 @@ func (p *projection) leaf(value string) (any, error) {
 	indent := p.indent + len(value) - len(strings.TrimLeft(value, " \t"))
 	source := len(p.sources)
 	p.sources = append(p.sources, lexicalSource{value: value, channel: p.channel, layer: p.layer, indent: indent, parent: p.source, leaf: true})
-	p.lines = append(p.lines, semanticLine{value, p.channel, indent, source})
+	p.lines = append(p.lines, semanticLine{value, value, p.channel, indent, source})
 	return textLeaf(first), nil
 }
 
-func (p *projection) redact() {
+func (p *projection) redact() error {
+	if err := p.projectIdentities(); err != nil {
+		return err
+	}
+	logical, logicalHidden, err := p.logicalRecords()
+	if err != nil {
+		return err
+	}
 	for _, source := range p.sources {
 		if source.parent >= 0 && p.sources[source.parent].channel == source.channel {
 			p.sources[source.parent].child = true
 		}
 	}
-	p.safe, p.suppressed = redactPhysicalLines(p.lines, p.parents, p.sources)
+	p.safe, p.suppressed = redactPhysicalLines(p.lines, p.parents, p.sources, logical, logicalHidden)
+	return nil
 }
 
 func (p *projection) marshal(value any) ([]byte, error) {
@@ -596,30 +627,6 @@ func (p *projection) reserveJSON(value any) error {
 	return nil
 }
 
-// Exact service credentials are additional policy inputs, applied after the
-// common decode/state machine so they cannot hide PEM/configuration markers.
-// Charge replacement work before allocation, including short-key expansion.
-func (p *projection) knownLiteral(value string) (string, error) {
-	for _, secret := range p.literals {
-		if secret == "" {
-			continue
-		}
-		if err := p.budget.consume(len(value), 0); err != nil {
-			return "", err
-		}
-		count := strings.Count(value, secret)
-		if count == 0 {
-			continue
-		}
-		size := len(value) + count*(len("[REDACTED]")-len(secret))
-		if err := p.budget.consume(size, 0); err != nil {
-			return "", err
-		}
-		value = strings.ReplaceAll(value, secret, "[REDACTED]")
-	}
-	return value, nil
-}
-
 // render preserves JSON value types, array positions, encoded-string layers,
 // and record positions. Suppressed JSON leaves get a placeholder; Lines can
 // still drop a record whose entire semantic text was suppressed.
@@ -636,21 +643,14 @@ func (p *projection) render(value any) (any, bool, error) {
 		if p.suppressed[index] {
 			return "[REDACTED]", true, nil
 		}
-		safe, err := p.knownLiteral(p.safe[index])
-		return safe, false, err
+		return p.safe[index], false, nil
 	case scalarLeaf:
 		if p.suppressed[typed.line] {
 			return "[REDACTED]", true, nil
 		}
-		safe, err := p.knownLiteral(p.safe[typed.line])
-		if err != nil {
-			return nil, false, err
-		}
-		if p.safe[typed.line] != p.lines[typed.line].value {
-			return safe, true, nil
-		}
-		if safe != p.safe[typed.line] {
-			return safe, false, nil
+		safe := p.safe[typed.line]
+		if safe != p.lines[typed.line].value {
+			return safe, p.lines[typed.line].identity == p.lines[typed.line].value, nil
 		}
 		return typed.value, false, nil
 	case encodedJSON:
@@ -665,17 +665,7 @@ func (p *projection) render(value any) (any, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		if err := p.prepareLiteralForms(); err != nil {
-			return nil, false, err
-		}
 		text := string(raw)
-		for _, literal := range p.literalForms {
-			if literal != "" && strings.Contains(text, literal) {
-				// Keep this encoded representation valid JSON; unlike an
-				// entirely private record, a literal replacement is visible.
-				return `"[REDACTED]"`, false, nil
-			}
-		}
 		return text, suppressed, nil
 	case textSequence:
 		parts := make([]string, 0, len(typed.values))
@@ -688,11 +678,24 @@ func (p *projection) render(value any) (any, bool, error) {
 				parts = append(parts, safe.(string))
 			}
 		}
-		// Apply exact literals again after physical lines are reassembled. This
-		// follows shared secret-state handling, so matching a multiline literal
-		// cannot hide an opening PEM marker before its remaining body is masked.
-		safe, err := p.knownLiteral(strings.Join(parts, "\n"))
-		return safe, len(parts) == 0, err
+		return strings.Join(parts, "\n"), len(parts) == 0, nil
+	case fragmentSequence:
+		if p.sources[typed.source].hidden {
+			return "[REDACTED]", true, nil
+		}
+		var out strings.Builder
+		visible := false
+		for _, item := range typed.values {
+			safe, hidden, err := p.render(item)
+			if err != nil {
+				return nil, false, err
+			}
+			if !hidden {
+				visible = true
+				out.WriteString(safe.(string))
+			}
+		}
+		return out.String(), !visible, nil
 	case map[string]any:
 		suppressed := len(typed) > 0
 		result := make(map[string]any, len(typed))
@@ -701,7 +704,7 @@ func (p *projection) render(value any) (any, bool, error) {
 			if err != nil {
 				return nil, false, err
 			}
-			name, err := p.knownLiteral(key)
+			name, err := p.keyText(key)
 			if err != nil {
 				return nil, false, err
 			}
