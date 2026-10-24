@@ -143,6 +143,8 @@ func (s *Server) handleCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/v1/cluster/remote-access":
+		s.handleClusterRemoteAccess(w, r)
 	case r.URL.Path == "/api/v1/cluster/hosts" && r.Method == http.MethodGet:
 		if _, _, ok := s.requireSession(w, r); !ok {
 			return

@@ -224,6 +224,14 @@ export interface ClusterHostSnapshot {
   transmitBytesPerSecond: number
 }
 
+export interface ClusterRemoteAccess {
+  terminalEnabled: boolean
+  filesEnabled: boolean
+  available: boolean
+  resourceVersion: string
+  pendingTerminalCleanup?: number
+}
+
 export interface ClusterHost {
 	platform?: 'linux' | 'unknown'
 	terminalShell?: 'posix'
@@ -240,6 +248,8 @@ export interface ClusterHost {
   federationProtocol: string
   scope: string
   terminalAvailable: boolean
+  remoteTerminalDisabled?: boolean
+  remoteFilesDisabled?: boolean
   fileManagementAvailable?: boolean
   fileTransferAvailable?: boolean
   mutualFileTransferAvailable: boolean

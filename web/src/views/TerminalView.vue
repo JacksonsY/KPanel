@@ -3,6 +3,7 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch, typ
 import { useRoute } from 'vue-router'
 import { ListChecks, LoaderCircle, Menu, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Search, SquareTerminal, X } from '@lucide/vue'
 import { translatePhrase } from '@/i18n/phrase'
+import { clusterRemoteAccessChanged } from '@/lib/clusterSettings'
 import BatchTerminalPanel from '@/components/terminal/BatchTerminalPanel.vue'
 import HostTerminal from '@/components/terminal/HostTerminal.vue'
 import TerminalWorkspace from '@/components/terminal/TerminalWorkspace.vue'
@@ -450,6 +451,7 @@ function onBatchSelectionKeydown(event: KeyboardEvent): void {
 
 function hostStateLabel(host: ClusterHost): string {
   locale.value
+  if (host.remoteTerminalDisabled) return phrase('当前中心已禁用远程终端')
   if (!hostConnectable(host)) {
     return host.kind === 'light_node'
       ? t('terminal.hostState.monitoringOnly')
@@ -492,6 +494,7 @@ watch(() => route.query.hostId, () => {
 })
 
 onMounted(() => {
+	window.addEventListener(clusterRemoteAccessChanged, loadHosts)
   unsubscribeClusterHostOrder = subscribeClusterHostOrder(() => {
     clusterHostOrderRevision.value += 1
   })
@@ -522,6 +525,7 @@ onMounted(() => {
   void loadHosts()
 })
 onBeforeUnmount(() => {
+	window.removeEventListener(clusterRemoteAccessChanged, loadHosts)
   disposed = true
   unsubscribeClusterHostOrder?.()
   unregisterWindowCloseGuard?.()

@@ -39,9 +39,9 @@ func (d batchTerminalDriver) Open(ctx context.Context, user string, host termina
 	}
 	now := time.Now().UTC()
 	item := panelTerminalSession{ID: publicID, BackendSessionID: opened.SessionID, HostID: host.ID, UserID: user, Owner: owner, CreatedAt: now, UpdatedAt: now, Purpose: "batch"}
-	s.terminalMu.Lock()
-	s.terminalSessions[publicID] = item
-	s.terminalMu.Unlock()
+	if !s.registerTerminalSession(item) {
+		return terminalbatch.Session{}, cluster.ErrRemoteAccessDisabled
+	}
 	return terminalbatch.Session{ID: publicID, Offset: opened.Offset}, nil
 }
 
@@ -145,7 +145,11 @@ func (s *Server) handleTerminalBatch(w http.ResponseWriter, r *http.Request) {
 				if shell == "" {
 					shell = "posix"
 				}
-				hosts = append(hosts, terminalbatch.Host{ID: host.ID, Name: host.Name, Shell: shell})
+				target := terminalbatch.Host{ID: host.ID, Name: host.Name, Shell: shell}
+				if !host.IsLocal {
+					target.Context = s.cluster.RemoteOperationLifetime("terminal")
+				}
+				hosts = append(hosts, target)
 			}
 			job, err := s.terminalBatches.Create(session.User.ID, input.ID, input.Command, hosts)
 			if err != nil {

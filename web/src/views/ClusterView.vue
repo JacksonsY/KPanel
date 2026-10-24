@@ -20,7 +20,7 @@ import {
   ArrowDownUp,
   ArrowUp,
   ArrowUpRight,
-  Bell,
+  Settings,
   Check,
   Clock3,
   Copy,
@@ -46,6 +46,9 @@ import {
 import PageHeader from '@/components/common/PageHeader.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import ClusterNotificationsDialog from '@/components/cluster/ClusterNotificationsDialog.vue'
+import ClusterSettingsTabs from '@/components/cluster/ClusterSettingsTabs.vue'
+import ClusterRemoteAccessSettings from '@/components/cluster/ClusterRemoteAccessSettings.vue'
+import { readClusterSettingsTab, saveClusterSettingsTab, type ClusterSettingsTab } from '@/lib/clusterSettings'
 import ClusterTemporarySortMenu from '@/components/cluster/ClusterTemporarySortMenu.vue'
 import ClusterHostContextMenu, { type ClusterHostMenuAction } from '@/components/cluster/ClusterHostContextMenu.vue'
 import LightNodeHealth from '@/components/cluster/LightNodeHealth.vue'
@@ -118,8 +121,17 @@ const search = ref('')
 const addOpen = ref(false)
 const accessOpen = ref(false)
 const manageOpen = ref(false)
-const shareOpen = ref(false)
-const notificationsOpen = ref(false)
+const settingsOpen = ref(false)
+const settingsTab = ref<ClusterSettingsTab>(readClusterSettingsTab())
+const notificationBusy = ref(false)
+const remoteBusy = ref(false)
+const remoteReady = ref(false)
+const remoteFormID = `cluster-remote-access-${useId()}`
+const settingsBusy = computed(() => notificationBusy.value || remoteBusy.value || shareSaving.value || shareResetting.value)
+const shareError = ref('')
+let shareLoadedForOpen = false
+let shareController: AbortController | undefined
+let shareSequence = 0
 const adding = ref(false)
 const saving = ref(false)
 const editDetails = reactive({ expiresOn: '', price: '', trafficResetDay: '' as number | string,
@@ -815,23 +827,38 @@ async function copyAccessCredential(): Promise<void> {
 }
 
 async function openShare(): Promise<void> {
-  shareOpen.value = true
   shareLoading.value = true
+  shareError.value = ''
+  const sequence = ++shareSequence
+  shareController?.abort()
+  shareController = new AbortController()
   try {
-    const settings = await api.cluster.shareSettings()
+    const settings = await api.cluster.shareSettings(shareController.signal)
+    if (sequence !== shareSequence) return
     applyShareSettings(settings)
   } catch (reason) {
+    if (sequence !== shareSequence) return
     toast.danger('分享设置读取失败', friendlyError(reason, '请稍后重试。'))
-    shareOpen.value = false
+    shareError.value = '分享设置读取失败，请重试。'
   } finally {
-    shareLoading.value = false
+    if (sequence === shareSequence) shareLoading.value = false
   }
 }
 
 function closeShare(): void {
-  if (shareSaving.value || shareResetting.value) return
-  shareOpen.value = false
+  if (settingsBusy.value) return
+  settingsOpen.value = false
 }
+
+function chooseSettingsTab(tab: ClusterSettingsTab): void {
+  if (settingsBusy.value) return
+  settingsTab.value = tab
+  saveClusterSettingsTab(tab)
+}
+watch(() => [settingsOpen.value, settingsTab.value] as const, ([open, tab]) => {
+  if (!open) { shareLoadedForOpen = false; shareSequence++; shareController?.abort(); shareLoading.value = false }
+  else if (tab === 'share' && !shareLoadedForOpen) { shareLoadedForOpen = true; void openShare() }
+})
 
 function applyShareSettings(settings: ClusterShareSettings): void {
   shareSettings.value = settings
@@ -1466,6 +1493,7 @@ watch(windowActive, (active) => {
 })
 
 onBeforeUnmount(() => {
+  shareSequence++; shareController?.abort()
   loadController?.abort()
   if (pollTimer) window.clearInterval(pollTimer)
   stopLightEnrollmentWatch()
@@ -1501,14 +1529,11 @@ onBeforeUnmount(() => {
         >
           <RefreshCw :size="15" :class="{ spin: refreshing }" />
         </button>
-        <button class="button button--secondary button--small" type="button" @click="openShare">
-          <Share2 :size="15" /> 公开分享
+        <button class="button button--secondary button--small" type="button" @click="settingsOpen = true">
+          <Settings :size="15" /> 集群设置
         </button>
         <button class="button button--secondary button--small" type="button" @click="openAccess">
           <KeyRound :size="15" /> 接入授权
-        </button>
-        <button class="button button--secondary button--small" type="button" @click="notificationsOpen = true">
-          <Bell :size="15" /> 通知
         </button>
         <button class="button button--primary button--small cluster-hero__add" type="button" @click="openAdd">
           <Plus :size="15" /> 添加主机
@@ -1840,94 +1865,7 @@ onBeforeUnmount(() => {
       </article>
     </section>
 
-    <ModalDialog
-      :open="shareOpen"
-      :title="phrase('公开分享')"
-      :description="phrase('生成匿名只读页面，向其他人展示当前集群的机器状态。')"
-      size="medium"
-      @close="closeShare"
-    >
-      <LoadingState v-if="shareLoading" :title="phrase('正在读取分享设置…')" />
-      <form v-else id="cluster-share-form" class="cluster-share" @submit.prevent="saveShare">
-        <label class="cluster-share__switch">
-          <span>
-            <strong>{{ phrase('启用公开分享') }}</strong>
-            <small>{{ phrase('默认关闭；关闭后现有链接立即返回 404。') }}</small>
-          </span>
-          <input v-model="shareForm.enabled" type="checkbox" role="switch" />
-        </label>
 
-        <label class="field">
-          {{ phrase('展示标题') }}
-          <input v-model="shareForm.title" maxlength="80" :placeholder="phrase('我的 KPanel 集群')" />
-        </label>
-        <label class="field">
-          {{ phrase('一句话介绍（可选）') }}
-          <input
-            v-model="shareForm.description"
-            maxlength="240"
-            :placeholder="phrase('例如：这些是我正在运行的服务器。')"
-          />
-        </label>
-
-        <label class="cluster-share__switch">
-          <span>
-            <strong>{{ phrase('按当前面板顺序排列公开页') }}</strong>
-            <small>{{ phrase('仅在本次保存时复制；之后调整面板顺序不会改变公开页。') }}</small>
-          </span>
-          <input v-model="shareForm.applyPanelOrder" type="checkbox" role="switch" />
-        </label>
-
-        <ClusterShareThemes />
-
-        <section class="cluster-share__privacy">
-          <ShieldCheck :size="19" />
-          <span>
-            <strong>{{ phrase('公开字段经过白名单过滤') }}</strong>
-            <small>{{ phrase('展示名称、状态、地区、系统、资源使用情况及已填写的服务器信息；不公开 IP、面板地址、节点 ID、身份指纹、错误详情、版本或管理入口。') }}</small>
-          </span>
-        </section>
-
-        <section v-if="shareURL" class="cluster-share__link">
-          <span>
-            <strong>{{ phrase(shareSettings?.enabled ? '当前公开链接' : '已暂停的公开链接') }}</strong>
-            <small>{{ phrase(shareSettings?.enabled ? '任何获得链接的人都可以查看。' : '保存并开启后，此链接恢复访问。') }}</small>
-          </span>
-          <pre>{{ shareURL }}</pre>
-          <div>
-            <button class="button button--secondary button--small" type="button" @click="copyShareLink">
-              <Copy :size="14" /> {{ phrase('复制链接') }}
-            </button>
-            <button class="button button--secondary button--small" type="button" @click="previewShare">
-              <ArrowUpRight :size="14" /> {{ phrase('预览') }}
-            </button>
-            <button
-              class="button button--ghost button--small"
-              type="button"
-              :disabled="shareResetting"
-              @click="resetShareLink"
-            >
-              <LoaderCircle v-if="shareResetting" class="spin" :size="14" />
-              <RotateCcw v-else :size="14" /> {{ phrase('重置链接') }}
-            </button>
-          </div>
-        </section>
-        <p v-else class="cluster-share__hint">{{ phrase('首次开启并保存后生成随机公开链接。') }}</p>
-      </form>
-      <template #footer>
-        <button class="button button--secondary" type="button" :disabled="shareSaving" @click="closeShare">{{ phrase('取消') }}</button>
-        <button
-          class="button button--primary"
-          type="submit"
-          form="cluster-share-form"
-          :disabled="shareLoading || shareSaving"
-        >
-          <LoaderCircle v-if="shareSaving" class="spin" :size="16" />
-          <Share2 v-else :size="16" />
-          {{ phrase(shareSaving ? '正在保存…' : '保存分享设置') }}
-        </button>
-      </template>
-    </ModalDialog>
 
     <ModalDialog
       :open="addOpen"
@@ -2446,12 +2384,110 @@ onBeforeUnmount(() => {
       </template>
     </ModalDialog>
 
-    <ClusterNotificationsDialog :open="notificationsOpen" @close="notificationsOpen = false" />
+    <ClusterNotificationsDialog :open="settingsOpen" :settings-tab="settingsTab" :busy="settingsBusy" @busy="notificationBusy = $event" @close="closeShare">
+      <template #tabs><ClusterSettingsTabs :model-value="settingsTab" :disabled="settingsBusy" @update:model-value="chooseSettingsTab" /></template>
+      <section v-show="settingsTab === 'share'" id="cluster-settings-share" role="tabpanel" aria-labelledby="cluster-settings-tab-share">
+      <p class="cluster-share__hint">{{ phrase('生成匿名只读页面，向其他人展示当前集群的机器状态。') }}</p>
+      <LoadingState v-if="shareLoading" :title="phrase('正在读取分享设置…')" />
+      <div v-else-if="shareError" class="cluster-share" role="alert"><p>{{ phrase(shareError) }}</p><button class="button button--secondary" type="button" @click="openShare">{{ phrase('重试') }}</button></div>
+      <form v-else-if="shareSettings" id="cluster-share-form" class="cluster-share" @submit.prevent="saveShare">
+        <label class="cluster-share__switch">
+          <span>
+            <strong>{{ phrase('启用公开分享') }}</strong>
+            <small>{{ phrase('默认关闭；关闭后现有链接立即返回 404。') }}</small>
+          </span>
+          <input v-model="shareForm.enabled" type="checkbox" role="switch" />
+        </label>
+
+        <label class="field">
+          {{ phrase('展示标题') }}
+          <input v-model="shareForm.title" maxlength="80" :placeholder="phrase('我的 KPanel 集群')" />
+        </label>
+        <label class="field">
+          {{ phrase('一句话介绍（可选）') }}
+          <input
+            v-model="shareForm.description"
+            maxlength="240"
+            :placeholder="phrase('例如：这些是我正在运行的服务器。')"
+          />
+        </label>
+
+        <label class="cluster-share__switch">
+          <span>
+            <strong>{{ phrase('按当前面板顺序排列公开页') }}</strong>
+            <small>{{ phrase('仅在本次保存时复制；之后调整面板顺序不会改变公开页。') }}</small>
+          </span>
+          <input v-model="shareForm.applyPanelOrder" type="checkbox" role="switch" />
+        </label>
+
+        <ClusterShareThemes />
+
+        <section class="cluster-share__privacy">
+          <ShieldCheck :size="19" />
+          <span>
+            <strong>{{ phrase('公开字段经过白名单过滤') }}</strong>
+            <small>{{ phrase('展示名称、状态、地区、系统、资源使用情况及已填写的服务器信息；不公开 IP、面板地址、节点 ID、身份指纹、错误详情、版本或管理入口。') }}</small>
+          </span>
+        </section>
+
+        <section v-if="shareURL" class="cluster-share__link">
+          <span>
+            <strong>{{ phrase(shareSettings?.enabled ? '当前公开链接' : '已暂停的公开链接') }}</strong>
+            <small>{{ phrase(shareSettings?.enabled ? '任何获得链接的人都可以查看。' : '保存并开启后，此链接恢复访问。') }}</small>
+          </span>
+          <pre>{{ shareURL }}</pre>
+          <div>
+            <button class="button button--secondary button--small" type="button" @click="copyShareLink">
+              <Copy :size="14" /> {{ phrase('复制链接') }}
+            </button>
+            <button class="button button--secondary button--small" type="button" @click="previewShare">
+              <ArrowUpRight :size="14" /> {{ phrase('预览') }}
+            </button>
+            <button
+              class="button button--ghost button--small"
+              type="button"
+              :disabled="shareResetting"
+              @click="resetShareLink"
+            >
+              <LoaderCircle v-if="shareResetting" class="spin" :size="14" />
+              <RotateCcw v-else :size="14" /> {{ phrase('重置链接') }}
+            </button>
+          </div>
+        </section>
+        <p v-else class="cluster-share__hint">{{ phrase('首次开启并保存后生成随机公开链接。') }}</p>
+      </form>
+
+      </section>
+      <section v-show="settingsTab === 'remote'" id="cluster-settings-remote" role="tabpanel" aria-labelledby="cluster-settings-tab-remote">
+        <ClusterRemoteAccessSettings :open="settingsOpen" :active="settingsTab === 'remote'" :form-id="remoteFormID" @busy="remoteBusy = $event" @ready="remoteReady = $event" @saved="load(true)" />
+      </section>
+      <template #footer>
+        <template v-if="settingsTab === 'share'">
+        <button class="button button--secondary" type="button" :disabled="shareSaving" @click="closeShare">{{ phrase('取消') }}</button>
+        <button
+          class="button button--primary"
+          type="submit"
+          form="cluster-share-form"
+          :disabled="shareLoading || shareSaving || !shareSettings || !!shareError"
+        >
+          <LoaderCircle v-if="shareSaving" class="spin" :size="16" />
+          <Share2 v-else :size="16" />
+          {{ phrase(shareSaving ? '正在保存…' : '保存分享设置') }}
+        </button>
+</template>
+        <template v-else>
+          <span class="cluster-settings-save-hint">{{ phrase('保存后立即生效，重启后保留') }}</span>
+          <button class="button button--secondary" type="button" :disabled="settingsBusy" @click="closeShare">{{ phrase('关闭') }}</button>
+          <button class="button button--primary" type="submit" :form="remoteFormID" :disabled="!remoteReady || settingsBusy"><LoaderCircle v-if="remoteBusy" class="spin" :size="15" />{{ phrase(remoteBusy ? '正在保存…' : '保存设置') }}</button>
+        </template>
+      </template>
+    </ClusterNotificationsDialog>
     <ClusterHostContextMenu ref="hostMenu" @select="onHostMenuSelect" />
   </div>
 </template>
 
 <style scoped>
+.cluster-settings-save-hint { margin-right:auto; color:var(--muted); font-size:13px; }
 .cluster-manage__details {
   padding-block: 1rem;
   border-block: 1px solid var(--border);

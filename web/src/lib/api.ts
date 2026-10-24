@@ -1810,6 +1810,8 @@ export const api = {
     },
   },
   cluster: {
+    remoteAccess: (signal?: AbortSignal): Promise<import('@/types/api').ClusterRemoteAccess> => request('/cluster/remote-access', { signal }),
+    updateRemoteAccess: (body: { terminalEnabled: boolean; filesEnabled: boolean; expectedResourceVersion: string }): Promise<import('@/types/api').ClusterRemoteAccess> => request('/cluster/remote-access', { method: 'PUT', body }),
     hosts: (signal?: AbortSignal): Promise<ClusterHostList> =>
       request<ClusterHostList>('/cluster/hosts', { signal }),
     hostOrder: (signal?: AbortSignal): Promise<ClusterHostOrderPreference> =>

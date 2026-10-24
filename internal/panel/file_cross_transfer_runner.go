@@ -46,11 +46,25 @@ func (s *Server) startCrossFileTransferJob(w http.ResponseWriter, r *http.Reques
 		execute: func(ctx context.Context, emit func(contract.FileTransferEvent) bool) contract.FileTransferEvent {
 			return s.executeCrossFileTransfer(ctx, input, hostID, kind, requestID, emit)
 		}}
+	if input.SourceNodeID != s.cluster.NodeID() || hostID != "" && hostID != cluster.LocalHostID {
+		task.accessLifetime = s.cluster.RemoteOperationLifetime("files")
+	}
 	go s.runFileRemoteDownloadJob(ctx, cancel, task)
 	s.writeJSON(w, http.StatusAccepted, job)
 }
 
 func (s *Server) executeCrossFileTransfer(ctx context.Context, input contract.FileTransferRequest, targetHostID string, targetKind cluster.HostKind, requestID string, emit func(contract.FileTransferEvent) bool) contract.FileTransferEvent {
+	// Bind the whole job, including local receive publication, to the policy.
+	if input.SourceNodeID != s.cluster.NodeID() || targetHostID != "" && targetHostID != cluster.LocalHostID {
+		operation, cancel, err := s.cluster.BeginRemoteOperation(ctx, "files")
+		if err != nil {
+			event := contract.FileTransferEvent{State: "error", Code: "remote_files_disabled", Detail: "当前中心已禁用远程文件管理。"}
+			emit(event)
+			return event
+		}
+		defer cancel()
+		ctx = operation
+	}
 	fail := func(code, detail string, loaded int64) contract.FileTransferEvent {
 		if ctx.Err() != nil {
 			code, detail = "remote_download_cancelled", "文件传输已取消。"

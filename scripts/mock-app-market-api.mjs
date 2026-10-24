@@ -973,6 +973,7 @@ let mockNotificationSnapshot = {
   updatedAt: new Date().toISOString(),
 }
 
+let mockClusterRemoteAccess = { terminalEnabled: true, filesEnabled: true, available: true, resourceVersion: 'mock-remote-1' }
 let mockClusterShareSettings = {
   enabled: true,
   title: 'KPanel Visual Fleet',
@@ -2315,6 +2316,16 @@ createServer(async (request, response) => {
     send(response, 200, mockNotificationSnapshot)
     return
   }
+  if (url.pathname === '/api/v1/cluster/remote-access') {
+    if (request.method === 'GET') { send(response, 200, mockClusterRemoteAccess); return }
+    if (request.method === 'PUT') {
+      const input = await readJSON(request)
+      if (input.expectedResourceVersion !== mockClusterRemoteAccess.resourceVersion) { send(response, 409, { code: 'remote_access_changed', title: 'Mock revision conflict' }); return }
+      if (typeof input.terminalEnabled !== 'boolean' || typeof input.filesEnabled !== 'boolean') { send(response, 422, { code: 'remote_access_invalid' }); return }
+      mockClusterRemoteAccess = { terminalEnabled: input.terminalEnabled, filesEnabled: input.filesEnabled, available: true, resourceVersion: randomBytes(16).toString('hex') }
+      send(response, 200, { ...mockClusterRemoteAccess, pendingTerminalCleanup: 0 }); return
+    }
+  }
   if (request.method === 'GET' && url.pathname === '/api/v1/cluster/share') {
     send(response, 200, mockClusterShareSettings)
     return
@@ -3142,7 +3153,15 @@ createServer(async (request, response) => {
   }
   if (request.method === 'GET' && url.pathname === '/api/v1/cluster/hosts') {
     send(response, 200, {
-      items: visualClusterHosts.map(host => ({ ...host, trafficPeriod: mockTrafficPeriod(host) })),
+      items: visualClusterHosts.map(host => ({ ...host, trafficPeriod: mockTrafficPeriod(host),
+        ...(!host.isLocal ? {
+          terminalAvailable: host.terminalAvailable && mockClusterRemoteAccess.terminalEnabled,
+          fileManagementAvailable: host.fileManagementAvailable && mockClusterRemoteAccess.filesEnabled,
+          fileTransferAvailable: host.fileTransferAvailable && mockClusterRemoteAccess.filesEnabled,
+          mutualFileTransferAvailable: host.mutualFileTransferAvailable && mockClusterRemoteAccess.filesEnabled,
+          remoteTerminalDisabled: !mockClusterRemoteAccess.terminalEnabled, remoteFilesDisabled: !mockClusterRemoteAccess.filesEnabled,
+        } : {}),
+      })),
       hostDetails: mockHostDetails,
       total: visualClusterHosts.length,
       remoteTotal: visualClusterHosts.filter((host) => !host.isLocal).length,

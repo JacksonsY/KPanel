@@ -17,6 +17,8 @@ usePhraseCatalog((locale) => locale === 'en-US'
 
 const props = defineProps<{
   open: boolean
+  settingsTab?: 'notifications' | 'share' | 'remote'
+  busy?: boolean
 }>()
 
 const { locale } = useI18n()
@@ -25,6 +27,7 @@ function viewHistory(): void { if (operationBusy.value) return; emit('close'); v
 
 const emit = defineEmits<{
   close: []
+  busy: [value: boolean]
 }>()
 
 const loading = ref(false)
@@ -33,6 +36,7 @@ const channelBusy = ref(false)
 const operationBusy = computed(() => saving.value || channelBusy.value || discovering.value || testing.value)
 const discovering = ref(false)
 const testing = ref(false)
+watch(operationBusy, (value) => emit('busy', value))
 const snapshot = ref<ClusterNotificationSnapshot>()
 const saveLabel = computed(() => {
   if (saving.value) return '正在保存…'
@@ -301,11 +305,15 @@ function notificationLocaleLabel(value: ClusterNotificationSnapshot['locale']): 
   return phrase(value === 'zh-TW' ? '繁體中文' : '简体中文')
 }
 
+let loadedForOpen = false
 watch(
-  () => props.open,
-  (open) => {
-    if (open) void load()
-    else {
+  () => [props.open, props.settingsTab] as const,
+  ([open, tab]) => {
+    if (open && (!tab || tab === 'notifications') && !loadedForOpen) {
+      loadedForOpen = true
+      void load()
+    } else if (!open) {
+      loadedForOpen = false
       loadSequence += 1
       loadController?.abort()
     }
@@ -322,12 +330,14 @@ onBeforeUnmount(() => {
 <template>
   <ModalDialog
     :open="open"
-    :title="phrase('集群通知')"
-    :description="phrase('事件默认保存在本机，可选开启外部渠道推送。')"
+    :title="phrase(settingsTab ? '集群设置' : '集群通知')"
+    :description="phrase(settingsTab ? '管理集群通知、公开分享与远程访问。' : '事件默认保存在本机，可选开启外部渠道推送。')"
     size="medium"
-    @close="!operationBusy && emit('close')"
+    :close-disabled="operationBusy || busy"
+    @close="!operationBusy && !busy && emit('close')"
   >
-    <div class="cluster-notifications">
+    <slot name="tabs" />
+    <div v-show="!settingsTab || settingsTab === 'notifications'" id="cluster-settings-notifications" role="tabpanel" :aria-labelledby="settingsTab ? 'cluster-settings-tab-notifications' : undefined" class="cluster-notifications">
       <div v-if="loading && !snapshot" class="cluster-notifications__state" role="status" aria-live="polite">
         <LoaderCircle class="spin" :size="20" />
         <span>{{ phrase('正在读取通知设置…') }}</span>
@@ -541,13 +551,17 @@ onBeforeUnmount(() => {
         <button v-if="errorMessage" type="button" class="button button--secondary" :disabled="operationBusy || loading" @click="load(true)">{{ phrase('重新读取设置') }}</button>
       </template>
     </div>
+    <slot />
 
     <template #footer>
-      <button class="button button--secondary" type="button" :disabled="operationBusy" @click="emit('close')">{{ phrase('关闭') }}</button>
-      <button class="button button--primary" type="button" :disabled="operationBusy || loading || !snapshot || saveBlocked" @click="save">
+      <slot v-if="settingsTab && settingsTab !== 'notifications'" name="footer" />
+      <template v-else>
+      <button class="button button--secondary" type="button" :disabled="operationBusy || busy" @click="emit('close')">{{ phrase('关闭') }}</button>
+      <button class="button button--primary" type="button" :disabled="operationBusy || busy || loading || !snapshot || saveBlocked" @click="save">
         <LoaderCircle v-if="saving" class="spin" :size="15" />
         {{ phrase(saveLabel) }}
       </button>
+      </template>
     </template>
   </ModalDialog>
 </template>

@@ -46,6 +46,9 @@ func (s *Server) callMCPHostCapabilities(ctx context.Context, raw json.RawMessag
 		}
 	}
 	for name, op := range managedCatalog() {
+		if !host.IsLocal && op.Domain == "files" && !s.cluster.RemoteAccess().FilesEnabled {
+			continue
+		}
 		if op.Domain == "files" && !host.IsLocal && (remote == nil || len(intersectMCPFileRoots(remote.FileRoots, call.principal.Policy.FileRoots)) == 0) {
 			continue
 		}

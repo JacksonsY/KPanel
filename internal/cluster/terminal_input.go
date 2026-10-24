@@ -16,16 +16,28 @@ func (s *Service) TerminalSupportsSequencedInput(hostID, sessionID string) bool 
 // stream, without waiting for its ACK. Callers dispatch in order and bound the
 // number of outstanding waiters. No unsequenced fallback is ever attempted.
 func (s *Service) BeginTerminalInput(ctx context.Context, hostID, sessionID string, frame terminal.InputFrame) (func() error, error) {
+	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal")
+	if err != nil {
+		return nil, err
+	}
 	if !s.lightControlAllowed(hostID, "terminal") {
+		cancel()
 		return nil, ErrTerminalUnavailable
 	}
 	if !frame.Valid() {
+		cancel()
 		return nil, terminal.ErrInputSequence
 	}
 	t := s.streams.terminal(hostID, sessionID)
 	if t == nil || !t.reliable {
+		cancel()
 		return nil, ErrTerminalUnavailable
 	}
 	payload, _ := json.Marshal(frame)
-	return t.beginRequest(ctx, termInputSequenced, payload)
+	wait, err := t.beginRequest(ctx, termInputSequenced, payload)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	return func() error { defer cancel(); return wait() }, nil
 }

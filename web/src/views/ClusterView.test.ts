@@ -110,7 +110,6 @@ interface ClusterBindings {
   onTemporarySortChange: (key: ClusterHostTemporarySortKey) => void
   accessOpen: Ref<boolean>
   manageOpen: Ref<boolean>
-  shareOpen: Ref<boolean>
   shareSettings: Ref<ClusterShareSettings | undefined>
   shareURL: ComputedRef<string>
   shareForm: { enabled: boolean; title: string; description: string; applyPanelOrder: boolean }
@@ -1237,7 +1236,6 @@ describe('ClusterView inventory and navigation', () => {
     mocks.resetShareToken.mockResolvedValueOnce(rotated)
 
     await view.openShare()
-    expect(view.shareOpen.value).toBe(true)
     view.shareForm.enabled = true
     view.hostOrder.value = ['remote', 'local']
     await view.saveShare()

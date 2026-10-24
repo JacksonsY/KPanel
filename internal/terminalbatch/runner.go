@@ -131,6 +131,15 @@ func (m *Manager) stopped(id string, index int, ctx context.Context) {
 }
 
 func (m *Manager) execute(ctx context.Context, id, user, command string, index int, host Host) {
+	if host.Context != nil {
+		bound, cancel := context.WithCancel(ctx)
+		stop := context.AfterFunc(host.Context, cancel)
+		defer func() { stop(); cancel() }()
+		ctx = bound
+		if host.Context.Err() != nil {
+			cancel()
+		}
+	}
 	if ctx.Err() != nil {
 		m.stopped(id, index, ctx)
 		return

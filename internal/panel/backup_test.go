@@ -22,6 +22,9 @@ import (
 func TestBackupPanelIdentityAndStagingValidation(t *testing.T) {
 	s, token := newTestServer(t)
 	bootstrapCookies(t, s, token)
+	if _, err := s.cluster.UpdateRemoteAccess("initial", false, true); err != nil {
+		t.Fatal(err)
+	}
 	// Match configured key paths as a real LoadConfig instance does.
 	s.config.TOTPKeyPath = filepath.Join(s.config.DataDir, "totp.key")
 	if err := s.EnableAI(); err != nil {
@@ -55,6 +58,9 @@ func TestBackupPanelIdentityAndStagingValidation(t *testing.T) {
 	}
 	if len(value.Files["cluster-light-batch-state.json"]) == 0 {
 		t.Fatal("light batch enrollment state omitted")
+	}
+	if !bytes.Contains(value.Files["cluster-remote-access.json"], []byte(`"terminalEnabled":false`)) {
+		t.Fatal("cluster remote access preference omitted")
 	}
 	if !bytes.Contains(value.Files["terminal-commands/commands.json"], []byte("docker ps")) {
 		t.Fatal("terminal command favorites omitted")

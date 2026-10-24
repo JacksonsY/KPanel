@@ -491,9 +491,10 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 	} else {
 		item.ReliableInput = s.cluster.TerminalSupportsSequencedInput(host.ID, opened.SessionID)
 	}
-	s.terminalMu.Lock()
-	s.terminalSessions[publicID] = item
-	s.terminalMu.Unlock()
+	if !s.registerTerminalSession(item) {
+		s.writeProblem(w, r, 403, "remote_terminal_disabled", "Remote terminal disabled by this center", "")
+		return
+	}
 	if input.LaunchID != "" {
 		delete(s.terminalLaunchIntents, input.LaunchID)
 	}
