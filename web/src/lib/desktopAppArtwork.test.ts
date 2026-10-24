@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
+import { URL as FileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { computed, nextTick } from 'vue'
 import { desktopApps, findDesktopApp } from './desktopApps'
@@ -10,7 +11,7 @@ describe('Windows desktop artwork', () => {
   it.each(['win98', 'xp'] as const)('covers every fixed launcher with a bounded self-contained %s image', (style) => {
     for (const app of desktopApps) {
       const url = desktopAppIconURL(app, style)!
-      const source = readFileSync(new URL(`../../public${url}`, import.meta.url), 'utf8')
+      const source = readFileSync(new FileURL(`../../public${url}`, import.meta.url), 'utf8')
       const svg = new DOMParser().parseFromString(source, 'image/svg+xml')
       expect(svg.querySelector('parsererror'), url).toBeNull()
       expect(source.length, url).toBeLessThan(30 * 1024)
