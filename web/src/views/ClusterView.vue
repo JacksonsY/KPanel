@@ -20,6 +20,7 @@ import {
   ArrowDownUp,
   ArrowUp,
   ArrowUpRight,
+  Bell,
   Settings,
   Check,
   Clock3,
