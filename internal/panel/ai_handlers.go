@@ -614,6 +614,22 @@ func (s *Server) aiRunEvents(w http.ResponseWriter, r *http.Request, session aut
 	var messages []ai.Message
 	var calls []ai.ToolCall
 	var streamingMessageID string
+	// Attachment metadata projection can scan large persisted JSON records.
+	// Prepare it outside the hub lock; message attachments are immutable by ID.
+	metadataCtx, stopMetadata := context.WithTimeout(r.Context(), 30*time.Second)
+	owner, err := s.ai.Store.Run(metadataCtx, session.User.ID, id)
+	var cached ai.Page[ai.Message]
+	if err == nil {
+		cached, err = s.ai.Store.ConversationMessageMetadataPage(metadataCtx, owner.SessionID, 50, "")
+	}
+	stopMetadata()
+	if err != nil {
+		s.aiJSON(w, r, nil, err, 0)
+		return
+	}
+	for i := range cached.Items {
+		cached.Items[i].Content = ""
+	}
 	// A single hub cut covers durable reads and the public live prefix. These
 	// reads never publish to the hub; network writes happen only after unlock.
 	snapshotCtx, stopSnapshot := context.WithTimeout(r.Context(), 2*time.Second)
@@ -623,7 +639,7 @@ func (s *Server) aiRunEvents(w http.ResponseWriter, r *http.Request, session aut
 		if err != nil {
 			return err
 		}
-		page, err := s.ai.Store.ConversationMessageMetadataPage(snapshotCtx, run.SessionID, 50, "")
+		page, err := s.ai.Store.ConversationSnapshotMessagePage(snapshotCtx, run.SessionID, cached.Items)
 		if err != nil {
 			return err
 		}

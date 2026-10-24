@@ -374,3 +374,40 @@ func TestEventHubSnapshotReadDeadlineReleasesPublishers(t *testing.T) {
 		t.Fatal("failed snapshot subscription leaked")
 	}
 }
+
+func TestConversationSnapshotRefreshesAfterMetadataPreload(t *testing.T) {
+	s, _, p, m := runtimeFixture(t)
+	defer s.Close()
+	ctx := context.Background()
+	session, run := checkpointRun(t, s, p, m)
+	draft, err := s.AddMessage(ctx, Message{SessionID: session.ID, RunID: run.ID, Role: RoleAssistant, Content: "checkpoint"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cached, err := s.ConversationMessageMetadataPage(ctx, session.ID, 50, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft.Content = "complete-after-preload"
+	if _, err := s.AddMessage(ctx, draft); err != nil {
+		t.Fatal(err)
+	}
+	user, err := s.AddMessage(ctx, Message{SessionID: session.ID, Role: RoleUser, Content: "late-input", Attachments: []Attachment{{Name: "late.txt", MimeType: "text/plain", Kind: "text", Data: []byte("late")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := s.ConversationSnapshotMessagePage(ctx, session.ID, cached.Items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]Message{}
+	for _, message := range page.Items {
+		if _, duplicate := seen[message.ID]; duplicate {
+			t.Fatal("snapshot duplicated an ID")
+		}
+		seen[message.ID] = message
+	}
+	if seen[draft.ID].Content != draft.Content || len(seen[user.ID].Attachments) != 1 || seen[user.ID].Attachments[0].Size != 4 || seen[user.ID].Attachments[0].Data != nil {
+		t.Fatal("preload hid newer text or attachment metadata")
+	}
+}

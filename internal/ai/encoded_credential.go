@@ -236,13 +236,20 @@ func projectCredentialText(value, key string, budget *credentialProjectionBudget
 // Migrations and structured argument checks use the exact same representation
 // policy as live streaming. Historical copies are read one bounded row at a time.
 func knownCredentialText(value, key string) (string, bool, error) {
+	budget := credentialProjectionBudget{nodes: 262144, limit: 2 << 20}
+	return knownCredentialTextBudget(value, key, &budget)
+}
+
+func knownCredentialTextBudget(value, key string, budget *credentialProjectionBudget) (string, bool, error) {
 	if key == "" {
 		return value, false, nil
 	}
-	if len(value) > 2<<20 {
-		return "", false, errCredentialProjectionBudget
+	if err := budget.consume(len(value), 0); err != nil {
+		return "", false, err
 	}
-	f := newEncodedCredentialFilterLimit(key, 2<<20)
+	f := newEncodedCredentialFilterLimit(key, budget.limit)
+	f.budget = *budget
+	defer func() { *budget = f.budget }()
 	first, err := f.write(value)
 	if err != nil {
 		return "", false, err

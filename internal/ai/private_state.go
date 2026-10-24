@@ -270,7 +270,41 @@ func (s *Store) protectToolState(ctx context.Context, path string) error {
 			if err != nil {
 				return errors.New("AI provider key cannot be decrypted")
 			}
-			safeResult := redactAndLimit(publicProviderText(call.ResultPreview, key), MaxToolResultBytes)
+			identityBudget := credentialProjectionBudget{nodes: 262144, limit: 2 << 20}
+			for _, value := range []string{call.ID, call.Name} {
+				_, found, err := knownCredentialTextBudget(value, key, &identityBudget)
+				if err != nil {
+					return err
+				}
+				if found {
+					return errors.New("AI legacy tool identity contains provider credential; restore a paired database and key backup before starting AI")
+				}
+			}
+			var oldPreview sql.NullString
+			var previewBytes int
+			if err := tx.QueryRowContext(ctx, `SELECT CASE WHEN length(CAST(arguments_preview AS BLOB))<=1048576 THEN arguments_preview END,length(CAST(arguments_preview AS BLOB)) FROM tool_calls WHERE id=?`, call.ID).Scan(&oldPreview, &previewBytes); err != nil {
+				return err
+			}
+			if !oldPreview.Valid || previewBytes > MaxAssistantBytes {
+				return errors.New("AI tool preview exceeds the migration read budget")
+			}
+			safePreview, changed, err := knownCredentialTextBudget(oldPreview.String, key, &identityBudget)
+			if err != nil {
+				return err
+			}
+			if changed {
+				if err := markDirty(); err != nil {
+					return err
+				}
+				if _, err := tx.ExecContext(ctx, `UPDATE tool_calls SET arguments_preview=? WHERE id=?`, safePreview, call.ID); err != nil {
+					return err
+				}
+			}
+			projectedResult, _, err := knownCredentialTextBudget(call.ResultPreview, key, &identityBudget)
+			if err != nil {
+				return err
+			}
+			safeResult := redactAndLimit(publicProviderText(projectedResult, key), MaxToolResultBytes)
 			if safeResult != call.ResultPreview {
 				if err := markDirty(); err != nil {
 					return err

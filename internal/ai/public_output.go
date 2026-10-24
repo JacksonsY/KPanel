@@ -118,8 +118,14 @@ func streamPublicCompletion(ctx context.Context, client ModelClient, provider Pr
 	filter := newEncodedCredentialFilter(key)
 	checked := boundedCompletion(func(event CompletionEvent) error {
 		for _, call := range event.ToolCalls {
-			if key != "" && (strings.Contains(call.ID, key) || strings.Contains(call.Name, key) || containsCredentialJSON(call.Arguments, key) || strings.Contains(call.ArgumentsPreview, key) || strings.Contains(call.ResultPreview, key)) {
-				return errors.New("provider authentication credential in tool call")
+			for _, value := range []string{call.ID, call.Name, string(call.Arguments), call.ArgumentsPreview, call.ResultPreview} {
+				_, found, err := knownCredentialTextBudget(value, key, &filter.budget)
+				if err != nil {
+					return err
+				}
+				if found {
+					return errors.New("provider authentication credential in tool call")
+				}
 			}
 		}
 		var err error
@@ -141,7 +147,7 @@ func streamPublicCompletion(ctx context.Context, client ModelClient, provider Pr
 	})
 	if err := client.Stream(ctx, provider, key, request, checked); err != nil {
 		if key != "" {
-			message, changed, projectionErr := knownCredentialText(err.Error(), key)
+			message, changed, projectionErr := knownCredentialTextBudget(err.Error(), key, &filter.budget)
 			if projectionErr != nil {
 				return &providerTransportError{cause: err, message: "AI provider error exceeds the credential projection budget"}
 			}

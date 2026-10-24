@@ -356,6 +356,147 @@ func TestEncodedCredentialNestedToolArgumentsRejectWithoutMutation(t *testing.T)
 	}
 }
 
+func TestEncodedCredentialToolPublicFieldsRejectWithoutMutation(t *testing.T) {
+	for _, field := range []string{"id", "name", "argumentsPreview", "resultPreview"} {
+		t.Run(field, func(t *testing.T) {
+			call := ToolCall{ID: "call", Name: "host_action", Arguments: json.RawMessage(`{}`)}
+			encoded := `"\u0074est-key"`
+			switch field {
+			case "id":
+				call.ID = encoded
+			case "name":
+				call.Name = encoded
+			case "argumentsPreview":
+				call.ArgumentsPreview = encoded
+			case "resultPreview":
+				call.ResultPreview = encoded
+			}
+			before, _ := json.Marshal(call)
+			forwarded := false
+			err := streamPublicCompletion(context.Background(), &publicOutputClient{calls: []ToolCall{call}}, Provider{}, "test-key", CompletionRequest{}, func(e CompletionEvent) error { forwarded = forwarded || len(e.ToolCalls) > 0; return nil }, false)
+			after, _ := json.Marshal(call)
+			if err == nil || forwarded || !bytes.Equal(before, after) {
+				t.Fatalf("encoded credential field %s escaped rejection or was rewritten: %v", field, err)
+			}
+		})
+	}
+}
+
+func TestEncodedCredentialLegacyToolIdentityFailsClosed(t *testing.T) {
+	for _, field := range []string{"id", "name"} {
+		t.Run(field, func(t *testing.T) {
+			s, _, p, m := runtimeFixture(t)
+			ctx := context.Background()
+			path := storePathForTest(t, s)
+			_, run := checkpointRun(t, s, p, m)
+			call := ToolCall{ID: "legacy", Name: "host_action", RunID: run.ID, SessionID: run.SessionID, Arguments: json.RawMessage(`{}`), Status: ToolPendingApproval, RequiresApproval: true}
+			if field == "id" {
+				call.ID = `"\u0074est-key"`
+			} else {
+				call.Name = `"\u0074est-key"`
+			}
+			if _, err := s.SaveToolCall(ctx, call); err != nil {
+				t.Fatal(err)
+			}
+			var before []byte
+			if err := s.db.QueryRow(`SELECT private_state FROM tool_calls WHERE id=?`, call.ID).Scan(&before); err != nil {
+				t.Fatal(err)
+			}
+			s.Close()
+			opened, err := OpenStore(path)
+			if err == nil {
+				opened.Close()
+				t.Fatal("legacy credential identity was served")
+			}
+			if !strings.Contains(err.Error(), "legacy tool identity") {
+				t.Fatalf("wrong startup boundary: %v", err)
+			}
+			db, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			var id, name, status string
+			var after []byte
+			if err := db.QueryRow(`SELECT id,name,status,private_state FROM tool_calls WHERE id=?`, call.ID).Scan(&id, &name, &status, &after); err != nil {
+				t.Fatal(err)
+			}
+			if id != call.ID || name != call.Name || status != string(ToolPendingApproval) || !bytes.Equal(before, after) {
+				t.Fatal("startup rewrote legacy identity or private execution state")
+			}
+		})
+	}
+}
+
+func TestEncodedToolPublicFieldsShareProjectionBudget(t *testing.T) {
+	call := ToolCall{ID: "call", Name: "host_action", Arguments: json.RawMessage(`{}`), ArgumentsPreview: strings.Repeat(`""`, 66000), ResultPreview: strings.Repeat(`""`, 66000)}
+	forwarded := false
+	err := streamPublicCompletion(context.Background(), &publicOutputClient{calls: []ToolCall{call}}, Provider{}, "test-key", CompletionRequest{}, func(CompletionEvent) error { forwarded = true; return nil }, false)
+	if !errors.Is(err, errCredentialProjectionBudget) || forwarded {
+		t.Fatalf("tool fields reset shared budget: %v", err)
+	}
+}
+
+func TestRuntimeRejectsEncodedCredentialToolIdentityBeforeStorage(t *testing.T) {
+	s, providers, p, m := runtimeFixture(t)
+	defer s.Close()
+	_, run := checkpointRun(t, s, p, m)
+	hub := NewEventHub()
+	events, stop := hub.Subscribe(run.ID)
+	defer stop()
+	tools := &fakeTools{readOnly: true}
+	r, err := NewNativeRuntime(s, providers, &publicOutputClient{calls: []ToolCall{{ID: `"\u0074est-key"`, Name: "host_action", Arguments: json.RawMessage(`{}`)}}}, tools, hub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if err := r.Run(context.Background(), run.ID); err == nil {
+		t.Fatal("runtime accepted encoded credential ID")
+	}
+	calls, err := s.ToolCalls(context.Background(), run.ID)
+	if err != nil || len(calls) != 0 || tools.executed != 0 {
+		t.Fatal("credential ID reached storage or execution")
+	}
+	for len(events) > 0 {
+		raw, _ := json.Marshal(<-events)
+		if strings.Contains(string(raw), `\u0074`) || strings.Contains(string(raw), "test-key") {
+			t.Fatal("credential ID reached public events")
+		}
+	}
+}
+
+func TestEncodedCredentialLegacyToolPreviewsAreRepaired(t *testing.T) {
+	s, _, p, m := runtimeFixture(t)
+	ctx := context.Background()
+	path := storePathForTest(t, s)
+	_, run := checkpointRun(t, s, p, m)
+	call, err := s.SaveToolCall(ctx, ToolCall{ID: "legacy", Name: "host_action", RunID: run.ID, SessionID: run.SessionID, Arguments: json.RawMessage(`{}`), Status: ToolPendingApproval, RequiresApproval: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE tool_calls SET arguments_preview=?,result_preview=? WHERE id=?`, `"\u0074est-key"`, `"\u0074est-key"`, call.ID); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	loaded, err := s.ToolCall(ctx, run.ID, call.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{loaded.ArgumentsPreview, loaded.ResultPreview} {
+		if strings.Contains(value, `\u0074`) || !strings.Contains(value, "[REDACTED]") {
+			t.Fatalf("legacy preview escaped migration: %q", value)
+		}
+	}
+	if loaded.ID != call.ID || loaded.Name != call.Name || loaded.Status != ToolPendingApproval || !loaded.RequiresApproval || string(loaded.Arguments) != "{}" {
+		t.Fatal("preview repair changed execution identity or approval")
+	}
+}
+
 func TestEncodedCredentialMarkerCannotCauseRepeatedProjectionGrowth(t *testing.T) {
 	for _, key := range []string{"A", "RED", "[", "]", "REDACTED", "normal-key", "hidden", "界"} {
 		raw, _ := json.Marshal(map[string]string{"note": key})

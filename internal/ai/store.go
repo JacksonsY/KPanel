@@ -851,7 +851,26 @@ func (s *Store) ConversationMessageMetadataPage(ctx context.Context, sessionID s
 	return s.messagesPage(ctx, sessionID, limit, before, true, true)
 }
 
+// ConversationSnapshotMessagePage refreshes the page's IDs/text at the stream
+// cut without re-projecting large immutable attachments under the hub lock.
+// AddMessage never updates existing attachments. New message IDs are projected
+// individually after closing the text rows, within the caller's short deadline.
+func (s *Store) ConversationSnapshotMessagePage(ctx context.Context, sessionID string, cached []Message) (Page[Message], error) {
+	metadata := make(map[string][]Attachment, len(cached))
+	for _, message := range cached {
+		if message.SessionID != sessionID {
+			return Page[Message]{}, errors.New("snapshot metadata session mismatch")
+		}
+		metadata[message.ID] = message.Attachments
+	}
+	return s.messagesPageCached(ctx, sessionID, 50, "", true, true, metadata)
+}
+
 func (s *Store) messagesPage(ctx context.Context, sessionID string, limit int, before string, conversationOnly, metadataOnly bool) (Page[Message], error) {
+	return s.messagesPageCached(ctx, sessionID, limit, before, conversationOnly, metadataOnly, nil)
+}
+
+func (s *Store) messagesPageCached(ctx context.Context, sessionID string, limit int, before string, conversationOnly, metadataOnly bool, metadataCache map[string][]Attachment) (Page[Message], error) {
 	if limit < 1 || limit > 200 {
 		limit = 50
 	}
@@ -859,6 +878,9 @@ func (s *Store) messagesPage(ctx context.Context, sessionID string, limit int, b
 	if metadataOnly {
 		// Validate inside SQLite so the driver copies only metadata into Go.
 		attachmentColumn = attachmentMetadataProjectionSQL()
+	}
+	if metadataCache != nil {
+		attachmentColumn = `'[]'`
 	}
 	// Charge raw UTF-8 bytes inside SQLite before the driver copies content.
 	// JSON can escape each byte to six bytes, bounding content encoding to 12 MiB.
@@ -913,7 +935,11 @@ func (s *Store) messagesPage(ctx context.Context, sessionID string, limit int, b
 			if attachmentBytes > maxAttachmentReadBytes {
 				return Page[Message]{}, errors.New("message attachment record exceeds the read limit")
 			}
-			item.Attachments, err = decodeAttachmentMetadataProjection(attachments)
+			if metadataCache != nil {
+				item.Attachments = metadataCache[item.ID]
+			} else {
+				item.Attachments, err = decodeAttachmentMetadataProjection(attachments)
+			}
 		} else {
 			item.Attachments, err = decodeAttachments(attachments)
 		}
@@ -926,6 +952,30 @@ func (s *Store) messagesPage(ctx context.Context, sessionID string, limit int, b
 	}
 	if err := rows.Err(); err != nil {
 		return Page[Message]{}, err
+	}
+	if err := rows.Close(); err != nil {
+		return Page[Message]{}, err
+	}
+	if metadataCache != nil {
+		for i := range items {
+			if _, ok := metadataCache[items[i].ID]; ok {
+				continue
+			}
+			var projected []byte
+			var size int64
+			query := `SELECT ` + attachmentMetadataProjectionSQL() + `,length(CAST(attachments_json AS BLOB)) FROM messages WHERE id=? AND session_id=?`
+			if err := s.db.QueryRowContext(ctx, query, items[i].ID, sessionID).Scan(&projected, &size); err != nil {
+				return Page[Message]{}, err
+			}
+			if size > maxAttachmentReadBytes {
+				return Page[Message]{}, errors.New("message attachment record exceeds the read limit")
+			}
+			var err error
+			items[i].Attachments, err = decodeAttachmentMetadataProjection(projected)
+			if err != nil {
+				return Page[Message]{}, err
+			}
+		}
 	}
 	// Do not depend on the join's output order or sort attachment bodies in
 	// SQL. Only the bounded page remains here.
