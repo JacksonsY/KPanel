@@ -8,6 +8,7 @@ const MaxSources = 16
 const MaxBatchBytes int64 = 1 << 20
 
 type Cursor struct {
+	Name    string `json:"name,omitempty"`
 	ID      string `json:"id"`
 	Offset  int64  `json:"offset"`
 	Discard bool   `json:"discard,omitempty"`

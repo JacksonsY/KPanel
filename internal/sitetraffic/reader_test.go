@@ -179,3 +179,96 @@ func BenchmarkCollectBounded(b *testing.B) {
 		}
 	}
 }
+
+func TestCollectCopytruncateTransfersCheckpoint(t *testing.T) {
+	root, reader := readerFixture(t)
+	path := filepath.Join(root, "log/nginx/access.log")
+	first := access("192.0.2.1", "/counted", 200)
+	late := access("192.0.2.1", "/unread-before-copy", 200)
+	fresh := access("192.0.2.2", "/new-current", 200)
+	os.WriteFile(path, []byte(first), 0600)
+	input := CollectInput{Salt: strings.Repeat("ab", 32)}
+	batch, err := reader.Collect(context.Background(), input)
+	if err != nil || len(batch.Records) != 1 {
+		t.Fatal(err, batch)
+	}
+	input.Cursors = batch.Cursors
+	os.WriteFile(path+".1", []byte(first+late), 0600)
+	os.WriteFile(path, []byte(fresh), 0600)
+	batch, err = reader.Collect(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	for _, record := range batch.Records {
+		seen[record.Path]++
+	}
+	if len(batch.Records) != 2 || seen["/counted"] != 0 || seen["/unread-before-copy"] != 1 || seen["/new-current"] != 1 {
+		t.Fatalf("copytruncate replay or loss: %+v", batch)
+	}
+	input.Cursors = batch.Cursors
+	batch, err = reader.Collect(context.Background(), input)
+	if err != nil || len(batch.Records) != 0 {
+		t.Fatal("second replay", batch, err)
+	}
+}
+func TestCollectOutageKeepsCheckpoints(t *testing.T) {
+	root, reader := readerFixture(t)
+	path := filepath.Join(root, "log/nginx/access.log")
+	os.WriteFile(path, []byte(access("192.0.2.1", "/once", 200)), 0600)
+	input := CollectInput{Salt: strings.Repeat("ab", 32)}
+	batch, err := reader.Collect(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.Cursors = batch.Cursors
+	logs := filepath.Join(root, "log/nginx")
+	away := filepath.Join(root, "log/nginx-away")
+	if err = os.Rename(logs, away); err != nil {
+		t.Fatal(err)
+	}
+	outage, err := reader.Collect(context.Background(), input)
+	if err != nil || len(outage.Cursors) != len(input.Cursors) || outage.Cursors[0].Offset != input.Cursors[0].Offset {
+		t.Fatal("checkpoint lost", outage, err)
+	}
+	if err = os.Rename(away, logs); err != nil {
+		t.Fatal(err)
+	}
+	input.Cursors = outage.Cursors
+	batch, err = reader.Collect(context.Background(), input)
+	if err != nil || len(batch.Records) != 0 {
+		t.Fatal("outage recovery replay", batch, err)
+	}
+}
+
+func TestCollectCopytruncateDoesNotBorrowAnotherSiteCheckpoint(t *testing.T) {
+	root, reader := readerFixture(t)
+	logs := filepath.Join(root, "log/nginx")
+	a := filepath.Join(logs, "a.example.access.log")
+	b := filepath.Join(logs, "b.example.access.log")
+	same := access("192.0.2.1", "/same", 200)
+	os.WriteFile(a, []byte(same+same+same), 0600)
+	os.WriteFile(b, []byte(same), 0600)
+	input := CollectInput{Salt: strings.Repeat("ab", 32)}
+	batch, err := reader.Collect(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.Cursors = batch.Cursors
+	os.WriteFile(b+".1", []byte(same+access("192.0.2.1", "/late-b", 200)), 0600)
+	os.WriteFile(b, []byte(access("192.0.2.2", "/fresh-b", 200)), 0600)
+	batch, err = reader.Collect(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	for _, record := range batch.Records {
+		seen[record.Path]++
+		if record.Host != "b.example" {
+			t.Fatal("cross-site attribution", record)
+		}
+	}
+	if len(batch.Records) != 2 || seen["/late-b"] != 1 || seen["/fresh-b"] != 1 {
+		t.Fatalf("cross-site checkpoint borrowed: %+v", batch)
+	}
+}

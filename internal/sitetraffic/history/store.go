@@ -210,7 +210,7 @@ func (s *Store) Apply(ctx context.Context, batch sitetraffic.Batch) error {
 		return ErrUnavailable
 	}
 	for _, cursor := range batch.Cursors {
-		if cursor.ID == "" || len(cursor.ID) > 160 || cursor.Offset < 0 || cursor.Offset > 1<<50 {
+		if cursor.ID == "" || len(cursor.ID) > 160 || cursor.Offset < 0 || cursor.Offset > 1<<50 || len(cursor.Name) > 255 || strings.ContainsAny(cursor.Name, "\x00\r\n") {
 			return ErrUnavailable
 		}
 	}

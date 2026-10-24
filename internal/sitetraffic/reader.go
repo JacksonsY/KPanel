@@ -53,7 +53,7 @@ func (r *Reader) Collect(ctx context.Context, input CollectInput) (Batch, error)
 	}
 	cursors := map[string]Cursor{}
 	for _, c := range input.Cursors {
-		if len(c.ID) > 160 || c.ID == "" || c.Offset < 0 || c.Offset > 1<<50 {
+		if len(c.ID) > 160 || c.ID == "" || c.Offset < 0 || c.Offset > 1<<50 || len(c.Name) > 255 || strings.ContainsAny(c.Name, "\x00\r\n") {
 			return out, ErrInput
 		}
 		if _, exists := cursors[c.ID]; exists {
@@ -70,7 +70,7 @@ func (r *Reader) Collect(ctx context.Context, input CollectInput) (Batch, error)
 	}
 	root, err := os.OpenRoot(r.root)
 	if errors.Is(err, os.ErrNotExist) {
-		return out, nil
+		return preserveCursors(out, input.Cursors), nil
 	}
 	if err != nil {
 		return out, err
@@ -81,7 +81,7 @@ func (r *Reader) Collect(ctx context.Context, input CollectInput) (Batch, error)
 	for _, name := range []string{"log", "log/nginx"} {
 		info, e := root.Lstat(name)
 		if errors.Is(e, os.ErrNotExist) {
-			return out, nil
+			return preserveCursors(out, input.Cursors), nil
 		}
 		if e != nil {
 			return out, e
@@ -140,12 +140,6 @@ func (r *Reader) Collect(ctx context.Context, input CollectInput) (Batch, error)
 	}
 	seen := map[string]bool{}
 	for index, source := range sources {
-		if strings.Contains(source.name, "access") {
-			out.AccessSource = true
-		}
-		if strings.HasPrefix(source.name, "waf-") {
-			out.WAFSource = true
-		}
 		if ctx.Err() != nil {
 			return Batch{}, ctx.Err()
 		}
@@ -174,8 +168,31 @@ func (r *Reader) Collect(ctx context.Context, input CollectInput) (Batch, error)
 			continue
 		}
 		seen[id] = true
+		// Scope copytruncate checkpoint transfer to this log name, not another site's log.
+		groupSum := sha256.Sum256([]byte(strings.TrimSuffix(source.name, ".1")))
+		group := hex.EncodeToString(groupSum[:8]) + "-"
+		id = group + id
 		cursor, known := cursors[id]
+		if !known && strings.HasSuffix(source.name, ".1") {
+			for _, previous := range input.Cursors {
+				if strings.HasPrefix(previous.ID, group) && strings.HasSuffix(previous.ID, "-"+hex.EncodeToString(sum[:8])) && (!known || previous.Offset > cursor.Offset) {
+					cursor = previous
+					known = true
+				}
+			}
+			if known && cursor.Offset > info.Size() {
+				cursor.Offset = info.Size()
+				cursor.Discard = false
+			}
+		}
 		cursor.ID = id
+		cursor.Name = source.name
+		if strings.Contains(source.name, "access") {
+			out.AccessSource = true
+		}
+		if strings.HasPrefix(source.name, "waf-") {
+			out.WAFSource = true
+		}
 		if !known && info.Size() > MaxBatchBytes {
 			cursor.Offset = info.Size() - MaxBatchBytes
 			cursor.Discard = true
@@ -254,7 +271,7 @@ func (r *Reader) Collect(ctx context.Context, input CollectInput) (Batch, error)
 	if out.Skipped > 0 {
 		out.Warnings = appendUnique(out.Warnings, "unparsed_lines")
 	}
-	return out, nil
+	return preserveCursors(out, input.Cursors), nil
 }
 func (r *Reader) loadGeo(root *os.Root) {
 	if time.Since(r.geoChecked) < 30*time.Second {
@@ -454,4 +471,29 @@ func appendUnique(values []string, value string) []string {
 		}
 	}
 	return append(values, value)
+}
+
+// Keep checkpoints for sources that temporarily disappear or cannot be opened.
+// A successfully read replacement of the same name retires the old identity.
+func preserveCursors(out Batch, previous []Cursor) Batch {
+	ids := map[string]bool{}
+	names := map[string]bool{}
+	for _, cursor := range out.Cursors {
+		ids[cursor.ID] = true
+		if cursor.Name != "" {
+			names[cursor.Name] = true
+		}
+	}
+	for _, cursor := range previous {
+		if ids[cursor.ID] || (cursor.Name != "" && names[cursor.Name]) {
+			continue
+		}
+		if len(out.Cursors) >= MaxSources {
+			out.Warnings = appendUnique(out.Warnings, "source_limit")
+			continue
+		}
+		out.Cursors = append(out.Cursors, cursor)
+		ids[cursor.ID] = true
+	}
+	return out
 }
