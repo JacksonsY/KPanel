@@ -37,6 +37,43 @@ func archiveSameFilesystem(a, b os.FileInfo) bool {
 	return xok && yok && x.Dev == y.Dev
 }
 
+// Moving the workspace to a trusted ancestor must not change the selected
+// destination's default ACL inheritance. Only the default ACL is copied: the
+// outer staging directory's access permissions must remain private.
+func inheritArchiveDestinationDefaults(stage, target *fileRoot) error {
+	source, err := target.Open(".")
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	destination, err := stage.Open(".")
+	if err != nil {
+		return err
+	}
+	defer destination.Close()
+	const name = "system.posix_acl_default"
+	size, err := unix.Fgetxattr(int(source.Fd()), name, nil)
+	if errors.Is(err, unix.ENODATA) || errors.Is(err, unix.ENOTSUP) {
+		err = unix.Fremovexattr(int(destination.Fd()), name)
+		if errors.Is(err, unix.ENODATA) || errors.Is(err, unix.ENOTSUP) {
+			return nil
+		}
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if size > 64<<10 {
+		return ErrTooLarge
+	}
+	value := make([]byte, size)
+	count, err := unix.Fgetxattr(int(source.Fd()), name, value)
+	if err != nil {
+		return err
+	}
+	return unix.Fsetxattr(int(destination.Fd()), name, value[:count], 0)
+}
+
 func receiveFileTimes(_ *fileRoot, _ string, file *os.File, when time.Time) error {
 	stamp := unix.Timespec{Sec: when.Unix(), Nsec: int64(when.Nanosecond())}
 	times := []unix.Timespec{stamp, stamp}

@@ -186,7 +186,7 @@ func (m *Manager) cleanupArchiveTemp(record *archiveJobRecord, virtual string) e
 	}
 	defer parent.Close()
 	identity := record.TempIdentities[virtual]
-	if identity.Parent == "" || identity.Object == "" || identity.Parent != stableReceiveIdentity(info) || identity.Directory == "" || !isWithin(record.Job.Target, identity.Directory) {
+	if identity.Parent == "" || identity.Object == "" || identity.Parent != stableReceiveIdentity(info) || identity.Directory == "" || identity.Directory != record.Job.Target && !isWithin(record.Job.Target, identity.Directory) {
 		return ErrConflict
 	}
 	workspace, workspaceInfo, err := m.openReceiveDirectory(identity.Directory, false)

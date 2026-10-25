@@ -13,7 +13,39 @@ import (
 	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/contract"
+	"golang.org/x/sys/unix"
 )
+
+func TestArchiveWorkspaceKeepsDestinationDefaultACL(t *testing.T) {
+	for _, targetACL := range []bool{false, true} {
+		t.Run(map[bool]string{false: "absent", true: "present"}[targetACL], func(t *testing.T) {
+			m, root := newTestManager(t)
+			target := filepath.Join(root, "target")
+			mustMkdirAll(t, target)
+			if err := os.Chmod(target, 0777); err != nil {
+				t.Fatal(err)
+			}
+			aclRoot := root
+			if targetACL {
+				aclRoot = target
+			}
+			if err := unix.Setxattr(aclRoot, "system.posix_acl_default", namedUserACL(), 0); err != nil {
+				t.Fatal(err)
+			}
+			writeZIPFixture(t, filepath.Join(root, "source.zip"), "source", 0644, "finite payload")
+			if _, err := m.extractArchive(context.Background(), "/source.zip", "/target", "result", archiveFormatZIP, ""); err != nil {
+				t.Fatal(err)
+			}
+			_, err := unix.Getxattr(filepath.Join(target, "result", "source"), "system.posix_acl_access", nil)
+			if targetACL && err != nil {
+				t.Fatalf("destination ACL was lost: %v", err)
+			}
+			if !targetACL && !errors.Is(err, unix.ENODATA) {
+				t.Fatalf("ancestor ACL leaked into destination: %v", err)
+			}
+		})
+	}
+}
 
 func TestArchiveRecoveryRetainsUnidentifiedTemp(t *testing.T) {
 	m, root := newTestManager(t)

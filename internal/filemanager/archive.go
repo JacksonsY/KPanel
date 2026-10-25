@@ -231,6 +231,9 @@ func (m *Manager) compressArchive(
 	if err := recordArchiveTemp(ctx, openedTarget, workspacePath, workspaceInfo, ownedStage); err != nil {
 		return contract.FileEntry{}, err
 	}
+	if err := inheritArchiveDestinationDefaults(stage, parent); err != nil {
+		return contract.FileEntry{}, err
+	}
 	temp, err := stage.OpenFile("body", os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return contract.FileEntry{}, err
@@ -635,6 +638,9 @@ func (m *Manager) extractArchive(
 		return contract.FileEntry{}, err
 	}
 	if err := recordArchiveTemp(ctx, openedTarget, workspacePath, workspaceInfo, ownedStage); err != nil {
+		return contract.FileEntry{}, err
+	}
+	if err := inheritArchiveDestinationDefaults(publication, parent); err != nil {
 		return contract.FileEntry{}, err
 	}
 	if err := publication.Mkdir("result", 0700); err != nil {

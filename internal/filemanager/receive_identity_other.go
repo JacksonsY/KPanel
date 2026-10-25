@@ -17,6 +17,8 @@ func archiveStagePrivate(info os.FileInfo) bool { return info.IsDir() }
 func archiveWorkspaceProtected(info os.FileInfo) bool { return info.IsDir() }
 func archiveSameFilesystem(a, b os.FileInfo) bool     { return true }
 
+func inheritArchiveDestinationDefaults(stage, target *fileRoot) error { return nil }
+
 func receiveFileTimes(root *fileRoot, name string, _ *os.File, when time.Time) error {
 	return root.Chtimes(name, when, when)
 }

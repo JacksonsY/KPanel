@@ -285,12 +285,12 @@ func TestArchiveBatchSharesByteBudget(t *testing.T) {
 func TestArchiveRecoveryOnlyCleansJournalOwnedTemps(t *testing.T) {
 	m, root := newTestManager(t)
 	id := strings.Repeat("a", 32)
-	temp := archiveJobTemp("/", "extract", id, 0)
+	temp := archiveJobTemp("/target", "extract", id, 0)
 	mustWrite(t, filepath.Join(root, strings.TrimPrefix(temp, "/"), "partial"), "temporary")
 	mustWrite(t, filepath.Join(root, ".kpanel-extract-unrelated", "keep"), "keep")
 	mustWrite(t, filepath.Join(root, "result", "keep"), "committed")
-	record := archiveJobRecord{Job: contract.FileArchiveJob{ID: id, Action: "extract", State: "running", Target: "/", Sources: []string{"/source.zip"}, Name: "result", CreatedAt: time.Now(), UpdatedAt: time.Now()}, Temps: []string{temp}}
-	parentInfo, err := os.Stat(root)
+	record := archiveJobRecord{Job: contract.FileArchiveJob{ID: id, Action: "extract", State: "running", Target: "/target", Sources: []string{"/source.zip"}, Name: "result", CreatedAt: time.Now(), UpdatedAt: time.Now()}, Temps: []string{temp}}
+	parentInfo, err := os.Stat(filepath.Join(root, "target"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestArchiveRecoveryOnlyCleansJournalOwnedTemps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record.TempIdentities = map[string]archiveTempIdentity{temp: {Parent: stableReceiveIdentity(parentInfo), Object: stableReceiveIdentity(stageInfo), Directory: "/", Workspace: stableReceiveIdentity(parentInfo)}}
+	record.TempIdentities = map[string]archiveTempIdentity{temp: {Parent: stableReceiveIdentity(parentInfo), Object: stableReceiveIdentity(stageInfo), Directory: "/target", Workspace: stableReceiveIdentity(parentInfo)}}
 	data, err := json.Marshal(map[string]any{"version": 1, "records": []archiveJobRecord{record}})
 	if err != nil {
 		t.Fatal(err)

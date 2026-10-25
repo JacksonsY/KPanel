@@ -148,7 +148,7 @@ func (m *Manager) ImportDirectory(
 	return m.ReceiveStream(ctx, input, content, receiveLimit(input))
 }
 
-func (m *Manager) importDirectory(ctx context.Context, input contract.FileReceiveInput, content io.Reader, parent *fileRoot, tempVirtual string, stageCreated func(os.FileInfo) error, beforePublish func(*fileRoot, os.FileInfo) error) (contract.FileEntry, error) {
+func (m *Manager) importDirectory(ctx context.Context, input contract.FileReceiveInput, content io.Reader, parent, workspace *fileRoot, tempVirtual string, stageCreated func(os.FileInfo) error, beforePublish func(*fileRoot, os.FileInfo) error) (contract.FileEntry, error) {
 	targetDirectory, name := input.Directory, input.Name
 	if err := validateName(name); err != nil {
 		return contract.FileEntry{}, err
@@ -176,32 +176,42 @@ func (m *Manager) importDirectory(ctx context.Context, input contract.FileReceiv
 	}
 
 	tempName := path.Base(tempVirtual)
-	if err := parent.Mkdir(tempName, 0700); err != nil {
+	workspaceInfo, err := workspace.Stat(".")
+	if err != nil || !archiveWorkspaceProtected(workspaceInfo) || !archiveSameFilesystem(targetInfo, workspaceInfo) {
+		return contract.FileEntry{}, ErrConflict
+	}
+	if err := workspace.Mkdir(tempName, 0700); err != nil {
 		return contract.FileEntry{}, err
 	}
 	var ownedStage os.FileInfo
 	defer func() {
 		if ownedStage != nil {
-			if current, err := parent.Lstat(tempName); err == nil {
-				_ = removeOwnedReceiveDirectory(parent, tempName, current, ownedStage, "")
+			if current, err := workspace.Lstat(tempName); err == nil {
+				_ = removeOwnedReceiveDirectory(workspace, tempName, current, ownedStage, "")
 			}
 		}
 	}()
-	stageInfo, err := parent.Lstat(tempName)
+	stageInfo, err := workspace.Lstat(tempName)
 	if err != nil || !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 {
 		return contract.FileEntry{}, ErrConflict
 	}
-	publication, err := parent.OpenRoot(tempName)
+	publication, err := workspace.OpenRoot(tempName)
 	if err != nil {
 		return contract.FileEntry{}, err
 	}
 	defer publication.Close()
 	opened, err := publication.Stat(".")
-	if err != nil || !os.SameFile(stageInfo, opened) {
+	if err != nil || !os.SameFile(stageInfo, opened) || !archiveStagePrivate(opened) {
 		return contract.FileEntry{}, ErrConflict
 	}
 	ownedStage = opened
+	if err := syncRootDirectory(workspace, "."); err != nil {
+		return contract.FileEntry{}, err
+	}
 	if err := stageCreated(opened); err != nil {
+		return contract.FileEntry{}, err
+	}
+	if err := inheritArchiveDestinationDefaults(publication, parent); err != nil {
 		return contract.FileEntry{}, err
 	}
 	if err := publication.Mkdir("result", 0700); err != nil {
@@ -263,7 +273,7 @@ func (m *Manager) importDirectory(ctx context.Context, input contract.FileReceiv
 	if parentErr != nil || statErr != nil || !os.SameFile(targetInfo, currentParent) {
 		return contract.FileEntry{}, ErrConflict
 	}
-	visible, err := parent.Lstat(tempName)
+	visible, err := workspace.Lstat(tempName)
 	if err != nil || !os.SameFile(ownedStage, visible) {
 		return contract.FileEntry{}, ErrConflict
 	}

@@ -37,18 +37,20 @@ var (
 // A checkpoint acknowledges only bytes fsynced before the atomic journal write.
 // The bounded private journal contains identities/hashes, never source URLs.
 type receiveRecord struct {
-	Session         contract.FileReceiveSession `json:"session"`
-	Input           contract.FileReceiveInput   `json:"input"`
-	OriginalVersion string                      `json:"originalVersion,omitempty"`
-	PublishVersion  string                      `json:"publishVersion,omitempty"`
-	PublishIdentity string                      `json:"publishIdentity,omitempty"`
-	ParentIdentity  string                      `json:"parentIdentity,omitempty"`
-	TempIdentity    string                      `json:"tempIdentity,omitempty"`
-	ExtractIdentity string                      `json:"extractIdentity,omitempty"`
-	hasher          hash.Hash
-	identity        os.FileInfo
-	parentInfo      os.FileInfo
-	extractInfo     os.FileInfo
+	Session               contract.FileReceiveSession `json:"session"`
+	Input                 contract.FileReceiveInput   `json:"input"`
+	OriginalVersion       string                      `json:"originalVersion,omitempty"`
+	PublishVersion        string                      `json:"publishVersion,omitempty"`
+	PublishIdentity       string                      `json:"publishIdentity,omitempty"`
+	ParentIdentity        string                      `json:"parentIdentity,omitempty"`
+	TempIdentity          string                      `json:"tempIdentity,omitempty"`
+	ExtractIdentity       string                      `json:"extractIdentity,omitempty"`
+	ExtractDirectory      string                      `json:"extractDirectory,omitempty"`
+	ExtractParentIdentity string                      `json:"extractParentIdentity,omitempty"`
+	hasher                hash.Hash
+	identity              os.FileInfo
+	parentInfo            os.FileInfo
+	extractInfo           os.FileInfo
 	// Guard speculative file I/O while Session remains the durable checkpoint.
 	busy chan struct{}
 }
@@ -112,7 +114,11 @@ func receiveTemp(record *receiveRecord) string {
 }
 
 func receiveExtract(record *receiveRecord) string {
-	return joinVirtual(record.Input.Directory, ".kpanel-extract-"+record.Session.ID)
+	directory := record.ExtractDirectory
+	if directory == "" {
+		directory = record.Input.Directory
+	}
+	return joinVirtual(directory, ".kpanel-extract-"+record.Session.ID)
 }
 
 func (m *Manager) initializeReceivesLocked() error {
@@ -180,6 +186,11 @@ func (m *Manager) initializeReceivesLocked() error {
 		}
 		if _, exists := s.records[record.Session.ID]; exists {
 			return ErrReceiveUnavailable
+		}
+		if record.ExtractDirectory != "" {
+			if directory, err := normalizeVirtual(record.ExtractDirectory); err != nil || directory != record.ExtractDirectory || directory != record.Input.Directory && !isWithin(record.Input.Directory, directory) {
+				return ErrReceiveUnavailable
+			}
 		}
 		if record.Session.State == "complete" && (record.Session.Entry == nil || record.Session.Entry.Path != joinVirtual(record.Input.Directory, record.Input.Name) || record.Session.Entry.Kind != record.Input.Kind) {
 			return ErrReceiveUnavailable
@@ -301,7 +312,7 @@ func (m *Manager) removeReceiveTemp(record *receiveRecord) error {
 }
 
 func (m *Manager) removeReceiveExtract(record *receiveRecord) error {
-	parent, _, err := m.pinReceiveParent(record)
+	parent, err := m.pinReceiveExtractParent(record)
 	if err != nil {
 		return err
 	}
@@ -315,6 +326,39 @@ func (m *Manager) removeReceiveExtract(record *receiveRecord) error {
 		return err
 	}
 	return removeOwnedReceiveDirectory(parent, name, info, record.extractInfo, record.ExtractIdentity)
+}
+
+func (m *Manager) pinReceiveExtractParent(record *receiveRecord) (*fileRoot, error) {
+	parent, targetInfo, err := m.pinReceiveParent(record)
+	if err != nil {
+		return nil, err
+	}
+	if record.ExtractDirectory == "" {
+		return parent, nil
+	} // Existing journal, original location only.
+	_ = parent.Close()
+	workspace, info, err := m.openReceiveDirectory(record.ExtractDirectory, false)
+	if err != nil {
+		return nil, err
+	}
+	if record.ExtractDirectory != record.Input.Directory && !isWithin(record.Input.Directory, record.ExtractDirectory) || !archiveWorkspaceProtected(info) || !archiveSameFilesystem(targetInfo, info) || record.ExtractParentIdentity != stableReceiveIdentity(info) {
+		_ = workspace.Close()
+		return nil, ErrConflict
+	}
+	return workspace, nil
+}
+
+func (m *Manager) prepareReceiveExtract(record *receiveRecord) (*fileRoot, error) {
+	workspace, directory, info, err := m.openArchiveWorkspace(record.Input.Directory, record.parentInfo)
+	if err != nil {
+		return nil, err
+	}
+	record.ExtractDirectory, record.ExtractParentIdentity = directory, stableReceiveIdentity(info)
+	if err := m.persistReceivesLocked(); err != nil {
+		_ = workspace.Close()
+		return nil, err
+	}
+	return workspace, nil
 }
 
 func sameReceiveObject(info, expected os.FileInfo, identity string) bool {
@@ -755,11 +799,17 @@ func (m *Manager) reconcileReceiveCommit(ctx context.Context, record *receiveRec
 		stagingRoot := parent
 		stagingName := path.Base(staging)
 		if record.ExtractIdentity != "" {
-			if stageInfo, err := parent.Lstat(path.Base(receiveExtract(record))); err == nil {
+			workspace, err := m.pinReceiveExtractParent(record)
+			if err != nil {
+				return err
+			}
+			defer workspace.Close()
+			stagingRoot = workspace
+			if stageInfo, err := workspace.Lstat(path.Base(receiveExtract(record))); err == nil {
 				if !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 || !sameReceiveObject(stageInfo, record.extractInfo, record.ExtractIdentity) {
 					return ErrConflict
 				}
-				publication, err := parent.OpenRoot(path.Base(receiveExtract(record)))
+				publication, err := workspace.OpenRoot(path.Base(receiveExtract(record)))
 				if err != nil {
 					return err
 				}
@@ -892,6 +942,11 @@ func (m *Manager) CommitReceive(ctx context.Context, id, sourceKey string, size 
 		if err := m.removeReceiveExtract(record); err != nil {
 			return contract.FileReceiveSession{}, err
 		}
+		workspace, err := m.prepareReceiveExtract(record)
+		if err != nil {
+			return contract.FileReceiveSession{}, err
+		}
+		defer workspace.Close()
 		if _, err := file.Seek(0, io.SeekStart); err != nil {
 			return contract.FileReceiveSession{}, err
 		}
@@ -900,7 +955,7 @@ func (m *Manager) CommitReceive(ctx context.Context, id, sourceKey string, size 
 			record.Session.State = "receiving"
 			return contract.FileReceiveSession{}, err
 		}
-		entry, err := m.importDirectory(ctx, record.Input, file, parent, receiveExtract(record), func(info os.FileInfo) error {
+		entry, err := m.importDirectory(ctx, record.Input, file, parent, workspace, receiveExtract(record), func(info os.FileInfo) error {
 			record.extractInfo, record.ExtractIdentity = info, stableReceiveIdentity(info)
 			return m.persistReceivesLocked()
 		}, func(stage *fileRoot, info os.FileInfo) error {
@@ -975,29 +1030,37 @@ func (m *Manager) CommitReceive(ctx context.Context, id, sourceKey string, size 
 		if err := m.removeReceiveExtract(record); err != nil {
 			return contract.FileReceiveSession{}, err
 		}
-		stageName := path.Base(receiveExtract(record))
-		if err := parent.Mkdir(stageName, 0700); err != nil {
+		workspace, err := m.prepareReceiveExtract(record)
+		if err != nil {
 			return contract.FileReceiveSession{}, err
 		}
-		stageInfo, err := parent.Lstat(stageName)
+		defer workspace.Close()
+		stageName := path.Base(receiveExtract(record))
+		if err := workspace.Mkdir(stageName, 0700); err != nil {
+			return contract.FileReceiveSession{}, err
+		}
+		stageInfo, err := workspace.Lstat(stageName)
 		if err != nil || !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 {
 			return contract.FileReceiveSession{}, ErrConflict
 		}
-		stage, err := parent.OpenRoot(stageName)
+		stage, err := workspace.OpenRoot(stageName)
 		if err != nil {
 			return contract.FileReceiveSession{}, err
 		}
 		defer stage.Close()
 		openedStage, err := stage.Stat(".")
-		if err != nil || !os.SameFile(stageInfo, openedStage) {
+		if err != nil || !os.SameFile(stageInfo, openedStage) || !archiveStagePrivate(openedStage) {
 			return contract.FileReceiveSession{}, ErrConflict
 		}
 		record.extractInfo, record.ExtractIdentity = openedStage, stableReceiveIdentity(openedStage)
 		defer func() {
-			if current, err := parent.Lstat(stageName); err == nil {
-				_ = removeOwnedReceiveDirectory(parent, stageName, current, openedStage, "")
+			if current, err := workspace.Lstat(stageName); err == nil {
+				_ = removeOwnedReceiveDirectory(workspace, stageName, current, openedStage, "")
 			}
 		}()
+		if err := syncRootDirectory(workspace, "."); err != nil {
+			return contract.FileReceiveSession{}, err
+		}
 		if err := m.persistReceivesLocked(); err != nil {
 			return contract.FileReceiveSession{}, err
 		}
@@ -1025,7 +1088,7 @@ func (m *Manager) CommitReceive(ctx context.Context, id, sourceKey string, size 
 			return contract.FileReceiveSession{}, err
 		}
 		currentTemp, tempErr := parent.Lstat(path.Base(receiveTemp(record)))
-		currentStage, stageErr := parent.Lstat(stageName)
+		currentStage, stageErr := workspace.Lstat(stageName)
 		if tempErr != nil || stageErr != nil || !os.SameFile(info, currentTemp) || !os.SameFile(openedStage, currentStage) {
 			return contract.FileReceiveSession{}, ErrConflict
 		}

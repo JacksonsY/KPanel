@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/kejilion/kejilion-panel/internal/contract"
+	"golang.org/x/sys/unix"
 )
 
 type receiveBoundaryReader struct {
@@ -86,7 +87,7 @@ func TestReceiveDirectoryPinsStageAndParentDuringExtraction(t *testing.T) {
 					}
 				}
 			}}
-			_, err = m.importDirectory(context.Background(), input, content, parent, "/home/.kpanel-extract-test", func(os.FileInfo) error { return nil }, func(*fileRoot, os.FileInfo) error { return nil })
+			_, err = m.importDirectory(context.Background(), input, content, parent, parent, "/home/.kpanel-extract-test", func(os.FileInfo) error { return nil }, func(*fileRoot, os.FileInfo) error { return nil })
 			if !errors.Is(err, ErrConflict) {
 				t.Fatalf("substituted extraction was published: %v", err)
 			}
@@ -111,6 +112,106 @@ type receiveMutationContext struct {
 }
 
 func (c receiveMutationContext) Err() error { return c.check() }
+
+func TestReceiveBootstrapsPublicationBelowProtectedAncestor(t *testing.T) {
+	for _, kind := range []string{"file", "directory"} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			m := newReceiveManager(t, root)
+			mustMkdirAll(t, filepath.Join(root, "target"))
+			if err := os.Chmod(filepath.Join(root, "target"), 0777); err != nil {
+				t.Fatal(err)
+			}
+			data := []byte("payload")
+			if kind == "directory" {
+				var archive bytes.Buffer
+				writer := tar.NewWriter(&archive)
+				_ = writer.WriteHeader(&tar.Header{Name: "child.txt", Mode: 0644, Size: 7, Typeflag: tar.TypeReg})
+				_, _ = writer.Write(data)
+				_ = writer.Close()
+				data = archive.Bytes()
+			}
+			input := testReceiveInput(int64(len(data)))
+			input.Directory, input.Kind = "/target", kind
+			session, err := m.BeginReceive(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := m.WriteReceiveChunk(context.Background(), session.ID, input.SourceKey, 0, bytes.NewReader(data), receiveDigest(data)); err != nil {
+				t.Fatal(err)
+			}
+			checked := false
+			ctx := receiveMutationContext{Context: context.Background(), check: func() error {
+				record := m.receives.records[session.ID]
+				if checked || record.ExtractIdentity == "" {
+					return nil
+				}
+				checked = true
+				name := ".kpanel-extract-" + session.ID
+				if _, err := os.Lstat(filepath.Join(root, "target", name)); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("publication stage uses writable target parent: %v", err)
+				}
+				if _, err := os.Lstat(filepath.Join(root, name)); err != nil {
+					t.Errorf("private ancestor stage missing: %v", err)
+				}
+				return nil
+			}}
+			if _, err := m.CommitReceive(ctx, session.ID, input.SourceKey, int64(len(data)), receiveDigest(data)); err != nil {
+				t.Fatal(err)
+			}
+			if !checked {
+				t.Fatal("publication window was not exercised")
+			}
+			raw, err := json.Marshal(m.receives.records[session.ID])
+			if err != nil {
+				t.Fatal(err)
+			}
+			var state map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &state); err != nil {
+				t.Fatal(err)
+			}
+			if string(state["extractDirectory"]) != `"/"` || len(state["extractParentIdentity"]) == 0 {
+				t.Fatalf("actual publication parent was not journaled: %s", raw)
+			}
+		})
+	}
+}
+
+func TestReceiveDirectoryKeepsDestinationDefaultACL(t *testing.T) {
+	for _, targetACL := range []bool{false, true} {
+		t.Run(fmt.Sprintf("target-acl=%t", targetACL), func(t *testing.T) {
+			root := t.TempDir()
+			m := newReceiveManager(t, root)
+			target := filepath.Join(root, "target")
+			mustMkdirAll(t, target)
+			if err := os.Chmod(target, 0777); err != nil {
+				t.Fatal(err)
+			}
+			aclRoot := root
+			if targetACL {
+				aclRoot = target
+			}
+			if err := unix.Setxattr(aclRoot, "system.posix_acl_default", namedUserACL(), 0); err != nil {
+				t.Fatal(err)
+			}
+			var archive bytes.Buffer
+			writer := tar.NewWriter(&archive)
+			_ = writer.WriteHeader(&tar.Header{Name: "child.txt", Mode: 0644, Size: 7, Typeflag: tar.TypeReg})
+			_, _ = writer.Write([]byte("payload"))
+			_ = writer.Close()
+			if _, err := m.ImportDirectory(context.Background(), "/target", "result", bytes.NewReader(archive.Bytes())); err != nil {
+				t.Fatal(err)
+			}
+			_, err := unix.Getxattr(filepath.Join(target, "result", "child.txt"), "system.posix_acl_access", nil)
+			if targetACL && err != nil {
+				t.Fatalf("destination ACL was lost: %v", err)
+			}
+			if !targetACL && !errors.Is(err, unix.ENODATA) {
+				t.Fatalf("ancestor ACL leaked: %v", err)
+			}
+		})
+	}
+}
 
 func TestReceiveFileStagingSubstitutionNeverPublishesOrOverwrites(t *testing.T) {
 	for _, overwrite := range []bool{false, true} {
@@ -192,6 +293,10 @@ func TestReceiveRecoveryProvesPrivatePublicationBeforeRemovingSpool(t *testing.T
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
 			m := newReceiveManager(t, root)
+			mustMkdirAll(t, filepath.Join(root, "target"))
+			if err := os.Chmod(filepath.Join(root, "target"), 0777); err != nil {
+				t.Fatal(err)
+			}
 			data := []byte("payload")
 			if kind == "directory" {
 				var archive bytes.Buffer
@@ -203,6 +308,7 @@ func TestReceiveRecoveryProvesPrivatePublicationBeforeRemovingSpool(t *testing.T
 			}
 			input := testReceiveInput(int64(len(data)))
 			input.Kind = kind
+			input.Directory = "/target"
 			session, err := m.BeginReceive(context.Background(), input)
 			if err != nil {
 				t.Fatal(err)
@@ -221,7 +327,7 @@ func TestReceiveRecoveryProvesPrivatePublicationBeforeRemovingSpool(t *testing.T
 				if kind == "directory" {
 					child = "result"
 				}
-				if err := os.Rename(filepath.Join(root, ".kpanel-extract-"+session.ID, child), filepath.Join(root, input.Name)); err != nil {
+				if err := os.Rename(filepath.Join(root, ".kpanel-extract-"+session.ID, child), filepath.Join(root, "target", input.Name)); err != nil {
 					t.Fatal(err)
 				}
 				return context.Canceled
@@ -240,18 +346,32 @@ func TestReceiveRecoveryProvesPrivatePublicationBeforeRemovingSpool(t *testing.T
 }
 
 func TestReceiveCleanupRetainsUnownedObjectsAfterRestart(t *testing.T) {
-	for _, staging := range []string{"spool", "extract"} {
+	for _, staging := range []string{"spool", "extract", "extract-private"} {
 		t.Run(staging, func(t *testing.T) {
 			root := t.TempDir()
 			m := newReceiveManager(t, root)
 			input := testReceiveInput(0)
+			if staging == "extract-private" {
+				mustMkdirAll(t, filepath.Join(root, "target"))
+				if err := os.Chmod(filepath.Join(root, "target"), 0777); err != nil {
+					t.Fatal(err)
+				}
+				input.Directory = "/target"
+			}
 			session, err := m.BeginReceive(context.Background(), input)
 			if err != nil {
 				t.Fatal(err)
 			}
 			record := m.receives.records[session.ID]
 			name := ".kpanel-upload-" + session.ID
-			if staging == "extract" {
+			if strings.HasPrefix(staging, "extract") {
+				if staging == "extract-private" {
+					workspace, err := m.prepareReceiveExtract(record)
+					if err != nil {
+						t.Fatal(err)
+					}
+					_ = workspace.Close()
+				}
 				name = ".kpanel-extract-" + session.ID
 				if err := os.Mkdir(filepath.Join(root, name), 0700); err != nil {
 					t.Fatal(err)
@@ -269,7 +389,7 @@ func TestReceiveCleanupRetainsUnownedObjectsAfterRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 			retained := filepath.Join(root, name)
-			if staging == "extract" {
+			if strings.HasPrefix(staging, "extract") {
 				if err := os.Mkdir(retained, 0700); err != nil {
 					t.Fatal(err)
 				}
