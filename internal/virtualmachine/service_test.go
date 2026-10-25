@@ -195,6 +195,9 @@ func TestWorkerRunsOnceAndPersistsFailure(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("durable worker uses Linux file locks")
 	}
+	if os.Geteuid() != 0 {
+		t.Skip("root-owned worker fixture runs in the native hosted root qualification")
+	}
 	s := New(Config{StateDir: privateTestDirectory(t), Runner: &fakeRunner{}})
 	j := jobRecord{VMJob: contract.VMJob{ID: testID, Action: "create", Status: "queued"}, Request: contract.VMRequest{Action: "create", RequestID: testID}}
 	if err := s.save(&j); err != nil {
@@ -214,6 +217,22 @@ func TestWorkerRunsOnceAndPersistsFailure(t *testing.T) {
 	got, err := s.readJob(testID)
 	if err != nil || got.Status != "succeeded" {
 		t.Fatalf("lost receipt: %#v %v", got, err)
+	}
+}
+
+func TestWorkerRejectsNonRootOwnedState(t *testing.T) {
+	if runtime.GOOS != "linux" || os.Geteuid() == 0 {
+		t.Skip("requires an unprivileged Linux user")
+	}
+	runner := &fakeRunner{}
+	s := New(Config{StateDir: privateTestDirectory(t), Runner: runner, Enabled: true})
+	j := jobRecord{VMJob: contract.VMJob{ID: testID, Action: "prepare", Status: "queued"}, Request: contract.VMRequest{Action: "prepare", RequestID: testID}}
+	if err := s.save(&j); err != nil {
+		t.Fatal(err)
+	}
+	err := s.RunJob(context.Background(), testID)
+	if err == nil || !strings.Contains(err.Error(), "private real directory") || len(runner.calls) != 0 {
+		t.Fatalf("unprivileged state reached worker execution: error=%v calls=%v", err, runner.calls)
 	}
 }
 
