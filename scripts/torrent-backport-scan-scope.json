@@ -11,8 +11,8 @@
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "6f9d7683e856c64d4876afcfefe7626558683f7a2956bfa46edfc2a5aae43ae3",
-  "firstPartySourceSha256": "ff77bed9a0184f00f030e370590f178421a43bbd9fc0e768e9b91eab5234f9b2",
+  "closureSha256": "20b2cf60baa8fc768b178f40f4efeaaeb77e01cdd64ae8878787f7987809277c",
+  "firstPartySourceSha256": "bac665640eb3171cd1b4dee98adf0e993359ca0daca161bf3bd34d78d1213a19",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -23,7 +23,7 @@
     "architectureClosureSummary": "Independent read-only qualification of ce5abcc323a5e767ecddf2849182875ee21e561f re-observed all six actual/original production closures and 1079 first-party Go files against Git blobs, reproducing the previous source and closure identities as a control. Only Linux existing-package GoFiles change; the other four targets, 110 production modules, selected graph, vendored source and build-target hashes remain unchanged. Rebind derived source and closure identities only; all findings, dispositions, observation and expiry remain unchanged. This qualification is not scanner, release or deployment approval.",
     "state": "reviewed",
     "reviewerRole": "Independent stable release, source and dependency evidence reviewer",
-    "evidenceSha256": "0d8d63d29777161eeb6c78af99a02ce877cec8a964b2af8b54d287230c299d83",
+    "evidenceSha256": "d44e693baf573585d31201783706d9eb778a9cc376088e06bffa452df1a01ebd",
     "securityClosurePreviousEvidenceSha256": "99a423c33dc50216767a66bc678f95d3b142af7b7aa5a817648b538c1cc5aa79",
     "securityClosureObservationSha256": "facb75be50ad173b5dffa7e3e763369e726bebe0c997db72709ef7ca04ca0dd7",
     "securityClosureSummary": "Independent source and raw GitHub evidence review at 1a38c7f6403e166f7e8d801f6d2950bcb3c8d34e verified 1021 first-party Go files against Git objects and six actual/original production closures. Linux filemanager GoFiles changes exactly explain the closure delta; 110 production modules, versions, selected graph, vendored source and build targets are unchanged. Rebind source and closure identity only. All 37 findings/dispositions and original observation/expiry remain unchanged. Final exact-candidate CI and conservative scans are required; this review does not claim scanner or release success.",
@@ -71,7 +71,11 @@
     "rc128RC2VersionQualificationSha256": "ab8ba053e8285c6f53d68abb4510b1be0fbf6b4e67ac59e2950f825d90f5802e",
     "rc128RC2VersionSummary": "RC2 assembly preserves accepted security candidate cc6807f3 first-party paths/imports, selected graph, six-platform closure, all 37 findings and original expiry; only Go version literal changes after source acceptance. Independent final release review and exact SHA CI/L3 remain required; this observation is not a scanner pass.",
     "rc128RC3IdentityEvidenceSha256": "5c3a32d863775202d392080c4d3da54d43928a4d1e13d5869b99a96b293ac3de",
-    "rc128RC3IdentitySummary": "RC3 observer verified exact optional WAFMode string field and version-literal-only Go deltas, unchanged paths/imports/entrypoints/module graph, and Dockerfile script-pin-only delta to published sh614d58ce/shared87738508. First-party and Docker target identities rebound; accepted Go1.27.3 six-platform dependency closure, all37 dispositions and original dates retained. Exact SHA Linux CI/L3 and independent review remain required; observation is not a scanner pass."
+    "rc128RC3IdentitySummary": "RC3 observer verified exact optional WAFMode string field and version-literal-only Go deltas, unchanged paths/imports/entrypoints/module graph, and Dockerfile script-pin-only delta to published sh614d58ce/shared87738508. First-party and Docker target identities rebound; accepted Go1.27.3 six-platform dependency closure, all37 dispositions and original dates retained. Exact SHA Linux CI/L3 and independent review remain required; observation is not a scanner pass.",
+    "finalClosureObservationSha256": "25004cfab9e92917327e5af900933e81520c8dd5a3e7bce98adf7117ab953cff",
+    "finalClosureSummary": "Source identity qualification of da9ca6b36d796c2e744dcbe38a89088cf6224443: 1092 first-party Go files matched Git blobs and six actual/original production closures re-observed against cfdeaa baseline; 110 production modules, selected graph, upstream backport and build-target inputs unchanged. Rebind only source/closure identities and new review evidence; all 37 findings/dispositions and original observedAt/expiresAt preserved. This is identity qualification only, not a scanner pass, current-window validation or release approval.",
+    "finalClosurePreviousEvidenceSha256": "0d8d63d29777161eeb6c78af99a02ce877cec8a964b2af8b54d287230c299d83",
+    "finalClosureIndependentReviewSha256": "7be9383f1a62a3e28db41ebd7ba10a9aec34cfca668dbdbdc8e025542733e450"
   },
   "findings": [
     {
