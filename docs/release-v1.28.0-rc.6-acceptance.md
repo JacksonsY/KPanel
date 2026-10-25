@@ -90,6 +90,8 @@
 - `publication-40201778872-1`：artifact 12603501418，ZIP `sha256:3a6261fe4caa4429bc63b37da481a8ffcb74d34995eb65b97acc6f3011228f18`。
 - `public-40201778872-1`：artifact 12603806532，ZIP `sha256:421ec1fc5c949faa0edb486d4c1aadb8ec6bc6041f9b594994f9f138edd843f2`。
 
+完整运行日志 ZIP 下载后出现 GitHub CLI 的 HTTP2 CANCEL，原不完整字节与摘要保留，不作为完整日志。已有连接器取得实际发布及公开验收 job 的完整解码原文，L3 的27份原始流与全部产物回执此前已核对；未重跑发布，也未覆盖版本。
+
 ## 浏览器、公开产物与更新
 
 - 冻结Mock26项：VM10、网站监控7、文件活动9；源 `da7e266a5f6f716711961860d77e36f8130f3cb4`。宽1280/窄390、浅深、英语/繁体、键盘、失败与恢复、CSS200%重排；任务区诊断可在有界滚动中查看，辅助13px/主要状态与按钮14px。
@@ -132,7 +134,7 @@
 资格化工具/验证通道失败单列，不等同生产退化；红绿回归、可选诊断不自动计流程异常，不以重试成功抹去首轮。
 
 <!-- kpanel-release-process-metrics:start -->
-- 已记录发布流程异常或无效证据拦截次数：17
+- 已记录发布流程异常或无效证据拦截次数：18
 - 其中生产写操作开始后异常次数：0
 <!-- kpanel-release-process-metrics:end -->
 
@@ -289,6 +291,15 @@
     "impact": "First final VM driver timed out after toggling an already-dark page while waiting for dark; the initial desktop-light.png actually shows dark. User-preferences theme override was not the AppearanceSettings contract.",
     "recoveryEvidence": "Original driver and partial final/vm screenshots retained. New driver fixes actual appearance GET to light, asserts initial light, retains dark-toggle/mobile checks and binds failure detail to this run request ID to avoid stale history. Final vm-r2 passed10 checks. No product change or weakened assertion.",
     "permanentAction": "Frozen R2 driver supplies actual AppearanceSettings light fixture and asserts light before exercising dark toggle; current failed-request ID must match dialog. Original driver/failed images retained; all10 VM cases pass on frozen source, no product changes.",
+    "historicalReleases": []
+  },
+  {
+    "fingerprint": "evidence/github-cli-log/http2-stream-cancel",
+    "position": "before-production-write",
+    "count": 1,
+    "impact": "Full workflow-log ZIP download for successful publication40201778872 terminated with HTTP2 stream CANCEL; retained ZIP is incomplete and not accepted as full evidence. Product publication and all public checks succeeded.",
+    "recoveryEvidence": "publication-full-log-transport-failure.json preserves partial bytes/hash. Existing GitHub connector fetched decoded complete release job121200572703 and public job121203714274 logs (5067991 UTF8 bytes), independently hash-recorded. L3 raw27 and public artifacts already fully verified.",
+    "permanentAction": "Known transport also occurred inRC5. Use existing decoded-job-log connector for these required logs; do not rerun publication or overwrite assets. KPanel release-tool maintainers review by2026-10-27; exit when required source/raw/public evidence is retained and transport behavior captured. No product/assertion change.",
     "historicalReleases": []
   }
 ]
