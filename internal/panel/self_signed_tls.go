@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -435,9 +436,73 @@ type selfSignedTLSListener struct {
 	done            chan struct{}
 	classifierSlots chan struct{}
 	closeOnce       sync.Once
+	classifierMu    sync.Mutex
+	closed          bool
+	pending         map[*selfSignedTLSClassifier]struct{}
+	sources         map[string]int
 }
 
 const selfSignedTLSMaxConcurrentClassifiers = 64
+const selfSignedTLSMaxSourceClassifiers = 16
+
+type selfSignedTLSClassifier struct {
+	conn   net.Conn
+	source string
+}
+
+// Admission uses the transport peer, never forwarding headers. IPv6 clients
+// within one /64 share a budget so address rotation cannot consume every slot.
+func selfSignedTLSSource(address net.Addr) string {
+	if address == nil {
+		return "unknown"
+	}
+	host, _, err := net.SplitHostPort(address.String())
+	if err != nil {
+		return "unknown"
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return "unknown"
+	}
+	ip = ip.WithZone("").Unmap()
+	if ip.Is4() {
+		return ip.String()
+	}
+	return netip.PrefixFrom(ip, 64).Masked().String()
+}
+
+func (l *selfSignedTLSListener) reserve(conn net.Conn) *selfSignedTLSClassifier {
+	l.classifierMu.Lock()
+	defer l.classifierMu.Unlock()
+	source := selfSignedTLSSource(conn.RemoteAddr())
+	if l.closed || l.sources[source] >= selfSignedTLSMaxSourceClassifiers {
+		return nil
+	}
+	select {
+	case l.classifierSlots <- struct{}{}:
+	default:
+		return nil
+	}
+	if l.pending == nil {
+		l.pending = make(map[*selfSignedTLSClassifier]struct{})
+		l.sources = make(map[string]int)
+	}
+	ticket := &selfSignedTLSClassifier{conn: conn, source: source}
+	l.pending[ticket] = struct{}{}
+	l.sources[source]++
+	return ticket
+}
+
+func (l *selfSignedTLSListener) release(ticket *selfSignedTLSClassifier) {
+	l.classifierMu.Lock()
+	defer l.classifierMu.Unlock()
+	delete(l.pending, ticket)
+	l.sources[ticket.source]--
+	if l.sources[ticket.source] == 0 {
+		delete(l.sources, ticket.source)
+	}
+	<-l.classifierSlots
+}
 
 func newSelfSignedTLSListener(inner net.Listener, config func() *tls.Config) *selfSignedTLSListener {
 	listener := &selfSignedTLSListener{
@@ -466,19 +531,19 @@ func (l *selfSignedTLSListener) acceptLoop() {
 			}
 			continue
 		}
-		select {
-		case l.classifierSlots <- struct{}{}:
+		if ticket := l.reserve(conn); ticket != nil {
 			go func() {
-				defer func() { <-l.classifierSlots }()
-				l.classify(conn)
+				defer l.release(ticket)
+				l.classify(ticket)
 			}()
-		default:
+		} else {
 			_ = conn.Close()
 		}
 	}
 }
 
-func (l *selfSignedTLSListener) classify(conn net.Conn) {
+func (l *selfSignedTLSListener) classify(ticket *selfSignedTLSClassifier) {
+	conn := ticket.conn
 	_ = conn.SetReadDeadline(time.Now().Add(selfSignedTLSSniffWait))
 	reader := bufio.NewReaderSize(conn, 1024)
 	first, err := reader.Peek(1)
@@ -495,6 +560,17 @@ func (l *selfSignedTLSListener) classify(conn net.Conn) {
 			return
 		}
 		classified = tls.Server(classified, config)
+	}
+	// After sniffing, a blocked handoff is cancelled through done. Removing
+	// it under the ownership lock prevents Close from closing a connection
+	// already handed to the HTTP server.
+	l.classifierMu.Lock()
+	delete(l.pending, ticket)
+	closed := l.closed
+	l.classifierMu.Unlock()
+	if closed {
+		_ = conn.Close()
+		return
 	}
 	select {
 	case l.conns <- classified:
@@ -515,8 +591,22 @@ func (l *selfSignedTLSListener) Accept() (net.Conn, error) {
 }
 
 func (l *selfSignedTLSListener) Close() error {
-	l.closeOnce.Do(func() { close(l.done) })
-	return l.Listener.Close()
+	var err error
+	l.closeOnce.Do(func() {
+		l.classifierMu.Lock()
+		l.closed = true
+		close(l.done)
+		pending := make([]net.Conn, 0, len(l.pending))
+		for ticket := range l.pending {
+			pending = append(pending, ticket.conn)
+		}
+		l.classifierMu.Unlock()
+		err = l.Listener.Close()
+		for _, conn := range pending {
+			_ = conn.Close()
+		}
+	})
+	return err
 }
 
 type peekedConn struct {
