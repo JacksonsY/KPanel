@@ -281,20 +281,18 @@ func (r *Reader) loadGeo(root *os.Root) {
 	r.geoChecked = time.Now()
 	info, err := root.Lstat("config")
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		r.geoStatus = "missing"
-		r.dropGeo()
+		r.loadBuiltinGeo()
 		return
 	}
 	conf, err := root.OpenRoot("config")
 	if err != nil {
-		r.geoStatus = "missing"
+		r.loadBuiltinGeo()
 		return
 	}
 	defer conf.Close()
 	file, err := openRegular(conf, "GeoLite2-Country.mmdb")
 	if err != nil {
-		r.geoStatus = "missing"
-		r.dropGeo()
+		r.loadBuiltinGeo()
 		return
 	}
 	defer file.Close()

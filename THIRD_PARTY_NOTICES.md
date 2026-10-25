@@ -8,6 +8,7 @@ KPanel.
 
 | Component | Version or revision | License | License text |
 | --- | --- | --- | --- |
+| [DB-IP IP to Country Lite](https://db-ip.com/db/download/ip-to-country-lite) | October 2026 (unmodified) | CC-BY-4.0 | [`LICENSES/CC-BY-4.0.txt`](LICENSES/CC-BY-4.0.txt) |
 | `github.com/containrrr/shoutrrr` | `v0.8.0` | MIT | [`LICENSES/shoutrrr-MIT.txt`](LICENSES/shoutrrr-MIT.txt) |
 | `kejilion.sh` | `f031d1206224de3743845d2fc81c4801ecda32f4` | Apache-2.0 | [`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt) |
 | `github.com/flynn/noise` | `v1.1.0` | BSD-3-Clause | [`LICENSES/flynn-noise-BSD-3-Clause.txt`](LICENSES/flynn-noise-BSD-3-Clause.txt) |
@@ -29,6 +30,14 @@ KPanel.
 | `vue` | `3.5.40` | MIT | [`LICENSES/vue-MIT.txt`](LICENSES/vue-MIT.txt) |
 | `vue-router` | `4.6.4` | MIT | [`LICENSES/vue-router-MIT.txt`](LICENSES/vue-router-MIT.txt) |
 
+
+IP Geolocation by [DB-IP](https://db-ip.com), published by DB-IP / Eris Networks S.A.S.
+The bundled country data is redistributed unmodified under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), separately from KPanel's
+code license, without warranty. Its fixed release, official download and checksums
+are recorded in [`internal/sitetraffic/geodata/NOTICE.md`](internal/sitetraffic/geodata/NOTICE.md).
+The site monitoring page retains a DB-IP attribution link. Lite data has reduced
+coverage and accuracy.
 
 Transitive dependency versions are recorded in `go.sum` and
 `web/package-lock.json`; these lock files are not a complete license inventory.

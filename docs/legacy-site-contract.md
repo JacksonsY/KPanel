@@ -206,7 +206,7 @@ Panel 不在运行时下载这些远程模板。未知的新模板只进行保�
 Agent 固定读取 `/home/web/log/nginx` 下现有 access 日志、`error.log`、`waf-audit.json`、`waf-rate.log`
 以及未压缩的 `.1`；不回填 gzip 归档。每批最多 16 个来源、1 MiB、2048 条记录，访问行上限 16 KiB，
 WAF 行上限 64 KiB。首次每来源最多回读最近 1 MiB；轮转、截断、来源上限和未识别格式可能影响覆盖，
-不作为无损审计存档。IP 归属使用可选本地 `config/GeoLite2-Country.mmdb`（64 MiB 上限），不请求外部定位服务。
+不作为无损审计存档。IP 归属默认使用内置 DB-IP Lite 离线国家库（CC BY 4.0，固定快照随版本更新），监控页面保留 DB-IP 署名链接；可选本地 `config/GeoLite2-Country.mmdb`（64 MiB 上限）优先覆盖内置库。无本地库时自动使用内置库，损坏的本地库明确报错；不请求外部定位服务，也不向宿主机写入数据库。后续采集生效，已有未知地区历史不回填。
 访问日志只有带 host 的 JSON 或域名命名文件才能归属站点；无 host 的共享日志只计入全站总览。
 
 Panel 在 `<DataDir>/site-traffic/analytics.sqlite` 原子提交聚合统计和读取进度；默认关闭，启用后每 10 秒采集；有积压时每 1 秒处理下一批，仍遵守单批上限和超时。
