@@ -50,3 +50,17 @@ func TestBackupRestoreControllerAuthorizationBoundaries(t *testing.T) {
 		})
 	}
 }
+
+func TestBackupRestoreRejectsAmbiguousControllerEnvelope(t *testing.T) {
+	current := []byte(`{"nodeId":"same-node","controllers":[]}`)
+	for _, incoming := range []string{
+		`{"nodeId":"different-node","nodeid":"same-node","controllers":[{"id":"removed-peer","state":"active"}]}`,
+		`{"nodeId":"same-node","controllers":[],"Controllers":[{"id":"removed-peer","state":"active"}]}`,
+	} {
+		for _, legacy := range []bool{false, true} {
+			if merged, err := mergeBackupControllerAccess([]byte(incoming), current, legacy); err == nil {
+				t.Fatalf("ambiguous authorization envelope accepted: %s", merged)
+			}
+		}
+	}
+}

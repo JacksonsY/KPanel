@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/kejilion/kejilion-panel/internal/ai"
 	"github.com/kejilion/kejilion-panel/internal/backup"
@@ -275,11 +276,38 @@ func mergeBackupRevocations(incoming, current []byte) ([]byte, error) {
 }
 
 func mergeBackupControllerAccess(incoming, current []byte, legacy bool) ([]byte, error) {
+	// Struct decoding folds JSON field names. Reject competing spellings before
+	// comparing map keys, so validation and authorization see one identity/list.
+	normalize := func(state map[string]json.RawMessage) error {
+		if state == nil {
+			return backup.ErrInvalid
+		}
+		for _, field := range []string{"nodeId", "controllers"} {
+			matched := ""
+			var value json.RawMessage
+			for key, raw := range state {
+				if strings.EqualFold(key, field) {
+					if matched != "" {
+						return backup.ErrInvalid
+					}
+					matched, value = key, raw
+				}
+			}
+			if matched != "" {
+				delete(state, matched)
+				state[field] = value
+			}
+		}
+		return nil
+	}
+	var a, b map[string]json.RawMessage
+	if json.Unmarshal(incoming, &a) != nil || normalize(a) != nil {
+		return nil, backup.ErrInvalid
+	}
 	if len(current) == 0 {
 		return incoming, nil
 	}
-	var a, b map[string]json.RawMessage
-	if json.Unmarshal(incoming, &a) != nil || json.Unmarshal(current, &b) != nil {
+	if json.Unmarshal(current, &b) != nil || normalize(b) != nil {
 		return nil, backup.ErrInvalid
 	}
 	decode := func(raw json.RawMessage) (string, error) {
