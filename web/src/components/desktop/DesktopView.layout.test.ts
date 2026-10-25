@@ -720,7 +720,7 @@ describe('DesktopView icon layout interaction', () => {
     await flushPromises()
     // Hiding applies to every selected system icon, including the guide entry.
     const dialog = Array.from(document.body.querySelectorAll<HTMLElement>('.modal-panel'))
-      .find((panel) => panel.textContent?.includes('确认从桌面移除 17 项'))
+      .find((panel) => panel.textContent?.includes('确认从桌面移除 18 项'))
     expect(dialog).toBeDefined()
     expect(updateWorkspace).not.toHaveBeenCalled()
     wrapper.unmount()
@@ -1181,8 +1181,8 @@ describe('DesktopView icon layout interaction', () => {
   }, 10_000)
 
   it('keeps icons beyond the 512-position limit separate and refuses false auto-arrange success', async () => {
-    // Seventeen fixed entries plus 496 apps leave exactly one icon past the limit.
-    const extras: DesktopEntry[] = Array.from({ length: 496 }, (_, index) => ({
+    // Eighteen fixed entries plus 495 apps leave exactly one icon past the limit.
+    const extras: DesktopEntry[] = Array.from({ length: 495 }, (_, index) => ({
       key: `app:extra-${index}`,
       kind: 'app',
       id: `extra-${index}`,
@@ -1196,8 +1196,8 @@ describe('DesktopView icon layout interaction', () => {
 
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await flushPromises()
-    const supported = wrapper.find('[data-icon-key="app:extra-494"]')
-    const overflow = wrapper.find('[data-icon-key="app:extra-495"]')
+    const supported = wrapper.find('[data-icon-key="app:extra-493"]')
+    const overflow = wrapper.find('[data-icon-key="app:extra-494"]')
 
     expect(overflow.attributes('style')).not.toBe(supported.attributes('style'))
     expect(overflow.attributes('style')).not.toContain('display: none')
