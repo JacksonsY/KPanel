@@ -85,7 +85,7 @@ func (s *Service) downloadImage(ctx context.Context, id string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	client := &http.Client{Timeout: 25 * time.Minute, Transport: &http.Transport{Proxy: nil, DisableCompression: true, ResponseHeaderTimeout: 20 * time.Second, TLSHandshakeTimeout: 10 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("image redirects are not allowed") }}
+	client := &http.Client{Timeout: 25 * time.Minute, Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, DisableCompression: true, ResponseHeaderTimeout: 20 * time.Second, TLSHandshakeTimeout: 10 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("image redirects are not allowed") }}
 	defer client.CloseIdleConnections()
 	get := func(name string) (*http.Response, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+name, nil)

@@ -55,6 +55,15 @@ func (CommandRunner) Run(ctx context.Context, input io.Reader, name string, args
 	// Do not inherit libvirt URIs, credential helpers, Python injection paths or
 	// dynamic-linker variables from the service's environment.
 	c.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root", "LC_ALL=C", "LANG=C", "DEBIAN_FRONTEND=noninteractive", "NEEDRESTART_MODE=a", "VIRTINST_OSINFO_DISABLE_REQUIRE=1"}
+	// The administrator's service environment may require a package proxy.
+	// These values stay out of command arguments, task records and audit data.
+	if name == "apt-get" {
+		for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"} {
+			if value, ok := os.LookupEnv(key); ok {
+				c.Env = append(c.Env, key+"="+value)
+			}
+		}
+	}
 	c.WaitDelay = 2 * time.Second
 	out := &boundedBuffer{limit: 2 << 20}
 	errout := &boundedBuffer{limit: 16 << 10}

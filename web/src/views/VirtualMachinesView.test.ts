@@ -46,4 +46,22 @@ describe('virtual machine journey', () => {
     await setLocale('en-US',false);mocks.list.mockRejectedValue(new Error('Unavailable'))
     const w=view();await flushPromises();expect(w.text()).toContain('Unavailable');await vi.waitFor(() => expect(w.text()).toContain('Retry'));expect(w.find('h1').text()).toBe('Virtual machines')
   })
+  it('prepares absent network and storage without reinstalling packages', async () => {
+    mocks.list.mockResolvedValue({...data,pools:[],networks:[]})
+    const w=view();await flushPromises();await click(w,'准备默认资源')
+    expect(w.text()).toContain('启用发行版提供的默认 NAT 网络')
+    const buttons=w.findAll('button').filter(b=>b.text()==='准备默认资源')
+    await buttons.at(-1)!.trigger('click');await flushPromises()
+    expect(mocks.action.mock.calls[0]![0]).toMatchObject({action:'prepare'})
+  })
+  it('keeps task details bound to refreshed receipts', async () => {
+    const job={id:machine.id,action:'create',name:'test-task',status:'running',stage:'creating',message:'',createdAt:'2026-10-25T00:00:00Z',updatedAt:'2026-10-25T00:00:00Z'}
+    mocks.list.mockResolvedValue({...data,jobs:[job]})
+    const w=view();await flushPromises();await w.get('.vm-task').trigger('click');await flushPromises()
+    expect(w.get('[role="dialog"]').text()).toContain('执行中')
+    mocks.list.mockResolvedValue({...data,jobs:[{...job,status:'succeeded',stage:'completed'}]})
+    await click(w,'刷新')
+    expect(w.get('[role="dialog"]').text()).toContain('已完成')
+    expect(w.get('[role="dialog"]').text()).not.toContain('执行中')
+  })
 })
