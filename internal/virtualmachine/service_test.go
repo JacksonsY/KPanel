@@ -34,6 +34,27 @@ func (f *fakeRunner) Run(_ context.Context, _ io.Reader, name string, args ...st
 
 const testID = "11111111-1111-1111-1111-111111111111"
 
+func TestVMPrepareRejectsInactiveAutostartNetwork(t *testing.T) {
+	for _, active := range []bool{false, true} {
+		r := &fakeRunner{respond: func(a []string) ([]byte, error) {
+			switch a[3] {
+			case "net-start":
+				return nil, errors.New("network start failed")
+			case "net-info":
+				if active {
+					return []byte("Active: yes\nAutostart: no\n"), nil
+				}
+				return []byte("Active: no\nAutostart: yes\n"), nil
+			}
+			return nil, nil
+		}}
+		err := New(Config{Runner: r}).prepare(context.Background(), func(string) error { return nil })
+		if (err == nil) != active {
+			t.Fatalf("active=%t: %v", active, err)
+		}
+	}
+}
+
 func TestMachineIdentityAndStableConfigurationVersion(t *testing.T) {
 	r := &fakeRunner{respond: func(a []string) ([]byte, error) {
 		switch a[3] {

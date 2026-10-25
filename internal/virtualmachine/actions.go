@@ -59,7 +59,7 @@ func (s *Service) prepare(ctx context.Context, stage func(string) error) error {
 	}
 	if _, err := s.virsh(ctx, "pool-start", "default"); err != nil {
 		b, inspectErr := s.virsh(ctx, "pool-info", "default")
-		if inspectErr != nil || !strings.Contains(string(b), "running") {
+		if inspectErr != nil || !hasInfoValue(b, "State", "running") {
 			return err
 		}
 	}
@@ -70,7 +70,7 @@ func (s *Service) prepare(ctx context.Context, stage func(string) error) error {
 	// interfaces, invent firewall templates or silently replace existing XML.
 	if _, err := s.virsh(ctx, "net-start", "default"); err != nil {
 		b, inspectErr := s.virsh(ctx, "net-info", "default")
-		if inspectErr != nil || !strings.Contains(string(b), "yes") {
+		if inspectErr != nil || !hasInfoValue(b, "Active", "yes") {
 			return fmt.Errorf("default network unavailable: %w", err)
 		}
 	}
@@ -78,6 +78,16 @@ func (s *Service) prepare(ctx context.Context, stage func(string) error) error {
 		return err
 	}
 	return nil
+}
+
+func hasInfoValue(info []byte, key, value string) bool {
+	for _, line := range strings.Split(string(info), "\n") {
+		k, v, ok := strings.Cut(line, ":")
+		if ok && strings.TrimSpace(k) == key {
+			return strings.TrimSpace(v) == value
+		}
+	}
+	return false
 }
 
 func (s *Service) create(ctx context.Context, j *jobRecord, stage func(string) error) error {
