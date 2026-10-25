@@ -265,7 +265,24 @@ func mergeBackupRevocations(incoming, current []byte) ([]byte, error) {
 	if json.Unmarshal(incoming, &a) != nil || json.Unmarshal(current, &b) != nil {
 		return nil, backup.ErrInvalid
 	}
-	if string(a["nodeId"]) != string(b["nodeId"]) {
+	decode := func(raw json.RawMessage) (string, error) {
+		var value string
+		if json.Unmarshal(raw, &value) != nil || value == "" {
+			return "", backup.ErrInvalid
+		}
+		return value, nil
+	}
+	// JSON spelling is not an identity boundary. Equivalent escaped IDs must
+	// retain the same locally revoked relationships when an old backup returns.
+	incomingID, err := decode(a["nodeId"])
+	if err != nil {
+		return nil, err
+	}
+	currentID, err := decode(b["nodeId"])
+	if err != nil {
+		return nil, err
+	}
+	if incomingID != currentID {
 		return incoming, nil
 	}
 	var old, next []map[string]json.RawMessage
@@ -273,12 +290,24 @@ func mergeBackupRevocations(incoming, current []byte) ([]byte, error) {
 		return nil, backup.ErrInvalid
 	}
 	for _, r := range old {
-		if string(r["state"]) != `"revoked"` {
+		state, err := decode(r["state"])
+		if err != nil {
+			return nil, err
+		}
+		if state != "revoked" {
 			continue
+		}
+		revokedID, err := decode(r["id"])
+		if err != nil {
+			return nil, err
 		}
 		found := false
 		for n, v := range next {
-			if string(r["id"]) == string(v["id"]) {
+			id, err := decode(v["id"])
+			if err != nil {
+				return nil, err
+			}
+			if revokedID == id {
 				next[n] = r
 				found = true
 			}
