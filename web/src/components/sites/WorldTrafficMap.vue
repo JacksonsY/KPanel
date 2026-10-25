@@ -18,6 +18,7 @@ const tooltipX = ref(12), tooltipY = ref(12)
 const metrics = computed(() => new Map(props.countries.filter(row => row.code !== 'ZZ' && row.requests > 0).map(row => [row.code, row])))
 const total = computed(() => props.countries.reduce((sum, row) => sum + row.requests, 0))
 const maximum = computed(() => Math.max(1, ...[...metrics.value.values()].map(row => row.requests)))
+const heatShades = [18, 35, 52, 69, 86] as const
 const shapes = new Set<string>(worldCountries.map(country => country.code))
 const inspected = computed(() => hovered.value || focused.value)
 const highlighted = computed(() => inspected.value || (shapes.has(props.selectedCountry) ? props.selectedCountry : ''))
@@ -40,7 +41,9 @@ function countryName(code: string): string { return names.value.get(code) || cod
 function fill(code: string): string {
  const value = metrics.value.get(code)?.requests
  if (!value) return 'var(--map-land)'
- const intensity = 24 + Math.round(Math.log1p(value) / Math.log1p(maximum.value) * 58)
+ // Equal bands of the regional peak keep low and high traffic visibly distinct.
+ const level = Math.min(heatShades.length - 1, Math.max(0, Math.ceil(value / maximum.value * heatShades.length) - 1))
+ const intensity = heatShades[level]
  return `color-mix(in srgb, var(--monitor-accent) ${intensity}%, var(--surface))`
 }
 function clampCamera(): void {
@@ -171,6 +174,7 @@ watch(metrics, value => {
    <p v-if="!canLocate" class="boundary-note">{{ phrase('此地图未收录该地区边界，统计仍已计入。') }}</p>
   </div>
   <div v-else class="map-selection-hint"><Globe2 :size="17" aria-hidden="true" /><span>{{ phrase('点击地图或右侧排行，查看地区请求与占比。') }}</span></div>
+  <div class="map-legend"><span class="map-no-data"><i aria-hidden="true" />{{ phrase('无数据') }}</span><span class="map-heat-scale"><span>{{ phrase('较少') }}</span><i v-for="(shade, index) in heatShades" :key="shade" :style="{ background: `color-mix(in srgb, var(--monitor-accent) ${shade}%, var(--surface))` }" :title="`${index * 20}–${(index + 1) * 20}% · ${phrase('相对当前最高地区')}`" /><span>{{ phrase('更多') }}</span></span><span class="map-scale-note">{{ phrase('相对当前最高地区') }}</span></div>
  </div>
 </template>
 
@@ -182,6 +186,7 @@ button{display:grid;place-items:center;flex-shrink:0;min-width:32px;min-height:3
 .map-countries>path{stroke:var(--surface);stroke-width:.7;vector-effect:non-scaling-stroke;outline:none;transition:fill var(--motion-duration-fast) var(--motion-ease-fade),opacity var(--motion-duration-fast) var(--motion-ease-fade)}.map-countries>path.has-data{cursor:pointer}.is-zoomed .map-countries>path.has-data{cursor:grab}.is-dragging .map-countries>path{cursor:grabbing}.map-countries>path.subdued{opacity:.48}.map-countries>path.inspected,.map-countries>path.selected,.map-countries>path:focus-visible{opacity:1;stroke:var(--monitor-accent);stroke-width:1.8}.map-countries>path:focus-visible{stroke:var(--text);stroke-width:2.3}
 .map-tooltip{position:absolute;z-index:2;width:224px;max-width:calc(100% - 24px);padding:12px;border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--surface-raised);box-shadow:var(--shadow-md);pointer-events:none;overflow-wrap:anywhere}.map-tooltip>div{display:flex;align-items:center;gap:8px}.map-tooltip strong{font-size:14px;font-weight:600}.map-tooltip p{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin:9px 0 0;font-size:13px;color:var(--muted)}.map-tooltip p>strong{color:var(--text)}.map-tooltip p>span{margin-left:auto;color:var(--text-soft);font-variant-numeric:tabular-nums}.map-tooltip :deep(.country-flag){width:22px;height:22px;flex-shrink:0}
 .map-help{display:flex;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;margin:0;font-size:12px;line-height:1.6;color:var(--muted)}.country-detail{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-raised);border-left:3px solid var(--monitor-accent)}.country-identity{display:flex;align-items:center;gap:10px;flex:1;min-width:120px}.country-identity>div,.country-metric{display:grid;gap:4px}.country-identity strong{font-size:14px;font-weight:600;overflow-wrap:anywhere}.country-identity span,.country-metric span{font-size:13px;color:var(--muted)}.country-identity :deep(.country-flag){width:32px;height:32px;flex-shrink:0}.country-metric strong{font-size:22px;font-weight:600;line-height:1.3;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.country-actions{display:flex;gap:4px}.boundary-note{flex-basis:100%;margin:0;font-size:13px;line-height:1.6;color:var(--muted)}.map-selection-hint{display:flex;align-items:center;gap:8px;min-height:70px;padding:12px;color:var(--muted);font-size:13px;line-height:1.6}.map-selection-hint>svg{flex-shrink:0;color:var(--monitor-accent)}
+.map-legend{display:flex;align-items:center;justify-content:center;gap:10px 18px;flex-wrap:wrap;padding:4px 0;font-size:12px;line-height:1.5;color:var(--muted)}.map-no-data,.map-heat-scale{display:flex;align-items:center;gap:5px}.map-legend i{display:block;width:23px;height:9px;border:1px solid var(--border);border-radius:2px}.map-no-data i{background:var(--map-land)}.map-scale-note{flex-basis:100%;text-align:center}
 @media(max-width:760px){.world-map{padding:4px 12px 12px}.map-toolbar{gap:8px}.map-instruction{flex:1;min-width:110px}.map-controls button{min-width:36px;min-height:36px}.map-stage>svg{min-height:220px}.map-help>span:last-child{flex-basis:100%}.country-detail{gap:12px}.country-metric{margin-left:auto}.country-actions{margin-left:auto}.country-metric strong{font-size:20px}}
 @media(prefers-reduced-motion:reduce){button,.map-countries>path{transition:none}}
 </style>

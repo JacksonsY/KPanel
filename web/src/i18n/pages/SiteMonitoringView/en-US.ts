@@ -1,6 +1,8 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ["较少", "Less"],
+  ["相对当前最高地区", "Relative to the busiest region"],
   ["选择地区查看详情", "Select a region to explore"],
   ["地图操作", "Map controls"],
   ["缩小地图", "Zoom out"],

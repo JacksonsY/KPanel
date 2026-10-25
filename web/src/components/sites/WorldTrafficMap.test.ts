@@ -20,6 +20,22 @@ async function pointer(target: Element, type: string, init: PointerEventInit = {
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks() })
 
 describe('world traffic map interactions', () => {
+ it('separates the reported fixture into five clear levels and uses exactly those levels in the legend', async () => {
+  const view = setup()
+  await view.setProps({ countries: [country('US', 1700), country('CN', 1222), country('DE', 850), country('JP', 638), country('GB', 266), country('ZZ', 99999)] })
+  const fills = ['US', 'CN', 'DE', 'JP', 'GB'].map(code => view.get(`[data-country="${code}"]`).attributes('fill'))
+  const shades = fills.map(fill => Number(fill!.match(/(\d+)%/)![1]))
+  expect(shades).toEqual([86, 69, 52, 35, 18])
+  expect(Math.max(...shades) - Math.min(...shades)).toBeGreaterThanOrEqual(60)
+  const legend = view.findAll('.map-heat-scale>i').map(swatch => swatch.attributes('style'))
+  for (const fill of fills) expect(legend.some(style => style?.includes(fill!))).toBe(true)
+  await view.setProps({ countries: [country('US', 100), country('DE', 20), country('GB', 21)] })
+  expect(view.get('[data-country="DE"]').attributes('fill')).toContain('18%')
+  expect(view.get('[data-country="GB"]').attributes('fill')).toContain('35%')
+  expect(view.get('[data-country="CA"]').attributes('fill')).toBe('var(--map-land)')
+  await view.setProps({ countries: [] })
+  expect(view.get('[data-country="US"]').attributes('fill')).toBe('var(--map-land)')
+ })
  it('shows attributed counts on hover without selecting or changing scope', async () => {
   const view = setup()
   await pointer(view.get('[data-country="US"]').element, 'pointerenter', { pointerType: 'mouse', clientX: 150, clientY: 80 })
