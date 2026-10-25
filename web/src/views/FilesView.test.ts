@@ -1214,8 +1214,8 @@ describe('FilesView desktop shortcuts', () => {
     expect(browse).toHaveBeenCalledWith(entry)
     expect(view.previewEntry.value).toBeUndefined()
     view.closePreview()
-    expect(closeWindow).not.toHaveBeenCalled()
-    expect(mocks.push).toHaveBeenCalledWith({ name: 'files', query: { path: '/home/releases' } })
+    expect(closeWindow).toHaveBeenCalledOnce()
+    expect(mocks.push).not.toHaveBeenCalled()
   })
 })
 
