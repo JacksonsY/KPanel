@@ -12,6 +12,7 @@ import (
 
 	"github.com/kejilion/kejilion-panel/internal/cluster"
 	"github.com/kejilion/kejilion-panel/internal/mcpaccess"
+	"github.com/kejilion/kejilion-panel/internal/redact"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -224,7 +225,8 @@ func (s *Server) readManagedRemote(ctx context.Context, call mcpRequest, hostID 
 		return nil, errors.New(response.ErrorCode)
 	}
 	var output map[string]any
-	if !response.Authorized || json.Unmarshal(response.Data, &output) != nil || output == nil {
+	display, projectionErr := redact.JSON(response.Data)
+	if !response.Authorized || projectionErr != nil || json.Unmarshal(display, &output) != nil || output == nil {
 		return nil, errors.New("remote_response_invalid")
 	}
 	return output, nil
@@ -264,8 +266,12 @@ func mcpRemoteOperationResult(response cluster.ManagedResponse) (string, json.Ra
 	if !slices.Contains([]string{"approved", "submitted", "succeeded", "failed", "unknown"}, state) {
 		return "", nil, errors.New("remote_response_invalid")
 	}
-	result, _ := json.Marshal(map[string]any{"remoteOperation": json.RawMessage(response.Data), "observedAt": time.Now().UTC()})
-	return state, result, nil
+	result, err := redact.JSON(response.Data)
+	if err != nil {
+		return "", nil, errors.New("remote_response_invalid")
+	}
+	result, err = json.Marshal(map[string]any{"remoteOperation": json.RawMessage(result), "observedAt": time.Now().UTC()})
+	return state, result, err
 }
 
 // The settings router has already required a Panel session and, for writes,

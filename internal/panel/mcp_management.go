@@ -313,10 +313,16 @@ func mcpOperationView(o mcpaccess.Operation) map[string]any {
 		view["state"] = "expired"
 	}
 	if len(o.Result) > 0 {
-		view["result"] = o.Result
+		// Historical receipts also cross this public boundary; a peer's old
+		// or unclassified response must not bypass the current projection.
+		result, err := redact.JSON(o.Result)
+		if err != nil {
+			result = json.RawMessage(`"[REDACTED: invalid receipt]"`)
+		}
+		view["result"] = json.RawMessage(result)
 	}
 	if o.Error != "" {
-		view["error"] = o.Error
+		view["error"] = redact.Text(o.Error)
 	}
 	if o.State == "pending" {
 		view["nextAction"] = "approve_in_panel_settings_mcp"
