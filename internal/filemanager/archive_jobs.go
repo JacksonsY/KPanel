@@ -26,8 +26,14 @@ const maxArchiveStateBytes = 2 << 20
 var ErrArchiveJobsUnavailable = errors.New("归档任务状态不可用，请检查 Agent 状态目录")
 
 type archiveJobRecord struct {
-	Job   contract.FileArchiveJob `json:"job"`
-	Temps []string                `json:"temps"`
+	Job            contract.FileArchiveJob        `json:"job"`
+	Temps          []string                       `json:"temps"`
+	TempIdentities map[string]archiveTempIdentity `json:"tempIdentities,omitempty"`
+}
+
+type archiveTempIdentity struct {
+	Parent string `json:"parent"`
+	Object string `json:"object"`
 }
 type archiveJobs struct {
 	mu          sync.Mutex
@@ -143,7 +149,7 @@ func (m *Manager) initializeArchiveJobsLocked() error {
 			copy := record
 			a.records[j.ID] = &copy
 		}
-		// Only exact, journal-owned temporary names are eligible for recovery cleanup.
+		// A name alone cannot prove ownership after a restart or a local rename.
 		for _, record := range a.records {
 			if !archiveJobActive(record.Job.State) {
 				continue
@@ -151,11 +157,9 @@ func (m *Manager) initializeArchiveJobsLocked() error {
 			record.Job.State = "interrupted"
 			record.Job.Detail = "Agent 已重启，请核对目标目录后重试"
 			record.Job.UpdatedAt = m.now().UTC()
-			if _, _, err := m.resolveExisting(record.Job.Target); err == nil {
-				for _, temp := range record.Temps {
-					if err := m.rootFS.RemoveAll(rootName(temp)); err != nil {
-						record.Job.Detail = "Agent 已重启，暂存清理未完成，请核对目标目录"
-					}
+			for _, temp := range record.Temps {
+				if err := m.cleanupArchiveTemp(record, temp); err != nil {
+					record.Job.Detail = "Agent 已重启，暂存清理未完成，请核对目标目录"
 				}
 			}
 		}
@@ -168,6 +172,29 @@ func (m *Manager) initializeArchiveJobsLocked() error {
 		return err
 	}
 	return nil
+}
+
+func (m *Manager) cleanupArchiveTemp(record *archiveJobRecord, virtual string) error {
+	if _, _, err := m.resolveExisting(record.Job.Target); err != nil {
+		return err
+	}
+	parent, info, err := m.openReceiveDirectory(record.Job.Target, false)
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	visible, err := parent.Lstat(path.Base(virtual))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	identity := record.TempIdentities[virtual]
+	if identity.Parent == "" || identity.Object == "" || identity.Parent != stableReceiveIdentity(info) {
+		return ErrConflict
+	}
+	return removeOwnedReceiveDirectory(parent, path.Base(virtual), visible, nil, identity.Object)
 }
 
 func (m *Manager) persistArchiveJobsLocked() error {
@@ -425,7 +452,16 @@ func (m *Manager) runArchiveJob(ctx context.Context, cancel context.CancelFunc, 
 					item.Name = archiveBaseName(path.Base(source))
 				}
 			}
-			operation := &archiveOperation{budget: budget, tempSuffix: fmt.Sprintf("%s-%d", id, index), progress: func(value *copyBudget) {
+			operation := &archiveOperation{budget: budget, tempSuffix: fmt.Sprintf("%s-%d", id, index), tempReady: func(parent, stage os.FileInfo) error {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				record := a.records[id]
+				if record.TempIdentities == nil {
+					record.TempIdentities = make(map[string]archiveTempIdentity)
+				}
+				record.TempIdentities[record.Temps[index]] = archiveTempIdentity{Parent: stableReceiveIdentity(parent), Object: stableReceiveIdentity(stage)}
+				return m.persistArchiveJobsLocked()
+			}, progress: func(value *copyBudget) {
 				a.mu.Lock()
 				a.records[id].Job.Entries = value.entries
 				a.records[id].Job.ProcessedBytes = value.bytes
@@ -519,12 +555,3 @@ func (m *Manager) closeArchiveJobs() {
 }
 
 func (m *Manager) StopArchiveJobs() { m.closeArchiveJobs() }
-
-func (m *Manager) createArchiveTemp(ctx context.Context, target string) (*os.File, string, error) {
-	if operation := archiveOptions(ctx); operation != nil && operation.tempSuffix != "" {
-		virtual := joinVirtual(target, ".kpanel-archive-"+operation.tempSuffix)
-		file, err := m.rootFS.OpenFile(rootName(virtual), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		return file, virtual, err
-	}
-	return m.createTemp(target, ".kpanel-archive-")
-}

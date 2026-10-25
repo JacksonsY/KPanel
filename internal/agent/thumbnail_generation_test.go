@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"os"
 	"os/exec"
 	"testing"
@@ -15,6 +16,44 @@ import (
 	"golang.org/x/image/bmp"
 	"golang.org/x/image/tiff"
 )
+
+type changingImageReader struct {
+	*bytes.Reader
+	replacement []byte
+	seeks       int
+}
+
+func (r *changingImageReader) Seek(offset int64, whence int) (int64, error) {
+	r.seeks++
+	r.Reader = bytes.NewReader(r.replacement)
+	return r.Reader.Seek(offset, whence)
+}
+
+func TestThumbnailUsesOneBoundedImageSnapshot(t *testing.T) {
+	var small, larger bytes.Buffer
+	if err := png.Encode(&small, image.NewNRGBA(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(&larger, image.NewNRGBA(image.Rect(0, 0, 96, 96))); err != nil {
+		t.Fatal(err)
+	}
+	input := &changingImageReader{Reader: bytes.NewReader(small.Bytes()), replacement: larger.Bytes()}
+	body, _, err := makeFileImage(input, int64(small.Len()), 320, 210, 256, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.seeks != 0 {
+		t.Fatalf("decoder reread mutable input %d times after checking its header", input.seeks)
+	}
+	config, _, err := image.DecodeConfig(bytes.NewReader(body))
+	if err != nil || config.Width != 8 || config.Height != 8 {
+		t.Fatalf("snapshot dimensions=%+v error=%v", config, err)
+	}
+	// The observed byte count, not the stale size argument, bounds the snapshot.
+	if _, _, err := makeFilePreview(io.NewSectionReader(bytes.NewReader(make([]byte, fileThumbnailMaxBytes+1)), 0, fileThumbnailMaxBytes+1), 1); err != filemanager.ErrTooLarge {
+		t.Fatalf("growing source byte bound: %v", err)
+	}
+}
 
 func TestThumbnailPortableFormatsAndLargerSources(t *testing.T) {
 	for _, format := range []string{"jpeg", "png", "bmp", "tiff", "webp"} {

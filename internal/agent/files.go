@@ -708,6 +708,16 @@ func makeFileImage(file io.ReadSeeker, size int64, maxWidth, maxHeight, maxPixel
 	if size <= 0 || size > maxBytes {
 		return nil, "", filemanager.ErrTooLarge
 	}
+	// The opened inode may still be modified by a site process. Freeze the
+	// bounded bytes before inspecting dimensions, metadata or allocating pixels.
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, "", filemanager.ErrTooLarge
+	}
+	file = bytes.NewReader(data)
 	config, format, err := image.DecodeConfig(io.LimitReader(file, maxBytes+1))
 	if err != nil || (preview && format != "jpeg" && format != "png" && format != "gif") ||
 		(!preview && format != "jpeg" && format != "png" && format != "gif" && format != "webp" && format != "bmp" && format != "tiff") {

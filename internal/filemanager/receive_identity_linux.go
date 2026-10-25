@@ -21,6 +21,11 @@ func stableReceiveIdentity(info os.FileInfo) string {
 	return ""
 }
 
+func archiveStagePrivate(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat.Uid == uint32(os.Geteuid()) && info.IsDir() && info.Mode().Perm()&0077 == 0
+}
+
 func receiveFileTimes(_ *fileRoot, _ string, file *os.File, when time.Time) error {
 	stamp := unix.Timespec{Sec: when.Unix(), Nsec: int64(when.Nanosecond())}
 	times := []unix.Timespec{stamp, stamp}

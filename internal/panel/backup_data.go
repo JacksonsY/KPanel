@@ -187,6 +187,9 @@ func sanitizeBackupFile(name string, data []byte) ([]byte, error) {
 	if err := json.Unmarshal(data, &value); err != nil {
 		return nil, err
 	}
+	if value == nil {
+		return nil, backup.ErrInvalid
+	}
 	if strings.HasPrefix(name, "cluster-") {
 		// Durable active/revoked relationships and identity keys travel together.
 		// One-time pairing codes and unfinished enrollment transactions never do.
@@ -231,6 +234,9 @@ func sanitizeBackupFile(name string, data []byte) ([]byte, error) {
 		var settings map[string]json.RawMessage
 		if err := json.Unmarshal(value["settings"], &settings); err != nil {
 			return nil, err
+		}
+		if settings == nil {
+			return nil, backup.ErrInvalid
 		}
 		settings["enabled"] = json.RawMessage(`false`)
 		value["settings"], _ = json.Marshal(settings)

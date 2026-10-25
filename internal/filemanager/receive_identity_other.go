@@ -12,6 +12,8 @@ import (
 
 func stableReceiveIdentity(os.FileInfo) string { return "" }
 
+func archiveStagePrivate(info os.FileInfo) bool { return info.IsDir() }
+
 func receiveFileTimes(root *fileRoot, name string, _ *os.File, when time.Time) error {
 	return root.Chtimes(name, when, when)
 }

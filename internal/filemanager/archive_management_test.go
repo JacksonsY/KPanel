@@ -290,6 +290,15 @@ func TestArchiveRecoveryOnlyCleansJournalOwnedTemps(t *testing.T) {
 	mustWrite(t, filepath.Join(root, ".kpanel-extract-unrelated", "keep"), "keep")
 	mustWrite(t, filepath.Join(root, "result", "keep"), "committed")
 	record := archiveJobRecord{Job: contract.FileArchiveJob{ID: id, Action: "extract", State: "running", Target: "/", Sources: []string{"/source.zip"}, Name: "result", CreatedAt: time.Now(), UpdatedAt: time.Now()}, Temps: []string{temp}}
+	parentInfo, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stageInfo, err := os.Stat(filepath.Join(root, strings.TrimPrefix(temp, "/")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.TempIdentities = map[string]archiveTempIdentity{temp: {Parent: stableReceiveIdentity(parentInfo), Object: stableReceiveIdentity(stageInfo)}}
 	data, err := json.Marshal(map[string]any{"version": 1, "records": []archiveJobRecord{record}})
 	if err != nil {
 		t.Fatal(err)
@@ -299,8 +308,12 @@ func TestArchiveRecoveryOnlyCleansJournalOwnedTemps(t *testing.T) {
 	if err != nil || len(items) != 1 || items[0].State != "interrupted" {
 		t.Fatalf("recovery=%+v %v", items, err)
 	}
-	if _, err := os.Stat(filepath.Join(root, strings.TrimPrefix(temp, "/"))); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("owned temp remains")
+	_, statErr := os.Stat(filepath.Join(root, strings.TrimPrefix(temp, "/")))
+	if stableReceiveIdentity(stageInfo) != "" && !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("identified temp remains")
+	}
+	if stableReceiveIdentity(stageInfo) == "" && statErr != nil {
+		t.Fatal("unidentified temp was removed")
 	}
 	for _, name := range []string{".kpanel-extract-unrelated/keep", "result/keep"} {
 		if _, err := os.Stat(filepath.Join(root, name)); err != nil {

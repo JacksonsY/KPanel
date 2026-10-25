@@ -170,6 +170,14 @@ func (m *Manager) compressArchive(
 	if !targetInfo.IsDir() {
 		return contract.FileEntry{}, ErrNotDirectory
 	}
+	parent, openedTarget, err := m.openReceiveDirectory(normalizedTarget, false)
+	if err != nil {
+		return contract.FileEntry{}, err
+	}
+	defer parent.Close()
+	if !os.SameFile(targetInfo, openedTarget) {
+		return contract.FileEntry{}, ErrConflict
+	}
 	outputVirtual := joinVirtual(normalizedTarget, name)
 	if err := m.mutationError(outputVirtual); err != nil {
 		return contract.FileEntry{}, err
@@ -185,11 +193,40 @@ func (m *Manager) compressArchive(
 		return contract.FileEntry{}, err
 	}
 
-	temp, tempVirtual, err := m.createArchiveTemp(ctx, normalizedTarget)
+	// Only a private, pinned publication directory may name the generated inode.
+	// Pinning each individual operation on the wider root is not sufficient.
+	tempName := ".kpanel-archive-" + randomID()
+	if operation := archiveOptions(ctx); operation != nil && operation.tempSuffix != "" {
+		tempName = ".kpanel-archive-" + operation.tempSuffix
+	}
+	if err := parent.Mkdir(tempName, 0700); err != nil {
+		return contract.FileEntry{}, err
+	}
+	stageInfo, err := parent.Lstat(tempName)
+	if err != nil || !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 {
+		return contract.FileEntry{}, ErrConflict
+	}
+	stage, err := parent.OpenRoot(tempName)
 	if err != nil {
 		return contract.FileEntry{}, err
 	}
-	success := false
+	defer stage.Close()
+	ownedStage, err := stage.Stat(".")
+	if err != nil || !os.SameFile(stageInfo, ownedStage) || !archiveStagePrivate(ownedStage) {
+		return contract.FileEntry{}, ErrConflict
+	}
+	defer func() {
+		if visible, err := parent.Lstat(tempName); err == nil {
+			_ = removeOwnedReceiveDirectory(parent, tempName, visible, ownedStage, "")
+		}
+	}()
+	if err := recordArchiveTemp(ctx, openedTarget, ownedStage); err != nil {
+		return contract.FileEntry{}, err
+	}
+	temp, err := stage.OpenFile("body", os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return contract.FileEntry{}, err
+	}
 	encoderClosed := false
 	var closeEncoder func() error
 	defer func() {
@@ -197,9 +234,6 @@ func (m *Manager) compressArchive(
 			_ = closeEncoder()
 		}
 		_ = temp.Close()
-		if !success {
-			_ = m.rootFS.Remove(rootName(tempVirtual))
-		}
 	}()
 
 	var writeEntry archiveEntryWriter
@@ -249,23 +283,52 @@ func (m *Manager) compressArchive(
 	if err := temp.Sync(); err != nil {
 		return contract.FileEntry{}, err
 	}
+	resultInfo, err := temp.Stat()
+	if err != nil {
+		return contract.FileEntry{}, err
+	}
 	if err := temp.Close(); err != nil {
 		return contract.FileEntry{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return contract.FileEntry{}, err
 	}
-	if err := renameNoReplaceRoot(m.rootFS, tempVirtual, outputVirtual); err != nil {
+	if err := m.verifyArchiveOutputParent(normalizedTarget, openedTarget); err != nil {
+		return contract.FileEntry{}, err
+	}
+	visible, err := parent.Lstat(tempName)
+	if err != nil || !os.SameFile(ownedStage, visible) {
+		return contract.FileEntry{}, ErrConflict
+	}
+	if err := publishReceiveObject(stage, "body", parent, name, false); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return contract.FileEntry{}, ErrAlreadyExists
 		}
 		return contract.FileEntry{}, err
 	}
-	if err := syncRootDirectory(m.rootFS, rootName(normalizedTarget)); err != nil {
+	if err := syncRootDirectory(parent, "."); err != nil {
 		return contract.FileEntry{}, err
 	}
-	success = true
-	return m.Stat(outputVirtual)
+	if err := m.verifyArchiveOutputParent(normalizedTarget, openedTarget); err != nil {
+		return contract.FileEntry{}, err
+	}
+	published, err := parent.Lstat(name)
+	if err != nil || !os.SameFile(resultInfo, published) {
+		return contract.FileEntry{}, ErrConflict
+	}
+	return m.entry(outputVirtual, published), nil
+}
+
+func (m *Manager) verifyArchiveOutputParent(virtual string, expected os.FileInfo) error {
+	parent, current, err := m.openReceiveDirectory(virtual, false)
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	if !os.SameFile(expected, current) {
+		return ErrConflict
+	}
+	return nil
 }
 
 func (m *Manager) walkArchive(
@@ -528,10 +591,13 @@ func (m *Manager) extractArchive(
 	}
 	defer publication.Close()
 	opened, err := publication.Stat(".")
-	if err != nil || !os.SameFile(stageInfo, opened) {
+	if err != nil || !os.SameFile(stageInfo, opened) || !archiveStagePrivate(opened) {
 		return contract.FileEntry{}, ErrConflict
 	}
 	ownedStage = opened
+	if err := recordArchiveTemp(ctx, openedTarget, ownedStage); err != nil {
+		return contract.FileEntry{}, err
+	}
 	if err := publication.Mkdir("result", 0700); err != nil {
 		return contract.FileEntry{}, err
 	}

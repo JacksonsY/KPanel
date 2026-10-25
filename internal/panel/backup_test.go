@@ -19,6 +19,30 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/terminalcommands"
 )
 
+func TestBackupSanitizerRejectsNullObjects(t *testing.T) {
+	for _, fixture := range []struct{ name, body string }{
+		{"cluster-state-v2.json", `null`},
+		{"notifications/notification-state.json", `null`},
+		{"notifications/notification-state.json", `{"settings":null}`},
+		{"notifications/service-check-alerts-v1.json", `null`},
+	} {
+		t.Run(fixture.name+fixture.body, func(t *testing.T) {
+			defer func() {
+				if caught := recover(); caught != nil {
+					t.Errorf("untrusted object caused panic: %v", caught)
+				}
+			}()
+			if _, err := sanitizeBackupFile(fixture.name, []byte(fixture.body)); err == nil {
+				t.Fatal("null object was accepted")
+			}
+		})
+	}
+	data, err := sanitizeBackupFile("notifications/notification-state.json", []byte(`{"settings":{"enabled":true,"chatId":"fixture"},"alertStates":{}}`))
+	if err != nil || !bytes.Contains(data, []byte(`"enabled":false`)) || !bytes.Contains(data, []byte(`"chatId":"fixture"`)) || bytes.Contains(data, []byte(`alertStates`)) {
+		t.Fatalf("valid settings were not preserved and disabled: %s %v", data, err)
+	}
+}
+
 func TestBackupPanelIdentityAndStagingValidation(t *testing.T) {
 	s, token := newTestServer(t)
 	bootstrapCookies(t, s, token)
