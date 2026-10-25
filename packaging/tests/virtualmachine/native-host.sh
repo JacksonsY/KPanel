@@ -23,6 +23,7 @@ state_dir="/var/lib/kpanel-release-qualification-$key"
 name="kpanel-qa-$key"
 cleanup() {
   docker logs "$server" > "$evidence/docker-http.log" 2>&1 || true
+  docker inspect "$server" > "$evidence/docker-http-inspect.json" 2>&1 || true
   docker rm -f "$server" >/dev/null 2>&1 || true
   docker network rm "$network" >/dev/null 2>&1 || true
   # Root filesystem changes belong only to this ephemeral hosted runner. Native
@@ -66,7 +67,7 @@ port=$(docker port "$server" 8080/tcp | sed -n 's/^127\.0\.0\.1://p')
 url="http://127.0.0.1:$port/"
 # A bounded readiness window covers container startup without weakening the
 # exact response or later post-installation coexistence assertions.
-curl -fsS --max-time 10 --retry 5 --retry-connrefused --retry-delay 1 --retry-max-time 15 "$url" | grep -Fx "KPanel-native-$key"
+curl -fsS --max-time 2 --retry 10 --retry-all-errors --retry-delay 1 --retry-max-time 20 "$url" | grep -Fx "KPanel-native-$key"
 peer_probe() {
   docker run --rm --network "$network" --read-only --cap-drop ALL --security-opt no-new-privileges --memory 64m --cpus .25 --pids-limit 32 --entrypoint node "$image" --max-old-space-size=16 -e 'require("node:http").get(process.argv[1],r=>{if(r.statusCode!==200)process.exitCode=1;r.pipe(process.stdout)}).on("error",()=>process.exit(1)).setTimeout(10000,function(){this.destroy(Error("timeout"))})' "http://$server:8080/" | grep -Fx "KPanel-native-$key"
 }
