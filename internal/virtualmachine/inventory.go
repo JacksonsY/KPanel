@@ -178,11 +178,19 @@ func (s *Service) Snapshot(ctx context.Context) (contract.VMSnapshot, error) {
 				return r, err
 			}
 		}
-		b, err := s.virsh(ctx, "vol-list", "--pool", pool.Name, "--name")
+		b, err := s.virsh(ctx, "vol-list", "--pool", pool.Name)
 		if err != nil {
 			return r, err
 		}
-		for _, name := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		// Unlike pool-list/net-list, supported libvirt releases expose no
+		// vol-list --name flag. LC_ALL=C gives a Name/Path table; creation
+		// accepts only single-token volume names, so take its first column.
+		for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+			columns := strings.Fields(line)
+			if len(columns) < 2 {
+				continue
+			}
+			name := columns[0]
 			if !strings.HasSuffix(strings.ToLower(name), ".iso") {
 				continue
 			}

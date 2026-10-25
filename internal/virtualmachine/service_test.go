@@ -35,6 +35,32 @@ func (f *fakeRunner) Run(_ context.Context, _ io.Reader, name string, args ...st
 
 const testID = "11111111-1111-1111-1111-111111111111"
 
+func TestVMSnapshotReadsSupportedVirshVolumeTable(t *testing.T) {
+	r := &fakeRunner{respond: func(a []string) ([]byte, error) {
+		switch a[3] {
+		case "domcapabilities":
+			return []byte("<domain>kvm</domain>"), nil
+		case "pool-list", "net-list":
+			return []byte("default\n"), nil
+		case "pool-dumpxml":
+			return []byte(`<pool type="dir"><target><path>/var/lib/libvirt/images</path></target></pool>`), nil
+		case "vol-list":
+			for _, arg := range a[4:] {
+				if arg == "--name" {
+					return nil, errors.New("vol-list does not support --name")
+				}
+			}
+			return []byte(" Name         Path\n-----------------------------------\n debian.iso   /var/lib/libvirt/images/debian.iso\n disk.qcow2   /var/lib/libvirt/images/disk.qcow2\n ubuntu.ISO   /var/lib/libvirt/images/ubuntu.ISO\n"), nil
+		}
+		return nil, nil
+	}}
+	s := New(Config{Runner: r, StateDir: filepath.Join(t.TempDir(), "absent")})
+	got, err := s.Snapshot(context.Background())
+	if err != nil || len(got.Images) != 2 || got.Images[0].Name != "debian.iso" || got.Images[1].Name != "ubuntu.ISO" {
+		t.Fatalf("invalid volume inventory: %#v %v", got.Images, err)
+	}
+}
+
 func TestVMImageRedirectRequiresExactApprovedDebianFile(t *testing.T) {
 	base, file, _, _ := imageSource("debian-12", "amd64")
 	original, _ := http.NewRequest(http.MethodGet, base+file, nil)
