@@ -19,7 +19,7 @@ export async function handleMockVirtualMachines(request, response, url, { send, 
   if (existing) { send(response, 202, existing); return true }
   if (jobs.some(job => ['queued', 'running'].includes(job.status))) { send(response, 429, { code: 'vm_busy', title: 'Task in progress' }); return true }
   const machine = machines.find(item => item.id === input.id)
-  if (!['create', 'install'].includes(input.action) && (!machine || input.expectedResourceVersion !== machine.resourceVersion)) { send(response, 409, { code: 'vm_conflict', title: 'Resource changed' }); return true }
+  if (!['create', 'install', 'prepare'].includes(input.action) && (!machine || input.expectedResourceVersion !== machine.resourceVersion)) { send(response, 409, { code: 'vm_conflict', title: 'Resource changed' }); return true }
   const now = new Date().toISOString()
   const job = { id: input.requestId, action: input.action, name: input.name || machine?.name || '', status: 'running', stage: input.action === 'create' ? 'downloading' : 'applying', message: '', createdAt: now, updatedAt: now }
   jobs.unshift(job); requests.set(input.requestId, job)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 import { Monitor, Plus, RefreshCw, Search } from '@lucide/vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import VMConsole from '@/components/virtualmachines/VMConsole.vue'
@@ -18,13 +18,16 @@ const notice = ref('')
 const search = ref('')
 const filter = ref('all')
 const wizard = ref(false)
+const wizardForm = ref<HTMLFormElement>()
 const step = ref(0)
 const loginMethod = ref('password')
 const formError = ref('')
 const installOpen = ref(false)
+const prepareMode = ref(false)
 const detailID = ref('')
 const consoleMachine = ref<VirtualMachine>()
-const selectedJob = ref<VMJob>()
+const selectedJobID = ref('')
+const selectedJob = computed(() => snapshot.value?.jobs.find(job => job.id === selectedJobID.value))
 const confirmation = ref<{ action: string; machine: VirtualMachine }>()
 const deleteDisks = ref(false)
 const form = reactive({ name: '', source: 'cloud', image: 'debian-12', cpus: 2, memoryMiB: 2048, diskGiB: 20, pool: 'default', network: 'default', username: 'kpanel', publicKey: '', password: '', autostart: false })
@@ -46,12 +49,14 @@ function state(value: string): string {
   const keys: Record<string, VMTextKey> = { running: 'running', 'shut off': 'stopped', paused: 'paused', queued: 'queued', succeeded: 'succeeded', failed: 'failed', needs_attention: 'needs_attention' }
   return keys[value] ? t(keys[value]!) : value || t('unknown')
 }
+function jobState(job: VMJob): string { return job.status === 'succeeded' && job.stage === 'request_sent' ? t('request_sent') : job.status === 'running' ? t('taskRunning') : state(job.status) }
 function stage(value: string): string {
-  const values = ['queued', 'checking', 'installing', 'configuring', 'preparing_disk', 'downloading', 'creating', 'verifying', 'applying', 'completed']
+  const values = ['queued', 'checking', 'installing', 'configuring', 'preparing_disk', 'downloading', 'creating', 'verifying', 'applying', 'completed', 'request_sent']
   return values.includes(value) ? t(value as VMTextKey) : value
 }
 function actionLabel(value: string): string {
   if (value === 'install') return t('installAction')
+  if (value === 'prepare') return t('prepare')
   if (value === 'create') return t('createAction')
   return t(value as VMTextKey)
 }
@@ -132,6 +137,7 @@ const confirmationHint = computed(() => {
   return action && ['delete', 'poweroff', 'shutdown', 'reboot', 'eject', 'autostart'].includes(action) ? t(`${action}Hint` as VMTextKey) : ''
 })
 function resume(): void { active = true; void load() }
+watch(step, async () => { await nextTick(); wizardForm.value?.querySelector<HTMLElement>('input, select, textarea')?.focus() })
 watch(wizard, open => { if (!open) { form.password = ''; requestCache = undefined } })
 function pause(): void { wizard.value = false; form.password = ''; active = false; clearTimeout(timer); controller?.abort(); consoleMachine.value = undefined }
 onMounted(resume)
@@ -152,8 +158,9 @@ onBeforeUnmount(pause)
     <template v-if="snapshot">
       <section v-if="!snapshot.environment.ready" class="vm-environment">
         <Monitor :size="36" aria-hidden="true" /><div><h2>{{ t('installTitle') }}</h2><p>{{ envReason }}</p><p v-if="snapshot.environment.missing.length" class="vm-muted">{{ t('missing') }}：<code>{{ snapshot.environment.missing.join(', ') }}</code></p><p v-if="!snapshot.environment.installable" class="vm-muted">{{ snapshot.environment.reason === 'dependencies_missing' ? t('manualInstall') : t('unsupportedHelp') }}</p></div>
-        <button v-if="snapshot.environment.installable" class="button button--primary" :disabled="!writable" @click="installOpen = true; formError = ''">{{ t('install') }}</button>
+        <button v-if="snapshot.environment.installable" class="button button--primary" :disabled="!writable" @click="prepareMode = false; installOpen = true; formError = ''">{{ t('install') }}</button>
       </section>
+      <section v-if="snapshot.environment.ready && (!snapshot.networks.length || !snapshot.pools.length)" class="vm-environment"><div><h2>{{ t('prepareTitle') }}</h2><p>{{ t('noResources') }}</p></div><button class="button button--primary" :disabled="!writable" @click="prepareMode = true; installOpen = true; formError = ''">{{ t('prepare') }}</button></section>
       <p v-if="!snapshot.environment.writable" class="vm-alert">{{ t('readOnly') }}</p>
       <template v-if="snapshot.environment.ready || snapshot.environment.connected">
         <section class="vm-summary" :aria-label="t('resources')"><div><strong>{{ snapshot.machines.length }}</strong><span>{{ t('title') }}</span></div><div><strong>{{ snapshot.machines.filter(m => m.state === 'running').length }}</strong><span>{{ t('running') }}</span></div><div><strong>{{ snapshot.environment.cpus }} CPU · {{ Math.round(snapshot.environment.memoryMiB / 1024) }} GiB</strong><span>{{ t('capacityHint') }}</span></div></section>
@@ -168,11 +175,11 @@ onBeforeUnmount(pause)
           </article>
         </section>
       </template>
-      <section class="vm-tasks"><h2>{{ t('tasks') }}</h2><p class="vm-muted">{{ t('taskNotice') }}</p><p v-if="!snapshot.jobs.length" class="vm-muted">{{ t('noJobs') }}</p><button v-for="job in snapshot.jobs.slice(0, 8)" :key="job.id" class="vm-task" @click="selectedJob = job"><span><strong>{{ actionLabel(job.action) }}{{ job.name ? ` · ${job.name}` : '' }}</strong><span>{{ stage(job.stage) }}</span></span><span class="vm-state" :data-state="job.status">{{ job.status === 'running' ? t('taskRunning') : state(job.status) }}</span></button></section>
+      <section class="vm-tasks"><h2>{{ t('tasks') }}</h2><p class="vm-muted">{{ t('taskNotice') }}</p><p v-if="!snapshot.jobs.length" class="vm-muted">{{ t('noJobs') }}</p><button v-for="job in snapshot.jobs.slice(0, 8)" :key="job.id" class="vm-task" @click="selectedJobID = job.id"><span><strong>{{ actionLabel(job.action) }}{{ job.name ? ` · ${job.name}` : '' }}</strong><span>{{ stage(job.stage) }}</span></span><span class="vm-state" :data-state="job.status">{{ jobState(job) }}</span></button></section>
     </template>
 
     <ModalDialog :open="wizard" :title="t('create')" size="large" :close-disabled="submitting" @close="wizard = false">
-      <form class="vm-form" @submit.prevent="step < 2 ? validStep() && step++ : create()">
+      <form ref="wizardForm" class="vm-form" @submit.prevent="step < 2 ? validStep() && step++ : create()">
         <ol class="vm-steps"><li v-for="(label, index) in steps" :key="label" :aria-current="index === step ? 'step' : undefined" :class="{ current: index === step }"><span>{{ index + 1 }}</span>{{ label }}</li></ol>
         <p v-if="formError" role="alert" class="vm-alert vm-alert--error">{{ formError }}</p>
         <template v-if="step === 0">
@@ -192,10 +199,10 @@ onBeforeUnmount(pause)
       </form>
     </ModalDialog>
 
-    <ModalDialog :open="installOpen" :title="t('installTitle')" :close-disabled="submitting" @close="installOpen = false"><div class="vm-form"><p>{{ t('installHint') }}</p><p class="vm-muted">{{ t('installNote') }}</p><p v-if="formError" role="alert" class="vm-alert vm-alert--error">{{ formError }}</p><footer class="vm-actions"><button class="button button--secondary" :disabled="submitting" @click="installOpen = false">{{ t('cancel') }}</button><button class="button button--primary" :disabled="submitting || !writable" @click="submit({ action: 'install' })">{{ t('install') }}</button></footer></div></ModalDialog>
+    <ModalDialog :open="installOpen" :title="prepareMode ? t('prepareTitle') : t('installTitle')" :close-disabled="submitting" @close="installOpen = false"><div class="vm-form"><p>{{ prepareMode ? t('prepareHint') : t('installHint') }}</p><p v-if="!prepareMode" class="vm-muted">{{ t('installNote') }}</p><p v-if="formError" role="alert" class="vm-alert vm-alert--error">{{ formError }}</p><footer class="vm-actions"><button class="button button--secondary" :disabled="submitting" @click="installOpen = false">{{ t('cancel') }}</button><button class="button button--primary" :disabled="submitting || !writable" @click="submit({ action: prepareMode ? 'prepare' : 'install' })">{{ prepareMode ? t('prepare') : t('install') }}</button></footer></div></ModalDialog>
     <ModalDialog :open="!!detail" :title="detail?.name || t('details')" size="large" @close="detailID = ''"><div v-if="detail" class="vm-form"><dl class="vm-review"><dt>{{ t('state') }}</dt><dd>{{ state(detail.state) }}</dd><dt>{{ t('resources') }}</dt><dd>{{ detail.cpus }} CPU · {{ detail.memoryMiB }} MiB</dd><dt>{{ t('autostart') }}</dt><dd>{{ detail.autostart ? t('enabled') : t('disabled') }}</dd></dl><p class="vm-muted">{{ detail.addresses.length ? detail.addresses.join(', ') : t('addressPending') }}</p><h3>{{ t('diskFiles') }}</h3><p v-for="disk in detail.disks" :key="disk.target" class="vm-path"><code>{{ disk.target }} · {{ disk.path }}</code></p><div class="vm-actions"><button class="button button--secondary" :disabled="detail.state !== 'running' || !detail.console" @click="consoleMachine = detail">{{ t('console') }}</button><button v-for="action in ['start', 'shutdown', 'reboot', 'poweroff', 'autostart', 'eject', 'delete']" :key="action" class="button button--secondary" :disabled="!writable || (['shutdown', 'reboot', 'poweroff'].includes(action) && detail.state !== 'running') || (action === 'start' && detail.state !== 'shut off')" @click="confirm(action, detail)">{{ actionLabel(action) }}</button></div></div></ModalDialog>
     <ModalDialog :open="!!confirmation" :title="confirmation ? actionLabel(confirmation.action) : t('confirm')" :close-disabled="submitting" @close="confirmation = undefined"><div class="vm-form"><p>{{ t('confirmTarget') }}：<strong>{{ confirmation?.machine.name }}</strong></p><p>{{ confirmationHint }}</p><template v-if="confirmation?.action === 'delete'"><label class="vm-check"><input v-model="deleteDisks" type="checkbox" />{{ t('deleteDisks') }}</label><p class="vm-muted">{{ t('keepDisks') }}</p></template><p v-if="formError" role="alert" class="vm-alert vm-alert--error">{{ formError }}</p><footer class="vm-actions"><button class="button button--secondary" :disabled="submitting" @click="confirmation = undefined">{{ t('cancel') }}</button><button class="button" :class="confirmation?.action === 'delete' ? 'button--danger' : 'button--primary'" :disabled="submitting || !writable" @click="apply">{{ t('confirm') }}</button></footer></div></ModalDialog>
-    <ModalDialog :open="!!selectedJob" :title="t('viewTask')" @close="selectedJob = undefined"><div v-if="selectedJob" class="vm-form"><p>{{ actionLabel(selectedJob.action) }} · {{ selectedJob.name }}</p><p>{{ state(selectedJob.status) }} · {{ stage(selectedJob.stage) }}</p><p v-if="selectedJob.message" data-i18n-ignore class="vm-path">{{ selectedJob.message === 'worker_interrupted' ? t('worker_interrupted') : selectedJob.message }}</p><p v-if="selectedJob.status === 'needs_attention'" class="vm-alert">{{ t('taskFailureHint') }}</p><code class="vm-path">{{ selectedJob.id }}</code><code v-for="artifact in selectedJob.artifacts" :key="artifact" class="vm-path" data-i18n-ignore>{{ artifact }}</code></div></ModalDialog>
+    <ModalDialog :open="!!selectedJob" :title="t('viewTask')" @close="selectedJobID = ''"><div v-if="selectedJob" class="vm-form"><p>{{ actionLabel(selectedJob.action) }} · {{ selectedJob.name }}</p><p>{{ jobState(selectedJob) }} · {{ stage(selectedJob.stage) }}</p><p v-if="selectedJob.message" data-i18n-ignore class="vm-path">{{ selectedJob.message === 'worker_interrupted' ? t('worker_interrupted') : selectedJob.message }}</p><p v-if="selectedJob.status === 'needs_attention'" class="vm-alert">{{ t('taskFailureHint') }}</p><code class="vm-path">{{ selectedJob.id }}</code><code v-for="artifact in selectedJob.artifacts" :key="artifact" class="vm-path" data-i18n-ignore>{{ artifact }}</code></div></ModalDialog>
     <VMConsole v-if="consoleMachine" :machine="consoleMachine" @close="consoleMachine = undefined" />
   </main>
 </template>

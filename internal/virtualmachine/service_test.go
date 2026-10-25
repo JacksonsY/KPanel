@@ -115,7 +115,7 @@ func TestWorkerRunsOnceAndPersistsFailure(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("durable worker uses Linux file locks")
 	}
-	s := New(Config{StateDir: t.TempDir(), Runner: &fakeRunner{}})
+	s := New(Config{StateDir: privateTestDirectory(t), Runner: &fakeRunner{}})
 	j := jobRecord{VMJob: contract.VMJob{ID: testID, Action: "create", Status: "queued"}, Request: contract.VMRequest{Action: "create", RequestID: testID}}
 	if err := s.save(&j); err != nil {
 		t.Fatal(err)
@@ -253,7 +253,7 @@ func TestPasswordIsHashedBeforeDurableSubmissionAndNeverProjected(t *testing.T) 
 		}
 		return nil, nil
 	}}
-	s := New(Config{Enabled: true, StateDir: t.TempDir(), Runner: runner})
+	s := New(Config{Enabled: true, StateDir: privateTestDirectory(t), Runner: runner})
 	r := contract.VMRequest{Action: "create", RequestID: testID, Name: "password-test", Source: "cloud", Image: "debian-12", Pool: "default", Network: "default", CPUs: 1, MemoryMiB: 1024, DiskGiB: 20, Username: "kpanel", Password: "example-secret-password"}
 	job, err := s.Start(context.Background(), r)
 	if err != nil {
@@ -274,7 +274,7 @@ func TestPasswordIsHashedBeforeDurableSubmissionAndNeverProjected(t *testing.T) 
 		t.Fatal("stored hash cannot authenticate chosen password")
 	}
 	public, _ := json.Marshal(job)
-	if strings.Contains(string(public), "password") || strings.Contains(string(public), stored.PasswordHash) {
+	if strings.Contains(string(public), r.Password) || strings.Contains(string(public), stored.PasswordHash) || strings.Contains(string(public), "passwordHash") {
 		t.Fatal("credential hash leaked into job projection")
 	}
 	before := len(runner.calls)
@@ -286,4 +286,13 @@ func TestPasswordIsHashedBeforeDurableSubmissionAndNeverProjected(t *testing.T) 
 	if _, err = s.Start(context.Background(), r); !errors.Is(err, ErrConflict) {
 		t.Fatal("different password reused request identity")
 	}
+}
+
+func privateTestDirectory(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "state")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

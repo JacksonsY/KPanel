@@ -36,6 +36,19 @@ func (s *Service) install(ctx context.Context, stage func(string) error) error {
 	if _, err := s.runner.Run(ctx, nil, "systemctl", "enable", "--now", "libvirtd.service"); err != nil {
 		return err
 	}
+	if err := s.prepare(ctx, stage); err != nil {
+		return err
+	}
+	if !s.Environment(ctx).Ready {
+		return errors.New("runtime installed; KVM is unavailable on this host")
+	}
+	return nil
+}
+
+func (s *Service) prepare(ctx context.Context, stage func(string) error) error {
+	if err := stage("configuring"); err != nil {
+		return err
+	}
 	if _, err := s.virsh(ctx, "pool-info", "default"); err != nil {
 		if err := os.MkdirAll("/var/lib/libvirt/images", 0755); err != nil {
 			return err
@@ -64,9 +77,6 @@ func (s *Service) install(ctx context.Context, stage func(string) error) error {
 	if _, err := s.virsh(ctx, "net-autostart", "default"); err != nil {
 		return err
 	}
-	if !s.Environment(ctx).Ready {
-		return errors.New("runtime installed; KVM is unavailable on this host")
-	}
 	return nil
 }
 
@@ -86,6 +96,20 @@ func (s *Service) create(ctx context.Context, j *jobRecord, stage func(string) e
 	}
 	if _, err = s.virsh(ctx, "net-info", r.Network); err != nil {
 		return err
+	}
+	iso := ""
+	if r.Source == "iso" {
+		if _, err = s.virsh(ctx, "pool-refresh", r.Pool); err != nil {
+			return err
+		}
+		isoBytes, err := s.virsh(ctx, "vol-path", "--pool", r.Pool, r.Image)
+		if err != nil {
+			return err
+		}
+		iso = strings.TrimSpace(string(isoBytes))
+		if iso != filepath.Join(pool, r.Image) {
+			return ErrConflict
+		}
 	}
 	if names, err := s.virsh(ctx, "list", "--all", "--name"); err != nil {
 		return err
@@ -144,8 +168,16 @@ func (s *Service) create(ctx context.Context, j *jobRecord, stage func(string) e
 			return err
 		}
 		seed := filepath.Join(pool, "kpanel-"+j.MachineID+"-seed.iso")
-		if _, err = os.Lstat(seed); !errors.Is(err, os.ErrNotExist) {
-			return ErrConflict
+		seedFile, err := os.OpenFile(seed, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			return err
+		}
+		if err = seedFile.Close(); err != nil {
+			return err
+		}
+		j.Artifacts = append(j.Artifacts, seed)
+		if err = s.save(j); err != nil {
+			return err
 		}
 		user, _ := json.Marshal(r.Username)
 		key, _ := json.Marshal(r.PublicKey)
@@ -172,26 +204,42 @@ func (s *Service) create(ctx context.Context, j *jobRecord, stage func(string) e
 		if err = temp.Close(); err != nil {
 			return err
 		}
-		if _, err = s.runner.Run(ctx, nil, "cloud-localds", seed, temp.Name()); err != nil {
+		metadata, err := os.CreateTemp(s.dir, ".cloud-init-*")
+		if err != nil {
 			return err
 		}
-		if err = os.Chmod(seed, 0644); err != nil {
+		defer os.Remove(metadata.Name())
+		metadataJSON, _ := json.Marshal(map[string]string{"instance-id": j.MachineID, "local-hostname": strings.ReplaceAll(strings.ToLower(r.Name), "_", "-")})
+		if _, err = metadata.Write(metadataJSON); err != nil {
+			metadata.Close()
 			return err
 		}
-		j.Artifacts = append(j.Artifacts, seed)
-		if err = s.save(j); err != nil {
+		if err = metadata.Close(); err != nil {
+			return err
+		}
+		if _, err = s.runner.Run(ctx, nil, "cloud-localds", seed, temp.Name(), metadata.Name()); err != nil {
+			return err
+		}
+		poolRoot, err := os.OpenRoot(pool)
+		if err != nil {
+			return err
+		}
+		privateSeed, err := poolRoot.Open(filepath.Base(seed))
+		poolRoot.Close()
+		if err != nil {
+			return err
+		}
+		if info, e := privateSeed.Stat(); e != nil || !info.Mode().IsRegular() || !rootOwned(info) {
+			privateSeed.Close()
+			return errors.New("cloud-init seed identity changed")
+		}
+		err = privateSeed.Chmod(0600)
+		privateSeed.Close()
+		if err != nil {
 			return err
 		}
 		args = append(args, "--import", "--disk", "path="+seed+",device=cdrom")
 	} else {
-		isoBytes, err := s.virsh(ctx, "vol-path", "--pool", r.Pool, r.Image)
-		if err != nil {
-			return err
-		}
-		iso := strings.TrimSpace(string(isoBytes))
-		if iso != filepath.Join(pool, r.Image) {
-			return ErrConflict
-		}
 		args = append(args, "--cdrom", iso)
 	}
 	if err = stage("creating"); err != nil {

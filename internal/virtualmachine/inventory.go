@@ -158,6 +158,26 @@ func (s *Service) Snapshot(ctx context.Context) (contract.VMSnapshot, error) {
 		}
 	}
 	for _, pool := range r.Pools {
+		definition, err := s.virsh(ctx, "pool-dumpxml", pool.Name)
+		if err != nil {
+			return r, err
+		}
+		var info struct {
+			Type   string `xml:"type,attr"`
+			Target struct {
+				Path string `xml:"path"`
+			} `xml:"target"`
+		}
+		if err = xml.Unmarshal(definition, &info); err != nil {
+			return r, err
+		}
+		// Refresh only the directory-volume index, not storage contents or host
+		// networking, so files uploaded through the shared file manager appear.
+		if info.Type == "dir" {
+			if _, err = s.virsh(ctx, "pool-refresh", pool.Name); err != nil {
+				return r, err
+			}
+		}
 		b, err := s.virsh(ctx, "vol-list", "--pool", pool.Name, "--name")
 		if err != nil {
 			return r, err

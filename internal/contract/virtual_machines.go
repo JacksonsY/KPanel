@@ -108,7 +108,7 @@ func ValidateVMRequest(r *VMRequest) (string, string) {
 	}
 	if r.Action != "create" {
 		allowed := VMRequest{Action: r.Action, RequestID: r.RequestID}
-		if r.Action != "install" {
+		if r.Action != "install" && r.Action != "prepare" {
 			allowed.ID = r.ID
 			allowed.ExpectedResourceVersion = r.ExpectedResourceVersion
 		}
@@ -122,7 +122,7 @@ func ValidateVMRequest(r *VMRequest) (string, string) {
 			return "action", "unexpected operation parameters"
 		}
 	}
-	if r.Action == "install" {
+	if r.Action == "install" || r.Action == "prepare" {
 		if r.ID != "" || r.Name != "" || r.DeleteDisks {
 			return "action", "unexpected installation parameters"
 		}
@@ -158,6 +158,8 @@ func ValidateVMRequest(r *VMRequest) (string, string) {
 			if r.PublicKey == "" && r.Password == "" {
 				return "password", "provide a password or SSH public key"
 			}
+		} else if r.Password != "" || r.PublicKey != "" || r.Username != "" {
+			return "source", "ISO installation does not accept cloud credentials"
 		} else if !vmName.MatchString(r.Image) || !strings.HasSuffix(strings.ToLower(r.Image), ".iso") {
 			return "image", "select an ISO volume from the storage pool"
 		}

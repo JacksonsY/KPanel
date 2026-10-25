@@ -133,13 +133,27 @@ func (s *Service) jobs(ctx context.Context) ([]contract.VMJob, error) {
 			return nil, err
 		}
 		if !terminal(j.Status) && time.Since(j.UpdatedAt) > 30*time.Second {
-			state, e := jobcontrol.Inspect(ctx, taskRunner{s.runner}, s.spec(id))
-			if e == nil && state.Known && !state.Running {
-				j.Status = "needs_attention"
-				j.Message = "worker_interrupted"
-				if e = s.save(&j); e != nil {
-					return nil, e
+			// Read again while holding the worker lock: an old polling snapshot
+			// must not overwrite a worker's freshly committed successful receipt.
+			if unlock, e := lockDirectory(s.dir, "worker.lock"); e == nil {
+				fresh, readErr := s.readJob(id)
+				if readErr != nil {
+					unlock()
+					return nil, readErr
 				}
+				j = fresh
+				if !terminal(j.Status) {
+					state, e := jobcontrol.Inspect(ctx, taskRunner{s.runner}, s.spec(id))
+					if e == nil && state.Known && !state.Running {
+						j.Status = "needs_attention"
+						j.Message = "worker_interrupted"
+						if e = s.save(&j); e != nil {
+							unlock()
+							return nil, e
+						}
+					}
+				}
+				unlock()
 			}
 		}
 		result = append(result, j.VMJob)
@@ -235,7 +249,7 @@ func (s *Service) Start(ctx context.Context, r contract.VMRequest) (contract.VMJ
 		if e := s.Environment(ctx); (r.Action == "create" && !e.Ready) || !e.Connected {
 			return contract.VMJob{}, ErrUnsupported
 		}
-		if r.Action != "create" {
+		if r.Action != "create" && r.Action != "prepare" {
 			m, err := s.Machine(ctx, r.ID)
 			if err != nil {
 				return contract.VMJob{}, err
@@ -308,6 +322,8 @@ func (s *Service) RunJob(ctx context.Context, id string) error {
 	stage := func(stage string) error { j.Stage = stage; return s.save(&j) }
 	if j.Action == "install" {
 		err = s.install(ctx, stage)
+	} else if j.Action == "prepare" {
+		err = s.prepare(ctx, stage)
 	} else if j.Action == "create" {
 		err = s.create(ctx, &j, stage)
 	} else {
@@ -322,6 +338,9 @@ func (s *Service) RunJob(ctx context.Context, id string) error {
 	} else {
 		j.Status = "succeeded"
 		j.Stage = "completed"
+		if j.Action == "shutdown" || j.Action == "reboot" {
+			j.Stage = "request_sent"
+		}
 		j.Message = ""
 	}
 	if writeErr := s.save(&j); writeErr != nil {
