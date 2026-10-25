@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/kejilion/kejilion-panel/internal/contract"
 )
 
 func (s *Service) install(ctx context.Context, stage func(string) error) error {
@@ -268,10 +270,43 @@ func (s *Service) create(ctx context.Context, j *jobRecord, stage func(string) e
 	if m.Name != r.Name {
 		return ErrConflict
 	}
+	if r.Source == "cloud" {
+		if err = s.recordCloudOS(ctx, j.MachineID, r.Image, m.State); err != nil {
+			return err
+		}
+	}
 	if r.Autostart {
 		if _, err = s.virsh(ctx, "autostart", j.MachineID); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// Store the known image identity in libvirt itself, so renaming the VM or
+// pruning task history does not discard it. ISO installs retain osinfo detection.
+func (s *Service) recordCloudOS(ctx context.Context, id, image, state string) error {
+	osID := map[string]string{"debian-12": "http://debian.org/debian/12", "ubuntu-24.04": "http://ubuntu.com/ubuntu/24.04"}[image]
+	if !contract.ValidVMID(id) || osID == "" {
+		return ErrInvalid
+	}
+	// libvirt injects the --key namespace into every element. Predeclaring that
+	// prefix makes virXMLInjectNamespace fail on supported libvirt versions.
+	metadata := `<libosinfo><os id="` + osID + `"/></libosinfo>`
+	args := []string{"metadata", id, "--uri", "http://libosinfo.org/xmlns/libvirt/domain/1.0", "--key", "libosinfo", "--set", metadata, "--config"}
+	if state == "running" || state == "paused" {
+		args = append(args, "--live")
+	}
+	_, err := s.virsh(ctx, args...)
+	if err != nil {
+		return err
+	}
+	m, _, err := s.inspect(ctx, id)
+	if err != nil {
+		return err
+	}
+	if m.OSID != osID {
+		return ErrConflict
 	}
 	return nil
 }

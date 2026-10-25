@@ -1,5 +1,5 @@
 export interface VirtualMachine {
-  id: string; name: string; state: string; cpus: number; memoryMiB: number
+  id: string; name: string; osId?: string; state: string; cpus: number; memoryMiB: number
   autostart: boolean; resourceVersion: string; addresses: string[]
   disks: { target: string; path: string; device: string }[]; console: boolean
 }

@@ -205,9 +205,16 @@ func (s *Service) Snapshot(ctx context.Context) (contract.VMSnapshot, error) {
 }
 
 type domainXML struct {
-	XMLName xml.Name `xml:"domain"`
-	UUID    string   `xml:"uuid"`
-	Name    string   `xml:"name"`
+	XMLName  xml.Name `xml:"domain"`
+	UUID     string   `xml:"uuid"`
+	Name     string   `xml:"name"`
+	Metadata struct {
+		LibOSInfo struct {
+			OS struct {
+				ID string `xml:"id,attr"`
+			} `xml:"http://libosinfo.org/xmlns/libvirt/domain/1.0 os"`
+		} `xml:"http://libosinfo.org/xmlns/libvirt/domain/1.0 libosinfo"`
+	} `xml:"metadata"`
 	Devices struct {
 		Disks []struct {
 			Device string `xml:"device,attr"`
@@ -251,6 +258,10 @@ func (s *Service) inspect(ctx context.Context, id string) (contract.VirtualMachi
 		}
 	}
 	m := contract.VirtualMachine{ID: id, Name: d.Name, State: p["State"], Autostart: p["Autostart"] == "enable", Addresses: []string{}, Disks: []contract.VMDisk{}}
+	// This is the declared guest OS, not a probe of the installed guest.
+	if len(d.Metadata.LibOSInfo.OS.ID) <= 256 {
+		m.OSID = d.Metadata.LibOSInfo.OS.ID
+	}
 	m.CPUs, _ = strconv.Atoi(p["CPU(s)"])
 	fields := strings.Fields(p["Max memory"])
 	if len(fields) > 0 {

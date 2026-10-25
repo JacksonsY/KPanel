@@ -14,6 +14,20 @@ function view() { return mount(View,{ attachTo:document.body, global:{stubs:{tel
 async function click(w: ReturnType<typeof view>, text:string) { await w.findAll('button').find(b => b.text()===text)!.trigger('click'); await flushPromises() }
 
 describe('virtual machine journey', () => {
+  it('uses declared systems in the list and details, never names or disk paths', async () => {
+    mocks.list.mockResolvedValue({...data, machines: [
+      {...machine, name: 'renamed-workload', osId: 'http://debian.org/debian/12'},
+      {...machine, id: '22222222-2222-2222-2222-222222222222', name: 'ubuntu-name-only', disks: [{ target: 'vda', device: 'disk', path: '/images/ubuntu.qcow2' }]},
+    ]})
+    const w = view(); await flushPromises()
+    const icons = w.findAll('.vm-list .vm-system-icon')
+    expect(icons[0]!.attributes('title')).toContain('Debian')
+    expect(icons[0]!.find('.os-identity__mark').exists()).toBe(true)
+    expect(icons[1]!.attributes('title')).toBe('未提供可识别的系统声明')
+    expect(icons[1]!.find('.os-identity__mark').exists()).toBe(false)
+    await w.findAll('.vm-name')[0]!.trigger('click'); await flushPromises()
+    expect(w.get('[role="dialog"] .vm-system-icon').attributes('title')).toContain('Debian')
+  })
   it('shows existing external resources and filters locally', async () => {
     const w=view(); await flushPromises(); expect(w.text()).toContain('external-server')
     await w.get('input[placeholder="搜索虚拟机"]').setValue('missing')
