@@ -19,6 +19,16 @@ function receiver(): FileUploadReceiver {
 afterEach(() => { vi.useRealTimers(); if (typeof sessionStorage !== 'undefined') sessionStorage.clear() })
 
 describe('receiving session upload', () => {
+  it('reports exact observed bytes independently of rounded percentage', async () => {
+    const target = receiver()
+    target.chunk = vi.fn(async (_id, _key, _offset, _digest, _blob, progress) => {
+      progress(33, { loadedBytes: 2, totalBytes: 6 })
+      return session(6, 'abcdef')
+    })
+    const progress = vi.fn()
+    await uploadFileInSession('/home', new File(['abcdef'], 'data.bin', { lastModified: 4321 }), false, 'byte-host', target, progress)
+    expect(progress).toHaveBeenCalledWith(33, { loadedBytes: 2, totalBytes: 6 })
+  })
   it('replays an unacknowledged chunk and commits once before reporting 100 percent', async () => {
     vi.useFakeTimers()
     const target = receiver()
@@ -30,7 +40,7 @@ describe('receiving session upload', () => {
     await expect(operation).resolves.toBe(entry)
     expect(chunk).toHaveBeenCalledTimes(2)
     expect(chunk.mock.calls[0]!.slice(0, 4)).toEqual(chunk.mock.calls[1]!.slice(0, 4))
-    expect(progress).toHaveBeenLastCalledWith(100)
+    expect(progress).toHaveBeenLastCalledWith(100, { loadedBytes: 6, totalBytes: 6 })
     expect(target.command).toHaveBeenLastCalledWith(expect.objectContaining({ operation: 'commit', sizeBytes: 6 }), undefined)
   })
 
@@ -42,7 +52,9 @@ describe('receiving session upload', () => {
     await expect(uploadFileInSession('/home', file, false, 'host-detach', target, undefined, controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
     expect(target.command).toHaveBeenCalledTimes(1)
     target.chunk = vi.fn(async () => session(6, 'abcdef'))
-    await expect(uploadFileInSession('/home', file, false, 'host-detach', target)).resolves.toBe(entry)
+    const progress = vi.fn()
+    await expect(uploadFileInSession('/home', file, false, 'host-detach', target, progress)).resolves.toBe(entry)
+    expect(progress).toHaveBeenNthCalledWith(1, 50, { loadedBytes: 3, totalBytes: 6, baseline: true })
     expect(target.status).toHaveBeenCalledTimes(1)
     expect(target.chunk).toHaveBeenCalledWith(id, expect.any(String), 3, expect.any(String), expect.any(Blob), expect.any(Function), undefined)
   })

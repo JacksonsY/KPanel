@@ -6,13 +6,15 @@ import FilesView from './FilesView.vue'
 import { desktopWindowCloseKey } from '@/lib/desktopRouteKeys'
 import { CROSS_PANEL_FILE_DRAG_TYPE } from '@/lib/desktopFileShortcuts'
 import { watchFileTransferJob } from '@/lib/fileTransferJob'
-import type { FileRemoteDownloadJob } from '@/types/api'
+import type { FileEntry, FileRemoteDownloadJob } from '@/types/api'
+import type { FileUploadProgress } from '@/lib/fileReceiveUpload'
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   entry: vi.fn(),
   text: vi.fn(),
   transferFromPanel: vi.fn(),
+  upload: vi.fn(),
   remoteDownload: vi.fn(),
   createRemoteDownloadJob: vi.fn(),
   remoteDownloadJobs: vi.fn(),
@@ -52,7 +54,7 @@ vi.mock('@/lib/api', () => ({
       action: vi.fn(),
       transferFromPanel: mocks.transferFromPanel,
       trash: vi.fn(),
-      upload: vi.fn(),
+      upload: mocks.upload,
       contentUrl: vi.fn(() => ''),
       archiveUrl: vi.fn(() => ''),
       thumbnailUrl: vi.fn(() => ''),
@@ -97,6 +99,7 @@ beforeEach(() => {
   mocks.route.query = {}
   mocks.list.mockResolvedValue(directory('/'))
   mocks.entry.mockReset()
+  mocks.upload.mockReset()
   mocks.text.mockResolvedValue('shortcut file content')
   mocks.remoteDownloadJobs.mockResolvedValue({ items: [] })
   mocks.hosts.mockResolvedValue({ nodeId: 'local-node', items: [] })
@@ -694,6 +697,74 @@ describe('FilesView host switcher', () => {
 })
 
 describe('FilesView remote download lifecycle', () => {
+  it('places upload rate beside actual bytes and removes it when the upload finishes', async () => {
+    vi.useFakeTimers()
+    let progress: FileUploadProgress | undefined
+    let finish: (() => void) | undefined
+    mocks.upload.mockImplementation((target: string, file: File, _overwrite: boolean, onProgress: FileUploadProgress) => new Promise<FileEntry>((resolve) => {
+      progress = onProgress
+      finish = () => resolve({ name: file.name, path: `${target === '/' ? '' : target}/${file.name}`, kind: 'file', sizeBytes: file.size } as FileEntry)
+    }))
+    const wrapper = shallowMount(FilesView, { attachTo: document.body })
+    try {
+      await flushPromises()
+      const input = wrapper.get('input[type="file"][multiple]')
+      Object.defineProperty(input.element, 'files', { configurable: true, value: [new File([new Uint8Array(2048)], 'upload.bin')] })
+      await input.trigger('change')
+      await flushPromises()
+      expect(wrapper.get('.upload-task .file-transfer-rate').text()).toBe('测速中…')
+      await vi.advanceTimersByTimeAsync(1000)
+      progress!(50, { loadedBytes: 1024, totalBytes: 2048 })
+      await nextTick()
+      expect(wrapper.get('.upload-task .file-transfer-rate').text()).toBe('1.00 KiB/s')
+      expect(wrapper.get('.upload-task .file-transfer-metrics').text()).toContain('已上传 1.00 KiB / 2.00 KiB')
+      finish!()
+      await flushPromises()
+      expect(wrapper.find('.upload-task .file-transfer-rate').exists()).toBe(false)
+    } finally { finish?.(); wrapper.unmount(); vi.useRealTimers() }
+  })
+  it('places recent copy speed beside bytes, resets after reopen and hides it at confirmation', async () => {
+    vi.useFakeTimers()
+    const job = { id: 'd'.repeat(32), name: 'copy.bin', sourceKind: 'cross-host', source: 'kpanel://source',
+      targetDirectory: '/', state: 'transferring', loadedBytes: 1024, totalBytes: 8192,
+      createdAt: '2026-10-26T00:00:00Z', updatedAt: '2026-10-26T00:00:01Z' } as FileRemoteDownloadJob
+    mocks.remoteDownloadJobs.mockResolvedValueOnce({ items: [job] })
+      .mockResolvedValueOnce({ items: [{ ...job, loadedBytes: 3584, updatedAt: '2026-10-26T00:00:03Z' }] })
+      .mockResolvedValueOnce({ items: [{ ...job, state: 'confirming', loadedBytes: 8192 }] })
+    let wrapper = shallowMount(FilesView, { attachTo: document.body })
+    try {
+      await flushPromises()
+      expect(wrapper.get('.file-transfer-rate').text()).toBe('测速中…')
+      await vi.advanceTimersByTimeAsync(2500)
+      await flushPromises()
+      expect(wrapper.get('.file-transfer-rate').text()).toBe('1.00 KiB/s')
+      expect(wrapper.get('.file-transfer-rate').element.parentElement?.classList.contains('file-transfer-metrics')).toBe(true)
+      expect(wrapper.get('.file-transfer-rate').attributes('aria-live')).toBeUndefined()
+      wrapper.unmount()
+      mocks.remoteDownloadJobs.mockReset().mockResolvedValue({ items: [job] })
+      wrapper = shallowMount(FilesView, { attachTo: document.body })
+      await flushPromises()
+      expect(wrapper.get('.file-transfer-rate').text()).toBe('测速中…')
+      mocks.remoteDownloadJobs.mockResolvedValue({ items: [{ ...job, state: 'confirming' }] })
+      await vi.advanceTimersByTimeAsync(2500)
+      await flushPromises()
+      expect(wrapper.find('.file-transfer-rate').exists()).toBe(false)
+    } finally { wrapper.unmount(); vi.useRealTimers() }
+  })
+
+  it('shows the supplied BT rate in the shared position without repeating it under the progress', async () => {
+    mocks.remoteDownloadJobs.mockResolvedValue({ items: [{
+      id: 'e'.repeat(32), name: 'torrent.bin', source: 'bittorrent', sourceKind: 'bittorrent', transferMode: 'bt-adaptive',
+      targetDirectory: '/', state: 'transferring', sourceBytes: 1024, speedBytes: 2 << 20, peers: 4,
+      createdAt: '2026-10-26T00:00:00Z', updatedAt: '2026-10-26T00:00:01Z',
+    }] })
+    const wrapper = shallowMount(FilesView, { attachTo: document.body })
+    try {
+      await flushPromises()
+      expect(wrapper.get('.file-transfer-rate').text()).toBe('2.00 MiB/s')
+      expect(wrapper.get('.remote-download-task__detail').text()).toBe('已连接 4 个节点')
+    } finally { wrapper.unmount() }
+  })
   it('renders one durable copy before close and restores the same failed record on reopen', async () => {
     vi.useFakeTimers()
     mocks.route.query = { path: '/home' }

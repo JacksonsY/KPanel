@@ -3,7 +3,7 @@ import type { SiteTrafficSnapshot } from '@/types/siteTraffic'
 import type { TerminalBatch, TerminalBatchList } from '@/types/terminalBatch'
 import type { DockerImageUpdateResult } from '@/lib/dockerImageUpdate'
 import { TerminalStreamClient } from '@/lib/terminalStream'
-import { uploadFileInSession, type FileReceiveSession } from '@/lib/fileReceiveUpload'
+import { uploadFileInSession, type FileReceiveSession, type FileUploadProgress } from '@/lib/fileReceiveUpload'
 import { watchFileTransferJob } from '@/lib/fileTransferJob'
 import type { PasskeyList } from '@/types/api'
 import type { SystemServicesSnapshot, SystemServiceDetail, SystemServiceLogs, SystemServiceActionInput, SystemServiceActionResult } from '@/types/systemServices'
@@ -629,7 +629,7 @@ function fileRequestQuery(
 }
 
 function fileUploadBody<T>(path: string, method: 'POST' | 'PUT', query: Record<string, QueryValue>, body: Blob,
-  onProgress?: (percent: number) => void, signal?: AbortSignal, fileHostId?: string | null): Promise<T> {
+  onProgress?: FileUploadProgress, signal?: AbortSignal, fileHostId?: string | null): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     let settled = false
@@ -647,7 +647,8 @@ function fileUploadBody<T>(path: string, method: 'POST' | 'PUT', query: Record<s
     xhr.setRequestHeader('Content-Type', 'application/octet-stream')
     if (csrfToken) xhr.setRequestHeader('X-CSRF-Token', csrfToken)
     xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) onProgress?.(Math.round(event.loaded / event.total * 100))
+      if (event.lengthComputable && event.total > 0) onProgress?.(Math.round(event.loaded / event.total * 100),
+        { loadedBytes: event.loaded, totalBytes: event.total })
     }
     xhr.onerror = xhr.ontimeout = () => finish(() => reject(new ApiError('文件上传连接中断。', 0, 'network_error')))
     xhr.onabort = () => finish(() => reject(new DOMException('文件上传已取消。', 'AbortError')))
@@ -2516,7 +2517,7 @@ export const api = {
         fileHostId,
       }),
     upload: async (
-      path: string, file: File, overwrite = false, onProgress?: (percent: number) => void,
+      path: string, file: File, overwrite = false, onProgress?: FileUploadProgress,
       signal?: AbortSignal, fileHostId?: string | null,
     ): Promise<FileEntry> => uploadFileInSession(path, file, overwrite, fileHostId || '', {
       command: (body, signal) => request<FileReceiveSession>('/files/transfer/sessions', { method: 'POST', body, signal, fileHostId }),

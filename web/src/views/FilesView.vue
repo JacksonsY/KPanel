@@ -88,6 +88,8 @@ import {
   desktopWindowCloseGuardKey,
 } from '@/lib/desktopRouteKeys'
 import { transferCrossPanelFileBatch } from '@/lib/crossPanelFileTransfer'
+import { TransferRates } from '@/lib/transferRate'
+import type { FileUploadBytes } from '@/lib/fileReceiveUpload'
 import {
   collectExternalDrop,
   DesktopExternalDropError,
@@ -205,6 +207,8 @@ interface UploadTask {
   name: string
   target: string
   progress: number
+  loadedBytes?: number
+  totalBytes?: number
   phase: UploadTaskPhase
   detail?: string
 }
@@ -578,6 +582,65 @@ const activeRemoteDownloadStates = new Set<FileRemoteDownloadJobState>([
 
 const activeRemoteDownloadCount = computed(() => remoteDownloadJobs.value.filter(isRemoteDownloadJobActive).length)
 
+const downloadRates = new TransferRates()
+const uploadRates = new TransferRates()
+const downloadRateRevisions = new Map<string, string>()
+const transferRateNow = ref(performance.now())
+let transferRateTimer: number | undefined
+let transferRatesMounted = false
+
+function syncTransferRateClock(): void {
+  const active = remoteDownloadJobs.value.some((job) => job.state === 'transferring')
+    || uploadTasks.value.some((task) => task.phase === 'running')
+  if (transferRatesMounted && active && transferRateTimer === undefined) {
+    transferRateTimer = window.setInterval(() => { transferRateNow.value = performance.now() }, 1_000)
+  } else if (!active && transferRateTimer !== undefined) {
+    window.clearInterval(transferRateTimer)
+    transferRateTimer = undefined
+  }
+}
+
+watch(remoteDownloadJobs, (jobs) => {
+  const now = performance.now()
+  const active = jobs.filter((job) => job.state === 'transferring')
+  const ids = new Set(active.map((job) => job.id))
+  downloadRates.retain(ids)
+  for (const id of downloadRateRevisions.keys()) if (!ids.has(id)) downloadRateRevisions.delete(id)
+  for (const job of active) {
+    const revision = `${job.updatedAt}:${job.transferMode}:${remoteDownloadVisibleBytes(job)}:${job.speedBytes}`
+    if (downloadRateRevisions.get(job.id) === revision) continue
+    downloadRateRevisions.set(job.id, revision)
+    downloadRates.observe(job.id, remoteDownloadVisibleBytes(job), now, remoteDownloadSourcePhase(job) ? 'source' : 'received')
+  }
+  transferRateNow.value = now
+  syncTransferRateClock()
+}, { flush: 'sync' })
+
+watch(uploadTasks, (tasks) => {
+  const now = performance.now()
+  const active = tasks.filter((task) => task.phase === 'running' && task.loadedBytes !== undefined)
+  uploadRates.retain(new Set(active.map((task) => task.id)))
+  for (const task of active) uploadRates.observe(task.id, task.loadedBytes!, now)
+  transferRateNow.value = now
+  syncTransferRateClock()
+}, { flush: 'sync' })
+
+function transferRateText(rate: number | undefined): string {
+  return rate === undefined ? i18n.t('files.transfer.measuring') : `${formatBytes(Math.round(rate))}/s`
+}
+
+function remoteDownloadRate(job: FileRemoteDownloadJob): string {
+  const now = transferRateNow.value
+  const serverRate = remoteDownloadSourcePhase(job) && downloadRates.fresh(job.id, now)
+    && typeof job.speedBytes === 'number' && Number.isFinite(job.speedBytes) && job.speedBytes >= 0
+    ? job.speedBytes : undefined
+  return transferRateText(serverRate ?? downloadRates.read(job.id, now))
+}
+
+function uploadRate(task: UploadTask): string {
+  return transferRateText(uploadRates.read(task.id, transferRateNow.value))
+}
+
 function isRemoteDownloadJobActive(job: FileRemoteDownloadJob): boolean {
   return activeRemoteDownloadStates.has(job.state)
 }
@@ -636,7 +699,7 @@ function remoteDownloadJobDetail(job: FileRemoteDownloadJob): string {
   if (job.state === 'interrupted') return i18n.t('files.remoteDownload.interruptedDetail')
   if (job.state === 'cancelled') return i18n.t('files.remoteDownload.cancelledDetail')
   if (isRemoteDownloadJobActive(job)) {
-    if (remoteDownloadSourcePhase(job)) return i18n.t('files.remoteDownload.peerProgress', { peers: job.peers || 0, speed: formatBytes(job.speedBytes || 0) })
+    if (remoteDownloadSourcePhase(job)) return i18n.t('files.transfer.peerCount', { peers: job.peers || 0 })
     if (job.transferMode === 'probing') return i18n.t('files.remoteDownload.probing')
     if (job.transferMode === 'parallel') return i18n.t('files.remoteDownload.parallel')
   }
@@ -2661,10 +2724,15 @@ function uploadTaskStatus(task: UploadTask): string {
 }
 
 async function runFileUploadTask(id: string, source: Extract<UploadTaskSource, { kind: 'file' }>): Promise<string | undefined> {
-  updateUploadTask(id, { phase: 'running', progress: 0, detail: undefined })
-  const onProgress = (progress: number): void => updateUploadTask(id, {
-    progress: Math.max(0, Math.min(100, progress)),
-  })
+  uploadRates.remove(id)
+  updateUploadTask(id, { phase: 'running', progress: 0, loadedBytes: 0, totalBytes: source.file.size, detail: undefined })
+  const onProgress = (progress: number, bytes?: FileUploadBytes): void => {
+    if (bytes?.baseline) uploadRates.remove(id)
+    updateUploadTask(id, {
+      progress: Math.max(0, Math.min(100, progress)),
+      ...(bytes ? { loadedBytes: bytes.loadedBytes, totalBytes: bytes.totalBytes } : {}),
+    })
+  }
   let uploaded: FileEntry
   try {
     uploaded = await fileAPIForHost(source.hostId).upload(source.target, source.file, false, onProgress)
@@ -2735,7 +2803,8 @@ async function runDirectoryUploadTask(
   signal: AbortSignal,
   hostId: string,
 ): Promise<void> {
-  updateUploadTask(id, { phase: 'running', progress: 0, detail: undefined })
+  uploadRates.remove(id)
+  updateUploadTask(id, { phase: 'running', progress: 0, loadedBytes: 0, totalBytes: manifest.totalBytes, detail: undefined })
   let uploaded: string[] = []
   try {
     const result = await uploadExternalDrop(manifest, fileAPIForHost(hostId), signal, (progress) => {
@@ -2744,7 +2813,8 @@ async function runDirectoryUploadTask(
         : progress.totalFiles > 0
           ? Math.round(progress.completedFiles / progress.totalFiles * 100)
           : 100
-      updateUploadTask(id, { progress: Math.max(0, Math.min(100, percent)) })
+      if (progress.rateBaseline) uploadRates.remove(id)
+      updateUploadTask(id, { progress: Math.max(0, Math.min(100, percent)), loadedBytes: progress.loadedBytes, totalBytes: progress.totalBytes })
     }, target)
     uploaded = result.entries.map((entry) => entry.path)
     if (signal.aborted || unmounted) return
@@ -2992,6 +3062,8 @@ watch(desktopWindowActive, (active) => {
 })
 
 onMounted(() => {
+  transferRatesMounted = true
+  syncTransferRateClock()
   window.addEventListener(clusterRemoteAccessChanged, loadFileHosts)
   unsubscribeClusterHostOrder = subscribeClusterHostOrder(() => {
     clusterHostOrderRevision.value += 1
@@ -3064,6 +3136,8 @@ watch(search, () => {
 })
 
 onBeforeUnmount(() => {
+  transferRatesMounted = false
+  if (transferRateTimer !== undefined) window.clearInterval(transferRateTimer)
   window.removeEventListener(clusterRemoteAccessChanged, loadFileHosts)
   unregisterWindowCloseGuard?.()
   unregisterSplitBusyCheck?.()
@@ -3369,7 +3443,7 @@ onBeforeUnmount(() => {
                     {{ remoteDownloadJobTarget(job) }}
                   </small>
                 </div>
-                <div class="remote-download-task__status-line">
+                <div class="remote-download-task__status-line file-transfer-metrics">
                   <span
                     class="remote-download-task__phase"
                     role="status"
@@ -3380,6 +3454,7 @@ onBeforeUnmount(() => {
                     · {{ i18n.t(remoteDownloadSourcePhase(job) ? 'files.remoteDownload.verified' : 'files.remoteDownload.received', { bytes: formatBytes(remoteDownloadVisibleBytes(job)) }) }}<template v-if="job.totalBytes">
                       / {{ formatBytes(job.totalBytes) }}</template>
                   </span>
+                  <span v-if="job.state === 'transferring'" class="file-transfer-rate" :title="i18n.t('files.transfer.rate')">{{ remoteDownloadRate(job) }}</span>
                 </div>
                 <span v-if="remoteDownloadJobDetail(job)" class="remote-download-task__detail">
                   {{ remoteDownloadJobDetail(job) }}
@@ -3481,7 +3556,12 @@ onBeforeUnmount(() => {
             </span>
             <span class="file-activity-row__body">
               <strong :title="task.name">{{ task.name }}</strong>
-              <small>{{ uploadTaskStatus(task) }} · {{ task.target }}</small>
+              <small :title="task.target">{{ i18n.t('files.transfer.uploadTarget', { target: task.target }) }}</small>
+              <span class="file-transfer-metrics">
+                <span>{{ uploadTaskStatus(task) }}</span>
+                <span v-if="task.loadedBytes !== undefined" class="file-transfer-bytes">· {{ i18n.t('files.transfer.sent', { bytes: formatBytes(task.loadedBytes) }) }} / {{ formatBytes(task.totalBytes || 0) }}</span>
+                <span v-if="task.phase === 'running'" class="file-transfer-rate" :title="i18n.t('files.transfer.rate')">{{ uploadRate(task) }}</span>
+              </span>
               <small v-if="task.detail" class="file-activity-row__detail" :title="task.detail">{{ task.detail }}</small>
               <span
                 class="file-activity-row__track"
@@ -4921,6 +5001,29 @@ onBeforeUnmount(() => {
   align-items: baseline;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+.file-transfer-metrics {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.file-transfer-bytes,
+.file-transfer-rate {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.file-transfer-rate {
+  margin-inline-start: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .remote-download-task__phase {

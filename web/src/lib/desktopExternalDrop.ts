@@ -1,4 +1,5 @@
 import type { FileActionInput, FileActionResult, FileEntry } from '@/types/api'
+import type { FileUploadProgress } from './fileReceiveUpload'
 
 export const DESKTOP_UPLOAD_DIRECTORY = '/home/KPanel Desktop'
 export const MAX_EXTERNAL_DROP_FILES = 500
@@ -32,6 +33,7 @@ export interface DesktopExternalTransferProgress {
   loadedBytes: number
   totalBytes: number
   currentName: string
+  rateBaseline?: boolean
 }
 
 export interface DesktopExternalTransferResult {
@@ -46,7 +48,7 @@ export interface DesktopExternalTransferAPI {
     path: string,
     file: File,
     overwrite: boolean,
-    onProgress?: (percent: number) => void,
+    onProgress?: FileUploadProgress,
     signal?: AbortSignal,
     fileHostId?: string | null,
   ) => Promise<FileEntry>
@@ -301,7 +303,7 @@ async function fileUpload(
   path: string,
   file: File,
   overwrite: boolean,
-  onProgress: (percent: number) => void,
+  onProgress: FileUploadProgress,
   signal: AbortSignal,
   fileHostId?: string | null,
 ): Promise<FileEntry> {
@@ -399,12 +401,13 @@ export async function uploadExternalDrop(
   let completedFiles = 0
   let loadedBytes = 0
   const failed: DesktopExternalTransferResult['failed'] = []
-  const report = (currentName: string): void => onProgress({
+  const report = (currentName: string, rateBaseline = false): void => onProgress({
     completedFiles,
     totalFiles: manifest.files.length,
     loadedBytes,
     totalBytes: manifest.totalBytes,
     currentName,
+    rateBaseline,
   })
   report(manifest.roots[0]?.name || '')
 
@@ -423,11 +426,11 @@ export async function uploadExternalDrop(
         const uploadFile = fileName === item.file.name
           ? item.file
           : new File([item.file], fileName, { type: item.file.type, lastModified: item.file.lastModified })
-        await fileUpload(api, parent, uploadFile, false, (percent) => {
-          const next = Math.round(item.file.size * percent / 100)
+        await fileUpload(api, parent, uploadFile, false, (percent, bytes) => {
+          const next = Math.min(item.file.size, Math.max(0, bytes?.loadedBytes ?? Math.round(item.file.size * percent / 100)))
           loadedBytes += next - (loadedByFile.get(index) || 0)
           loadedByFile.set(index, next)
-          report(item.file.name)
+          report(item.file.name, bytes?.baseline)
         }, signal, fileHostId)
         loadedBytes += item.file.size - (loadedByFile.get(index) || 0)
         loadedByFile.set(index, item.file.size)
