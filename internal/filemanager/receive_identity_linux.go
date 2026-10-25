@@ -26,6 +26,17 @@ func archiveStagePrivate(info os.FileInfo) bool {
 	return ok && stat.Uid == uint32(os.Geteuid()) && info.IsDir() && info.Mode().Perm()&0077 == 0
 }
 
+func archiveWorkspaceProtected(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat.Uid == uint32(os.Geteuid()) && info.IsDir() && info.Mode().Perm()&0022 == 0
+}
+
+func archiveSameFilesystem(a, b os.FileInfo) bool {
+	x, xok := a.Sys().(*syscall.Stat_t)
+	y, yok := b.Sys().(*syscall.Stat_t)
+	return xok && yok && x.Dev == y.Dev
+}
+
 func receiveFileTimes(_ *fileRoot, _ string, file *os.File, when time.Time) error {
 	stamp := unix.Timespec{Sec: when.Unix(), Nsec: int64(when.Nanosecond())}
 	times := []unix.Timespec{stamp, stamp}

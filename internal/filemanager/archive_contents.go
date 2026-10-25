@@ -28,12 +28,12 @@ type archiveOperation struct {
 	budget     *copyBudget
 	progress   func(*copyBudget)
 	tempSuffix string
-	tempReady  func(os.FileInfo, os.FileInfo) error
+	tempReady  func(os.FileInfo, string, os.FileInfo, os.FileInfo) error
 }
 
-func recordArchiveTemp(ctx context.Context, parent, stage os.FileInfo) error {
+func recordArchiveTemp(ctx context.Context, parent os.FileInfo, directory string, workspace, stage os.FileInfo) error {
 	if value := archiveOptions(ctx); value != nil && value.tempReady != nil {
-		return value.tempReady(parent, stage)
+		return value.tempReady(parent, directory, workspace, stage)
 	}
 	return nil
 }

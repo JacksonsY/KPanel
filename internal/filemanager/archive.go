@@ -195,18 +195,23 @@ func (m *Manager) compressArchive(
 
 	// Only a private, pinned publication directory may name the generated inode.
 	// Pinning each individual operation on the wider root is not sufficient.
+	workspace, workspacePath, workspaceInfo, err := m.openArchiveWorkspace(normalizedTarget, openedTarget)
+	if err != nil {
+		return contract.FileEntry{}, err
+	}
+	defer workspace.Close()
 	tempName := ".kpanel-archive-" + randomID()
 	if operation := archiveOptions(ctx); operation != nil && operation.tempSuffix != "" {
 		tempName = ".kpanel-archive-" + operation.tempSuffix
 	}
-	if err := parent.Mkdir(tempName, 0700); err != nil {
+	if err := workspace.Mkdir(tempName, 0700); err != nil {
 		return contract.FileEntry{}, err
 	}
-	stageInfo, err := parent.Lstat(tempName)
+	stageInfo, err := workspace.Lstat(tempName)
 	if err != nil || !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 {
 		return contract.FileEntry{}, ErrConflict
 	}
-	stage, err := parent.OpenRoot(tempName)
+	stage, err := workspace.OpenRoot(tempName)
 	if err != nil {
 		return contract.FileEntry{}, err
 	}
@@ -216,11 +221,14 @@ func (m *Manager) compressArchive(
 		return contract.FileEntry{}, ErrConflict
 	}
 	defer func() {
-		if visible, err := parent.Lstat(tempName); err == nil {
-			_ = removeOwnedReceiveDirectory(parent, tempName, visible, ownedStage, "")
+		if visible, err := workspace.Lstat(tempName); err == nil {
+			_ = removeOwnedReceiveDirectory(workspace, tempName, visible, ownedStage, "")
 		}
 	}()
-	if err := recordArchiveTemp(ctx, openedTarget, ownedStage); err != nil {
+	if err := syncRootDirectory(workspace, "."); err != nil {
+		return contract.FileEntry{}, err
+	}
+	if err := recordArchiveTemp(ctx, openedTarget, workspacePath, workspaceInfo, ownedStage); err != nil {
 		return contract.FileEntry{}, err
 	}
 	temp, err := stage.OpenFile("body", os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
@@ -296,7 +304,7 @@ func (m *Manager) compressArchive(
 	if err := m.verifyArchiveOutputParent(normalizedTarget, openedTarget); err != nil {
 		return contract.FileEntry{}, err
 	}
-	visible, err := parent.Lstat(tempName)
+	visible, err := workspace.Lstat(tempName)
 	if err != nil || !os.SameFile(ownedStage, visible) {
 		return contract.FileEntry{}, ErrConflict
 	}
@@ -329,6 +337,29 @@ func (m *Manager) verifyArchiveOutputParent(virtual string, expected os.FileInfo
 		return ErrConflict
 	}
 	return nil
+}
+
+// mkdir does not return an inode handle. Bootstrap only inside a held directory
+// whose entries cannot be replaced by an unprivileged local writer. The target
+// itself may remain writable by business users; publication still uses its fd.
+func (m *Manager) openArchiveWorkspace(target string, targetInfo os.FileInfo) (*fileRoot, string, os.FileInfo, error) {
+	for current := target; ; current = path.Dir(current) {
+		root, info, err := m.openReceiveDirectory(current, false)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		if !archiveSameFilesystem(targetInfo, info) {
+			_ = root.Close()
+			return nil, "", nil, ErrConflict
+		}
+		if archiveWorkspaceProtected(info) {
+			return root, current, info, nil
+		}
+		_ = root.Close()
+		if current == "/" {
+			return nil, "", nil, ErrConflict
+		}
+	}
 }
 
 func (m *Manager) walkArchive(
@@ -570,22 +601,27 @@ func (m *Manager) extractArchive(
 		tempVirtual = joinVirtual(normalizedTarget, ".kpanel-extract-"+operation.tempSuffix)
 	}
 	tempName := path.Base(tempVirtual)
-	if err := parent.Mkdir(tempName, 0700); err != nil {
+	workspace, workspacePath, workspaceInfo, err := m.openArchiveWorkspace(normalizedTarget, openedTarget)
+	if err != nil {
+		return contract.FileEntry{}, err
+	}
+	defer workspace.Close()
+	if err := workspace.Mkdir(tempName, 0700); err != nil {
 		return contract.FileEntry{}, err
 	}
 	var ownedStage os.FileInfo
 	defer func() {
 		if ownedStage != nil {
-			if visible, err := parent.Lstat(tempName); err == nil {
-				_ = removeOwnedReceiveDirectory(parent, tempName, visible, ownedStage, "")
+			if visible, err := workspace.Lstat(tempName); err == nil {
+				_ = removeOwnedReceiveDirectory(workspace, tempName, visible, ownedStage, "")
 			}
 		}
 	}()
-	stageInfo, err := parent.Lstat(tempName)
+	stageInfo, err := workspace.Lstat(tempName)
 	if err != nil || !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 {
 		return contract.FileEntry{}, ErrConflict
 	}
-	publication, err := parent.OpenRoot(tempName)
+	publication, err := workspace.OpenRoot(tempName)
 	if err != nil {
 		return contract.FileEntry{}, err
 	}
@@ -595,7 +631,10 @@ func (m *Manager) extractArchive(
 		return contract.FileEntry{}, ErrConflict
 	}
 	ownedStage = opened
-	if err := recordArchiveTemp(ctx, openedTarget, ownedStage); err != nil {
+	if err := syncRootDirectory(workspace, "."); err != nil {
+		return contract.FileEntry{}, err
+	}
+	if err := recordArchiveTemp(ctx, openedTarget, workspacePath, workspaceInfo, ownedStage); err != nil {
 		return contract.FileEntry{}, err
 	}
 	if err := publication.Mkdir("result", 0700); err != nil {
@@ -644,7 +683,7 @@ func (m *Manager) extractArchive(
 	if err := ctx.Err(); err != nil {
 		return contract.FileEntry{}, err
 	}
-	visible, stageErr := parent.Lstat(tempName)
+	visible, stageErr := workspace.Lstat(tempName)
 	_, _, parentErr := m.resolveExisting(normalizedTarget)
 	currentTarget, targetErr := m.rootFS.Lstat(rootName(normalizedTarget))
 	if stageErr != nil || !os.SameFile(ownedStage, visible) || parentErr != nil || targetErr != nil || !os.SameFile(targetInfo, currentTarget) {

@@ -32,8 +32,10 @@ type archiveJobRecord struct {
 }
 
 type archiveTempIdentity struct {
-	Parent string `json:"parent"`
-	Object string `json:"object"`
+	Parent    string `json:"parent"`
+	Object    string `json:"object"`
+	Directory string `json:"directory"`
+	Workspace string `json:"workspace"`
 }
 type archiveJobs struct {
 	mu          sync.Mutex
@@ -183,18 +185,26 @@ func (m *Manager) cleanupArchiveTemp(record *archiveJobRecord, virtual string) e
 		return err
 	}
 	defer parent.Close()
-	visible, err := parent.Lstat(path.Base(virtual))
+	identity := record.TempIdentities[virtual]
+	if identity.Parent == "" || identity.Object == "" || identity.Parent != stableReceiveIdentity(info) || identity.Directory == "" || !isWithin(record.Job.Target, identity.Directory) {
+		return ErrConflict
+	}
+	workspace, workspaceInfo, err := m.openReceiveDirectory(identity.Directory, false)
+	if err != nil {
+		return err
+	}
+	defer workspace.Close()
+	if identity.Workspace != stableReceiveIdentity(workspaceInfo) || !archiveWorkspaceProtected(workspaceInfo) || !archiveSameFilesystem(info, workspaceInfo) {
+		return ErrConflict
+	}
+	visible, err := workspace.Lstat(path.Base(virtual))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	identity := record.TempIdentities[virtual]
-	if identity.Parent == "" || identity.Object == "" || identity.Parent != stableReceiveIdentity(info) {
-		return ErrConflict
-	}
-	return removeOwnedReceiveDirectory(parent, path.Base(virtual), visible, nil, identity.Object)
+	return removeOwnedReceiveDirectory(workspace, path.Base(virtual), visible, nil, identity.Object)
 }
 
 func (m *Manager) persistArchiveJobsLocked() error {
@@ -452,14 +462,14 @@ func (m *Manager) runArchiveJob(ctx context.Context, cancel context.CancelFunc, 
 					item.Name = archiveBaseName(path.Base(source))
 				}
 			}
-			operation := &archiveOperation{budget: budget, tempSuffix: fmt.Sprintf("%s-%d", id, index), tempReady: func(parent, stage os.FileInfo) error {
+			operation := &archiveOperation{budget: budget, tempSuffix: fmt.Sprintf("%s-%d", id, index), tempReady: func(parent os.FileInfo, directory string, workspace, stage os.FileInfo) error {
 				a.mu.Lock()
 				defer a.mu.Unlock()
 				record := a.records[id]
 				if record.TempIdentities == nil {
 					record.TempIdentities = make(map[string]archiveTempIdentity)
 				}
-				record.TempIdentities[record.Temps[index]] = archiveTempIdentity{Parent: stableReceiveIdentity(parent), Object: stableReceiveIdentity(stage)}
+				record.TempIdentities[record.Temps[index]] = archiveTempIdentity{Parent: stableReceiveIdentity(parent), Object: stableReceiveIdentity(stage), Directory: directory, Workspace: stableReceiveIdentity(workspace)}
 				return m.persistArchiveJobsLocked()
 			}, progress: func(value *copyBudget) {
 				a.mu.Lock()

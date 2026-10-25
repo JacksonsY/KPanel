@@ -298,7 +298,7 @@ func TestArchiveRecoveryOnlyCleansJournalOwnedTemps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record.TempIdentities = map[string]archiveTempIdentity{temp: {Parent: stableReceiveIdentity(parentInfo), Object: stableReceiveIdentity(stageInfo)}}
+	record.TempIdentities = map[string]archiveTempIdentity{temp: {Parent: stableReceiveIdentity(parentInfo), Object: stableReceiveIdentity(stageInfo), Directory: "/", Workspace: stableReceiveIdentity(parentInfo)}}
 	data, err := json.Marshal(map[string]any{"version": 1, "records": []archiveJobRecord{record}})
 	if err != nil {
 		t.Fatal(err)

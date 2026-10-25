@@ -34,6 +34,47 @@ func TestArchiveRecoveryRetainsUnidentifiedTemp(t *testing.T) {
 	}
 }
 
+func TestArchiveStageBootstrapAvoidsWritableTarget(t *testing.T) {
+	for _, action := range []string{"compress", "extract"} {
+		t.Run(action, func(t *testing.T) {
+			m, root := newTestManager(t)
+			mustWrite(t, filepath.Join(root, "source"), "finite payload")
+			mustMkdirAll(t, filepath.Join(root, "target"))
+			if err := os.Chmod(filepath.Join(root, "target"), 0777); err != nil {
+				t.Fatal(err)
+			}
+			writeZIPFixture(t, filepath.Join(root, "source.zip"), "source", 0600, "finite payload")
+			prefix := ".kpanel-archive-"
+			if action == "extract" {
+				prefix = ".kpanel-extract-"
+			}
+			checked := false
+			op := &archiveOperation{tempSuffix: "bootstrap", progress: func(_ *copyBudget) {
+				if checked {
+					return
+				}
+				checked = true
+				if _, err := os.Lstat(filepath.Join(root, "target", prefix+"bootstrap")); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("stage was bootstrapped below a writable parent: %v", err)
+				}
+				if _, err := os.Lstat(filepath.Join(root, prefix+"bootstrap")); err != nil {
+					t.Errorf("private ancestor stage missing: %v", err)
+				}
+			}}
+			ctx := context.WithValue(context.Background(), archiveContextKey{}, op)
+			var err error
+			if action == "compress" {
+				_, err = m.compressArchive(ctx, []string{"/source"}, "/target", "result.zip", archiveFormatZIP, nil)
+			} else {
+				_, err = m.extractArchive(ctx, "/source.zip", "/target", "result", archiveFormatZIP, "")
+			}
+			if err != nil || !checked {
+				t.Fatalf("archive failed: %v checked=%v", err, checked)
+			}
+		})
+	}
+}
+
 func TestArchiveRecoveryRetainsReplacedParentAndStage(t *testing.T) {
 	for _, mode := range []string{"parent", "stage"} {
 		t.Run(mode, func(t *testing.T) {
@@ -50,7 +91,7 @@ func TestArchiveRecoveryRetainsReplacedParentAndStage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			record := archiveJobRecord{Job: contract.FileArchiveJob{ID: id, Action: "compress", State: "running", Target: "/target", Sources: []string{"/source"}, Name: "result.zip", CreatedAt: time.Now(), UpdatedAt: time.Now()}, Temps: []string{temp}, TempIdentities: map[string]archiveTempIdentity{temp: {Parent: stableReceiveIdentity(parentInfo), Object: stableReceiveIdentity(stageInfo)}}}
+			record := archiveJobRecord{Job: contract.FileArchiveJob{ID: id, Action: "compress", State: "running", Target: "/target", Sources: []string{"/source"}, Name: "result.zip", CreatedAt: time.Now(), UpdatedAt: time.Now()}, Temps: []string{temp}, TempIdentities: map[string]archiveTempIdentity{temp: {Parent: stableReceiveIdentity(parentInfo), Object: stableReceiveIdentity(stageInfo), Directory: "/target", Workspace: stableReceiveIdentity(parentInfo)}}}
 			original := stage
 			if mode == "parent" {
 				original = filepath.Join(root, "target")
