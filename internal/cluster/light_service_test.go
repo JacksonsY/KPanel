@@ -315,7 +315,7 @@ func TestLightEnrollmentCommandCarriesOptionalDisplayName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateLightEnrollmentForOriginAndName() error = %v", err)
 	}
-	if !strings.HasSuffix(enrollment.Command, " --name '英国AMR'\\''s'") {
+	if !strings.Contains(enrollment.Command, " --name '英国AMR'\\''s' 3<<< '") {
 		t.Fatalf("optional display name missing or not shell-quoted: %q", enrollment.Command)
 	}
 }

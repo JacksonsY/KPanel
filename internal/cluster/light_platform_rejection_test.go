@@ -42,7 +42,7 @@ func TestUnsupportedPlatformsAreRejectedBeforeEnrollment(t *testing.T) {
 func TestLinuxLightNodeEnrollmentCommandRemainsAvailable(t *testing.T) {
 	s := newLightServiceForTest(t, &serviceTestClock{now: time.Now().UTC()})
 	command, err := s.lightEnrollmentCommand("kpl1.token", "linux node")
-	if err != nil || !strings.Contains(command, "kpanel node join 'kpl1.token'") || !strings.Contains(command, "--name 'linux node'") {
+	if err != nil || !strings.Contains(command, "kpanel node join 'kpl1.") || !strings.Contains(command, "--name 'linux node' 3<<< 'kpl1.token'") {
 		t.Fatalf("Linux command = %q, %v", command, err)
 	}
 }

@@ -154,7 +154,7 @@ func runEnroll(arguments []string) error {
 		return err
 	}
 	flags := flag.NewFlagSet("kejilion-node enroll", flag.ContinueOnError)
-	token := flags.String("token", "", "one-time enrollment token")
+	token := flags.String("token", "", "local enrollment transport reference (legacy literal accepted)")
 	name := flags.String("name", "", "optional display name")
 	configPath := flags.String("config", defaultConfigPath, "configuration path")
 	terminalConfigPath := flags.String("terminal-config", defaultTerminalConfigPath, "root-only terminal configuration path")
@@ -165,6 +165,11 @@ func runEnroll(arguments []string) error {
 	if flags.NArg() != 0 {
 		return errors.New("unexpected enrollment argument")
 	}
+	resolvedToken, err := readEnrollmentTokenArgument(*token)
+	if err != nil {
+		return err
+	}
+	*token = resolvedToken
 	target, err := enrollmentTargetFromToken(*token)
 	if err != nil {
 		return err

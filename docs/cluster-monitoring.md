@@ -237,8 +237,14 @@ Ed25519 签名。新前端调用 `/api/v1/cluster/pairing-codes/v2`，不会把�
 管理员在“集群 → 添加主机 → 非面板 Linux 主机”生成一次性命令：
 
 ```bash
-bash <(curl -fsSL https://kejilion.sh) kpanel node join '<kpl1-token>'
+bash <(curl -fsSL https://kejilion.sh) kpanel node join '<kpl1-local-reference>' 3<<< '<kpl1-token>'
 ```
+
+命令将原始授权通过 Bash 的继承 FD3 传给节点 CLI，父安装进程和子进程参数只有不含 secret 的
+本地引用（版本 2、固定 FD3、原授权 SHA-256），不使用环境变量或交互 stdin。原脚本仍依据
+`kpl1`/`kpb1` 选择单台或批量接入，并以该稳定引用维持原有重试指纹；CLI 在本地有界读取、校验
+摘要及类型后，只向中心发送原有版本 1 授权。旧 CLI 拒绝本地引用，不会降级为参数传递 secret。
+复制的完整命令仍属于管理员凭据，可能出现在管理员自己的 Shell 历史中，应按授权有效期妥善保管。
 
 同一窗口可切换到“批量接入”，生成一条 `kpb1` 命令并分别在多台目标机执行。批量授权默认与
 最多均为 100 次，默认有效期 24 小时、可选 1 小时或 7 天；远程 KPanel 与轻量节点仍共享
