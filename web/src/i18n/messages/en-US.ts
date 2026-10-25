@@ -3,6 +3,7 @@ import { passkeyEnUS } from '../passkeys'
 import { panelAccessEnUS } from '../panelAccess'
 
 export const enUSMessages = {
+  'route.virtualMachines': 'Virtual machines',
   'ai.approval.fileDisclosure': "Approval lets KPanel read the path above and share this file content with the current AI model. Check the exact path and arguments. This approval applies only to this call.",
   'ai.approval.manualHint': "Confirm every write operation and file-content read",
   'ai.approval.autoHint': "Routine structured writes run automatically; file-content reads, core operations, deletions, exec and protected paths still require approval",

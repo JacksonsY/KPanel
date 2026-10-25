@@ -1,3 +1,4 @@
+import type { VMSnapshot, VMRequest, VMJob } from "@/types/virtualMachines"
 import type { SiteTrafficSnapshot } from '@/types/siteTraffic'
 import type { TerminalBatch, TerminalBatchList } from '@/types/terminalBatch'
 import type { DockerImageUpdateResult } from '@/lib/dockerImageUpdate'
@@ -1294,6 +1295,11 @@ async function resizeAppTerminal(id: string, rows: number, columns: number): Pro
 }
 
 export const api = {
+  virtualMachines: {
+    list: (signal?: AbortSignal) => request<VMSnapshot>('/virtual-machines', { signal }),
+    action: (input: VMRequest) => request<VMJob>('/virtual-machines/actions', { method: 'POST', body: input }),
+    csrf: () => csrfToken,
+  },
   tutorials: {
     videos: (platform: 'bilibili' | 'youtube', signal?: AbortSignal): Promise<TutorialVideoFeed> =>
       request<TutorialVideoFeed>('/tutorials/videos', { query: { platform }, signal }),

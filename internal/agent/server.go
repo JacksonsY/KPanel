@@ -36,6 +36,7 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/systeminfo"
 	"github.com/kejilion/kejilion-panel/internal/systemmanage"
 	"github.com/kejilion/kejilion-panel/internal/terminal"
+	"github.com/kejilion/kejilion-panel/internal/virtualmachine"
 	"github.com/kejilion/kejilion-panel/internal/webenv"
 )
 
@@ -45,6 +46,7 @@ const (
 )
 
 type Config struct {
+	VirtualMachines      *virtualmachine.Service
 	Token                []byte
 	Version              string
 	ProtocolVersion      string
@@ -133,6 +135,9 @@ type Server struct {
 	releaseCacheMu    sync.Mutex
 	releaseCache      map[selfupdate.Channel]cachedKPanelRelease
 	backupMutationMu  sync.Mutex
+
+	virtualMachineService *virtualmachine.Service
+	vmConsoleGate         chan struct{}
 }
 
 func (s *Server) Close() {
@@ -245,10 +250,15 @@ func NewServer(config Config) (*Server, error) {
 		_ = config.Docker.RecoverContainerTerminals(recoveryCtx)
 		cancelRecovery()
 	}
+	if config.VirtualMachines == nil {
+		config.VirtualMachines = virtualmachine.New(virtualmachine.Config{})
+	}
 	server := &Server{
-		backups:           config.Backups,
-		selfUpdate:        config.SelfUpdate,
-		selfUpdateStarter: config.SelfUpdateStarter,
+		virtualMachineService: config.VirtualMachines,
+		vmConsoleGate:         make(chan struct{}, 4),
+		backups:               config.Backups,
+		selfUpdate:            config.SelfUpdate,
+		selfUpdateStarter:     config.SelfUpdateStarter,
 		releaseSources: map[selfupdate.Channel]selfupdate.ReleaseSource{
 			selfupdate.ChannelStable:  config.StableReleaseSource,
 			selfupdate.ChannelPreview: config.PreviewReleaseSource,
@@ -377,6 +387,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.backups.ServeHTTP(w, r)
 	case r.URL.Path == "/v1/notification-resources":
 		s.requireMethod(w, r, requestID, http.MethodGet, s.notificationResources)
+	case r.URL.Path == "/v1/virtual-machines" || strings.HasPrefix(r.URL.Path, "/v1/virtual-machines/"):
+		s.virtualMachines(w, r)
 	case r.URL.Path == "/v1/health":
 		s.requireMethod(w, r, requestID, http.MethodGet, s.health)
 	case r.URL.Path == "/v1/capabilities":

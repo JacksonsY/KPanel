@@ -713,8 +713,8 @@ describe('DesktopView icon layout interaction', () => {
     desktop.element.focus()
 
     await desktop.trigger('keydown', { key: 'a', ctrlKey: true })
-    expect(wrapper.findAll('.desktop__icon--selected')).toHaveLength(17)
-    expect(wrapper.find('.desktop__selection-actions').text()).toContain('已选 17 项')
+    expect(wrapper.findAll('.desktop__icon--selected')).toHaveLength(18)
+    expect(wrapper.find('.desktop__selection-actions').text()).toContain('已选 18 项')
 
     await desktop.trigger('keydown', { key: 'Delete' })
     await flushPromises()

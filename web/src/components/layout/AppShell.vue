@@ -82,6 +82,7 @@ const navigation: NavigationItem[] = [
   { labelKey: 'route.sites', to: '/sites', icon: Boxes },
   { labelKey: 'route.apps', to: '/apps', icon: Store },
   { labelKey: 'route.docker', to: '/docker', icon: Container },
+  { labelKey: 'route.virtualMachines', to: '/virtual-machines', icon: Monitor },
   { labelKey: 'route.files', to: '/files', icon: Folder },
   { labelKey: 'route.terminal', to: '/terminal', icon: SquareTerminal },
   { labelKey: 'route.diagnostics', to: '/diagnostics', icon: HeartPulse },

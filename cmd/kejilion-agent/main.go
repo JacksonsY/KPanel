@@ -32,6 +32,7 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/systemmanage"
 	"github.com/kejilion/kejilion-panel/internal/terminal"
 	"github.com/kejilion/kejilion-panel/internal/version"
+	"github.com/kejilion/kejilion-panel/internal/virtualmachine"
 	"github.com/kejilion/kejilion-panel/internal/webenv"
 )
 
@@ -43,6 +44,9 @@ func main() {
 }
 
 func run(arguments []string) error {
+	if len(arguments) > 0 && arguments[0] == "vm-run" {
+		return runVMJob(arguments[1:])
+	}
 	if len(arguments) > 0 && arguments[0] == "backup-center" {
 		return runBackupCLI(arguments[1:], os.Stdin, os.Stdout)
 	}
@@ -207,6 +211,7 @@ func run(arguments []string) error {
 		}
 	}
 	handler, err := agent.NewServer(agent.Config{
+		VirtualMachines:    virtualmachine.New(virtualmachine.Config{StateDir: filepath.Join(*stateDir, "virtual-machines"), Executable: executable, Enabled: *enableSystemWrites}),
 		BackupDockerSocket: *dockerSocket,
 		Token:              token, Version: version.Version, ProtocolVersion: version.ProtocolVersion,
 		WebRoot: *webRoot, StateDir: *stateDir, System: systemCollector,
