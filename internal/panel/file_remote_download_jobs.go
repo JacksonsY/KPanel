@@ -20,12 +20,14 @@ const (
 var errRemoteDownloadServerClosing = errors.New("remote download server is closing")
 
 type fileRemoteDownloadTask struct {
-	job       contract.FileRemoteDownloadJob
-	input     contract.FileRemoteDownloadRequest
-	actorID   string
-	sourceIP  string
-	requestID string
-	execute   func(context.Context, func(contract.FileTransferEvent) bool) contract.FileTransferEvent
+	accessLifetime      context.Context
+	hostAccessLifetimes []context.Context
+	job                 contract.FileRemoteDownloadJob
+	input               contract.FileRemoteDownloadRequest
+	actorID             string
+	sourceIP            string
+	requestID           string
+	execute             func(context.Context, func(contract.FileTransferEvent) bool) contract.FileTransferEvent
 }
 
 func (s *Server) handleFileRemoteDownloadJobs(w http.ResponseWriter, r *http.Request) {
@@ -208,6 +210,20 @@ func (s *Server) releaseRemoteDownloadReservation(id string, cancel context.Canc
 func (s *Server) runFileRemoteDownloadJob(ctx context.Context, cancel context.CancelCauseFunc, task fileRemoteDownloadTask) {
 	defer s.remoteDownloadWG.Done()
 	defer s.releaseRemoteDownloadReservation(task.job.ID, cancel)
+	if task.accessLifetime != nil {
+		stop := context.AfterFunc(task.accessLifetime, func() { cancel(errors.New("remote files disabled by this center")) })
+		defer stop()
+		if task.accessLifetime.Err() != nil {
+			cancel(errors.New("remote files disabled by this center"))
+		}
+	}
+	for _, lifetime := range task.hostAccessLifetimes {
+		stop := context.AfterFunc(lifetime, func() { cancel(errors.New("remote files disabled for this host")) })
+		defer stop()
+		if lifetime.Err() != nil {
+			cancel(errors.New("remote files disabled for this host"))
+		}
+	}
 	// BT resource admission precedes the common transfer slot, leaving a slot
 	// available for HTTP/cross-host work while another BT job is still queued.
 	if task.input.SourceKind == "torrent" && s.btGate != nil {

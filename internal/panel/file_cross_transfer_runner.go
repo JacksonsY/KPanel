@@ -17,11 +17,41 @@ import (
 )
 
 func (s *Server) startCrossFileTransferJob(w http.ResponseWriter, r *http.Request, input contract.FileTransferRequest, hostID string, kind cluster.HostKind, actorID string) {
+	var accessLifetime context.Context
+	var hostAccessLifetimes []context.Context
+	sourceHostID := input.SourceNodeID
+	if input.SourceNodeID != s.cluster.NodeID() {
+		var err error
+		sourceHostID, err = s.cluster.FileSourceHostID(input.SourceNodeID)
+		if err != nil {
+			s.writeProblem(w, r, 400, "source_unavailable", "来源主机无效。", "")
+			return
+		}
+	}
+	if input.SourceNodeID != s.cluster.NodeID() || hostID != "" && hostID != cluster.LocalHostID {
+		accessLifetime = s.cluster.RemoteOperationLifetime("files")
+	}
+	if input.SourceNodeID != s.cluster.NodeID() {
+		hostAccessLifetimes = append(hostAccessLifetimes, s.cluster.RemoteOperationLifetime("files", sourceHostID))
+	}
+	if hostID != "" && hostID != cluster.LocalHostID {
+		hostAccessLifetimes = append(hostAccessLifetimes, s.cluster.RemoteOperationLifetime("files", hostID))
+	}
 	fail := func(status int, code, detail string) {
 		_ = s.audit(r, actorID, "file.transfer.copy", "directory", input.TargetDirectory, "failure", map[string]any{
 			"sourceNodeId": input.SourceNodeID, "sourcePath": input.Path, "targetHostId": hostID, "errorCode": code,
 		})
 		s.writeProblem(w, r, status, code, detail, "")
+	}
+	if accessLifetime != nil && accessLifetime.Err() != nil {
+		fail(http.StatusForbidden, "remote_files_disabled", "当前中心已禁用远程文件管理。")
+		return
+	}
+	for _, lifetime := range hostAccessLifetimes {
+		if lifetime.Err() != nil {
+			fail(403, "remote_files_disabled", "当前中心已禁用该主机的远程文件管理。")
+			return
+		}
 	}
 	if s.remoteDownloadJobs == nil || !s.remoteDownloadJobs.Available() {
 		fail(http.StatusServiceUnavailable, "remote_download_jobs_unavailable", "文件传输任务暂不可用")
@@ -46,11 +76,47 @@ func (s *Server) startCrossFileTransferJob(w http.ResponseWriter, r *http.Reques
 		execute: func(ctx context.Context, emit func(contract.FileTransferEvent) bool) contract.FileTransferEvent {
 			return s.executeCrossFileTransfer(ctx, input, hostID, kind, requestID, emit)
 		}}
+	task.accessLifetime = accessLifetime
+	task.hostAccessLifetimes = hostAccessLifetimes
 	go s.runFileRemoteDownloadJob(ctx, cancel, task)
 	s.writeJSON(w, http.StatusAccepted, job)
 }
 
 func (s *Server) executeCrossFileTransfer(ctx context.Context, input contract.FileTransferRequest, targetHostID string, targetKind cluster.HostKind, requestID string, emit func(contract.FileTransferEvent) bool) contract.FileTransferEvent {
+	// Bind the whole job, including local receive publication, to the policy.
+	if input.SourceNodeID != s.cluster.NodeID() || targetHostID != "" && targetHostID != cluster.LocalHostID {
+		operation, cancel, err := s.cluster.BeginRemoteOperation(ctx, "files")
+		if err != nil {
+			event := contract.FileTransferEvent{State: "error", Code: "remote_files_disabled", Detail: "当前中心已禁用远程文件管理。"}
+			emit(event)
+			return event
+		}
+		defer cancel()
+		ctx = operation
+	}
+	sourceHostID := input.SourceNodeID
+	if sourceHostID != s.cluster.NodeID() {
+		var err error
+		sourceHostID, err = s.cluster.FileSourceHostID(input.SourceNodeID)
+		if err != nil {
+			event := contract.FileTransferEvent{State: "error", Code: "source_unavailable", Detail: "来源主机无效。"}
+			emit(event)
+			return event
+		}
+	}
+	for _, id := range []string{sourceHostID, targetHostID} {
+		if id == "" || id == cluster.LocalHostID || id == s.cluster.NodeID() {
+			continue
+		}
+		operation, cancel, err := s.cluster.BeginRemoteOperation(ctx, "files", id)
+		if err != nil {
+			event := contract.FileTransferEvent{State: "error", Code: "remote_files_disabled", Detail: "当前中心已禁用该主机的远程文件管理。"}
+			emit(event)
+			return event
+		}
+		defer cancel()
+		ctx = operation
+	}
 	fail := func(code, detail string, loaded int64) contract.FileTransferEvent {
 		if ctx.Err() != nil {
 			code, detail = "remote_download_cancelled", "文件传输已取消。"

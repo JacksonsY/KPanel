@@ -378,6 +378,14 @@ func (c *RemoteClient) ManagedV2(ctx context.Context, origin, controllerID, targ
 }
 
 func (s *Service) ManagedRemote(ctx context.Context, hostID string, input ManagedRequest) (ManagedResponse, error) {
+	if strings.HasPrefix(input.Tool, "host_file_") {
+		bound, cancel, err := s.BeginRemoteOperation(ctx, "files", hostID)
+		if err != nil {
+			return ManagedResponse{}, err
+		}
+		defer cancel()
+		ctx = bound
+	}
 	record, err := s.storeV2.Host(hostID)
 	remote, ok := s.remoteV2.(remoteManagedAPI)
 	if err != nil || record.State != hostStateV2Active || !ok {

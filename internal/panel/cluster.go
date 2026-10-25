@@ -149,6 +149,8 @@ func (s *Server) handleCluster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.URL.Path == "/api/v1/cluster/remote-access":
+		s.handleClusterRemoteAccess(w, r)
 	case r.URL.Path == "/api/v1/cluster/hosts" && r.Method == http.MethodGet:
 		if _, _, ok := s.requireSession(w, r); !ok {
 			return
@@ -234,6 +236,15 @@ func (s *Server) handleClusterHost(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, prefix)
 	if rest == r.URL.Path || rest == "" {
 		s.writeProblem(w, r, http.StatusNotFound, "route_not_found", "Route not found", "")
+		return
+	}
+	if strings.HasSuffix(rest, "/remote-access") {
+		id := strings.TrimSuffix(rest, "/remote-access")
+		if id == "" || strings.Contains(id, "/") {
+			s.writeProblem(w, r, 404, "route_not_found", "Route not found", "")
+			return
+		}
+		s.handleClusterRemoteAccessScope(w, r, id)
 		return
 	}
 	if strings.HasSuffix(rest, "/refresh") {

@@ -22,7 +22,7 @@ var ErrFileRelayUnavailable = errors.New("cluster file relay is unavailable")
 // OpenLightFile starts one authenticated file-manager request to a paired
 // lightweight node. The node is reached only through its outbound relay; the
 // panel never dials an inbound port on the lightweight host.
-func (s *Service) OpenLightFile(ctx context.Context, nodeID string, input LightFileRequest) (*http.Response, error) {
+func (s *Service) openLightFile(ctx context.Context, nodeID string, input LightFileRequest) (*http.Response, error) {
 	if s == nil || s.light == nil || s.lightFile == nil {
 		return nil, ErrFileRelayUnavailable
 	}

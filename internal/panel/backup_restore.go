@@ -67,6 +67,9 @@ func validatePanelRestoreConfig(c Config, value panelBackupData, directory strin
 		return err
 	}
 	defer cs.Close()
+	if !cs.RemoteAccess().Available {
+		return backup.ErrInvalid
+	}
 	if err := cs.ValidateBackupReferences(); err != nil {
 		return err
 	}
@@ -171,6 +174,13 @@ func ApplyPanelRestore(c Config) (err error) {
 	j.Previous, err = readPanelBackupFiles(c.DataDir)
 	if err != nil {
 		return err
+	}
+	// Older backups contain no global policy; retaining the destination choice
+	// prevents an unrelated restore from silently enabling remote operations.
+	if _, exists := value.Files["cluster-remote-access.json"]; !exists {
+		if previous, exists := j.Previous["cluster-remote-access.json"]; exists {
+			value.Files["cluster-remote-access.json"] = previous
+		}
 	}
 	j.Identity, err = backup.ReadFile(c.StorePath, 32<<20)
 	if err != nil {

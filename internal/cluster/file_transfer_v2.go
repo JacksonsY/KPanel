@@ -349,7 +349,7 @@ func (w *FederationFileWriter) Finish(transferErr error) error {
 	return writeFileFrame(w.output, sealed)
 }
 
-func (s *Service) OpenRemoteFileV2(
+func (s *Service) openRemoteFileV2(
 	ctx context.Context,
 	remoteNodeID string,
 	input FederationFileOpenRequest,

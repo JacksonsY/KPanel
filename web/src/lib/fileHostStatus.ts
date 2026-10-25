@@ -15,6 +15,7 @@ export interface FileHostStatus extends HostSwitcherStatus {
 
 export function fileHostStatus(host: ClusterHost): FileHostStatus {
   if (host.isLocal) return { action: 'select', tone: 'online', label: '当前面板' }
+  if (host.remoteFilesDisabled) return { action: 'manage', disabled: true, tone: 'neutral', label: '当前中心已禁用远程文件管理' }
   if (host.kind === 'light_node') {
     return host.fileManagementAvailable === true
       ? { action: 'select', tone: 'online', label: '文件管理已就绪' }

@@ -35,9 +35,11 @@ var (
 )
 
 type Host struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Shell string `json:"shell"`
+	// Optional lifetime of a target's permission, captured when the batch is created.
+	Context context.Context `json:"-"`
+	ID      string          `json:"id"`
+	Name    string          `json:"name"`
+	Shell   string          `json:"shell"`
 }
 
 type Result struct {

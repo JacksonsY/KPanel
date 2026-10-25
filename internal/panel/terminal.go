@@ -453,6 +453,7 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 	}
 	if err != nil {
 		_ = s.audit(r, userID, "terminal.open", auditType, auditTarget, "failure", nil)
+		s.rememberRemoteTerminalOpen(userID, host.ID, opened)
 		switch {
 		case errors.Is(err, cluster.ErrTerminalRetentionUnavailable):
 			s.writeProblem(w, r, http.StatusConflict, "terminal_retention_unavailable", "This host does not support retained sessions", "Upgrade the node or explicitly open a temporary terminal")
@@ -491,9 +492,10 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request, use
 	} else {
 		item.ReliableInput = s.cluster.TerminalSupportsSequencedInput(host.ID, opened.SessionID)
 	}
-	s.terminalMu.Lock()
-	s.terminalSessions[publicID] = item
-	s.terminalMu.Unlock()
+	if !s.registerTerminalSession(item) {
+		s.writeProblem(w, r, 403, "remote_terminal_disabled", "Remote terminal disabled by this center", "")
+		return
+	}
 	if input.LaunchID != "" {
 		delete(s.terminalLaunchIntents, input.LaunchID)
 	}
@@ -800,6 +802,10 @@ func (s *Server) pruneTerminalSessions(before time.Time) []panelTerminalSession 
 	defer s.terminalMu.Unlock()
 	stale := make([]panelTerminalSession, 0)
 	for id, item := range s.terminalSessions {
+		if item.CloseRequested {
+			stale = append(stale, item)
+			continue
+		}
 		// Batch workers own these identities. A stale/failed close must not
 		// silently free their shared quota before the target confirms cleanup.
 		if item.Purpose == "batch" {
@@ -887,7 +893,7 @@ func (s *Server) listRetainedTerminals(w http.ResponseWriter, r *http.Request, u
 	items := make([]terminalOpenResponse, 0)
 	s.terminalMu.Lock()
 	for _, item := range s.terminalSessions {
-		if item.UserID == userID && item.Retained {
+		if item.UserID == userID && (item.Retained || item.CloseRequested) {
 			items = append(items, terminalSessionResponse(item))
 		}
 	}

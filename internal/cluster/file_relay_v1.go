@@ -173,7 +173,7 @@ type remoteV1SignedPanelFileAPI interface {
 // needed. Current targets advertise the signed capability only after their
 // administrator grants file management; older targets still advertise the
 // unsigned hint and keep their earlier behavior.
-func (s *Service) OpenRemotePanelFileV1(
+func (s *Service) openRemotePanelFileV1(
 	ctx context.Context,
 	hostID string,
 	input LightFileRequest,

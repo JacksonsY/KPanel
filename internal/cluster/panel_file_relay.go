@@ -631,7 +631,7 @@ type remoteV2PanelFileAPI interface {
 // OpenRemotePanelFile opens a same-page file-manager request against an
 // active paired Panel. The caller remains responsible for browser session and
 // CSRF checks; this method only uses the stored v2 controller credential.
-func (s *Service) OpenRemotePanelFile(
+func (s *Service) openRemotePanelFile(
 	ctx context.Context,
 	hostID string,
 	input LightFileRequest,

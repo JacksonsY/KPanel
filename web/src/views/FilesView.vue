@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { focusTextInput } from '../lib/touchFocus'
 import { computed, defineAsyncComponent, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { clusterRemoteAccessChanged } from '@/lib/clusterSettings'
 import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 import { useI18n } from '@/i18n'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
@@ -2943,6 +2944,7 @@ watch(desktopWindowActive, (active) => {
 })
 
 onMounted(() => {
+  window.addEventListener(clusterRemoteAccessChanged, loadFileHosts)
   unsubscribeClusterHostOrder = subscribeClusterHostOrder(() => {
     clusterHostOrderRevision.value += 1
   })
@@ -3014,6 +3016,7 @@ watch(search, () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener(clusterRemoteAccessChanged, loadFileHosts)
   unregisterWindowCloseGuard?.()
   unregisterSplitBusyCheck?.()
   unsubscribeClusterHostOrder?.()

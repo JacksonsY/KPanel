@@ -167,7 +167,7 @@ func (s *Service) terminalHostCredential(id string) (hostRecordV2, v2Credential,
 	return record, credential, remote, nil
 }
 
-func (s *Service) TerminalOpen(ctx context.Context, hostID string, input TerminalOpenRequest) (TerminalOpenResponse, error) {
+func (s *Service) terminalOpen(ctx context.Context, hostID string, input TerminalOpenRequest) (TerminalOpenResponse, error) {
 	if record, err := s.light.Host(hostID); err == nil {
 		if !lightNodePlatformSupported(record) {
 			return TerminalOpenResponse{}, ErrTerminalUnavailable
@@ -208,6 +208,11 @@ func (s *Service) TerminalOpen(ctx context.Context, hostID string, input Termina
 }
 
 func (s *Service) TerminalOutput(ctx context.Context, hostID string, input TerminalOutputRequest) (terminal.Output, error) {
+	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal", hostID)
+	if err != nil {
+		return terminal.Output{}, err
+	}
+	defer cancel()
 	if !s.lightControlAllowed(hostID, "terminal") {
 		return terminal.Output{}, ErrTerminalUnavailable
 	}
@@ -228,6 +233,11 @@ func (s *Service) TerminalOutput(ctx context.Context, hostID string, input Termi
 }
 
 func (s *Service) TerminalInput(ctx context.Context, hostID string, input TerminalInputRequest) error {
+	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal", hostID)
+	if err != nil {
+		return err
+	}
+	defer cancel()
 	if !s.lightControlAllowed(hostID, "terminal") {
 		return ErrTerminalUnavailable
 	}
@@ -248,6 +258,11 @@ func (s *Service) TerminalInput(ctx context.Context, hostID string, input Termin
 }
 
 func (s *Service) TerminalResize(ctx context.Context, hostID string, input TerminalResizeRequest) error {
+	ctx, cancel, err := s.BeginRemoteOperation(ctx, "terminal", hostID)
+	if err != nil {
+		return err
+	}
+	defer cancel()
 	if !s.lightControlAllowed(hostID, "terminal") {
 		return ErrTerminalUnavailable
 	}

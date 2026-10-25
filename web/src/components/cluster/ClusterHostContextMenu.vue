@@ -36,8 +36,8 @@ export function clusterHostMenuGroups(host: ClusterHost, address: string): Clust
     groups.push([{ action: 'open-panel', label: host.isLocal ? '当前面板' : '打开面板' }])
   }
   const tools: ClusterHostMenuItem[] = [{ action: 'history', label: '历史监控' }]
-  if (host.terminalAvailable) tools.push({ action: 'terminal', label: '终端' })
-  if (host.fileManagementAvailable === true) tools.push({ action: 'files', label: '文件' })
+  if (host.terminalAvailable || host.remoteTerminalDisabled) tools.push({ action: 'terminal', label: host.remoteTerminalDisabled ? '终端（当前中心已禁用）' : '终端', disabled: host.remoteTerminalDisabled })
+  if (host.fileManagementAvailable === true || host.remoteFilesDisabled) tools.push({ action: 'files', label: host.remoteFilesDisabled ? '文件（当前中心已禁用）' : '文件', disabled: host.remoteFilesDisabled })
   groups.push(tools)
   const manage: ClusterHostMenuItem[] = [
     { action: 'refresh', label: '刷新', disabled: host.polling },

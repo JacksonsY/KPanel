@@ -91,6 +91,7 @@ type runtimeState struct {
 }
 
 type Service struct {
+	remoteAccess         *remoteAccessControl
 	managed              *managedControl
 	store                *Store
 	secrets              *secretStore
@@ -286,8 +287,9 @@ func NewService(config ServiceConfig) (*Service, error) {
 	remoteV2, _ := config.Remote.(remoteV2API)
 	now := config.Now().UTC()
 	service := &Service{
-		managed: openManagedControl(config.DataDir),
-		store:   store, secrets: secrets,
+		remoteAccess: openRemoteAccess(config.DataDir),
+		managed:      openManagedControl(config.DataDir),
+		store:        store, secrets: secrets,
 		storeV2: storeV2, filePeersV2: filePeersV2, secretsV2: secretsV2,
 		fileRelayV1Grants: fileRelayV1Grants,
 		remote:            config.Remote, remoteV2: remoteV2, telemetry: config.Telemetry, terminal: config.Terminal,
@@ -379,6 +381,16 @@ func (s *Service) Start(parent context.Context) {
 }
 
 func (s *Service) Close() error {
+	if s.remoteAccess != nil {
+		s.remoteAccess.mu.RLock()
+		s.remoteAccess.stopTerminal()
+		s.remoteAccess.stopFiles()
+		for _, epochs := range s.remoteAccess.hostEpochs {
+			epochs.stopTerminal()
+			epochs.stopFiles()
+		}
+		s.remoteAccess.mu.RUnlock()
+	}
 	s.localMu.Lock()
 	s.localClosed = true
 	localCancel, localPending := s.localCancel, s.localInFlight
@@ -456,6 +468,9 @@ func (s *Service) Hosts(ctx context.Context) HostList {
 		items = append(items, s.publicLightHost(record, now))
 	}
 	s.mu.RUnlock()
+	for index := range items {
+		items[index] = s.applyRemoteAccess(items[index])
+	}
 	return HostList{
 		Items: items, Total: len(items),
 		RemoteTotal: len(records) + len(recordsV2) + supportedLightHostCount(lightRecords), MaxHosts: MaxHosts,
@@ -473,7 +488,7 @@ func (s *Service) Host(ctx context.Context, id string) (Host, error) {
 		s.mu.RLock()
 		current := s.runtime[id]
 		s.mu.RUnlock()
-		return publicHost(record, current, s.now().UTC()), nil
+		return s.applyRemoteAccess(publicHost(record, current, s.now().UTC())), nil
 	}
 	recordV2, v2Err := s.storeV2.Host(id)
 	if v2Err == nil {
@@ -483,7 +498,7 @@ func (s *Service) Host(ctx context.Context, id string) (Host, error) {
 		now := s.now().UTC()
 		host := publicHostV2(recordV2, current, now)
 		host.MutualFileTransferAvailable = s.hasActiveFilePeerGrant(recordV2.ID, now)
-		return host, nil
+		return s.applyRemoteAccess(host), nil
 	}
 	lightRecord, lightErr := s.light.Host(id)
 	if lightErr != nil {
@@ -498,7 +513,7 @@ func (s *Service) Host(ctx context.Context, id string) (Host, error) {
 	if !lightNodePlatformSupported(lightRecord) {
 		return Host{}, ErrNotFound
 	}
-	return s.publicLightHost(lightRecord, s.now().UTC()), nil
+	return s.applyRemoteAccess(s.publicLightHost(lightRecord, s.now().UTC())), nil
 }
 
 func (s *Service) AddHost(ctx context.Context, input AddHostInput) (Host, error) {
