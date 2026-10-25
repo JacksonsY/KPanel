@@ -80,7 +80,7 @@ func NewNativeRuntime(store *Store, providers *ProviderService, client ModelClie
 	return &NativeRuntime{store: store, providers: providers, client: client, tools: tools, events: events, semaphore: make(chan struct{}, 2), cancels: make(map[string]context.CancelFunc), shutdown: shutdown, stop: stop}, nil
 }
 
-func (r *NativeRuntime) Run(ctx context.Context, runID string) error {
+func (r *NativeRuntime) Run(ctx context.Context, runID string) (result error) {
 	if !r.beginWorker() {
 		return context.Canceled
 	}
@@ -90,17 +90,17 @@ func (r *NativeRuntime) Run(ctx context.Context, runID string) error {
 		cancel()
 		return ErrBusy
 	}
-	defer r.unregister(runID)
+	defer func() { result = errors.Join(result, r.finishWorker(ctx, runID)) }()
 	select {
 	case r.semaphore <- struct{}{}:
 		defer func() { <-r.semaphore }()
 	case <-ctx.Done():
 		return r.cancelWaiting(ctx, runID)
 	}
-	return r.runLoop(ctx, runID, nil)
+	return r.loop(ctx, runID, nil)
 }
 
-func (r *NativeRuntime) Resume(ctx context.Context, runID string, decision Decision) error {
+func (r *NativeRuntime) Resume(ctx context.Context, runID string, decision Decision) (result error) {
 	if !r.beginWorker() {
 		return context.Canceled
 	}
@@ -110,26 +110,33 @@ func (r *NativeRuntime) Resume(ctx context.Context, runID string, decision Decis
 		cancel()
 		return ErrBusy
 	}
-	defer r.unregister(runID)
+	defer func() { result = errors.Join(result, r.finishWorker(ctx, runID)) }()
 	select {
 	case r.semaphore <- struct{}{}:
 		defer func() { <-r.semaphore }()
 	case <-ctx.Done():
 		return r.cancelWaiting(ctx, runID)
 	}
-	return r.runLoop(ctx, runID, &decision)
+	return r.loop(ctx, runID, &decision)
 }
 
 func (r *NativeRuntime) Cancel(ctx context.Context, runID string) error {
 	r.mu.Lock()
 	cancel := r.cancels[runID]
-	r.mu.Unlock()
 	if cancel != nil {
 		cancel()
+	} else {
+		// Reserve idle ownership through the status write as well: Resume must
+		// not enter after this lookup and before the cancellation commits.
+		r.cancels[runID] = func() {}
+	}
+	r.mu.Unlock()
+	if cancel != nil {
 		// The owner flushes accepted text before publishing its terminal state.
 		// Publishing here would erase live text before that bounded flush.
 		return nil
 	}
+	defer r.unregister(runID)
 	run, err := r.store.RunByID(ctx, runID)
 	if err != nil {
 		return err
@@ -156,10 +163,20 @@ func (r *NativeRuntime) cancelWaiting(ctx context.Context, runID string) error {
 	return r.cancelled(ctx, run)
 }
 
-func (r *NativeRuntime) runLoop(ctx context.Context, runID string, decision *Decision) error {
-	err := r.loop(ctx, runID, decision)
-	if ctx.Err() == nil || r.events.snapshotsUnavailable() {
-		return err
+func (r *NativeRuntime) finishWorker(ctx context.Context, runID string) error {
+	// Cancel admission and the owner's final context check/removal are ordered
+	// by the same mutex. Keep ownership while cancelled-state IO is in flight,
+	// so Resume cannot enter before cleanup has reached a durable boundary.
+	r.mu.Lock()
+	if ctx.Err() == nil {
+		delete(r.cancels, runID)
+		r.mu.Unlock()
+		return nil
+	}
+	r.mu.Unlock()
+	defer r.unregister(runID)
+	if r.events.snapshotsUnavailable() {
+		return nil
 	}
 	// Cancellation can also interrupt the initial read or a tool-state read,
 	// outside the model-stream cleanup path. The owning worker still supplies
@@ -169,12 +186,12 @@ func (r *NativeRuntime) runLoop(ctx context.Context, runID string, decision *Dec
 	run, readErr := r.store.RunByID(statusCtx, runID)
 	if readErr != nil {
 		r.events.invalidateSnapshots()
-		return errors.Join(err, readErr)
+		return readErr
 	}
 	if terminalRun(run.Status) {
-		return err
+		return nil
 	}
-	return errors.Join(err, r.cancelled(ctx, run))
+	return r.cancelled(ctx, run)
 }
 
 func (r *NativeRuntime) loop(ctx context.Context, runID string, decision *Decision) error {

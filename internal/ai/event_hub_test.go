@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
@@ -409,5 +410,107 @@ func TestConversationSnapshotRefreshesAfterMetadataPreload(t *testing.T) {
 	}
 	if seen[draft.ID].Content != draft.Content || len(seen[user.ID].Attachments) != 1 || seen[user.ID].Attachments[0].Size != 4 || seen[user.ID].Attachments[0].Data != nil {
 		t.Fatal("preload hid newer text or attachment metadata")
+	}
+}
+
+func TestRuntimeCancelAtOwnerReturnBoundary(t *testing.T) {
+	for _, admitFirst := range []bool{true, false} {
+		t.Run(fmt.Sprint(admitFirst), func(t *testing.T) {
+			s, providers, p, m := runtimeFixture(t)
+			defer s.Close()
+			_, run := checkpointRun(t, s, p, m)
+			hub := NewEventHub()
+			r, err := NewNativeRuntime(s, providers, &scriptedClient{tool: "host_action"}, &fakeTools{}, hub)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if !r.register(run.ID, cancel) {
+				t.Fatal("owner registration failed")
+			}
+			// Deterministic barrier: execute the real loop through pending approval,
+			// stopping immediately before the production owner-finalization defer.
+			if err := r.loop(ctx, run.ID, nil); err != nil {
+				t.Fatal(err)
+			}
+			before, err := s.RunByID(context.Background(), run.ID)
+			if err != nil || before.Status != RunPendingApproval {
+				t.Fatalf("barrier=%s %v", before.Status, err)
+			}
+			if admitFirst {
+				if err := r.Cancel(context.Background(), run.ID); err != nil {
+					t.Fatal(err)
+				}
+				if err := r.finishWorker(ctx, run.ID); !errors.Is(err, context.Canceled) {
+					t.Fatalf("owner cleanup=%v", err)
+				}
+			} else {
+				if err := r.finishWorker(ctx, run.ID); err != nil {
+					t.Fatal(err)
+				}
+				if err := r.Cancel(context.Background(), run.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			loaded, err := s.RunByID(context.Background(), run.ID)
+			if err != nil || loaded.Status != RunCancelled {
+				t.Fatalf("cancel lost at owner return: %s %v", loaded.Status, err)
+			}
+			r.mu.Lock()
+			owners := len(r.cancels)
+			r.mu.Unlock()
+			if owners != 0 {
+				t.Fatal("owner cleanup leaked")
+			}
+		})
+	}
+}
+
+func TestRuntimeIdleCancelReservesOwnership(t *testing.T) {
+	s, providers, p, m := runtimeFixture(t)
+	defer s.Close()
+	_, run := checkpointRun(t, s, p, m)
+	r, err := NewNativeRuntime(s, providers, &scriptedClient{tool: "host_action"}, &fakeTools{}, NewEventHub())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	s.db.SetMaxOpenConns(1)
+	conn, err := s.db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	done := make(chan error, 1)
+	go func() { done <- r.Cancel(context.Background(), run.ID) }()
+	reserved := false
+	for i := 0; i < 100; i++ {
+		r.mu.Lock()
+		reserved = r.cancels[run.ID] != nil
+		r.mu.Unlock()
+		if reserved {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !reserved {
+		conn.Close()
+		<-done
+		t.Fatal("idle cancellation left Resume admission open during status IO")
+	}
+	if err := r.Resume(context.Background(), run.ID, Decision{}); !errors.Is(err, ErrBusy) {
+		conn.Close()
+		<-done
+		t.Fatalf("Resume entered during cancel status IO: %v", err)
+	}
+	conn.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := s.RunByID(context.Background(), run.ID)
+	if err != nil || loaded.Status != RunCancelled {
+		t.Fatalf("idle cancel=%s %v", loaded.Status, err)
 	}
 }
