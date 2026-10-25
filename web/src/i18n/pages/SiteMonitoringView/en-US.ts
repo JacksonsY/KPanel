@@ -331,8 +331,8 @@ export default [
     "The location database is unreadable. Replace it with a valid country database."
   ],
   [
-    "地区识别尚未配置，访问与防御统计仍会继续采集。",
-    "Location lookup is not configured. Traffic and security collection continues."
+    "内置地区库将在采集日志时自动启用。",
+    "The bundled location database will activate automatically when logs are collected."
   ],
   [
     "无数据",
@@ -459,8 +459,8 @@ export default [
     "Local location lookup"
   ],
   [
-    "使用本地 MMDB 国家数据库。通过文件管理将国家库上传到下面的位置，后续请求会自动识别地区。",
-    "Use a local MMDB country database. Upload a country database to this location in File Manager to identify regions for subsequent requests."
+    "已内置离线国家数据库，开启监控即可识别新请求的地区。也可上传兼容 MMDB 覆盖内置库；已有未知地区统计不会自动补全。",
+    "An offline country database is included. Enable monitoring to locate new requests. You can upload a compatible MMDB to override it; existing unknown-region statistics will not be backfilled."
   ],
   [
     "地区为 IP 归属推测。CDN 或代理部署须先正确恢复真实访客 IP；统计不会直接信任请求中的转发头。",
@@ -507,7 +507,7 @@ export default [
     "Start monitoring"
   ],
   [
-    "配置地区识别",
+    "地区识别说明",
     "Set up location lookup"
   ],
   [
@@ -537,5 +537,6 @@ export default [
   [
     "数据覆盖说明",
     "Data coverage"
-  ]
+  ],
+  ["内置地区数据", "Bundled location data"]
 ] satisfies PhraseCatalog
