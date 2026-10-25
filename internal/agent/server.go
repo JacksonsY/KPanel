@@ -1081,7 +1081,11 @@ func (s *Server) siteCollection(w http.ResponseWriter, r *http.Request, requestI
 	}
 }
 
-func (s *Server) siteInstallationList(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) siteInstallationList(w http.ResponseWriter, r *http.Request) {
+	if taskDisplayQuery(r) {
+		writeTaskDisplay(w, r, contract.PageResult[sites.RecipeJob]{Items: s.sitesManager.InstallationJobs()}, s.sitesManager.InstallationOutput)
+		return
+	}
 	writeJSON(
 		w,
 		http.StatusOK,
@@ -1110,6 +1114,12 @@ func (s *Server) siteInstallation(w http.ResponseWriter, r *http.Request, reques
 		query, err := parseTerminalReadQuery(r.URL.Query(), false)
 		if err != nil {
 			writeProblem(w, requestID, http.StatusBadRequest, "invalid_terminal_offset", "终端偏移量无效", "")
+			return
+		}
+		if query.ModelProjection {
+			writeTerminalDisplay(w, r, query.Offset, func(offset int64) (sites.SiteTerminalChunk, error) {
+				return s.sitesManager.InstallationOutput(id, offset)
+			})
 			return
 		}
 		chunk, err := waitForTerminalChunk(
@@ -1161,7 +1171,7 @@ func (s *Server) siteInstallation(w http.ResponseWriter, r *http.Request, reques
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		return
 	}
-	if len(parts) != 1 || r.Method != http.MethodGet || r.URL.RawQuery != "" {
+	if len(parts) != 1 || r.Method != http.MethodGet || r.URL.RawQuery != "" && !taskDisplayQuery(r) {
 		w.Header().Set("Allow", http.MethodGet)
 		writeProblem(w, requestID, http.StatusMethodNotAllowed, "method_not_allowed", "请求方法不允许", "")
 		return
@@ -1169,6 +1179,10 @@ func (s *Server) siteInstallation(w http.ResponseWriter, r *http.Request, reques
 	job, err := s.sitesManager.InstallationJob(id)
 	if err != nil {
 		writeProblem(w, requestID, http.StatusNotFound, "not_found", "安装任务不存在", "")
+		return
+	}
+	if taskDisplayQuery(r) {
+		writeTaskDisplay(w, r, job, s.sitesManager.InstallationOutput)
 		return
 	}
 	writeJSON(w, http.StatusOK, job)
@@ -1418,13 +1432,19 @@ func (s *Server) appIcon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) appJobList(w http.ResponseWriter, r *http.Request) {
-	if r.URL.RawPath != "" || r.URL.RawQuery != "" {
+	if r.URL.RawPath != "" || r.URL.RawQuery != "" && !taskDisplayQuery(r) {
 		writeProblem(w, requestIDFrom(w), http.StatusBadRequest, "invalid_app_job_request", "应用任务 URL 无效", "")
 		return
 	}
-	writeJSON(w, http.StatusOK, contract.PageResult[appmarket.AppJob]{
-		Items: s.appMarket.AppJobs(),
-	})
+	jobs := s.appMarket.AppJobs()
+	if taskDisplayQuery(r) {
+		for i := range jobs {
+			jobs[i].Logs = nil
+		}
+		writeTaskDisplay(w, r, contract.PageResult[appmarket.AppJob]{Items: jobs}, s.appMarket.AppJobOutput)
+		return
+	}
+	writeJSON(w, http.StatusOK, contract.PageResult[appmarket.AppJob]{Items: jobs})
 }
 
 func (s *Server) appJobOperation(w http.ResponseWriter, r *http.Request, requestID string) {
@@ -1439,13 +1459,18 @@ func (s *Server) appJobOperation(w http.ResponseWriter, r *http.Request, request
 	}
 	id := parts[0]
 	if len(parts) == 1 {
-		if r.Method != http.MethodGet || r.URL.RawQuery != "" {
+		if r.Method != http.MethodGet || r.URL.RawQuery != "" && !taskDisplayQuery(r) {
 			writeProblem(w, requestID, http.StatusBadRequest, "invalid_app_job_request", "应用任务请求无效", "")
 			return
 		}
 		job, err := s.appMarket.AppJob(id)
 		if err != nil {
 			writeProblem(w, requestID, http.StatusNotFound, "app_job_not_found", "应用任务不存在", "")
+			return
+		}
+		if taskDisplayQuery(r) {
+			job.Logs = nil
+			writeTaskDisplay(w, r, job, s.appMarket.AppJobOutput)
 			return
 		}
 		writeJSON(w, http.StatusOK, job)
@@ -1461,6 +1486,10 @@ func (s *Server) appJobOperation(w http.ResponseWriter, r *http.Request, request
 		query, err := parseTerminalReadQuery(r.URL.Query(), true)
 		if err != nil {
 			writeProblem(w, requestID, http.StatusBadRequest, "invalid_terminal_offset", "终端偏移量无效", "")
+			return
+		}
+		if query.ModelProjection {
+			writeTerminalDisplay(w, r, query.Offset, func(offset int64) (appmarket.TerminalChunk, error) { return s.appMarket.AppJobOutput(id, offset) })
 			return
 		}
 		chunk, err := waitForTerminalChunk(
@@ -1748,7 +1777,15 @@ func (s *Server) diagnosticJobCollection(w http.ResponseWriter, r *http.Request,
 	}
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, contract.PageResult[diagnostics.Job]{Items: s.diagnostics.Jobs()})
+		jobs := s.diagnostics.Jobs()
+		if taskDisplayQuery(r) {
+			for i := range jobs {
+				jobs[i].Logs = nil
+			}
+			writeTaskDisplay(w, r, contract.PageResult[diagnostics.Job]{Items: jobs}, s.diagnostics.JobOutput)
+			return
+		}
+		writeJSON(w, http.StatusOK, contract.PageResult[diagnostics.Job]{Items: jobs})
 	case http.MethodPost:
 		var input struct {
 			CheckID string `json:"checkId"`
@@ -1803,6 +1840,10 @@ func (s *Server) diagnosticJob(w http.ResponseWriter, r *http.Request) {
 			writeProblem(w, requestIDFrom(w), http.StatusBadRequest, "invalid_terminal_offset", "终端偏移量无效", "")
 			return
 		}
+		if query.ModelProjection {
+			writeTerminalDisplay(w, r, query.Offset, func(offset int64) (diagnostics.TerminalChunk, error) { return s.diagnostics.JobOutput(id, offset) })
+			return
+		}
 		chunk, err := waitForTerminalChunk(
 			r.Context(),
 			query.Wait,
@@ -1852,7 +1893,7 @@ func (s *Server) diagnosticJob(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		return
 	}
-	if len(parts) != 1 || r.Method != http.MethodGet || r.URL.RawQuery != "" {
+	if len(parts) != 1 || r.Method != http.MethodGet || r.URL.RawQuery != "" && !taskDisplayQuery(r) {
 		w.Header().Set("Allow", http.MethodGet)
 		writeProblem(w, requestIDFrom(w), http.StatusMethodNotAllowed, "method_not_allowed", "请求方法不允许", "")
 		return
@@ -1860,6 +1901,11 @@ func (s *Server) diagnosticJob(w http.ResponseWriter, r *http.Request) {
 	job, err := s.diagnostics.Job(id)
 	if err != nil {
 		writeProblem(w, requestIDFrom(w), http.StatusNotFound, "diagnostic_job_not_found", "体检任务不存在", "")
+		return
+	}
+	if taskDisplayQuery(r) {
+		job.Logs = nil
+		writeTaskDisplay(w, r, job, s.diagnostics.JobOutput)
 		return
 	}
 	writeJSON(w, http.StatusOK, job)

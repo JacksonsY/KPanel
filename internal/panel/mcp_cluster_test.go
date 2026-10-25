@@ -3,7 +3,6 @@ package panel
 import (
 	"context"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -268,8 +267,8 @@ func TestMCPJobScopesAndTerminalOffsets(t *testing.T) {
 			t.Fatal("foreign archive job escaped file roots")
 		}
 	}
-	text := strings.Repeat("x", 20<<10) + "password=do-not-reveal"
-	body, _ := json.Marshal(map[string]any{"dataBase64": base64.StdEncoding.EncodeToString([]byte(text)), "nextOffset": 100 + len(text), "finished": true, "inputOpen": false})
+	text := strings.Repeat("x", 12<<10)
+	body, _ := json.Marshal(map[string]any{"projection": "model-v1", "text": text, "nextOffset": 100 + len(text), "finished": false, "inputOpen": false, "truncated": true})
 	output, err := mcpManagedOutput(body, 0, 20)
 	if err != nil {
 		t.Fatal(err)
@@ -278,7 +277,7 @@ func TestMCPJobScopesAndTerminalOffsets(t *testing.T) {
 	if data["nextOffset"] != float64(100+(12<<10)) || data["finished"] != false || output["truncated"] != true || data["dataBase64"] != nil {
 		t.Fatalf("offset corruption: %#v", data)
 	}
-	body, _ = json.Marshal(map[string]any{"dataBase64": base64.StdEncoding.EncodeToString([]byte("password=do-not-reveal")), "nextOffset": 22, "finished": true})
+	body, _ = json.Marshal(map[string]any{"projection": "model-v1", "text": "password=do-not-reveal", "nextOffset": 22, "finished": true})
 	output, err = mcpManagedOutput(body, 0, 20)
 	if err != nil {
 		t.Fatal(err)

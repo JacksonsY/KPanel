@@ -177,6 +177,9 @@ func (s *Server) callManagedMCP(ctx context.Context, op managedOperation, raw js
 		if projectionErr != nil {
 			return mcpToolError(projectionErr.Error())
 		}
+		if err := mcpTaskDisplayBody(op.Name, body); err != nil {
+			return mcpToolError(err.Error())
+		}
 		output, err = mcpManagedOutput(body, offset, limit)
 	} else {
 		output, err = s.readManagedRemote(ctx, call, host.ID, op, arguments, offset, limit)
@@ -231,6 +234,7 @@ func mcpManagedOutput(body []byte, offset, limit int) (map[string]any, error) {
 			return nil, err
 		}
 	}
+	mcpUnclassifiedLogsProjection(data)
 	// Project the complete decoded display tree before paging or truncation.
 	// Independent per-string calls lose credential continuation across logs and
 	// cannot classify structured keys emitted by the installation scripts.
@@ -315,7 +319,7 @@ func mcpOperationView(o mcpaccess.Operation) map[string]any {
 	if len(o.Result) > 0 {
 		// Historical receipts also cross this public boundary; a peer's old
 		// or unclassified response must not bypass the current projection.
-		result, err := redact.JSON(o.Result)
+		result, err := mcpDisplayJSON(o.Result)
 		if err != nil {
 			result = json.RawMessage(`"[REDACTED: invalid receipt]"`)
 		}

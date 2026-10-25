@@ -203,20 +203,32 @@ func addManagedExtensions(result map[string]managedOperation, add func(string, s
 	})
 	for source, owner := range managedJobSources {
 		name := "host_" + source + "_job"
-		register(name, "Read a real background task by jobId. For interactive tasks, output=true reads a bounded output window at offset; the owner remains the source of truth.", true, managedSchema[managedJobQuery](), func(raw json.RawMessage, _ *mcpaccess.Policy) (managedRequest, error) {
+		schema := managedSchema[managedJobQuery]()
+		if owner.Output {
+			// Bind the changed output semantics into the delegated operation's
+			// existing signature, so an old target/grant cannot supply raw cursors.
+			var versioned map[string]any
+			_ = json.Unmarshal(schema, &versioned)
+			versioned["description"] = mcpTaskDisplayDescription
+			schema, _ = json.Marshal(versioned)
+		}
+		register(name, "Read a real background task by jobId. output=true returns model-v1 output projected from complete bounded context; offset is a redacted display byte cursor. The owner remains the source of truth.", true, schema, func(raw json.RawMessage, _ *mcpaccess.Policy) (managedRequest, error) {
 			var input managedJobQuery
 			_ = json.Unmarshal(raw, &input)
 			if !ownerJobIDPattern.MatchString(input.JobID) || input.Offset < 0 || (input.Output && !owner.Output) {
 				return managedRequest{}, errors.New("invalid_job_query")
 			}
 			path, query := owner.Path+"/"+input.JobID, ""
+			if owner.Output {
+				query = "projection=model-v1"
+			}
 			if source == "file_archive" {
 				path = owner.Path
 				query = url.Values{"id": {input.JobID}}.Encode()
 			}
 			if input.Output {
 				path += "/terminal"
-				query = url.Values{"offset": {fmt.Sprint(input.Offset)}}.Encode()
+				query = url.Values{"offset": {fmt.Sprint(input.Offset)}, "projection": {"model-v1"}}.Encode()
 			}
 			return managedRequest{Method: http.MethodGet, Path: path, Query: query}, nil
 		})

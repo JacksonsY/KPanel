@@ -942,11 +942,21 @@ type SiteTerminalChunk struct {
 }
 
 func (m *Manager) InstallationTerminal(id string, offset int64) (SiteTerminalChunk, error) {
+	return m.installationOutput(id, offset, true)
+}
+
+// InstallationOutput is the existing owned log, including non-interactive
+// installation jobs, for the Agent's bounded model display only.
+func (m *Manager) InstallationOutput(id string, offset int64) (SiteTerminalChunk, error) {
+	return m.installationOutput(id, offset, false)
+}
+
+func (m *Manager) installationOutput(id string, offset int64, interactiveOnly bool) (SiteTerminalChunk, error) {
 	if m.recipeJobs == nil || !recipeJobIDPattern.MatchString(id) || offset < 0 {
 		return SiteTerminalChunk{}, ErrConflict
 	}
 	job, err := m.recipeJobs.read(id)
-	if err != nil || !job.Interactive {
+	if err != nil || interactiveOnly && !job.Interactive {
 		return SiteTerminalChunk{}, ErrConflict
 	}
 	path := m.recipeJobs.logPath(id)

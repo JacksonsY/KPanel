@@ -71,6 +71,9 @@ var managedCatalog = sync.OnceValue(func() map[string]managedOperation {
 		}
 		properties := schema["properties"].(map[string]any)
 		delete(properties, "reason")
+		if mcpTaskDisplayRequired(name) {
+			schema["description"] = mcpTaskDisplayDescription
+		}
 		freezeManagedSchema(name, schema)
 		// File contents are bounded consistently across HTTP, approval storage,
 		// and the encrypted cluster envelope. Full files remain in File Manager.
@@ -154,7 +157,11 @@ func (op managedOperation) prepare(raw json.RawMessage, policy *mcpaccess.Policy
 	}
 	if op.ReadOnly {
 		if path := managedReadPaths[op.Name]; path != "" {
-			return managedRequest{Method: http.MethodGet, Path: path}, nil
+			query := ""
+			if mcpTaskDisplayRequired(op.Name) {
+				query = "projection=model-v1"
+			}
+			return managedRequest{Method: http.MethodGet, Path: path, Query: query}, nil
 		}
 		if op.Name == "host_system_storage_usage" {
 			var input struct{ Path string }

@@ -1,14 +1,13 @@
 package panel
 
 import (
+	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/url"
 	"regexp"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/kejilion/kejilion-panel/internal/cluster"
 	"github.com/kejilion/kejilion-panel/internal/contract"
@@ -19,6 +18,94 @@ import (
 type mcpTaskReference struct {
 	Owner string `json:"owner"`
 	ID    string `json:"id"`
+}
+
+const mcpTaskDisplayDescription = "Task output uses model-v1: logs are projected from complete bounded owner context before tailing; offset and nextOffset are UTF-8 byte positions in the redacted display snapshot, never raw terminal bytes."
+
+func mcpTaskDisplayRequired(tool string) bool {
+	if tool == "host_app_jobs" || tool == "host_web_jobs" {
+		return true
+	}
+	for source, owner := range managedJobSources {
+		if owner.Output && tool == "host_"+source+"_job" {
+			return true
+		}
+	}
+	return false
+}
+
+// Both the target's Agent response and the controller's peer response must
+// carry the new display contract. An old peer's redacted=true is insufficient.
+func mcpTaskDisplayBody(tool string, body []byte) error {
+	if !mcpTaskDisplayRequired(tool) {
+		return nil
+	}
+	var value map[string]any
+	if json.Unmarshal(body, &value) != nil {
+		return errors.New("task_projection_invalid")
+	}
+	if inner, ok := value["data"].(map[string]any); ok {
+		value = inner
+	}
+	if value["projection"] != "model-v1" {
+		return errors.New("task_projection_upgrade_required")
+	}
+	return nil
+}
+
+// A receipt is not a safe log source: it may already contain an owner-tail or
+// a legacy terminal window whose sensitive prefix is gone. Keep its task and
+// state, and direct subsequent output reads to the context-qualified owner.
+func mcpUnclassifiedLogsProjection(value any) {
+	var visit func(any, int)
+	visit = func(value any, depth int) {
+		if depth > 32 {
+			return
+		}
+		switch item := value.(type) {
+		case map[string]any:
+			qualified := item["projection"] == "model-v1"
+			for key, child := range item {
+				if strings.EqualFold(key, "logs") && !qualified {
+					item[key] = []string{"[REDACTED: task log context unavailable; read qualified task output]"}
+					item["logsContextUnavailable"] = true
+					continue
+				}
+				if strings.EqualFold(key, "dataBase64") {
+					item[key] = "[REDACTED: raw terminal output]"
+					continue
+				}
+				if key == "text" && item["nextOffset"] != nil && !qualified {
+					item[key] = "[REDACTED: terminal context unavailable]"
+					continue
+				}
+				visit(child, depth+1)
+			}
+		case []any:
+			for _, child := range item {
+				visit(child, depth+1)
+			}
+		}
+	}
+	visit(value, 0)
+}
+
+func mcpDisplayJSON(raw []byte) ([]byte, error) {
+	if len(raw) > 8<<20 || !json.Valid(raw) {
+		return nil, errors.New("invalid_display_response")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var value any
+	if decoder.Decode(&value) != nil {
+		return nil, errors.New("invalid_display_response")
+	}
+	mcpUnclassifiedLogsProjection(value)
+	display, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	return redact.JSON(display)
 }
 
 var mcpMaintenanceID = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}(Z-[a-f0-9]{8}|\.[0-9]{9}Z)$`)
@@ -154,6 +241,9 @@ func (s *Server) observeMCPOperation(ctx context.Context, call mcpRequest, o mcp
 			return o, errors.New("task_owner_invalid")
 		}
 		path = owner.Path + "/" + task.ID
+		if owner.Output {
+			query = "projection=model-v1"
+		}
 		if task.Owner == "file_archive" {
 			path, query = owner.Path, url.Values{"id": {task.ID}}.Encode()
 		}
@@ -225,34 +315,27 @@ func (s *Server) mcpPreflight(ctx context.Context, tool string, args json.RawMes
 	return mcpArchiveScope(response.Body, policy)
 }
 
-// Terminal byte offsets stay in the owner's stream, even when redaction changes
-// the displayed text's length. Raw base64 is never returned to the model.
+// Raw terminal windows have lost the context needed for credential projection.
+// Only the owner's explicitly versioned, already-projected display is accepted.
 func mcpTerminalProjection(data map[string]any) (bool, error) {
-	encoded, exists := data["dataBase64"].(string)
+	if _, exists := data["dataBase64"]; exists {
+		return false, errors.New("terminal_projection_upgrade_required")
+	}
+	projection, exists := data["projection"]
 	if !exists {
 		return false, nil
 	}
-	decoded, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		decoded, err = base64.RawStdEncoding.DecodeString(encoded)
+	if projection != "model-v1" {
+		return false, errors.New("terminal_projection_invalid")
 	}
-	if err != nil {
-		return false, errors.New("terminal_output_invalid")
+	if _, exists := data["text"]; !exists {
+		return false, nil
 	}
+	text, textOK := data["text"].(string)
 	next, ok := data["nextOffset"].(float64)
-	if !ok || next < float64(len(decoded)) {
-		return false, errors.New("terminal_offset_invalid")
+	if projection != "model-v1" || !textOK || len(text) > 12<<10 || !ok || next < float64(len(text)) || next > 16<<20 || next != float64(int64(next)) {
+		return false, errors.New("terminal_projection_invalid")
 	}
-	consumed := min(len(decoded), 12<<10)
-	for consumed > 0 && consumed < len(decoded) && !utf8.RuneStart(decoded[consumed]) {
-		consumed--
-	}
-	truncated := consumed < len(decoded)
-	data["text"] = redact.Text(strings.ToValidUTF8(string(decoded[:consumed]), "�"))
-	delete(data, "dataBase64")
-	if truncated {
-		data["nextOffset"] = next - float64(len(decoded)) + float64(consumed)
-		data["finished"] = false
-	}
+	truncated, _ := data["truncated"].(bool)
 	return truncated, nil
 }

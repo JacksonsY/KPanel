@@ -350,13 +350,23 @@ type TerminalChunk struct {
 }
 
 func (s *Service) Terminal(id string, offset int64) (TerminalChunk, error) {
+	return s.jobOutput(id, offset, true)
+}
+
+// JobOutput is a read-only log source for the Agent display projection. It
+// supports non-interactive jobs without changing their terminal/input policy.
+func (s *Service) JobOutput(id string, offset int64) (TerminalChunk, error) {
+	return s.jobOutput(id, offset, false)
+}
+
+func (s *Service) jobOutput(id string, offset int64, interactiveOnly bool) (TerminalChunk, error) {
 	if !jobIDPattern.MatchString(id) || offset < 0 {
 		return TerminalChunk{}, ErrNotFound
 	}
 	s.mu.Lock()
 	item, err := s.readLocked(id)
 	s.mu.Unlock()
-	if err != nil || !item.Interactive {
+	if err != nil || interactiveOnly && !item.Interactive {
 		return TerminalChunk{}, ErrNotFound
 	}
 	path := s.logPath(id)

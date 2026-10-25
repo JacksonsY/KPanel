@@ -14,19 +14,26 @@ const (
 )
 
 type terminalReadQuery struct {
-	Offset        int64
-	Wait          time.Duration
-	InputOpen     bool
-	HasInputState bool
+	Offset          int64
+	Wait            time.Duration
+	InputOpen       bool
+	HasInputState   bool
+	ModelProjection bool
 }
 
 func parseTerminalReadQuery(values url.Values, requireOffset bool) (terminalReadQuery, error) {
 	for key, entries := range values {
-		if (key != "offset" && key != "wait" && key != "inputOpen") || len(entries) != 1 {
+		if (key != "offset" && key != "wait" && key != "inputOpen" && key != "projection") || len(entries) != 1 {
 			return terminalReadQuery{}, errors.New("invalid terminal query")
 		}
 	}
 	result := terminalReadQuery{}
+	if projection, ok := values["projection"]; ok {
+		if projection[0] != terminalDisplayVersion {
+			return result, errors.New("invalid terminal projection")
+		}
+		result.ModelProjection = true
+	}
 	rawOffset, hasOffset := values["offset"]
 	if requireOffset && !hasOffset {
 		return terminalReadQuery{}, errors.New("terminal offset is required")

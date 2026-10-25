@@ -333,11 +333,21 @@ func (s *Service) WriteAppJobInput(id, value string) error {
 }
 
 func (s *Service) AppJobTerminal(id string, offset int64) (TerminalChunk, error) {
+	return s.jobOutput(id, offset, true)
+}
+
+// AppJobOutput provides the same owned log to the Agent's bounded display
+// projector, including non-interactive jobs. It does not open a terminal.
+func (s *Service) AppJobOutput(id string, offset int64) (TerminalChunk, error) {
+	return s.jobOutput(id, offset, false)
+}
+
+func (s *Service) jobOutput(id string, offset int64, interactiveOnly bool) (TerminalChunk, error) {
 	if s.jobs == nil || !appJobIDPattern.MatchString(id) || offset < 0 {
 		return TerminalChunk{}, ErrNotFound
 	}
 	record, err := s.jobs.read(id)
-	if err != nil || !record.Interactive {
+	if err != nil || interactiveOnly && !record.Interactive {
 		return TerminalChunk{}, ErrNotFound
 	}
 	path := s.jobs.logPath(id)

@@ -557,7 +557,7 @@ func (t *panelAITools) finish(execution ai.ToolExecutionContext, name, target, r
 	if len(response.Body) > 512<<10 {
 		return "", errors.New("AI tool response exceeds the result budget")
 	}
-	safe, err := redact.JSON(response.Body)
+	safe, err := mcpDisplayJSON(response.Body)
 	if err != nil {
 		return "", errors.New("invalid AI tool response")
 	}

@@ -57,6 +57,10 @@ func (s *Server) webEnvironmentJobs(w http.ResponseWriter, r *http.Request, requ
 	}
 	switch r.Method {
 	case http.MethodGet:
+		if taskDisplayQuery(r) {
+			writeTaskDisplay(w, r, contract.PageResult[webenv.Job]{Items: s.webEnvironment.Jobs()}, s.webEnvironment.Terminal)
+			return
+		}
 		writeJSON(w, http.StatusOK, contract.PageResult[webenv.Job]{Items: s.webEnvironment.Jobs()})
 	case http.MethodPost:
 		var input webenv.ActionRequest
@@ -98,6 +102,10 @@ func (s *Server) webEnvironmentJob(w http.ResponseWriter, r *http.Request, reque
 		query, err := parseTerminalReadQuery(r.URL.Query(), false)
 		if err != nil {
 			writeProblem(w, requestID, http.StatusBadRequest, "invalid_terminal_offset", "终端偏移量无效", "")
+			return
+		}
+		if query.ModelProjection {
+			writeTerminalDisplay(w, r, query.Offset, func(offset int64) (webenv.TerminalChunk, error) { return s.webEnvironment.Terminal(parts[0], offset) })
 			return
 		}
 		chunk, err := waitForTerminalChunk(
@@ -156,6 +164,10 @@ func (s *Server) webEnvironmentJob(w http.ResponseWriter, r *http.Request, reque
 	job, err := s.webEnvironment.Job(parts[0])
 	if err != nil {
 		writeProblem(w, requestID, http.StatusNotFound, "not_found", "环境任务不存在", "")
+		return
+	}
+	if taskDisplayQuery(r) {
+		writeTaskDisplay(w, r, job, s.webEnvironment.Terminal)
 		return
 	}
 	writeJSON(w, http.StatusOK, job)
