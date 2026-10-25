@@ -837,6 +837,10 @@ function archiveFormat(entry: Pick<FileEntry, 'kind' | 'name'>): ArchiveFormat |
 
 function clearArchiveRoute(): void {
   if (!shortcutArchivePath.value) return
+  if (requestDesktopWindowClose) {
+    void requestDesktopWindowClose()
+    return
+  }
   const query: LocationQuery = { ...route.query, path: routeDirectoryPath.value }
   delete query.file
   void router.replace({ name: 'files', query })

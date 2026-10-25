@@ -4,7 +4,7 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import FilesView from './FilesView.vue'
 import FileArchiveTools from '@/components/files/FileArchiveTools.vue'
 import { createWindowRouter, reactiveRouteFor, synchronizeWindowRoute } from '@/lib/desktopWindowRoute'
-import { windowRouterKey, windowRouteKey } from '@/lib/desktopRouteKeys'
+import { desktopWindowCloseKey, windowRouterKey, windowRouteKey } from '@/lib/desktopRouteKeys'
 import { useFileClipboard, resetFileWindowTransferForTest } from '@/lib/fileWindowTransfer'
 import { resetApiSecurityState } from '@/lib/api'
 import { beginDesktopFileDrag } from '@/lib/desktopFileShortcuts'
@@ -37,7 +37,8 @@ beforeEach(()=>{
 })
 afterEach(()=>{wrapper?.unmount();wrapper=undefined;vi.unstubAllGlobals();vi.useRealTimers()})
 
-it('closes the actual archive browser when a directory shortcut reuses its window', async () => {
+it.each([false, true])('preserves archive close and directory reuse semantics (desktop=%s)', async (desktop) => {
+ const closeWindow = vi.fn().mockResolvedValue(undefined)
  const source = { ...entry, name: 'site.zip', path: '/home/site.zip', kind: 'file', editable: false, sizeBytes: 10, mime: 'application/zip' }
  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
   const url = new URL(input, 'http://localhost')
@@ -52,12 +53,18 @@ it('closes the actual archive browser when a directory shortcut reuses its windo
  await router.isReady()
  wrapper = shallowMount(FilesView, { global: {
   stubs: { FileArchiveTools: false },
-  provide: { [windowRouterKey as symbol]: router, [windowRouteKey as symbol]: reactiveRouteFor(router) },
+  provide: { [windowRouterKey as symbol]: router, [windowRouteKey as symbol]: reactiveRouteFor(router), ...(desktop ? { [desktopWindowCloseKey as symbol]: closeWindow } : {}) },
  } })
  await flushPromises()
  const tools = wrapper.getComponent(FileArchiveTools)
  const browser = () => tools.findAllComponents({ name: 'ModalDialog' })[0]!
  expect(browser().props('open')).toBe(true)
+ browser().vm.$emit('close')
+ await flushPromises()
+ expect(closeWindow).toHaveBeenCalledTimes(desktop ? 1 : 0)
+ expect(router.currentRoute.value.query.file).toBe(desktop ? source.path : undefined)
+ await router.replace('/files?path=/home&file=/home/site.zip')
+ await flushPromises()
  await router.replace('/files?path=/home')
  await flushPromises()
  expect(browser().props('open')).toBe(false)
