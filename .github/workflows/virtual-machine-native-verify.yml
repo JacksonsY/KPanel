@@ -1,0 +1,70 @@
+name: Verify native virtual machines
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Exact approved release-candidate SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: native-vm-${{ inputs.candidate }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      EXPECTED_CANDIDATE: ${{ inputs.candidate }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: controller
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: controller/go.sum
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.22.1"
+      - name: Validate isolated hosted environment and approved source
+        working-directory: controller
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTIONS" = true
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_REPOSITORY" = kejilion/KPanel
+          [[ "$EXPECTED_CANDIDATE" =~ ^[a-f0-9]{40}$ ]]
+          node scripts/check-environment-policy.mjs --environment github-hosted --purpose candidate-validation
+          git fetch --no-tags origin "$EXPECTED_CANDIDATE"
+          git merge-base --is-ancestor "$GITHUB_SHA" "$EXPECTED_CANDIDATE"
+          test "$(git ls-remote origin refs/heads/release/v1.28.0-candidate)" = "$EXPECTED_CANDIDATE"$'\t'refs/heads/release/v1.28.0-candidate
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Qualify native installation, worker and Docker coexistence
+        working-directory: candidate
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/controller/packaging/tests/virtualmachine/native-host.sh"
+      - name: Preserve native evidence including failures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-vm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kpanel-native-${{ github.run_id }}-${{ github.run_attempt }}/evidence/
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,211 @@
+package virtualmachine_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/kejilion/kejilion-panel/internal/contract"
+	vm "github.com/kejilion/kejilion-panel/internal/virtualmachine"
+)
+
+// This controller-owned test is overlaid only for native qualification. The
+// candidate's runtime sources are unchanged; workers execute the real Agent.
+func TestNativeReleaseQualification(t *testing.T) {
+	if os.Geteuid() != 0 || os.Getenv("GITHUB_ACTIONS") != "true" || os.Getenv("RUNNER_ENVIRONMENT") != "github-hosted" || os.Getenv("GITHUB_REPOSITORY") != "kejilion/KPanel" {
+		t.Fatal("isolated GitHub-hosted root test required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 44*time.Minute)
+	defer cancel()
+	key, name, state, agent, out := os.Getenv("KPANEL_NATIVE_KEY"), os.Getenv("KPANEL_NATIVE_NAME"), os.Getenv("KPANEL_NATIVE_STATE"), os.Getenv("KPANEL_NATIVE_AGENT"), os.Getenv("KPANEL_NATIVE_EVIDENCE")
+	if key == "" || name != "kpanel-qa-"+key || state != "/var/lib/kpanel-release-qualification-"+key || agent != "/usr/local/libexec/kpanel-release-qualification-"+key+"/kejilion-agent" {
+		t.Fatal("invalid owned resource identity")
+	}
+	runner := vm.CommandRunner{}
+	run := func(command string, args ...string) string {
+		b, err := runner.Run(ctx, nil, command, args...)
+		if err != nil {
+			t.Fatalf("%s: %v", command, err)
+		}
+		return string(b)
+	}
+	service := vm.New(vm.Config{StateDir: state, Executable: agent, Enabled: true})
+	checks := []string{}
+	units := []string{}
+	installUnitObserved := false
+	result := map[string]any{"candidate": os.Getenv("KPANEL_NATIVE_SHA"), "status": "failed", "checks": checks, "manualRunJob": false}
+	t.Cleanup(func() {
+		for _, unit := range units {
+			_, _ = runner.Run(context.Background(), nil, "systemctl", "stop", unit)
+		}
+		_, _ = runner.Run(context.Background(), nil, "virsh", "--connect", "qemu:///system", "destroy", name)
+		_, _ = runner.Run(context.Background(), nil, "virsh", "--connect", "qemu:///system", "undefine", name, "--remove-all-storage")
+		result["checks"] = checks
+		result["installSystemdUnitObserved"] = installUnitObserved
+		b, _ := json.MarshalIndent(result, "", "  ")
+		if err := os.WriteFile(filepath.Join(out, "native-result.json"), append(b, '\n'), 0644); err != nil {
+			t.Error(err)
+		}
+	})
+	waitJob := func(request contract.VMRequest) contract.VMJob {
+		request.RequestID = vm.NewID()
+		unit := "kpanel-vm-" + request.RequestID + ".service"
+		units = append(units, unit)
+		started, err := service.Start(ctx, request)
+		if err != nil {
+			t.Fatalf("start %s: %v", request.Action, err)
+		}
+		duplicate, err := service.Start(ctx, request)
+		if err != nil || duplicate.ID != started.ID {
+			t.Fatalf("durable idempotency %s: %v", request.Action, err)
+		}
+		deadline := time.Now().Add(14 * time.Minute)
+		for time.Now().Before(deadline) {
+			if request.Action == "install" && !installUnitObserved {
+				b, e := runner.Run(ctx, nil, "systemctl", "show", unit, "--property=Transient,MainPID,ExecStart,UMask,MemoryMax,TasksMax")
+				if e == nil && strings.Contains(string(b), agent) && strings.Contains(string(b), "Transient=yes") && strings.Contains(string(b), "MemoryMax=1073741824") && strings.Contains(string(b), "TasksMax=128") {
+					installUnitObserved = true
+					if err := os.WriteFile(filepath.Join(out, "install-worker.txt"), b, 0644); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			jobs, e := service.Jobs(ctx)
+			if e != nil {
+				t.Fatal(e)
+			}
+			for _, job := range jobs {
+				if job.ID == started.ID {
+					if job.Status == "failed" || job.Status == "needs_attention" {
+						t.Log(run("journalctl", "--no-pager", "-u", unit, "-n", "80"))
+						t.Fatalf("%s status=%s stage=%s message=%s", request.Action, job.Status, job.Stage, job.Message)
+					}
+					if job.Status == "succeeded" {
+						checks = append(checks, request.Action+" completed by native worker")
+						return job
+					}
+				}
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			case <-time.After(2 * time.Second):
+			}
+		}
+		t.Fatalf("%s worker timed out", request.Action)
+		return contract.VMJob{}
+	}
+	waitJob(contract.VMRequest{Action: "install"})
+	if !installUnitObserved {
+		t.Fatal("real bounded transient systemd install worker was not observed")
+	}
+	environment := service.Environment(ctx)
+	if !environment.Ready {
+		t.Fatalf("native runtime not ready: %+v", environment)
+	}
+	checks = append(checks, "native KVM runtime ready")
+	waitJob(contract.VMRequest{Action: "prepare"})
+	private := t.TempDir()
+	keyFile := filepath.Join(private, "id_ed25519")
+	run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", keyFile)
+	public, err := os.ReadFile(keyFile + ".pub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := waitJob(contract.VMRequest{Action: "create", Name: name, Source: "cloud", Image: "debian-12", Pool: "default", Network: "default", CPUs: 1, MemoryMiB: 1024, DiskGiB: 8, Username: "kpanelqa", PublicKey: strings.TrimSpace(string(public))})
+	var machine contract.VirtualMachine
+	address := ""
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		snapshot, e := service.Snapshot(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, item := range snapshot.Machines {
+			if item.Name == name && item.ID == created.MachineID {
+				machine = item
+				for _, ip := range item.Addresses {
+					parsed := net.ParseIP(ip)
+					if parsed != nil && parsed.IsPrivate() && parsed.To4() != nil {
+						address = ip
+						break
+					}
+				}
+			}
+		}
+		if address != "" {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if address == "" {
+		t.Fatal("native guest did not obtain a private DHCP address")
+	}
+	sshArgs := []string{"-i", keyFile, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=5", "kpanelqa@" + address}
+	loggedIn := false
+	deadline = time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		b, e := runner.Run(ctx, nil, "ssh", append(append([]string{}, sshArgs...), "printf KPANEL_NATIVE_LOGIN")...)
+		if e == nil && strings.Contains(string(b), "KPANEL_NATIVE_LOGIN") {
+			loggedIn = true
+			break
+		}
+		time.Sleep(3 * time.Second)
+	}
+	if !loggedIn {
+		t.Fatal("real guest SSH login did not complete")
+	}
+	checks = append(checks, "real Debian guest boot and SSH login")
+	guestNet := `python3 -c 'import socket,urllib.request; socket.getaddrinfo("deb.debian.org",443); r=urllib.request.urlopen("https://deb.debian.org/debian/README",timeout=30); assert r.status==200 and r.read(1024); print("KPANEL_GUEST_NAT_OK")'`
+	output := run("ssh", append(append([]string{}, sshArgs...), guestNet)...)
+	if !strings.Contains(output, "KPANEL_GUEST_NAT_OK") {
+		t.Fatal("guest DNS/NAT proof absent")
+	}
+	checks = append(checks, "guest DNS and HTTPS egress through libvirt NAT")
+	url := os.Getenv("KPANEL_NATIVE_DOCKER_URL")
+	if !strings.HasPrefix(url, "http://127.0.0.1:") {
+		t.Fatal("loopback Docker proof required")
+	}
+	if !strings.Contains(run("curl", "-fsS", "--max-time", "10", url), "KPanel-native-"+key) {
+		t.Fatal("Docker published endpoint disrupted")
+	}
+	checks = append(checks, "Docker published endpoint works while guest NAT is active")
+	snapshot, err := service.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range snapshot.Machines {
+		if item.ID == machine.ID {
+			machine = item
+		}
+	}
+	waitJob(contract.VMRequest{Action: "delete", ID: machine.ID, ExpectedResourceVersion: machine.ResourceVersion, DeleteDisks: true})
+	snapshot, err = service.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range snapshot.Machines {
+		if item.ID == machine.ID {
+			t.Fatal("owned guest remained after delete")
+		}
+	}
+	for _, disk := range machine.Disks {
+		if disk.Device == "disk" {
+			if _, e := os.Stat(disk.Path); !os.IsNotExist(e) {
+				t.Fatalf("owned disk not removed: %v", e)
+			}
+		}
+	}
+	checks = append(checks, "owned guest and disk removed through native task")
+	result["environment"] = environment
+	result["systemdWorkerExecuted"] = true
+	result["nativeGuestNAT"] = true
+	result["status"] = "passed"
+	t.Log(fmt.Sprintf("native VM qualification passed: %d checks", len(checks)))
+}

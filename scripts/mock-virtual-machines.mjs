@@ -15,6 +15,13 @@ export async function handleMockVirtualMachines(request, response, url, { send, 
   }
   if (request.method !== 'POST' || url.pathname !== '/api/v1/virtual-machines/actions') return false
   const input = await readJSON(request)
+  if (!input || typeof input !== 'object' || Array.isArray(input)
+    || typeof input.requestId !== 'string' || !input.requestId || input.requestId.length > 128
+    || !['create', 'install', 'prepare', 'start', 'shutdown', 'reboot', 'poweroff', 'autostart', 'eject', 'delete'].includes(input.action)
+    || (input.name !== undefined && (typeof input.name !== 'string' || input.name.length > 80))) {
+    send(response, 422, { code: 'vm_invalid', title: 'Invalid mock action' })
+    return true
+  }
   const existing = requests.get(input.requestId)
   if (existing) { send(response, 202, existing); return true }
   if (jobs.some(job => ['queued', 'running'].includes(job.status))) { send(response, 429, { code: 'vm_busy', title: 'Task in progress' }); return true }
