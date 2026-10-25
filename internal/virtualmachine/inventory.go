@@ -63,6 +63,12 @@ func (s *Service) Environment(ctx context.Context) contract.VMEnvironment {
 	_, aptErr := s.runner.LookPath("apt-get")
 	_, initErr := s.runner.LookPath("systemctl")
 	e.Installable = aptErr == nil && initErr == nil && s.enabled
+	if _, err := s.runner.LookPath("virsh"); err == nil {
+		probe, cancel := context.WithTimeout(ctx, 3*time.Second)
+		_, connectErr := s.virsh(probe, "uri")
+		cancel()
+		e.Connected = connectErr == nil
+	}
 	if len(e.Missing) > 0 {
 		e.Reason = "dependencies_missing"
 		return e
@@ -110,7 +116,7 @@ func (s *Service) Snapshot(ctx context.Context) (contract.VMSnapshot, error) {
 		return r, err
 	}
 	r.Jobs = jobs
-	if !r.Environment.Ready {
+	if !r.Environment.Connected {
 		return r, nil
 	}
 	ids, err := s.virsh(ctx, "list", "--all", "--uuid")

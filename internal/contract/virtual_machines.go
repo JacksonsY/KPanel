@@ -35,6 +35,7 @@ type VMDisk struct {
 }
 
 type VMEnvironment struct {
+	Connected    bool     `json:"connected"`
 	Supported    bool     `json:"supported"`
 	Ready        bool     `json:"ready"`
 	Writable     bool     `json:"writable"`

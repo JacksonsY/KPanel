@@ -44,6 +44,6 @@ describe('virtual machine journey', () => {
   })
   it('renders English labels and an actual failed read', async () => {
     await setLocale('en-US',false);mocks.list.mockRejectedValue(new Error('Unavailable'))
-    const w=view();await flushPromises();expect(w.text()).toContain('Unavailable');expect(w.text()).toContain('Retry');expect(w.find('h1').text()).toBe('Virtual machines')
+    const w=view();await flushPromises();expect(w.text()).toContain('Unavailable');await vi.waitFor(() => expect(w.text()).toContain('Retry'));expect(w.find('h1').text()).toBe('Virtual machines')
   })
 })

@@ -8,7 +8,7 @@ export interface VMJob {
   status: string; stage: string; message: string; createdAt: string; updatedAt: string
 }
 export interface VMSnapshot {
-  environment: { supported: boolean; ready: boolean; writable: boolean; installable: boolean; reason: string; architecture: string; missing: string[]; cpus: number; memoryMiB: number }
+  environment: { connected?: boolean; supported: boolean; ready: boolean; writable: boolean; installable: boolean; reason: string; architecture: string; missing: string[]; cpus: number; memoryMiB: number }
   machines: VirtualMachine[]; networks: { name: string }[]; pools: { name: string }[]
   images: { name: string; path: string; kind: string }[]; jobs: VMJob[]; observedAt: string; truncated: boolean
 }

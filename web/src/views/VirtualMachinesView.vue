@@ -151,7 +151,7 @@ onBeforeUnmount(pause)
         <button v-if="snapshot.environment.installable" class="button button--primary" :disabled="!writable" @click="installOpen = true; formError = ''">{{ t('install') }}</button>
       </section>
       <p v-if="!snapshot.environment.writable" class="vm-alert">{{ t('readOnly') }}</p>
-      <template v-if="snapshot.environment.ready">
+      <template v-if="snapshot.environment.ready || snapshot.environment.connected">
         <section class="vm-summary" :aria-label="t('resources')"><div><strong>{{ snapshot.machines.length }}</strong><span>{{ t('title') }}</span></div><div><strong>{{ snapshot.machines.filter(m => m.state === 'running').length }}</strong><span>{{ t('running') }}</span></div><div><strong>{{ snapshot.environment.cpus }} CPU · {{ Math.round(snapshot.environment.memoryMiB / 1024) }} GiB</strong><span>{{ t('capacityHint') }}</span></div></section>
         <div class="vm-toolbar"><label class="vm-search"><Search :size="17" /><input v-model="search" :placeholder="t('search')" :aria-label="t('search')" /></label><select v-model="filter" :aria-label="t('state')"><option value="all">{{ t('all') }}</option><option value="running">{{ t('running') }}</option><option value="shut off">{{ t('stopped') }}</option></select></div>
         <p v-if="snapshot.truncated" class="vm-alert">{{ t('truncated') }}</p>

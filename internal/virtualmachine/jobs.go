@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/atomicfile"
@@ -51,13 +52,18 @@ func (s *Service) readJob(id string) (jobRecord, error) {
 	if !contract.ValidVMID(id) {
 		return j, ErrInvalid
 	}
-	f, err := os.OpenFile(filepath.Join(s.dir, id+".json"), os.O_RDONLY, 0)
+	root, err := os.OpenRoot(s.dir)
+	if err != nil {
+		return j, err
+	}
+	defer root.Close()
+	f, err := root.Open(id + ".json")
 	if err != nil {
 		return j, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > 32<<10 || info.Mode().Perm()&0077 != 0 {
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 32<<10 || info.Mode().Perm()&0077 != 0 || !rootOwned(info) {
 		return j, errors.New("invalid task file")
 	}
 	d := json.NewDecoder(io.LimitReader(f, 32<<10))
@@ -181,6 +187,33 @@ func (s *Service) Start(ctx context.Context, r contract.VMRequest) (contract.VMJ
 			return contract.VMJob{}, ErrBusy
 		}
 	}
+	// A killed worker can leave an unlinked-to-any-domain download or temporary
+	// cloud-init input. Clean only this service's temporary prefixes while the
+	// cross-process worker lock proves no worker can still be using them.
+	workerUnlock, err := lockDirectory(s.dir, "worker.lock")
+	if err != nil {
+		return contract.VMJob{}, err
+	}
+	directory, err := os.Open(s.dir)
+	if err != nil {
+		workerUnlock()
+		return contract.VMJob{}, err
+	}
+	names, readErr := directory.Readdirnames(256)
+	directory.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		workerUnlock()
+		return contract.VMJob{}, readErr
+	}
+	for _, name := range names {
+		if strings.HasPrefix(name, ".cloud-image-") || strings.HasPrefix(name, ".cloud-init-") {
+			if err = os.Remove(filepath.Join(s.dir, name)); err != nil {
+				workerUnlock()
+				return contract.VMJob{}, err
+			}
+		}
+	}
+	workerUnlock()
 	if len(jobs) >= 32 {
 		for _, j := range jobs[24:] {
 			if terminal(j.Status) {
@@ -191,7 +224,7 @@ func (s *Service) Start(ctx context.Context, r contract.VMRequest) (contract.VMJ
 		}
 	}
 	if r.Action != "install" {
-		if e := s.Environment(ctx); !e.Ready {
+		if e := s.Environment(ctx); (r.Action == "create" && !e.Ready) || !e.Connected {
 			return contract.VMJob{}, ErrUnsupported
 		}
 		if r.Action != "create" {
