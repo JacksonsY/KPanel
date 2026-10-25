@@ -469,7 +469,7 @@ func TestLightNodeEnrollmentCarriesOptionalDisplayName(t *testing.T) {
 	if err := json.Unmarshal(created.Body.Bytes(), &enrollment); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(enrollment.Command, " --name '英国AMR'") {
+	if !strings.Contains(enrollment.Command, " --name '英国AMR' 3<<< '") {
 		t.Fatalf("optional display name missing from command: %q", enrollment.Command)
 	}
 }
