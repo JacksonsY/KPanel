@@ -2654,6 +2654,8 @@ export type CrossPanelFileTransferState =
 
 export interface CrossPanelFileTransferEvent {
   state: CrossPanelFileTransferState
+  /** Accepted background task; shared by the live view and restored task list. */
+  job?: FileRemoteDownloadJob
   loadedBytes?: number
   totalBytes?: number
   name?: string

@@ -4,11 +4,15 @@ import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import FilesView from './FilesView.vue'
 import { desktopWindowCloseKey } from '@/lib/desktopRouteKeys'
+import { CROSS_PANEL_FILE_DRAG_TYPE } from '@/lib/desktopFileShortcuts'
+import { watchFileTransferJob } from '@/lib/fileTransferJob'
+import type { FileRemoteDownloadJob } from '@/types/api'
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   entry: vi.fn(),
   text: vi.fn(),
+  transferFromPanel: vi.fn(),
   remoteDownload: vi.fn(),
   createRemoteDownloadJob: vi.fn(),
   remoteDownloadJobs: vi.fn(),
@@ -46,7 +50,7 @@ vi.mock('@/lib/api', () => ({
       text: mocks.text,
       write: vi.fn(),
       action: vi.fn(),
-      transferFromPanel: vi.fn(),
+      transferFromPanel: mocks.transferFromPanel,
       trash: vi.fn(),
       upload: vi.fn(),
       contentUrl: vi.fn(() => ''),
@@ -690,6 +694,53 @@ describe('FilesView host switcher', () => {
 })
 
 describe('FilesView remote download lifecycle', () => {
+  it('renders one durable copy before close and restores the same failed record on reopen', async () => {
+    vi.useFakeTimers()
+    mocks.route.query = { path: '/home' }
+    const job = {
+      id: 'b'.repeat(32), source: `kpanel://${'a'.repeat(32)}`, sourceKind: 'cross-host',
+      targetDirectory: '/home', name: 'backup.tar.gz', state: 'transferring',
+      loadedBytes: 1024, totalBytes: 4096,
+      createdAt: '2026-10-25T00:00:00Z', updatedAt: '2026-10-25T00:00:01Z',
+    } as FileRemoteDownloadJob
+    const watcher = { get: vi.fn(async () => job), cancel: vi.fn() }
+    mocks.remoteDownloadJobs.mockResolvedValue({ items: [job] }).mockResolvedValueOnce({ items: [] })
+    mocks.transferFromPanel.mockImplementation((_input, onEvent, signal) => watchFileTransferJob(job, watcher, onEvent, signal))
+    let wrapper = shallowMount(FilesView, { attachTo: document.body })
+    try {
+      await flushPromises()
+      const descriptor = JSON.stringify({ version: 1, sourceNodeId: 'a'.repeat(32),
+        name: job.name, path: `/home/${job.name}`, kind: 'file', resourceVersion: 'sha256:source' })
+      await wrapper.get('.file-browser').trigger('drop', { dataTransfer: {
+        types: [CROSS_PANEL_FILE_DRAG_TYPE], files: [],
+        getData: (type: string) => type === CROSS_PANEL_FILE_DRAG_TYPE ? descriptor : '',
+      } })
+      await flushPromises()
+      expect(mocks.transferFromPanel).toHaveBeenCalledOnce()
+      expect(wrapper.findAll('.remote-download-task')).toHaveLength(1)
+      expect(wrapper.find('.file-transfer-status').exists()).toBe(false)
+      expect(wrapper.get('.remote-download-task__phase').text()).toBe('正在复制')
+      expect(wrapper.get('progress').attributes('aria-label')).toBe('复制进度 25%')
+      expect(wrapper.text()).not.toContain('kpanel://')
+      wrapper.unmount()
+      await flushPromises()
+      expect(watcher.cancel).not.toHaveBeenCalled()
+      expect(mocks.cancelRemoteDownloadJob).not.toHaveBeenCalled()
+
+      mocks.remoteDownloadJobs.mockResolvedValue({ items: [{ ...job, state: 'error', code: 'file_transfer_failed' }] })
+      wrapper = shallowMount(FilesView, { attachTo: document.body })
+      await flushPromises()
+      expect(wrapper.findAll('.remote-download-task')).toHaveLength(1)
+      expect(wrapper.find('.file-transfer-status').exists()).toBe(false)
+      expect(wrapper.get('.remote-download-task__phase').text()).toBe('复制失败')
+      expect(wrapper.text()).toContain('重新复制会新建任务')
+      expect(wrapper.get('.remote-download-task__diagnostics').text()).toContain('file_transfer_failed')
+      expect(wrapper.text()).not.toContain('远程下载失败')
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
+  })
   it('backs off a failed active-task poll for ten seconds', async () => {
     vi.useFakeTimers()
     const activeJob = {
@@ -768,7 +819,7 @@ describe('FilesView remote download lifecycle', () => {
 
     expect(mocks.remoteDownloadJobs).toHaveBeenCalledOnce()
     expect(wrapper.text()).toContain('file.bin')
-    expect(wrapper.text()).toContain('关闭页面后仍会继续')
+    expect(wrapper.text()).toContain('关闭或刷新页面后仍会继续')
     const phase = wrapper.get('.remote-download-task__phase')
     expect(phase.attributes()).toMatchObject({
       role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true',

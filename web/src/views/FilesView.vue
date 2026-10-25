@@ -493,15 +493,25 @@ const fileTransferState = ref<{
   count: number
   phase: 'running' | 'success' | 'partial' | 'cancelled' | 'error'
   remote?: boolean
+  jobId?: string
   completed?: number
   currentName?: string
   detail?: string
 }>()
+// A single accepted transfer is rendered by its durable job, including after refresh.
+const fileTransferStatusVisible = computed(() => {
+  const state = fileTransferState.value
+  return Boolean(state && !(state.remote && state.count === 1 && state.jobId))
+})
+const fileActivityVisible = computed(() => remoteDownloadTasksVisible.value
+  || fileTransferStatusVisible.value || uploadTasks.value.length > 0)
+const browserFileOperationRunning = computed(() => uploadTasks.value.some((task) => task.phase === 'running')
+  || fileTransferState.value?.phase === 'running' && !fileTransferState.value.remote)
 const fileStatusStackVisible = computed(() => Boolean(
   clipboard.value?.entries.length
   || remoteDownloadTasksVisible.value
   || archiveTools.value?.hasJobs
-  || fileTransferState.value
+  || fileTransferStatusVisible.value
   || uploadTasks.value.length,
 ))
 const desktopAdding = ref(false)
@@ -589,10 +599,11 @@ function remoteDownloadJobProgressLabel(job: FileRemoteDownloadJob): string {
   const progress = remoteDownloadJobProgress(job)
   return progress === undefined
     ? remoteDownloadJobStateLabel(job)
-    : i18n.t('files.remoteDownload.progressAria', { progress })
+    : i18n.t(job.sourceKind === 'cross-host' ? 'files.transfer.progressAria' : 'files.remoteDownload.progressAria', { progress })
 }
 
 function remoteDownloadJobStateLabel(job: FileRemoteDownloadJob): string {
+  if (job.sourceKind === 'cross-host') return i18n.t(`files.transfer.state.${job.state}`)
   switch (job.state) {
     case 'queued':
       return i18n.t('files.remoteDownload.phaseQueued')
@@ -615,6 +626,12 @@ function remoteDownloadJobStateLabel(job: FileRemoteDownloadJob): string {
   }
 }
 
+function remoteDownloadJobTarget(job: FileRemoteDownloadJob): string {
+  return i18n.t(job.sourceKind === 'cross-host' ? 'files.transfer.copyTarget' : 'files.transfer.downloadTarget', {
+    target: job.targetDirectory,
+  })
+}
+
 function remoteDownloadJobDetail(job: FileRemoteDownloadJob): string {
   if (job.state === 'interrupted') return i18n.t('files.remoteDownload.interruptedDetail')
   if (job.state === 'cancelled') return i18n.t('files.remoteDownload.cancelledDetail')
@@ -630,6 +647,7 @@ const fileTransferTitle = computed(() => {
   const state = fileTransferState.value
   if (!state) return ''
   if (state.remote) {
+    if (state.phase === 'running' && state.count > 1) return i18n.t('files.transfer.batchProgress', { completed: state.completed || 0, count: state.count })
     if (state.phase === 'running') return `正在从另一台主机复制 ${state.completed || 0}/${state.count} 项`
     if (state.phase === 'success') return `跨主机复制完成（${state.count} 项）`
     if (state.phase === 'cancelled') return '跨主机复制已取消'
@@ -790,6 +808,12 @@ function remoteDownloadErrorDetail(code?: string, fallback = ''): string {
     case 'remote_download_timeout':
     case 'remote_download_idle_timeout':
       return i18n.t('files.remoteDownload.error.timeout')
+    case 'source_changed':
+      return i18n.t('files.transfer.error.sourceChanged')
+    case 'source_unavailable':
+      return i18n.t('files.transfer.error.sourceUnavailable')
+    case 'file_transfer_failed':
+      return i18n.t('files.transfer.error.interrupted')
     case 'remote_download_too_large':
       return i18n.t('files.remoteDownload.error.tooLarge')
     case 'target_unavailable':
@@ -1644,12 +1668,14 @@ async function transferCrossPanelFileDrop(event: DragEvent, target: string): Pro
       payload,
       target,
       fileAPI.value.transferFromPanel,
-      ({ source, completed }) => {
+      ({ source, completed, event }) => {
         if (!isCurrentFileTransfer(sequence) || fileTransferController !== controller || controller.signal.aborted) return
+        if (event.job) upsertRemoteDownloadJob(event.job)
         if (completed === 0 && remoteDownloadPollTimer === undefined && !remoteDownloadJobsController) scheduleRemoteDownloadPoll(100)
         fileTransferState.value = {
           mode: 'copy', target, count: total, phase: 'running', remote: true,
           completed, currentName: source.name,
+          jobId: event.job?.id,
         }
       },
       controller.signal,
@@ -1665,6 +1691,7 @@ async function transferCrossPanelFileDrop(event: DragEvent, target: string): Pro
         : result.failed.length ? 'partial' : 'success'
     fileTransferState.value = {
       mode: 'copy', target, count: total, phase, remote: true,
+      jobId: fileTransferState.value?.jobId,
       completed, currentName: result.succeeded.at(-1)?.entry.name,
       detail: result.cancelled
         ? `已完成的 ${result.succeeded.length} 项会保留在目标目录。`
@@ -2368,6 +2395,7 @@ function scheduleRemoteDownloadPoll(delay = remoteDownloadPollDelay): void {
 
 function replaceRemoteDownloadJobs(jobs: FileRemoteDownloadJob[]): void {
   const previous = new Map(remoteDownloadJobs.value.map((job) => [job.id, job]))
+  jobs = jobs.map((job) => latestRemoteDownloadJob(previous.get(job.id), job))
   const initialLoad = !remoteDownloadJobsInitialized
   remoteDownloadJobsInitialized = true
   remoteDownloadJobs.value = jobs
@@ -2396,7 +2424,17 @@ function replaceRemoteDownloadJobs(jobs: FileRemoteDownloadJob[]): void {
 }
 
 function upsertRemoteDownloadJob(job: FileRemoteDownloadJob): void {
-  remoteDownloadJobs.value = [job, ...remoteDownloadJobs.value.filter((item) => item.id !== job.id)]
+  const current = remoteDownloadJobs.value.find((item) => item.id === job.id)
+  const latest = latestRemoteDownloadJob(current, job)
+  remoteDownloadJobs.value = current
+    ? remoteDownloadJobs.value.map((item) => item.id === job.id ? latest : item)
+    : [latest, ...remoteDownloadJobs.value]
+}
+
+function latestRemoteDownloadJob(current: FileRemoteDownloadJob | undefined, incoming: FileRemoteDownloadJob): FileRemoteDownloadJob {
+  if (current && (!isRemoteDownloadJobActive(current) && isRemoteDownloadJobActive(incoming)
+    || Date.parse(current.updatedAt) > Date.parse(incoming.updatedAt))) return current
+  return incoming
 }
 
 async function loadRemoteDownloadJobs(silent = false): Promise<void> {
@@ -2405,11 +2443,17 @@ async function loadRemoteDownloadJobs(silent = false): Promise<void> {
   remoteDownloadJobsController?.abort()
   const controller = new AbortController()
   remoteDownloadJobsController = controller
+  const observedAtStart = new Map(remoteDownloadJobs.value.map((job) => [job.id, job]))
   if (!silent) remoteDownloadJobsLoading.value = true
   try {
     const result = await api.files.remoteDownloadJobs(controller.signal)
     if (unmounted || controller.signal.aborted || remoteDownloadJobsController !== controller) return
-    replaceRemoteDownloadJobs(result.items.filter((job) => (job.targetHostId || '') === fileHostId.value))
+    const jobs = new Map(result.items.filter((job) => (job.targetHostId || '') === fileHostId.value).map((job) => [job.id, job]))
+    // A list read started before job creation must not erase its accepted response.
+    for (const job of remoteDownloadJobs.value) {
+      if (observedAtStart.get(job.id) !== job) jobs.set(job.id, latestRemoteDownloadJob(job, jobs.get(job.id) || job))
+    }
+    replaceRemoteDownloadJobs([...jobs.values()])
     remoteDownloadJobsError.value = undefined
   } catch (error) {
     if (unmounted || controller.signal.aborted || remoteDownloadJobsController !== controller) return
@@ -3271,16 +3315,19 @@ onBeforeUnmount(() => {
       />
       <Transition name="slide">
         <section
-          v-if="remoteDownloadTasksVisible"
+          v-if="fileActivityVisible"
           class="remote-download-tasks"
           aria-labelledby="remote-download-tasks-title"
         >
           <header class="remote-download-tasks__header">
             <div>
               <strong id="remote-download-tasks-title">{{ i18n.t('files.transfer.tasksTitle') }}</strong>
-              <span>{{ i18n.t('files.remoteDownload.tasksDescription') }}</span>
+              <span v-if="activeRemoteDownloadCount > 0">{{ i18n.t('files.transfer.backgroundHint') }}</span>
+              <span v-if="browserFileOperationRunning">{{ i18n.t('files.transfer.browserHint') }}</span>
+              <span v-if="fileTransferState?.remote && fileTransferState.count > 1 && fileTransferState.phase === 'running'">{{ i18n.t('files.transfer.batchHint') }}</span>
             </div>
             <button
+              v-if="remoteDownloadTasksVisible"
               type="button"
               class="remote-download-tasks__refresh"
               :disabled="remoteDownloadJobsLoading"
@@ -3318,8 +3365,8 @@ onBeforeUnmount(() => {
                   <strong :title="job.name || i18n.t('files.remoteDownload.unnamedTask')">
                     {{ job.name || i18n.t('files.remoteDownload.unnamedTask') }}
                   </strong>
-                  <small :title="`${job.source} · ${job.targetDirectory}`">
-                    {{ job.source }} · {{ job.targetDirectory }}
+                  <small :title="remoteDownloadJobTarget(job)">
+                    {{ remoteDownloadJobTarget(job) }}
                   </small>
                 </div>
                 <div class="remote-download-task__status-line">
@@ -3337,6 +3384,14 @@ onBeforeUnmount(() => {
                 <span v-if="remoteDownloadJobDetail(job)" class="remote-download-task__detail">
                   {{ remoteDownloadJobDetail(job) }}
                 </span>
+                <span v-if="job.sourceKind === 'cross-host' && ['error', 'interrupted', 'cancelled'].includes(job.state)" class="remote-download-task__detail">
+                  {{ i18n.t('files.transfer.failedHint') }}
+                </span>
+                <details v-if="job.code" class="remote-download-task__diagnostics">
+                  <summary>{{ i18n.t('files.transfer.errorDetails') }}</summary>
+                  <span>{{ i18n.t('files.transfer.errorCode', { code: job.code }) }}</span>
+                  <span>{{ i18n.t('files.transfer.taskId', { id: job.id }) }}</span>
+                </details>
                 <progress
                   v-if="isRemoteDownloadJobActive(job)"
                   :max="job.totalBytes || 1"
@@ -3363,22 +3418,18 @@ onBeforeUnmount(() => {
                 >
                   {{ remoteDownloadPendingActions.has(job.id)
                     ? i18n.t('files.remoteDownload.clearing')
-                    : i18n.t('files.remoteDownload.clearTask') }}
+                    : i18n.t('files.transfer.dismiss') }}
                 </button>
               </div>
             </li>
           </ul>
-        </section>
-      </Transition>
-
-      <Transition name="slide">
-        <section
-          v-if="fileTransferState || uploadTasks.length"
+        <div
+          v-if="fileTransferStatusVisible || uploadTasks.length"
           class="file-activity-stack"
           aria-label="文件操作状态"
         >
           <div
-            v-if="fileTransferState"
+            v-if="fileTransferStatusVisible && fileTransferState"
             class="file-activity-row file-transfer-status"
             :class="`file-activity-row--${fileTransferState.phase}`"
             :role="['partial', 'error'].includes(fileTransferState.phase) ? 'alert' : 'status'"
@@ -3394,7 +3445,7 @@ onBeforeUnmount(() => {
               <small :title="fileTransferState.currentName
                 ? `${fileTransferState.currentName} → ${fileTransferState.target}`
                 : fileTransferState.target">
-                {{ fileTransferState.currentName
+                {{ fileTransferState.currentName && !(fileTransferState.remote && fileTransferState.count > 1 && fileTransferState.jobId)
                   ? `${fileTransferState.currentName} → ${fileTransferState.target}`
                   : fileTransferState.target }}
               </small>
@@ -3449,6 +3500,7 @@ onBeforeUnmount(() => {
               </template>
             </span>
           </div>
+        </div>
         </section>
       </Transition>
       </div>
@@ -4571,7 +4623,6 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 6px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
@@ -4828,27 +4879,41 @@ onBeforeUnmount(() => {
   display: flex;
   min-width: 0;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .remote-download-task__summary strong {
   flex: 0 1 auto;
-  overflow: hidden;
   color: var(--text);
   font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .remote-download-task__summary small {
   min-width: 0;
   flex: 1 1 auto;
-  overflow: hidden;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.remote-download-task__diagnostics {
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.remote-download-task__diagnostics summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.remote-download-task__diagnostics span {
+  display: block;
+  user-select: text;
 }
 
 .remote-download-task__status-line {

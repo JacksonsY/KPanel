@@ -4,6 +4,19 @@ import { watchFileTransferJob } from './fileTransferJob'
 
 const job = { id: 'a'.repeat(32), state: 'transferring', sourceKind: 'cross-host', source: 'kpanel://source', targetDirectory: '/home', targetHostId: 'target' } as FileRemoteDownloadJob
 describe('background transfer observation', () => {
+  it('publishes the same durable job identity and final snapshot to the activity list', async () => {
+    vi.useFakeTimers()
+    try {
+      const entry = { name: 'file.bin', path: '/home/file.bin', kind: 'file' } as FileEntry
+      const complete = { ...job, state: 'complete', entry, loadedBytes: 42 } as FileRemoteDownloadJob
+      const onEvent = vi.fn()
+      const operation = watchFileTransferJob(job, { get: vi.fn(async () => complete), cancel: vi.fn() }, onEvent)
+      expect(onEvent.mock.calls[0]?.[0]).toMatchObject({ state: 'transferring', job })
+      await vi.runAllTimersAsync()
+      await expect(operation).resolves.toEqual(entry)
+      expect(onEvent.mock.calls.at(-1)?.[0]).toMatchObject({ state: 'complete', job: complete })
+    } finally { vi.useRealTimers() }
+  })
   it('detaches on close without cancelling the accepted transfer', async () => {
     const controller = new AbortController()
     controller.abort('file-transfer-detach')
