@@ -14,6 +14,22 @@ vi.mock('@/views/AppScriptView.vue', () => ({
 }))
 
 describe('desktop window route', () => {
+  it('keeps site monitoring navigation and its filters in the Sites window', async () => {
+    const handoff = vi.fn(() => true)
+    const router = createWindowRouter('/sites', vi.fn(), handoff)
+    await router.isReady()
+    await router.push('/sites/monitor?site=example.com')
+    expect(router.currentRoute.value.path).toBe('/sites/monitor')
+    expect(router.currentRoute.value.name).toBe('sites-monitor')
+    expect(router.currentRoute.value.query.site).toBe('example.com')
+    expect(handoff).not.toHaveBeenCalled()
+    await synchronizeWindowRoute(router, '/sites/monitor?site=other.example')
+    expect(router.currentRoute.value.fullPath).toBe('/sites/monitor?site=other.example')
+    await router.push('/sites/environment')
+    expect(router.currentRoute.value.path).toBe('/sites/environment')
+    expect(handoff).not.toHaveBeenCalled()
+  })
+
   beforeEach(() => {
     document.head.innerHTML = ''
     window.scrollTo = vi.fn()

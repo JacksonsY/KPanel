@@ -221,6 +221,21 @@ describe('desktop mode', () => {
     expect(window.localStorage.getItem('kpanel:desktop-window-sizes:v1')).toContain('1040')
   })
 
+  it('reuses the Sites window for monitoring and restores its route and title', () => {
+    setupViewport(1440, 900)
+    initializeDesktopMode(window.localStorage, { width: 1440, height: 900 })
+    const desktop = useDesktopMode()
+    const sites = desktop.openWindow('/sites', 'route.sites', false)
+    const monitoring = desktop.openWindow('/sites/monitor?site=example.com', 'route.siteMonitoring', false, true)
+    expect(monitoring).toBe(sites)
+    expect(desktop.windows.value).toHaveLength(1)
+    expect(desktop.windows.value[0]).toMatchObject({ path: '/sites/monitor?site=example.com', titleKey: 'route.siteMonitoring' })
+    resetDesktopModeForTest()
+    initializeDesktopMode(window.localStorage, { width: 1440, height: 900 })
+    expect(useDesktopMode().windows.value).toHaveLength(1)
+    expect(useDesktopMode().windows.value[0]).toMatchObject({ path: '/sites/monitor?site=example.com', titleKey: 'route.siteMonitoring' })
+  })
+
   it('opens the sponsored page wide enough for its banner wall until resized', () => {
     setupViewport(1920, 1080)
     initializeDesktopMode(window.localStorage, { width: 1920, height: 1080 })
