@@ -1,6 +1,9 @@
 import type { FileEntry } from '@/types/api'
 import { FileTransferHash } from './fileTransferHash'
 
+export interface FileUploadBytes { loadedBytes: number; totalBytes: number; baseline?: boolean }
+export type FileUploadProgress = (percent: number, bytes?: FileUploadBytes) => void
+
 export interface FileReceiveSession {
   id: string
   state: 'receiving' | 'committing' | 'complete'
@@ -15,7 +18,7 @@ export interface FileReceiveSession {
 export interface FileUploadReceiver {
   command: (body: Record<string, unknown>, signal?: AbortSignal) => Promise<FileReceiveSession>
   status: (id: string, sourceKey: string, signal?: AbortSignal) => Promise<FileReceiveSession>
-  chunk: (id: string, sourceKey: string, offset: number, digest: string, blob: Blob, progress: (percent: number) => void, signal?: AbortSignal) => Promise<FileReceiveSession>
+  chunk: (id: string, sourceKey: string, offset: number, digest: string, blob: Blob, progress: FileUploadProgress, signal?: AbortSignal) => Promise<FileReceiveSession>
   legacy: () => Promise<FileEntry>
 }
 
@@ -89,7 +92,7 @@ function validate(session: FileReceiveSession, file: File): void {
 
 export async function uploadFileInSession(
   directory: string, file: File, overwrite: boolean, hostId: string,
-  receiver: FileUploadReceiver, onProgress?: (percent: number) => void, signal?: AbortSignal,
+  receiver: FileUploadReceiver, onProgress?: FileUploadProgress, signal?: AbortSignal,
 ): Promise<FileEntry> {
   aborted(signal)
   const identity = new FileTransferHash().update(new TextEncoder().encode(JSON.stringify([hostId, directory, file.name, file.size, file.lastModified, overwrite])))
@@ -128,15 +131,17 @@ export async function uploadFileInSession(
       hasher.update(await readBlob(file.slice(offset, Math.min(offset + chunkBytes, session.offset)), signal))
     }
     if (hasher.hex() !== session.prefixSha256) throw new Error('已接收的文件内容发生变化，请重新上传。')
-    onProgress?.(file.size ? Math.min(99, Math.round(session.offset / file.size * 100)) : 0)
+    onProgress?.(file.size ? Math.min(99, Math.round(session.offset / file.size * 100)) : 0,
+      { loadedBytes: session.offset, totalBytes: file.size, baseline: session.offset > 0 })
     while (current.offset < file.size) {
       aborted(signal)
       const offset: number = current.offset
       const blob = file.slice(offset, Math.min(offset + chunkBytes, file.size))
       const data = await readBlob(blob, signal)
       const digest = new FileTransferHash().update(data).hex()
-      const next: FileReceiveSession = await retry(() => receiver.chunk(id!, sourceKey, offset, digest, blob, (percent) => {
-        onProgress?.(Math.min(99, Math.round((offset + blob.size * percent / 100) / file.size * 100)))
+      const next: FileReceiveSession = await retry(() => receiver.chunk(id!, sourceKey, offset, digest, blob, (percent, bytes) => {
+        const loadedBytes = offset + Math.min(blob.size, Math.max(0, bytes?.loadedBytes ?? blob.size * percent / 100))
+        onProgress?.(Math.min(99, Math.round(loadedBytes / file.size * 100)), { loadedBytes, totalBytes: file.size })
       }, signal), signal)
       hasher.update(data)
       validate(next, file)
@@ -150,7 +155,7 @@ export async function uploadFileInSession(
     if (complete.id !== id || complete.state !== 'complete' || !entry || entry.kind !== 'file'
       || entry.path !== `${directory === '/' ? '' : directory}/${file.name}` || entry.sizeBytes !== file.size) throw new Error('文件提交结果无效，请刷新目录确认。')
     remember(sourceKey)
-    onProgress?.(100)
+    onProgress?.(100, { loadedBytes: file.size, totalBytes: file.size })
     return entry
   } catch (error) {
     const detach = signal?.aborted && signal.reason === 'file-transfer-detach'
