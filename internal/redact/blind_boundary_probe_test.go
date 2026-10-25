@@ -9,6 +9,10 @@ import (
 func TestBlindFragmentAndShellBoundaries(t *testing.T) {
 	cases := []struct{ name, input, known string }{
 		{"fragment-assignment", `API_TOKEN=prefix["OPAQUE_BODY"]suffix`, ""},
+		{"inline-command-substitution", `env API_TOKEN=$(printf %s OPAQUE_BODY) tool`, ""},
+		{"inline-flag-command", `curl --token $(printf %s OPAQUE_BODY)`, ""},
+		{"inline-parameter-expansion", `env API_TOKEN=${UNSET:-first OPAQUE_BODY last} tool`, ""},
+		{"inline-array", `declare -a API_TOKEN=(first OPAQUE_BODY last)`, ""},
 		{"fragment-inline-empty-assignment", `cmd API_TOKEN=["OPAQUE_BODY"]`, ""},
 		{"fragment-spaced-flag", `cmd --password ["OPAQUE_BODY"]`, ""},
 		{"fragment-attached-mysql", `mysql -p["OPAQUE_BODY"]`, ""},

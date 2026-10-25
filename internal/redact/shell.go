@@ -16,6 +16,7 @@ type shellLexicalState struct {
 	depth     int
 	joined    bool
 	uncertain bool
+	compound  bool
 }
 
 func (s *shellLexicalState) active() bool {
@@ -56,8 +57,10 @@ func (s *shellLexicalState) observe(value string) {
 		}
 		if b == '`' {
 			s.uncertain = true
+			s.compound = true
 		}
 		if b == '$' && i+1 < len(value) && (value[i+1] == '(' || value[i+1] == '{') {
+			s.compound = true
 			if s.depth == maxProjectionDepth {
 				s.uncertain = true
 				return
@@ -90,10 +93,23 @@ func (s *shellLexicalState) observe(value string) {
 			// body punctuation close a credential's outer command substitution;
 			// retain the uncertain boundary to the end of this bounded window.
 			s.uncertain = true
+			s.compound = true
 		}
 		if b == '$' && i+1 < len(value) && value[i+1] == '\'' {
+			s.compound = true
 			f.quote, f.ansi, f.word = '\'', true, true
 			i++
+			continue
+		}
+		if s.depth == 0 && b == '(' {
+			// Shell arrays/groups and process substitution are also compound
+			// values. Their spaces cannot terminate a sensitive inline word.
+			s.compound = true
+			s.depth = 1
+			if len(s.frames) == 1 {
+				s.frames = append(s.frames, shellFrame{})
+			}
+			s.frames[1] = shellFrame{parens: 1}
 			continue
 		}
 		if s.depth > 0 {

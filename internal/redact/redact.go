@@ -155,14 +155,15 @@ func normalizeRecordValue(value string) string {
 }
 
 type configurationContinuation struct {
-	quote      byte
-	yamlSingle bool
-	indent     int
-	block      bool
-	implicit   bool
-	layer      int
-	shell      bool
-	lex        shellLexicalState
+	quote          byte
+	yamlSingle     bool
+	indent         int
+	block          bool
+	implicit       bool
+	layer          int
+	shell          bool
+	lex            shellLexicalState
+	inlineCompound bool
 }
 
 func (c configurationContinuation) active() bool {
@@ -217,8 +218,8 @@ func (c *configurationContinuation) begin(value string, indent int, inlineSensit
 		if inlineSensitive {
 			var lex shellLexicalState
 			lex.observe(value)
-			if lex.active() {
-				*c = configurationContinuation{lex: lex, shell: true, layer: c.layer}
+			if lex.active() || lex.compound {
+				*c = configurationContinuation{lex: lex, shell: true, layer: c.layer, inlineCompound: lex.compound}
 			}
 		}
 		return
@@ -342,6 +343,9 @@ func redactConfigurations(sources []lexicalSource, parents []int, privateHidden,
 				value = joined
 			}
 			configuration.begin(value, source.indent, inlineSensitive[index] || source.sensitive || logicalHidden[index])
+			// A regex token boundary is insufficient for an inline compound
+			// shell value, even if it closes within this physical record.
+			hidden[index] = hidden[index] || configuration.inlineCompound
 			configuration.layer = source.layer
 		}
 		if configuration.active() {
