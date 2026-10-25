@@ -133,6 +133,47 @@ func TestSafeArgumentSummaryRedactsNestedValues(t *testing.T) {
 	}
 }
 
+func TestAIToolMixedCaseAuditSummary(t *testing.T) {
+	secret := "arbitrary-passphrase"
+	raw := json.RawMessage(`{"outer":[{"Command":["redis-cli","-a","arbitrary-passphrase","PING"],"ConTent":"arbitrary-passphrase","ApiKeY":"arbitrary-passphrase","NAME":"environment","VALUE":"arbitrary-passphrase"}]}`)
+	before := string(raw)
+	safe, _ := json.Marshal(safeArgumentSummary(raw))
+	if strings.Contains(string(safe), secret) || string(raw) != before {
+		t.Errorf("case-folded summary leaked or changed raw: %s", safe)
+	}
+	server, _ := newTestServer(t)
+	agent := &stubAgent{response: AgentResponse{StatusCode: 200, Body: []byte(`{"ok":true}`)}}
+	server.agent = agent
+	server.hostOps = newHostOperationService(server)
+	tools := &panelAITools{server: server}
+	arguments := json.RawMessage(`{"containerId":"0123456789ab","resourceVersion":"sha256:0000000000000000000000000000000000000000000000000000000000000000","Command":["redis-cli","-a","arbitrary-passphrase","PING"]}`)
+	if _, err := tools.Execute(context.Background(), ai.ToolExecutionContext{UserID: "admin", SessionID: "session", RunID: "run", ToolCallID: "call", Approved: true}, "host_docker_exec", arguments); err != nil {
+		t.Fatal(err)
+	}
+	calls := agent.snapshotCalls()
+	if len(calls) != 1 || !strings.Contains(string(calls[0].body), secret) {
+		t.Fatal("audit projection changed approved execution")
+	}
+	events, _, err := server.store.ListAudit(20, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, event := range events {
+		if event.Action != "ai.tool.host_docker_exec" {
+			continue
+		}
+		encoded, _ := json.Marshal(event)
+		if strings.Contains(string(encoded), secret) {
+			t.Fatalf("durable audit leaked: %s", encoded)
+		}
+		seen[event.Result] = true
+	}
+	if !seen["intent"] || !seen["success"] {
+		t.Fatalf("missing real audit lifecycle: %v", seen)
+	}
+}
+
 func TestAllAIToolSchemasExposeUniversalReasonMetadata(t *testing.T) {
 	definitions := (&panelAITools{}).Definitions()
 	if len(definitions) == 0 {

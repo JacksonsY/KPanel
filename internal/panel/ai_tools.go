@@ -726,16 +726,30 @@ func redactSummaryValue(value any) any {
 	switch typed := value.(type) {
 	case map[string]any:
 		summary := make(map[string]any, len(typed))
+		hasName := false
+		for key, item := range typed {
+			if strings.EqualFold(key, "name") {
+				_, hasName = item.(string)
+				if hasName {
+					break
+				}
+			}
+		}
 		for key, item := range typed {
 			// Environment entries carry their sensitive key in a sibling field.
 			// Do not let structured name/value pairs bypass string redaction.
-			if key == "value" {
-				if _, named := typed["name"].(string); named {
-					summary[key] = "[REDACTED]"
-					continue
+			if strings.EqualFold(key, "value") && hasName {
+				summary[key] = "[REDACTED]"
+				continue
+			}
+			drop := false
+			for protected := range topSecretSummaries {
+				if strings.EqualFold(key, protected) {
+					drop = true
+					break
 				}
 			}
-			if _, drop := topSecretSummaries[key]; drop {
+			if drop {
 				summary[key] = "[REDACTED]"
 				continue
 			}
