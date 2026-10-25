@@ -15,5 +15,5 @@ export interface VMSnapshot {
 export interface VMRequest {
   action: string; requestId: string; id?: string; name?: string; source?: string; image?: string
   pool?: string; network?: string; cpus?: number; memoryMiB?: number; diskGiB?: number
-  username?: string; publicKey?: string; autostart?: boolean; deleteDisks?: boolean; expectedResourceVersion?: string
+  username?: string; publicKey?: string; password?: string; autostart?: boolean; deleteDisks?: boolean; expectedResourceVersion?: string
 }

@@ -17,12 +17,14 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/contract"
 	"github.com/kejilion/kejilion-panel/internal/jobcontrol"
 	"github.com/kejilion/kejilion-panel/internal/redact"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/ssh"
 )
 
 type jobRecord struct {
 	contract.VMJob
-	Request contract.VMRequest `json:"request"`
+	Request      contract.VMRequest `json:"request"`
+	PasswordHash string             `json:"passwordHash,omitempty"`
 }
 type taskRunner struct{ Runner }
 
@@ -153,7 +155,7 @@ func (s *Service) Start(ctx context.Context, r contract.VMRequest) (contract.VMJ
 	if field, detail := contract.ValidateVMRequest(&r); field != "" {
 		return contract.VMJob{}, fmt.Errorf("%w: %s: %s", ErrInvalid, field, detail)
 	}
-	if r.Source == "cloud" {
+	if r.Source == "cloud" && r.PublicKey != "" {
 		if _, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(r.PublicKey)); err != nil || len(rest) > 0 {
 			return contract.VMJob{}, fmt.Errorf("%w: invalid SSH public key", ErrInvalid)
 		}
@@ -163,6 +165,8 @@ func (s *Service) Start(ctx context.Context, r contract.VMRequest) (contract.VMJ
 	if err := privateDirectory(s.dir); err != nil {
 		return contract.VMJob{}, err
 	}
+	password := r.Password
+	r.Password = ""
 	unlock, err := lockDirectory(s.dir, "submit.lock")
 	if err != nil {
 		return contract.VMJob{}, err
@@ -171,7 +175,11 @@ func (s *Service) Start(ctx context.Context, r contract.VMRequest) (contract.VMJ
 	if existing, err := s.readJob(r.RequestID); err == nil {
 		a, _ := json.Marshal(existing.Request)
 		b, _ := json.Marshal(r)
-		if string(a) != string(b) {
+		passwordMatches := password == "" && existing.PasswordHash == ""
+		if password != "" && existing.PasswordHash != "" {
+			passwordMatches = bcrypt.CompareHashAndPassword([]byte(existing.PasswordHash), []byte(password)) == nil
+		}
+		if string(a) != string(b) || !passwordMatches {
 			return contract.VMJob{}, ErrConflict
 		}
 		return existing.VMJob, nil
@@ -241,6 +249,14 @@ func (s *Service) Start(ctx context.Context, r contract.VMRequest) (contract.VMJ
 		return contract.VMJob{}, fmt.Errorf("%w: %v", ErrUnsupported, err)
 	}
 	j := jobRecord{VMJob: contract.VMJob{ID: r.RequestID, Action: r.Action, Name: r.Name, MachineID: r.ID, Status: "queued", Stage: "queued", CreatedAt: time.Now().UTC()}, Request: r}
+	if password != "" {
+		hash, hashErr := bcrypt.GenerateFromPassword([]byte(password), 12)
+		password = ""
+		if hashErr != nil {
+			return contract.VMJob{}, hashErr
+		}
+		j.PasswordHash = string(hash)
+	}
 	if r.Action == "create" {
 		j.MachineID = NewID()
 	}
@@ -273,7 +289,14 @@ func (s *Service) RunJob(ctx context.Context, id string) error {
 	if j.Status != "queued" {
 		return ErrConflict
 	}
-	if field, _ := contract.ValidateVMRequest(&j.Request); field != "" {
+	validation := j.Request
+	if j.PasswordHash != "" {
+		if _, err := bcrypt.Cost([]byte(j.PasswordHash)); err != nil {
+			return ErrInvalid
+		}
+		validation.Password = "stored-password-valid"
+	}
+	if field, _ := contract.ValidateVMRequest(&validation); field != "" {
 		return ErrInvalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)

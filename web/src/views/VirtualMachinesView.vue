@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 import { Monitor, Plus, RefreshCw, Search } from '@lucide/vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import VMConsole from '@/components/virtualmachines/VMConsole.vue'
@@ -19,6 +19,7 @@ const search = ref('')
 const filter = ref('all')
 const wizard = ref(false)
 const step = ref(0)
+const loginMethod = ref('password')
 const formError = ref('')
 const installOpen = ref(false)
 const detailID = ref('')
@@ -26,7 +27,7 @@ const consoleMachine = ref<VirtualMachine>()
 const selectedJob = ref<VMJob>()
 const confirmation = ref<{ action: string; machine: VirtualMachine }>()
 const deleteDisks = ref(false)
-const form = reactive({ name: '', source: 'cloud', image: 'debian-12', cpus: 2, memoryMiB: 2048, diskGiB: 20, pool: 'default', network: 'default', username: 'kpanel', publicKey: '', autostart: false })
+const form = reactive({ name: '', source: 'cloud', image: 'debian-12', cpus: 2, memoryMiB: 2048, diskGiB: 20, pool: 'default', network: 'default', username: 'kpanel', publicKey: '', password: '', autostart: false })
 let controller: AbortController | undefined
 let timer: ReturnType<typeof setTimeout> | undefined
 let active = true
@@ -93,7 +94,9 @@ function validStep(): boolean {
     else if (form.source === 'iso' && !isoImages.value.some(i => i.name === form.image)) formError.value = t('noISO')
   } else {
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/.test(form.name)) formError.value = t('invalidName')
-    else if (form.source === 'cloud' && (!/^[a-z][a-z0-9_-]{0,30}$/.test(form.username) || !/^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256) [A-Za-z0-9+/=]+(?: [^\r\n]*)?$/.test(form.publicKey.trim()))) formError.value = t('keyRequired')
+    else if (form.source === 'cloud' && !/^[a-z][a-z0-9_-]{0,30}$/.test(form.username)) formError.value = t('keyRequired')
+    else if (form.source === 'cloud' && loginMethod.value === 'key' && !/^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256) [A-Za-z0-9+/=]+(?: [^\r\n]*)?$/.test(form.publicKey.trim())) formError.value = t('keyRequired')
+    else if (form.source === 'cloud' && loginMethod.value === 'password' && (new TextEncoder().encode(form.password).length < 12 || new TextEncoder().encode(form.password).length > 72 || /[\r\n\x00]/.test(form.password))) formError.value = t('passwordHint')
     else if (![form.cpus, form.memoryMiB, form.diskGiB].every(Number.isInteger) || form.cpus < 1 || form.cpus > 256 || form.memoryMiB < 256 || form.memoryMiB > 1048576 || form.diskGiB < 4 || form.diskGiB > 65536) formError.value = t('vm_invalid_request')
   }
   return !formError.value
@@ -116,7 +119,7 @@ async function submit(input: Omit<VMRequest, 'requestId'>): Promise<void> {
 }
 async function create(): Promise<void> {
   if (!validStep()) return
-  await submit({ action: 'create', ...form, publicKey: form.source === 'cloud' ? form.publicKey.trim() : '', username: form.source === 'cloud' ? form.username : '' })
+  await submit({ action: 'create', ...form, publicKey: form.source === 'cloud' && loginMethod.value === 'key' ? form.publicKey.trim() : '', password: form.source === 'cloud' && loginMethod.value === 'password' ? form.password : '', username: form.source === 'cloud' ? form.username : '' })
 }
 function confirm(action: string, machine: VirtualMachine): void { confirmation.value = { action, machine: { ...machine } }; deleteDisks.value = false; formError.value = '' }
 async function apply(): Promise<void> {
@@ -129,7 +132,8 @@ const confirmationHint = computed(() => {
   return action && ['delete', 'poweroff', 'shutdown', 'reboot', 'eject', 'autostart'].includes(action) ? t(`${action}Hint` as VMTextKey) : ''
 })
 function resume(): void { active = true; void load() }
-function pause(): void { active = false; clearTimeout(timer); controller?.abort(); consoleMachine.value = undefined }
+watch(wizard, open => { if (!open) { form.password = ''; requestCache = undefined } })
+function pause(): void { wizard.value = false; form.password = ''; active = false; clearTimeout(timer); controller?.abort(); consoleMachine.value = undefined }
 onMounted(resume)
 onActivated(() => { if (!active) resume() })
 onDeactivated(pause)
@@ -180,7 +184,7 @@ onBeforeUnmount(pause)
         <template v-else-if="step === 1">
           <label>{{ t('name') }}<input v-model="form.name" maxlength="63" required autocomplete="off" placeholder="my-server" /></label>
           <div class="vm-form-grid"><label>{{ t('cpus') }}<input v-model.number="form.cpus" type="number" min="1" max="256" required /></label><label>{{ t('memory') }}<input v-model.number="form.memoryMiB" type="number" min="256" max="1048576" step="256" required /></label><label>{{ t('disk') }}<input v-model.number="form.diskGiB" type="number" min="4" max="65536" required /></label></div>
-          <template v-if="form.source === 'cloud'"><label>{{ t('username') }}<input v-model="form.username" required autocomplete="off" maxlength="31" /></label><label>{{ t('publicKey') }}<textarea v-model="form.publicKey" required rows="3" maxlength="8192" spellcheck="false" :aria-description="t('keyHint')" /></label><p class="vm-muted">{{ t('keyHint') }}</p></template>
+          <template v-if="form.source === 'cloud'"><label>{{ t('username') }}<input v-model="form.username" required autocomplete="off" maxlength="31" /></label><label>{{ t('loginMethod') }}<select v-model="loginMethod"><option value="password">{{ t('passwordLogin') }}</option><option value="key">{{ t('keyLogin') }}</option></select></label><label v-if="loginMethod === 'password'">{{ t('loginPassword') }}<input v-model="form.password" type="password" autocomplete="new-password" required minlength="12" maxlength="72" /></label><p v-if="loginMethod === 'password'" class="vm-muted">{{ t('passwordHint') }}</p><label v-if="loginMethod === 'key'">{{ t('publicKey') }}<textarea v-model="form.publicKey" required rows="3" maxlength="8192" spellcheck="false" :aria-description="t('keyHint')" /></label><p v-if="loginMethod === 'key'" class="vm-muted">{{ t('keyHint') }}</p></template>
           <details><summary>{{ t('advanced') }}</summary><div class="vm-form-grid"><label>{{ t('pool') }}<select v-model="form.pool"><option v-for="pool in snapshot?.pools" :key="pool.name">{{ pool.name }}</option></select></label><label>{{ t('network') }}<select v-model="form.network"><option v-for="network in snapshot?.networks" :key="network.name">{{ network.name }}</option></select></label></div><p class="vm-muted">{{ t('networkHint') }}</p><label class="vm-check"><input v-model="form.autostart" type="checkbox" />{{ t('autostart') }}</label></details>
         </template>
         <template v-else><dl class="vm-review"><dt>{{ t('name') }}</dt><dd>{{ form.name }}</dd><dt>{{ t('image') }}</dt><dd>{{ form.image }}</dd><dt>{{ t('resources') }}</dt><dd>{{ form.cpus }} CPU · {{ form.memoryMiB }} MiB · {{ form.diskGiB }} GiB</dd><dt>{{ t('pool') }}</dt><dd>{{ form.pool }}</dd><dt>{{ t('network') }}</dt><dd>{{ form.network }}</dd><dt v-if="form.source === 'cloud'">{{ t('username') }}</dt><dd v-if="form.source === 'cloud'">{{ form.username }}</dd></dl><p class="vm-alert">{{ t('reviewHint') }}</p><p class="vm-muted">{{ t('readyHint') }}</p></template>

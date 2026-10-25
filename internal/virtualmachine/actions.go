@@ -149,7 +149,17 @@ func (s *Service) create(ctx context.Context, j *jobRecord, stage func(string) e
 		}
 		user, _ := json.Marshal(r.Username)
 		key, _ := json.Marshal(r.PublicKey)
-		data := fmt.Sprintf("#cloud-config\nusers:\n  - name: %s\n    groups: [sudo]\n    shell: /bin/bash\n    sudo: [\"ALL=(ALL) NOPASSWD:ALL\"]\n    lock_passwd: true\n    ssh_authorized_keys: [%s]\nssh_pwauth: false\ndisable_root: true\n", user, key)
+		data := fmt.Sprintf("#cloud-config\nusers:\n  - name: %s\n    groups: [sudo]\n    shell: /bin/bash\n    sudo: [\"ALL=(ALL) NOPASSWD:ALL\"]\n", user)
+		if j.PasswordHash != "" {
+			hash, _ := json.Marshal(j.PasswordHash)
+			data += fmt.Sprintf("    lock_passwd: false\n    hashed_passwd: %s\n", hash)
+		} else {
+			data += "    lock_passwd: true\n"
+		}
+		if r.PublicKey != "" {
+			data += fmt.Sprintf("    ssh_authorized_keys: [%s]\n", key)
+		}
+		data += fmt.Sprintf("ssh_pwauth: %t\ndisable_root: %t\n", j.PasswordHash != "", r.Username != "root")
 		temp, err := os.CreateTemp(s.dir, ".cloud-init-*")
 		if err != nil {
 			return err

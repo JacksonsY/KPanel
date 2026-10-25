@@ -80,6 +80,7 @@ type VMRequest struct {
 	DiskGiB                 int    `json:"diskGiB,omitempty"`
 	Username                string `json:"username,omitempty"`
 	PublicKey               string `json:"publicKey,omitempty"`
+	Password                string `json:"password,omitempty"`
 	Autostart               bool   `json:"autostart,omitempty"`
 	DeleteDisks             bool   `json:"deleteDisks,omitempty"`
 	ExpectedResourceVersion string `json:"expectedResourceVersion,omitempty"`
@@ -148,8 +149,14 @@ func ValidateVMRequest(r *VMRequest) (string, string) {
 				return "publicKey", "a user name and one SSH public key are required"
 			}
 			parts := strings.Fields(r.PublicKey)
-			if len(parts) < 2 || (parts[0] != "ssh-ed25519" && parts[0] != "ssh-rsa" && parts[0] != "ecdsa-sha2-nistp256") {
+			if r.PublicKey != "" && (len(parts) < 2 || (parts[0] != "ssh-ed25519" && parts[0] != "ssh-rsa" && parts[0] != "ecdsa-sha2-nistp256")) {
 				return "publicKey", "provide an OpenSSH public key"
+			}
+			if r.Password != "" && (len(r.Password) < 12 || len(r.Password) > 72 || strings.ContainsAny(r.Password, "\r\n\x00")) {
+				return "password", "use a 12–72 byte password"
+			}
+			if r.PublicKey == "" && r.Password == "" {
+				return "password", "provide a password or SSH public key"
 			}
 		} else if !vmName.MatchString(r.Image) || !strings.HasSuffix(strings.ToLower(r.Image), ".iso") {
 			return "image", "select an ISO volume from the storage pool"

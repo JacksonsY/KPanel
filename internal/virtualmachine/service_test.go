@@ -12,7 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"encoding/json"
 	"github.com/kejilion/kejilion-panel/internal/contract"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type fakeRunner struct {
@@ -233,5 +235,55 @@ func TestPoolRejectsUntrustedOwnerAncestorAndSymlink(t *testing.T) {
 	}
 	if err := trustedPoolDirectory(link); err == nil {
 		t.Fatal("accepted linked pool")
+	}
+}
+
+func TestPasswordIsHashedBeforeDurableSubmissionAndNeverProjected(t *testing.T) {
+	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
+		t.Skip("requires private root Linux task state")
+	}
+	runner := &fakeRunner{respond: func(args []string) ([]byte, error) {
+		if args[0] == "virsh" {
+			switch args[3] {
+			case "uri":
+				return []byte("qemu:///system"), nil
+			case "domcapabilities":
+				return []byte("<domain>kvm</domain>"), nil
+			}
+		}
+		return nil, nil
+	}}
+	s := New(Config{Enabled: true, StateDir: t.TempDir(), Runner: runner})
+	r := contract.VMRequest{Action: "create", RequestID: testID, Name: "password-test", Source: "cloud", Image: "debian-12", Pool: "default", Network: "default", CPUs: 1, MemoryMiB: 1024, DiskGiB: 20, Username: "kpanel", Password: "example-secret-password"}
+	job, err := s.Start(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(s.dir, testID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), r.Password) {
+		t.Fatal("plaintext password persisted")
+	}
+	stored, err := s.readJob(testID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte(r.Password)); err != nil {
+		t.Fatal("stored hash cannot authenticate chosen password")
+	}
+	public, _ := json.Marshal(job)
+	if strings.Contains(string(public), "password") || strings.Contains(string(public), stored.PasswordHash) {
+		t.Fatal("credential hash leaked into job projection")
+	}
+	before := len(runner.calls)
+	again, err := s.Start(context.Background(), r)
+	if err != nil || again.ID != job.ID || len(runner.calls) != before {
+		t.Fatalf("duplicate launched another worker: %v", err)
+	}
+	r.Password = "different-password"
+	if _, err = s.Start(context.Background(), r); !errors.Is(err, ErrConflict) {
+		t.Fatal("different password reused request identity")
 	}
 }
