@@ -26,6 +26,7 @@ KPanel.
 | `@xterm/xterm` | `6.0.0` | MIT | [`LICENSES/xterm-MIT.txt`](LICENSES/xterm-MIT.txt) |
 | `circle-flags` | `2.8.3` | MIT | [`LICENSES/circle-flags-MIT.txt`](LICENSES/circle-flags-MIT.txt) |
 | `simple-icons` | `16.27.1` | CC0-1.0; referenced brands retain their trademark rights | [`LICENSES/simple-icons-CC0-1.0.txt`](LICENSES/simple-icons-CC0-1.0.txt) |
+| `@novnc/novnc` | `1.7.0` (unmodified; lazy console client) | MPL-2.0 with bundled BSD notices | [MPL-2.0](LICENSES/noVNC-MPL-2.0.txt), [BSD](LICENSES/noVNC-BSD-3-Clause.txt), [pako](LICENSES/noVNC-pako.txt) |
 | `vue` | `3.5.40` | MIT | [`LICENSES/vue-MIT.txt`](LICENSES/vue-MIT.txt) |
 | `vue-router` | `4.6.4` | MIT | [`LICENSES/vue-router-MIT.txt`](LICENSES/vue-router-MIT.txt) |
 

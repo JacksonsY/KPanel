@@ -3,6 +3,7 @@ import { passkeyZhTW } from '../passkeys'
 import { panelAccessZhTW } from '../panelAccess'
 
 export const zhTWMessages = {
+  'route.virtualMachines': '虛擬機',
   'ai.approval.fileDisclosure': "批准後，KPanel 會讀取上方路徑，並將本次檔案內容交給目前 AI 模型處理。請核對路徑與參數；此授權僅限本次呼叫。",
   'ai.approval.manualHint': "所有寫入操作及檔案內容讀取逐次確認",
   'ai.approval.autoHint': "一般結構化寫入操作自動執行；檔案內容讀取、核心、刪除、exec 及受保護路徑仍需確認",

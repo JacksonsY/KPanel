@@ -7,6 +7,7 @@ interface RouteViewModule {
 }
 
 const routeViewLoaders = {
+  '/virtual-machines': () => import('@/views/VirtualMachinesView.vue'),
   '/setup': () => import('@/views/SetupView.vue'),
   '/login': () => import('@/views/LoginView.vue'),
   '/overview': () => import('@/views/OverviewView.vue'),

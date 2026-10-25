@@ -2,6 +2,7 @@ import { passkeyZhCN } from '../passkeys'
 import { panelAccessZhCN } from '../panelAccess'
 
 export const zhCNMessages = {
+  'route.virtualMachines': '虚拟机',
   'ai.approval.fileDisclosure': "批准后，KPanel 会读取上方路径，并将本次文件内容交给当前 AI 模型处理。请核对路径与参数；此授权仅限本次调用。",
   'ai.approval.manualHint': "所有写操作和文件内容读取逐次确认",
   'ai.approval.autoHint': "常规结构化写操作自动执行；文件内容读取、核心、删除、exec 和受保护路径仍需确认",

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/coder/websocket"
 	"io"
 	"net"
 	"net/http"
@@ -26,6 +27,27 @@ type AgentResponse struct {
 	StatusCode  int
 	ContentType string
 	Body        []byte
+}
+
+// OpenVMConsole reuses the authenticated Unix-socket transport. The domain
+// UUID is validated by both handlers; no browser-supplied target is dialled.
+func (c *AgentClient) OpenVMConsole(ctx context.Context, id string) (*websocket.Conn, error) {
+	token, err := readSmallSecret(c.tokenFile)
+	if err != nil {
+		return nil, err
+	}
+	header := http.Header{}
+	header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{Transport: c.client.Transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	ws, response, err := websocket.Dial(ctx, "ws://unix/v1/virtual-machines/"+id+"/console", &websocket.DialOptions{HTTPClient: client, HTTPHeader: header, CompressionMode: websocket.CompressionDisabled})
+	if err != nil {
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		return nil, err
+	}
+	ws.SetReadLimit(1 << 20)
+	return ws, nil
 }
 
 type agentReadCall struct {

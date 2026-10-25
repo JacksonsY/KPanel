@@ -13,6 +13,7 @@ import {
   ListTree,
   Megaphone,
   Network,
+  Monitor,
   Settings,
   SquareTerminal,
   Store,
@@ -177,6 +178,15 @@ export const desktopApps: DesktopApp[] = [
     gradient: ['#fdba74', '#c2410c'],
     // Wide enough for the three-column banner wall on common desktop screens.
     windowSize: { width: 1200, height: 820 },
+  },
+  {
+    path: '/virtual-machines',
+    labelKey: 'route.virtualMachines',
+    icon: Monitor,
+    desktopIconURL: '/desktop-icons/virtualmachines-kpanel-flat-v1.webp',
+    allowMultiple: false,
+    gradient: ['#6765d9', '#35316f'],
+    windowSize: { width: 1080, height: 760 },
   },
 ]
 
