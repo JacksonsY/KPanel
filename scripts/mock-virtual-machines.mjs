@@ -1,8 +1,8 @@
 // Preview-only in-memory fixtures. Never invoke a runtime or access host disks.
 const version = '1'.repeat(64)
 const machines = [
-  { id: '11111111-1111-1111-1111-111111111111', name: 'ubuntu-services', state: 'running', cpus: 2, memoryMiB: 2048, autostart: true, resourceVersion: version, addresses: ['192.168.122.42'], disks: [{ target: 'vda', path: '/var/lib/libvirt/images/ubuntu-services.qcow2', device: 'disk' }], console: true },
-  { id: '22222222-2222-2222-2222-222222222222', name: 'debian-test', state: 'shut off', cpus: 1, memoryMiB: 1024, autostart: false, resourceVersion: version, addresses: [], disks: [{ target: 'vda', path: '/var/lib/libvirt/images/debian-test.qcow2', device: 'disk' }], console: true },
+  { id: '11111111-1111-1111-1111-111111111111', name: 'ubuntu-services', osId: 'http://ubuntu.com/ubuntu/24.04', state: 'running', cpus: 2, memoryMiB: 2048, autostart: true, resourceVersion: version, addresses: ['192.168.122.42'], disks: [{ target: 'vda', path: '/var/lib/libvirt/images/ubuntu-services.qcow2', device: 'disk' }], console: true },
+  { id: '22222222-2222-2222-2222-222222222222', name: 'debian-test', osId: 'http://debian.org/debian/12', state: 'shut off', cpus: 1, memoryMiB: 1024, autostart: false, resourceVersion: version, addresses: [], disks: [{ target: 'vda', path: '/var/lib/libvirt/images/debian-test.qcow2', device: 'disk' }], console: true },
 ]
 const jobs = []
 const requests = new Map()
@@ -33,7 +33,7 @@ export async function handleMockVirtualMachines(request, response, url, { send, 
   if (jobs.length > 32) { const old = jobs.pop(); requests.delete(old.id) }
   setTimeout(() => {
     if (input.name === 'fail-create') { job.status = 'needs_attention'; job.message = 'Mock: image checksum verification failed. No virtual machine was created.'; return }
-    if (input.action === 'create') machines.push({ id: input.requestId, name: input.name, cpus: input.cpus, memoryMiB: input.memoryMiB, state: 'running', autostart: input.autostart, resourceVersion: version, addresses: [], disks: [{ target: 'vda', path: `/var/lib/libvirt/images/${input.name}.qcow2`, device: 'disk' }], console: true })
+    if (input.action === 'create') machines.push({ id: input.requestId, name: input.name, osId: input.source === 'cloud' ? ({'debian-12':'http://debian.org/debian/12','ubuntu-24.04':'http://ubuntu.com/ubuntu/24.04'}[input.image]) : undefined, cpus: input.cpus, memoryMiB: input.memoryMiB, state: 'running', autostart: input.autostart, resourceVersion: version, addresses: [], disks: [{ target: 'vda', path: `/var/lib/libvirt/images/${input.name}.qcow2`, device: 'disk' }], console: true })
     else if (input.action === 'delete') machines.splice(machines.indexOf(machine), 1)
     else if (input.action === 'autostart') machine.autostart = input.autostart
     else if (['start', 'reboot', 'shutdown', 'poweroff'].includes(input.action)) machine.state = ['shutdown', 'poweroff'].includes(input.action) ? 'shut off' : 'running'

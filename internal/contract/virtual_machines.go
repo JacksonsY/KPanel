@@ -18,6 +18,7 @@ func ValidVMID(id string) bool { return vmUUID.MatchString(id) }
 type VirtualMachine struct {
 	ID              string   `json:"id"`
 	Name            string   `json:"name"`
+	OSID            string   `json:"osId,omitempty"`
 	State           string   `json:"state"`
 	CPUs            int      `json:"cpus"`
 	MemoryMiB       int64    `json:"memoryMiB"`
