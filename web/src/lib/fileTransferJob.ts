@@ -29,7 +29,7 @@ export async function watchFileTransferJob(initial: FileRemoteDownloadJob, watch
   for (;;) {
     validate(job)
     if (job.state === 'complete' && job.entry) {
-      onEvent({ state: 'complete', loadedBytes: job.loadedBytes, totalBytes: job.totalBytes, entry: job.entry })
+      onEvent({ state: 'complete', job, loadedBytes: job.loadedBytes, totalBytes: job.totalBytes, entry: job.entry })
       return job.entry
     }
     if (signal?.aborted) {
@@ -39,7 +39,7 @@ export async function watchFileTransferJob(initial: FileRemoteDownloadJob, watch
           const finished = await watcher.get(job.id)
           validate(finished)
           if (finished.state === 'complete' && finished.entry) {
-            onEvent({ state: 'complete', loadedBytes: finished.loadedBytes, totalBytes: finished.totalBytes, entry: finished.entry })
+            onEvent({ state: 'complete', job: finished, loadedBytes: finished.loadedBytes, totalBytes: finished.totalBytes, entry: finished.entry })
             return finished.entry
           }
         } catch { /* The task list remains available to confirm a racing commit. */ }
@@ -47,11 +47,11 @@ export async function watchFileTransferJob(initial: FileRemoteDownloadJob, watch
       throw new DOMException('文件传输已取消。', 'AbortError')
     }
     if (['cancelled', 'interrupted', 'error'].includes(job.state)) {
-      onEvent({ state: 'error', code: job.code, detail: '文件传输未完成，请查看任务列表或重试。' })
+      onEvent({ state: 'error', job, code: job.code, detail: '文件传输未完成，请查看任务列表或重试。' })
       throw new Error('文件传输未完成，请查看任务列表或重试。')
     }
     onEvent({ state: job.state === 'confirming' ? 'committing' : job.state === 'transferring' ? 'transferring' : 'connecting',
-      loadedBytes: job.loadedBytes, totalBytes: job.totalBytes })
+      job, loadedBytes: job.loadedBytes, totalBytes: job.totalBytes })
     await wait(signal)
     if (signal?.aborted) continue
     try { job = await watcher.get(initial.id); failures = 0 } catch (error) {

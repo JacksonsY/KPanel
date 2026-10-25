@@ -207,6 +207,8 @@ interface FileBindings {
       count: number
       phase: 'running' | 'success' | 'partial' | 'cancelled' | 'error'
       detail?: string
+      remote?: boolean
+      jobId?: string
     }
   }
   uploadTasks: {
@@ -219,6 +221,10 @@ interface FileBindings {
       detail?: string
     }>
   }
+  fileTransferStatusVisible: { value: boolean }
+  fileActivityVisible: { value: boolean }
+  upsertRemoteDownloadJob: (job: FileRemoteDownloadJob) => void
+  replaceRemoteDownloadJobs: (jobs: FileRemoteDownloadJob[]) => void
   remoteDownloadDialogOpen: { value: boolean }
   remoteDownloadURL: { value: string }
   remoteDownloadAcceleration: { value: boolean }
@@ -2376,5 +2382,78 @@ describe('FilesView directory loading', () => {
     view.dismissFileTransfer()
     expect(view.fileTransferState.value).toBeUndefined()
     expect(mocks.list).toHaveBeenCalled()
+  })
+})
+
+describe('FilesView unified transfer activity', () => {
+  const job = (overrides: Partial<FileRemoteDownloadJob> = {}): FileRemoteDownloadJob => ({
+    id: 'b'.repeat(32), source: `kpanel://${'a'.repeat(32)}`, sourceKind: 'cross-host',
+    targetDirectory: '/target', name: 'file.bin', state: 'transferring',
+    loadedBytes: 1024, totalBytes: 4096,
+    createdAt: '2026-10-25T00:00:00Z', updatedAt: '2026-10-25T00:00:01Z', ...overrides,
+  })
+
+  it('hands one accepted copy to its durable row and does not resurrect it after dismissal', async () => {
+    const view = setupView()
+    const source = testEntry('file.bin')
+    const accepted = job()
+    const entry = { ...source, path: '/target/file.bin' }
+    let complete: (() => void) | undefined
+    mocks.transferFromPanel.mockImplementationOnce((_input, onEvent) => new Promise((resolve) => {
+      onEvent({ state: 'transferring', job: accepted })
+      complete = () => {
+        onEvent({ state: 'complete', job: job({ state: 'complete', entry, updatedAt: '2026-10-25T00:00:02Z' }) })
+        resolve(entry)
+      }
+    }))
+    const operation = view.transferCrossPanelFileDrop(crossPanelDrag([source]), '/target')
+    expect(view.remoteDownloadJobs.value).toEqual([accepted])
+    expect(view.fileTransferStatusVisible.value).toBe(false)
+    expect(view.fileActivityVisible.value).toBe(true)
+    complete!()
+    await operation
+    expect(view.remoteDownloadJobs.value[0]?.state).toBe('complete')
+    expect(view.fileTransferStatusVisible.value).toBe(false)
+    view.remoteDownloadJobs.value = []
+    expect(view.fileActivityVisible.value).toBe(false)
+    expect(mocks.transferFromPanel).toHaveBeenCalledOnce()
+  })
+
+  it('preserves a newly accepted job when an earlier list read finishes empty', async () => {
+    const view = setupView()
+    let reply: ((result: { items: FileRemoteDownloadJob[] }) => void) | undefined
+    mocks.remoteDownloadJobs.mockImplementationOnce(() => new Promise((resolve) => { reply = resolve }))
+    const loading = view.loadRemoteDownloadJobs()
+    view.upsertRemoteDownloadJob(job())
+    reply!({ items: [] })
+    await loading
+    expect(view.remoteDownloadJobs.value).toEqual([job()])
+  })
+
+  it('does not roll progress or a completed result back to an older server observation', () => {
+    const view = setupView()
+    view.upsertRemoteDownloadJob(job({ id: 'c'.repeat(32) }))
+    view.upsertRemoteDownloadJob(job({ loadedBytes: 3072, updatedAt: '2026-10-25T00:00:03Z' }))
+    view.replaceRemoteDownloadJobs([job(), job({ id: 'c'.repeat(32) })])
+    view.upsertRemoteDownloadJob(job({ id: 'c'.repeat(32), loadedBytes: 2048 }))
+    expect(view.remoteDownloadJobs.value[0]?.loadedBytes).toBe(3072)
+    view.upsertRemoteDownloadJob(job({ state: 'complete', updatedAt: '2026-10-25T00:00:04Z' }))
+    view.upsertRemoteDownloadJob(job({ updatedAt: '2026-10-25T00:00:05Z' }))
+    expect(view.remoteDownloadJobs.value[0]?.state).toBe('complete')
+    expect(view.remoteDownloadJobs.value.map((item) => item.id)).toEqual(['b'.repeat(32), 'c'.repeat(32)])
+  })
+
+  it('keeps a creation failure visible and uses copy-specific failures in all languages', async () => {
+    const view = setupView()
+    mocks.transferFromPanel.mockRejectedValueOnce(new Error('creation failed'))
+    await view.transferCrossPanelFileDrop(crossPanelDrag([testEntry('file.bin')]), '/target')
+    expect(view.fileTransferStatusVisible.value).toBe(true)
+    expect(view.fileTransferState.value?.phase).toBe('error')
+    expect(view.remoteDownloadJobStateLabel(job({ state: 'error' }))).toBe('复制失败')
+    expect(view.remoteDownloadJobDetail(job({ state: 'error', code: 'source_changed' }))).toContain('来源文件已变化')
+    await setLocale('en-US')
+    expect(view.remoteDownloadJobStateLabel(job({ state: 'error' }))).toBe('Copy failed')
+    await setLocale('zh-TW')
+    expect(view.remoteDownloadJobStateLabel(job({ state: 'error' }))).toBe('複製失敗')
   })
 })
