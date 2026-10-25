@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-test "${GITHUB_ACTIONS:-}" = true && test "${RUNNER_ENVIRONMENT:-}" = github-hosted
-test "${GITHUB_REPOSITORY:-}" = kejilion/KPanel && test "${GITHUB_REF:-}" = refs/heads/main
+test "${GITHUB_ACTIONS:-}" = true
+test "${RUNNER_ENVIRONMENT:-}" = github-hosted
+test "${GITHUB_REPOSITORY:-}" = kejilion/KPanel
+test "${GITHUB_REF:-}" = refs/heads/main
 : "${RUNNER_TEMP:?}" "${GITHUB_WORKSPACE:?}" "${EXPECTED_CANDIDATE:?}" "${GITHUB_SHA:?}"
 [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ && "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
 [[ "$EXPECTED_CANDIDATE" =~ ^[a-f0-9]{40}$ ]]
@@ -84,7 +86,8 @@ sha256sum "$network_source" > "$evidence/default-network-source.sha256"
 apt-cache policy libvirt-daemon-system libvirt-daemon-config-network > "$evidence/libvirt-package-policy.txt"
 git ls-files '*.go' | LC_ALL=C sort | while IFS= read -r file; do sha256sum "$file"; done > "$evidence/go-sources-after.sha256"
 diff -u "$evidence/go-sources-before.sha256" "$evidence/go-sources-after.sha256"
-test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE" && test -z "$(git status --porcelain)"
+test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE"
+test -z "$(git status --porcelain)"
 node --input-type=module - "$evidence" "$EXPECTED_CANDIDATE" "$GITHUB_SHA" <<'NODE'
 import{readFileSync,writeFileSync}from'node:fs';import{join}from'node:path';
 const [dir,candidate,controller]=process.argv.slice(2);const native=JSON.parse(readFileSync(join(dir,'native-result.json')));
