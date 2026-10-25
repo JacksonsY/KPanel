@@ -27,7 +27,7 @@ cleanup() {
   docker network rm "$network" >/dev/null 2>&1 || true
   # Root filesystem changes belong only to this ephemeral hosted runner. Native
   # test cleanup stops its exact task units/domain; failed evidence is retained.
-  printf 'owned Docker resources removed; runner disposal owns package cleanup\n' > "$evidence/cleanup.txt"
+  printf 'Attempted cleanup of exact owned Docker resources; command failures may remain. Hosted runner disposal is the final resource boundary.\n' > "$evidence/cleanup.txt"
 }
 trap cleanup EXIT
 exec > >(tee "$evidence/native-host.log") 2>&1
