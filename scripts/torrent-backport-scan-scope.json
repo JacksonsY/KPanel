@@ -11,8 +11,8 @@
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "d35c81e186d23b6b440e2aaa187cd0c96b86441d97d31d5e2e547a37c9b518f8",
-  "firstPartySourceSha256": "bef27786b0b0c3c31340a07c266dbad60fc218ff855f552bb399b05c185387d4",
+  "closureSha256": "d27e919bd3e18308d4836a0bdd2d32033cbfdf421aaaaee178ce4763688a113c",
+  "firstPartySourceSha256": "4bfeddd36bbe25022ccc8a5a14fe98d2b47643c59d6608e7d0bb3a635abcba31",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -91,7 +91,9 @@
     "helperMainObservationSha256": "e268dd0ec126f0145381f19cd5d0ea7ad0740f3c9d2894c178c70a68d5c6dccc",
     "helperMainSummary": "Trusted-main prerequisite independently re-observes unchanged e577e277 product source and six actual/original closures under Go1.27.3. No new Go module or business source; only delivered executable test/scan tooling and undici8.12.3 lock patch enter this checkpoint. Reviewed10/25..11/08 window and37 dispositions retained. Canonical candidate/main CI and actual scans remain required, no product release from helper",
     "clusterSettingsQualificationSha256": "76e68bf9ba677aa25a7bb45d0869ed772eef49d6107f3200bc6367837dbe6c9a",
-    "clusterSettingsSummary": "Independent qualification at c0db3024036a4d209971ff9f0466cd76a55e4332 verified 1035 first-party Go files against exact Git objects and original evidence 87c2febf49042514a7b1d5658404e358a602576d2e5d57de5c4bcdf39445840d. Six-platform actual/original Go1.27.3 closures match; Linux production GoFiles add cluster remote_access.go, remote_access_hosts.go and panel cluster_remote_access.go. The 110 production modules/versions, selected graph, vendored source, four build targets, 37 finding dispositions and original observation/expiry remain unchanged. Only source and closure identities are rebound; this is not a scanner, L2 or release pass."
+    "clusterSettingsSummary": "Independent qualification at c0db3024036a4d209971ff9f0466cd76a55e4332 verified 1035 first-party Go files against exact Git objects and original evidence 87c2febf49042514a7b1d5658404e358a602576d2e5d57de5c4bcdf39445840d. Six-platform actual/original Go1.27.3 closures match; Linux production GoFiles add cluster remote_access.go, remote_access_hosts.go and panel cluster_remote_access.go. The 110 production modules/versions, selected graph, vendored source, four build targets, 37 finding dispositions and original observation/expiry remain unchanged. Only source and closure identities are rebound; this is not a scanner, L2 or release pass.",
+    "rc5IntegrationObservationSha256": "c1afc05e13d990627ab20a7e35046a41c7d61b17ffbbe82222e93a382e2fc465",
+    "rc5IntegrationSummary": "Release owner independently reconstructed Win98/XP16d9dd18 and cluster access8d684ed6 on approved f83f29ae, retaining RC4 security and monitoring. Re-observed all six actual/original production closures and current first-party source bytes using Go1.27.3. Existing module versions,37 finding dispositions and2026-10-25..2026-11-08 observation remain unchanged. This is source/closure identity qualification; final hosted CI/L3/scans/public verification remain required."
   },
   "findings": [
     {
