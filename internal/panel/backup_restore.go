@@ -207,11 +207,14 @@ func ApplyPanelRestore(c Config) (err error) {
 		j.Names = append(j.Names, name)
 	}
 	sort.Strings(j.Names)
-	// Retain revocations already present on the destination for this identity.
-	if data, ok := value.Files["cluster-state-v2.json"]; ok {
-		value.Files["cluster-state-v2.json"], err = mergeBackupRevocations(data, j.Previous["cluster-state-v2.json"])
-		if err != nil {
-			return err
+	// Current authorization is authoritative for an existing node identity,
+	// including peers whose revocation records have already been collected.
+	for _, name := range []string{"cluster-state.json", "cluster-state-v2.json"} {
+		if data, ok := value.Files[name]; ok {
+			value.Files[name], err = mergeBackupControllerAccess(data, j.Previous[name], name == "cluster-state.json")
+			if err != nil {
+				return err
+			}
 		}
 	}
 	j.Phase = "applying"
@@ -268,6 +271,10 @@ func ApplyPanelRestore(c Config) (err error) {
 }
 
 func mergeBackupRevocations(incoming, current []byte) ([]byte, error) {
+	return mergeBackupControllerAccess(incoming, current, false)
+}
+
+func mergeBackupControllerAccess(incoming, current []byte, legacy bool) ([]byte, error) {
 	if len(current) == 0 {
 		return incoming, nil
 	}
@@ -299,7 +306,43 @@ func mergeBackupRevocations(incoming, current []byte) ([]byte, error) {
 	if json.Unmarshal(b["controllers"], &old) != nil || json.Unmarshal(a["controllers"], &next) != nil {
 		return nil, backup.ErrInvalid
 	}
+	// Never resurrect a peer absent from the live authorization set. A missing
+	// entry includes legacy deletions and v2 tombstones removed by normal GC.
+	// For surviving peers retain the live key/scope rather than an older grant.
+	byID := make(map[string]map[string]json.RawMessage, len(old))
 	for _, r := range old {
+		id, err := decode(r["id"])
+		if err != nil {
+			return nil, err
+		}
+		byID[id] = r
+	}
+	kept := make([]map[string]json.RawMessage, 0, len(next))
+	for _, r := range next {
+		id, err := decode(r["id"])
+		if err != nil {
+			return nil, err
+		}
+		live, ok := byID[id]
+		if !ok {
+			continue
+		}
+		if !legacy {
+			state, err := decode(live["state"])
+			if err != nil {
+				return nil, err
+			}
+			if state != "active" {
+				continue
+			}
+		}
+		kept = append(kept, live)
+	}
+	next = kept
+	for _, r := range old {
+		if legacy {
+			break
+		}
 		state, err := decode(r["state"])
 		if err != nil {
 			return nil, err
