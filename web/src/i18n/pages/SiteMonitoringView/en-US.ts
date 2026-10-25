@@ -1,6 +1,19 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ["选择地区查看详情", "Select a region to explore"],
+  ["地图操作", "Map controls"],
+  ["缩小地图", "Zoom out"],
+  ["放大地图", "Zoom in"],
+  ["恢复全球视角", "Reset world view"],
+  ["暂无地区数据", "No attributed region data"],
+  ["放大后可拖动地图", "Zoom in to pan the map"],
+  ["键盘：加减缩放，方向键平移，0 复位", "Keyboard: +/− zoom, arrows pan, 0 resets"],
+  ["已选地区", "Selected region"],
+  ["占比", "share"],
+  ["定位所选地区", "Focus selected region"],
+  ["此地图未收录该地区边界，统计仍已计入。", "This map does not include this region’s boundary. Its statistics are still included."],
+  ["点击地图或右侧排行，查看地区请求与占比。", "Select the map or region ranking to view its count and share."],
   ["源站日志统计", "Origin log statistics"],
   ["个地区", "regions"],
   [

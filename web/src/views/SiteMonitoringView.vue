@@ -8,7 +8,7 @@ import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/
 import { api } from '@/lib/api'
 import { formatBytes, formatDateTime } from '@/lib/format'
 import type { SiteTrafficSnapshot } from '@/types/siteTraffic'
-import { worldCountries } from '@/assets/worldCountries'
+import WorldTrafficMap from '@/components/sites/WorldTrafficMap.vue'
 import SitesSectionTabs from '@/components/sites/SitesSectionTabs.vue'
 import SiteFavicon from '@/components/sites/SiteFavicon.vue'
 import CountryFlagIcon from '@/components/overview/CountryFlagIcon.vue'
@@ -45,7 +45,6 @@ const countries = computed(() => view.value === 'traffic' ? data.value?.countrie
 const countryCounts = computed(() => new Map(countries.value.map(item => [item.code, item.requests])))
 const visibleCountries = computed(() => countries.value.filter(item => item.code !== 'ZZ').slice(0, 8))
 const maxCountry = computed(() => Math.max(1, ...countries.value.map(item => item.requests)))
-const selected = computed(() => countries.value.find(item => item.code === selectedCountry.value))
 const series = computed(() => view.value === 'traffic' ? data.value?.trend || [] : data.value?.protection.trend || [])
 const stateLabels: Record<string, string> = { disabled: '尚未启用', collecting: '开始采集', active: '持续采集', waiting: '等待日志', source_unavailable: '采集暂不可用' }
 const status = computed(() => data.value?.catchingUp ? phrase('正在处理积压') : phrase(stateLabels[data.value?.state || 'disabled'] || '状态待核验'))
@@ -72,12 +71,6 @@ const displayValue = (value: number | undefined) => value === undefined || !data
 function countryName(code: string): string {
  if (code === 'ZZ') return phrase('未知地区')
  try { return new Intl.DisplayNames([i18n.locale.value], { type: 'region' }).of(code) || code } catch { return code }
-}
-function countryFill(code: string): string {
- const value = countryCounts.value.get(code) || 0
- if (!value) return 'var(--surface-subtle)'
- const intensity = 18 + Math.round(Math.log1p(value) / Math.log1p(maxCountry.value) * 65)
- return `color-mix(in srgb, var(--monitor-accent) ${intensity}%, var(--surface))`
 }
 function selectCountry(code: string): void { if (countryCounts.value.has(code)) selectedCountry.value = selectedCountry.value === code ? '' : code }
 const chart = computed(() => {
@@ -168,11 +161,11 @@ onBeforeUnmount(() => { disposed = true; sequence++; controller?.abort(); iconCo
    <div class="geography-grid">
     <article class="monitor-card world-card">
      <header><div><h3>{{ view === 'traffic' ? phrase('世界访问来源') : phrase('安全事件来源') }}</h3><p>按 IP 归属地区统计</p></div><span class="muted-label">{{ geoCoverage }}<span> 已识别</span></span></header>
-     <div class="world-map"><svg viewBox="0 0 900 363" role="img" aria-label="世界来源分布地图"><path v-for="country in worldCountries" :key="country.code" :d="country.path" :fill="countryFill(country.code)" :class="{ 'has-data': countryCounts.has(country.code), selected: selectedCountry === country.code }" :tabindex="countryCounts.has(country.code) ? 0 : -1" :role="countryCounts.has(country.code) ? 'button' : undefined" :aria-label="countryName(country.code) + ': ' + number(countryCounts.get(country.code) || 0)" @click="selectCountry(country.code)" @keydown.enter.prevent="selectCountry(country.code)" @keydown.space.prevent="selectCountry(country.code)"><title>{{ countryName(country.code) }}: {{ number(countryCounts.get(country.code) || 0) }}</title></path></svg><div v-if="selected" class="country-detail" aria-live="polite"><CountryFlagIcon :country-code="selected.code" :label="countryName(selected.code)" /><strong>{{ countryName(selected.code) }}</strong><span>{{ number(selected.requests) }} {{ view === 'traffic' ? phrase('请求') : phrase('事件') }}</span><button class="text-button" @click="selectedCountry = ''">取消选择</button></div></div>
+     <WorldTrafficMap v-model:selected-country="selectedCountry" :countries="countries" :mode="view" />
      <div v-if="data.geoStatus !== 'ready'" class="geo-setup"><Globe2 :size="18" /><p>{{ data.geoStatus === 'invalid' ? phrase('地区数据库无法读取，请更换有效的国家数据库。') : phrase('地区识别尚未配置，访问与防御统计仍会继续采集。') }}</p><button class="text-button" @click="guideOpen = true">配置地区识别<ArrowUpRight :size="14" /></button></div>
      <footer class="map-caption"><span>无数据</span><span class="map-scale" aria-hidden="true"><i v-for="shade in [20,35,50,65,80]" :key="shade" :style="{ background: `color-mix(in srgb, var(--monitor-accent) ${shade}%, var(--surface))` }" /></span><span>更多</span></footer>
     </article>
-    <article class="monitor-card countries-card"><header><div><h3><Globe2 :size="18" aria-hidden="true" />国家与地区</h3><p>{{ view === 'traffic' ? phrase('按请求数排序') : phrase('按事件数排序') }}</p></div></header><div v-if="visibleCountries.length" class="ranking-list"><button v-for="country in visibleCountries" :key="country.code" class="country-row" :class="{ active: selectedCountry === country.code }" @click="selectCountry(country.code)"><span class="country-symbol" aria-hidden="true"><CountryFlagIcon :country-code="country.code" :label="countryName(country.code)" /><span class="country-code">{{ country.code }}</span></span><span class="country-label">{{ countryName(country.code) }}<span class="ranking-track"><i :style="{ width: country.requests / maxCountry * 100 + '%' }" /></span></span><span class="ranking-value"><strong>{{ number(country.requests) }}</strong><small>{{ share(country.requests, totalMap) }}</small></span></button></div><div v-else class="ranking-empty"><Globe2 :size="24" /><p>暂无可识别的地区数据</p></div><div class="unknown-country"><span><Globe2 :size="15" aria-hidden="true" />未知地区</span><strong>{{ number(countryCounts.get('ZZ') || 0) }}</strong></div></article>
+    <article class="monitor-card countries-card"><header><div><h3><Globe2 :size="18" aria-hidden="true" />国家与地区</h3><p>{{ view === 'traffic' ? phrase('按请求数排序') : phrase('按事件数排序') }}</p></div></header><div v-if="visibleCountries.length" class="ranking-list"><button v-for="country in visibleCountries" :key="country.code" class="country-row" :class="{ active: selectedCountry === country.code }" :aria-pressed="selectedCountry === country.code" @click="selectCountry(country.code)"><span class="country-symbol" aria-hidden="true"><CountryFlagIcon :country-code="country.code" :label="countryName(country.code)" /><span class="country-code">{{ country.code }}</span></span><span class="country-label">{{ countryName(country.code) }}<span class="ranking-track"><i :style="{ width: country.requests / maxCountry * 100 + '%' }" /></span></span><span class="ranking-value"><strong>{{ number(country.requests) }}</strong><small>{{ share(country.requests, totalMap) }}</small></span></button></div><div v-else class="ranking-empty"><Globe2 :size="24" /><p>暂无可识别的地区数据</p></div><div class="unknown-country"><span><Globe2 :size="15" aria-hidden="true" />未知地区</span><strong>{{ number(countryCounts.get('ZZ') || 0) }}</strong></div></article>
    </div>
 
    <div v-if="view === 'traffic'" class="rankings-grid">

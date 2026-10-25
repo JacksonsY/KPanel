@@ -1,6 +1,8 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['请求', 'requests'],
+  ['事件', 'events'],
   ["站点管理", "Site management"],
   ["环境管理", "Environment"],
 

@@ -1,6 +1,8 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['请求', '請求'],
+  ['事件', '事件'],
   ["站点管理", "站點管理"],
   ["环境管理", "環境管理"],
 
