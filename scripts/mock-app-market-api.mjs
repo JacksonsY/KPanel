@@ -1,3 +1,4 @@
+import { handleMockVirtualMachines } from './mock-virtual-machines.mjs'
 import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import { mockSiteMonitoring } from './mock-site-monitoring.mjs'
@@ -2490,6 +2491,7 @@ createServer(async (request, response) => {
     return
   }
   if (await handleMockOffice(request, response, url, { send, readJSON })) return
+  if (await handleMockVirtualMachines(request, response, url, { send, readJSON })) return
   if (await handleMockSystemServices(request, response, url, { send, readJSON })) return
   if (await handleMockEditor(request, response, url, { send, readJSON })) return
   if (request.method === 'GET' && url.pathname === '/api/v1/files/archive' && url.searchParams.has('members')) {
