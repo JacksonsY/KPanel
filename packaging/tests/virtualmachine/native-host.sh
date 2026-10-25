@@ -37,6 +37,9 @@ test "$(ps -p 1 -o comm=)" = systemd
 git ls-files '*.go' | LC_ALL=C sort | while IFS= read -r file; do sha256sum "$file"; done > "$evidence/go-sources-before.sha256"
 git rev-parse 'HEAD^{tree}' > "$evidence/source-tree.txt"
 go version > "$evidence/go-version.txt"
+test "$(id -u)" -ne 0
+go test -run '^TestWorkerRejectsNonRootOwnedState$' -v ./internal/virtualmachine > "$evidence/nonroot-worker-test.log"
+grep -F -- '--- PASS: TestWorkerRejectsNonRootOwnedState' "$evidence/nonroot-worker-test.log"
 cat /etc/os-release > "$evidence/os-release.txt"
 sha256sum "$controller/.github/workflows/virtual-machine-native-verify.yml" "$controller/packaging/tests/virtualmachine/native-host.sh" "$controller/packaging/tests/virtualmachine/native-host_test.go.tmpl" > "$evidence/controller-sources.sha256"
 cp "$controller/packaging/tests/virtualmachine/native-host_test.go.tmpl" "$proof/build/native-host_test.go"
@@ -66,7 +69,11 @@ docker run --rm --network "$network" --read-only --cap-drop ALL --security-opt n
 sudo iptables -S FORWARD | head -n 1 > "$evidence/forward-before.txt"
 sudo iptables-save > "$evidence/iptables-before.txt"
 docker network inspect "$network" bridge > "$evidence/docker-networks-before.json"
-sudo env GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted GITHUB_REPOSITORY=kejilion/KPanel "KPANEL_NATIVE_KEY=$key" "KPANEL_NATIVE_NAME=$name" "KPANEL_NATIVE_STATE=$state_dir" "KPANEL_NATIVE_AGENT=$install_dir/kejilion-agent" "KPANEL_NATIVE_EVIDENCE=$evidence" "KPANEL_NATIVE_DOCKER_URL=$url" "KPANEL_NATIVE_SHA=$EXPECTED_CANDIDATE" "$install_dir/native-test" -test.v -test.run '^TestNativeReleaseQualification$' -test.timeout 45m
+# The root-only fake-runner unit fixture remains separate from real native
+# integration proof; both execute with their required ownership boundary.
+sudo env GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted GITHUB_REPOSITORY=kejilion/KPanel "KPANEL_NATIVE_KEY=$key" "KPANEL_NATIVE_NAME=$name" "KPANEL_NATIVE_STATE=$state_dir" "KPANEL_NATIVE_AGENT=$install_dir/kejilion-agent" "KPANEL_NATIVE_EVIDENCE=$evidence" "KPANEL_NATIVE_DOCKER_URL=$url" "KPANEL_NATIVE_SHA=$EXPECTED_CANDIDATE" "$install_dir/native-test" -test.v -test.run '^(TestNativeReleaseQualification|TestWorkerRunsOnceAndPersistsFailure)$' -test.timeout 45m 2>&1 | tee "$evidence/native-tests.log"
+grep -F -- '--- PASS: TestWorkerRunsOnceAndPersistsFailure' "$evidence/native-tests.log"
+grep -F -- '--- PASS: TestNativeReleaseQualification' "$evidence/native-tests.log"
 curl -fsS --max-time 10 "$url" | grep -Fx "KPanel-native-$key"
 docker run --rm --network "$network" --read-only --cap-drop ALL --security-opt no-new-privileges --memory 64m --cpus .25 --pids-limit 32 --entrypoint /bin/busybox "$image" wget -qO- "http://$server:8080/" | grep -Fx "KPanel-native-$key"
 sudo iptables -S FORWARD | head -n 1 > "$evidence/forward-after.txt"
