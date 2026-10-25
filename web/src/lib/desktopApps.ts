@@ -41,7 +41,7 @@ export interface DesktopApp {
 }
 
 export const desktopApps: DesktopApp[] = [
- { path: '/virtual-machines', labelKey: 'route.virtualMachines', icon: Monitor, desktopIconURL: '/desktop-icons/virtualmachines-kpanel-flat-v1.webp', allowMultiple: false, gradient: ['#818cf8', '#4338ca'], windowSize: { width: 1080, height: 760 } },
+ { path: '/virtual-machines', labelKey: 'route.virtualMachines', icon: Monitor, desktopIconURL: '/desktop-icons/virtualmachines-kpanel-flat-v1.webp', allowMultiple: false, gradient: ['#6765d9', '#35316f'], windowSize: { width: 1080, height: 760 } },
   {
     path: '/overview',
     labelKey: 'route.overview',

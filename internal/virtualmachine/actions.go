@@ -10,8 +10,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-
-	"github.com/kejilion/kejilion-panel/internal/contract"
 )
 
 func (s *Service) install(ctx context.Context, stage func(string) error) error {
@@ -130,6 +128,12 @@ func (s *Service) create(ctx context.Context, j *jobRecord, stage func(string) e
 			return err
 		}
 		defer os.Remove(image)
+		if err = validateCloudDisk(image, int64(r.DiskGiB)<<30); err != nil {
+			return err
+		}
+		if err = trustedPoolDirectory(pool); err != nil {
+			return err
+		}
 		if err = stage("preparing_disk"); err != nil {
 			return err
 		}
@@ -282,5 +286,3 @@ func (s *Service) action(ctx context.Context, j *jobRecord, stage func(string) e
 	_, err = s.Machine(ctx, r.ID)
 	return err
 }
-
-var _ = contract.VMMaxEntries

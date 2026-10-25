@@ -200,7 +200,7 @@ onBeforeUnmount(pause)
 .vm-page { display: grid; gap: 1.5rem; color: var(--text); font-size: .875rem; min-width: 0; }
 .vm-header,.vm-actions,.vm-toolbar,.vm-machine { display: flex; align-items: center; gap: .75rem; }
 .vm-header { justify-content: space-between; flex-wrap: wrap; }
-.vm-header h1 { margin: 0; font-size: 1.5rem; font-weight: 650; }
+.vm-header h1 { margin: 0; font-size: 1.5rem; font-weight: 600; }
 .vm-header p { margin: .4rem 0 0; color: var(--text-soft); }
 .vm-page h2 { margin: 0; font-size: 1.0625rem; }
 .vm-actions { flex-wrap: wrap; }

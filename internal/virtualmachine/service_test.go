@@ -2,6 +2,7 @@ package virtualmachine
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"io"
 	"os"
@@ -157,5 +158,80 @@ func TestPrivateStateAndBoundedCommands(t *testing.T) {
 	}
 	if !reflect.DeepEqual(s.spec(testID).Arguments, []string{"vm-run", "--state-dir", s.dir, "--job", testID}) {
 		t.Fatal("worker arguments drifted")
+	}
+}
+
+func TestCloudImageRejectsExternalFilesBeforeImageTool(t *testing.T) {
+	base := make([]byte, 104)
+	copy(base, []byte("QFI\xfb"))
+	binary.BigEndian.PutUint32(base[4:8], 3)
+	binary.BigEndian.PutUint64(base[24:32], 4<<30)
+	for _, test := range []struct {
+		name   string
+		change func([]byte)
+	}{
+		{"backing-offset", func(b []byte) { binary.BigEndian.PutUint64(b[8:16], 104) }},
+		{"backing-name", func(b []byte) { binary.BigEndian.PutUint32(b[16:20], 11) }},
+		{"external-data", func(b []byte) { binary.BigEndian.PutUint64(b[72:80], 4) }},
+		{"encrypted", func(b []byte) { binary.BigEndian.PutUint32(b[32:36], 1) }},
+		{"oversized-virtual-disk", func(b []byte) { binary.BigEndian.PutUint64(b[24:32], 64<<30) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			b := append([]byte(nil), base...)
+			test.change(b)
+			path := filepath.Join(t.TempDir(), "image.qcow2")
+			if err := os.WriteFile(path, b, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := validateCloudDisk(path, 20<<30); err == nil {
+				t.Fatal("accepted external or incompatible image")
+			}
+		})
+	}
+	path := filepath.Join(t.TempDir(), "valid.qcow2")
+	if err := os.WriteFile(path, base, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateCloudDisk(path, 20<<30); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPoolRejectsUntrustedOwnerAncestorAndSymlink(t *testing.T) {
+	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
+		t.Skip("requires root Linux inode ownership")
+	}
+	dir := t.TempDir()
+	pool := filepath.Join(dir, "pool")
+	if err := os.Mkdir(pool, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := trustedPoolDirectory(pool); err != nil {
+		t.Fatalf("root private pool rejected: %v", err)
+	}
+	if err := os.Chown(pool, 65534, 65534); err != nil {
+		t.Fatal(err)
+	}
+	if err := trustedPoolDirectory(pool); err == nil {
+		t.Fatal("accepted user-owned 0755 pool")
+	}
+	if err := os.Chown(pool, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0777); err != nil {
+		t.Fatal(err)
+	}
+	if err := trustedPoolDirectory(pool); err == nil {
+		t.Fatal("accepted replaceable ancestor")
+	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "linked")
+	if err := os.Symlink(pool, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := trustedPoolDirectory(link); err == nil {
+		t.Fatal("accepted linked pool")
 	}
 }

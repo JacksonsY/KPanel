@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,6 +18,42 @@ import (
 )
 
 const maxImageBytes int64 = 8 << 30
+
+// Validate the qcow2 header before running a privileged image tool. A trusted
+// HTTPS origin and matching digest do not make external backing/data paths
+// appropriate for a self-contained cloud image.
+func validateCloudDisk(path string, capacity int64) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	header := make([]byte, 104)
+	if _, err = io.ReadFull(f, header); err != nil {
+		return err
+	}
+	if string(header[:4]) != "QFI\xfb" {
+		return errors.New("cloud image is not qcow2")
+	}
+	version := binary.BigEndian.Uint32(header[4:8])
+	if version != 2 && version != 3 {
+		return errors.New("unsupported qcow2 image version")
+	}
+	if binary.BigEndian.Uint64(header[8:16]) != 0 || binary.BigEndian.Uint32(header[16:20]) != 0 {
+		return errors.New("cloud image has an external backing file")
+	}
+	if binary.BigEndian.Uint32(header[32:36]) != 0 {
+		return errors.New("encrypted cloud images are unsupported")
+	}
+	if version == 3 && binary.BigEndian.Uint64(header[72:80])&4 != 0 {
+		return errors.New("cloud image has an external data file")
+	}
+	size := binary.BigEndian.Uint64(header[24:32])
+	if size == 0 || size > uint64(capacity) {
+		return errors.New("selected disk is smaller than the image virtual disk; increase disk capacity")
+	}
+	return nil
+}
 
 func imageSource(id, arch string) (base, file, sums string, err error) {
 	switch id {

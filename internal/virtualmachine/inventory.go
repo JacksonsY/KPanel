@@ -305,9 +305,27 @@ func (s *Service) poolPath(ctx context.Context, name string) (string, error) {
 	if p.Type != "dir" || !filepath.IsAbs(p.Target.Path) || filepath.Clean(p.Target.Path) == "/" {
 		return "", fmt.Errorf("%w: select a directory storage pool", ErrUnsupported)
 	}
-	info, err := os.Lstat(p.Target.Path)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0022 != 0 {
-		return "", errors.New("storage pool must be a trusted real directory")
+	if err = trustedPoolDirectory(p.Target.Path); err != nil {
+		return "", err
 	}
 	return p.Target.Path, nil
+}
+
+// A 0755 directory owned by a local user is still writable by that user.
+// Check the whole path so the privileged worker cannot be redirected while
+// preparing an image. Root-owned sticky ancestors (e.g. /tmp) protect their
+// root-owned children from replacement and are permitted.
+func trustedPoolDirectory(path string) error {
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !rootOwned(info) {
+			return errors.New("storage pool path must use root-owned real directories")
+		}
+		if info.Mode().Perm()&0022 != 0 && (current == filepath.Clean(path) || info.Mode()&os.ModeSticky == 0) {
+			return errors.New("storage pool path is writable outside the root trust boundary")
+		}
+		if filepath.Dir(current) == current {
+			return nil
+		}
+	}
 }

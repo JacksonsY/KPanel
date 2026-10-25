@@ -88,7 +88,7 @@ func privateDirectory(path string) error {
 	if err != nil {
 		return err
 	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 || !rootOwned(info) {
 		return errors.New("task directory must be a private real directory")
 	}
 	return nil
