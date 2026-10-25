@@ -80,12 +80,24 @@ func checksumFor(data []byte, name string, bytes int) (string, error) {
 	return "", errors.New("publisher checksum does not list selected image")
 }
 
+// Debian's primary image service delegates large files to this registered
+// mirror. Admit only that exact file over HTTPS and only one redirect; the
+// checksum manifest must still come directly from the primary service.
+func imageRedirect(id, base, file string) func(*http.Request, []*http.Request) error {
+	return func(next *http.Request, via []*http.Request) error {
+		if id == "debian-12" && len(via) == 1 && via[0].URL.String() == base+file && next.URL.String() == "https://saimei.ftp.acc.umu.se/images/cloud/bookworm/latest/"+file {
+			return nil
+		}
+		return errors.New("image redirect is outside the approved source")
+	}
+}
+
 func (s *Service) downloadImage(ctx context.Context, id string) (string, error) {
 	base, file, sums, err := imageSource(id, runtime.GOARCH)
 	if err != nil {
 		return "", err
 	}
-	client := &http.Client{Timeout: 25 * time.Minute, Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, DisableCompression: true, ResponseHeaderTimeout: 20 * time.Second, TLSHandshakeTimeout: 10 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("image redirects are not allowed") }}
+	client := &http.Client{Timeout: 25 * time.Minute, Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, DisableCompression: true, ResponseHeaderTimeout: 20 * time.Second, TLSHandshakeTimeout: 10 * time.Second}, CheckRedirect: imageRedirect(id, base, file)}
 	defer client.CloseIdleConnections()
 	get := func(name string) (*http.Response, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+name, nil)

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,6 +34,38 @@ func (f *fakeRunner) Run(_ context.Context, _ io.Reader, name string, args ...st
 }
 
 const testID = "11111111-1111-1111-1111-111111111111"
+
+func TestVMImageRedirectRequiresExactApprovedDebianFile(t *testing.T) {
+	base, file, _, _ := imageSource("debian-12", "amd64")
+	original, _ := http.NewRequest(http.MethodGet, base+file, nil)
+	target := "https://saimei.ftp.acc.umu.se/images/cloud/bookworm/latest/" + file
+	check := imageRedirect("debian-12", base, file)
+	for _, test := range []struct {
+		url     string
+		allowed bool
+	}{
+		{target, true},
+		{strings.Replace(target, "https:", "http:", 1), false},
+		{strings.Replace(target, "saimei.", "evil.", 1), false},
+		{strings.Replace(target, "saimei.ftp.acc.umu.se", "saimei.ftp.acc.umu.se.evil.example", 1), false},
+		{strings.Replace(target, "https://", "https://user@", 1), false},
+		{target + "?redirect=elsewhere", false},
+		{target + ".other", false},
+	} {
+		next, _ := http.NewRequest(http.MethodGet, test.url, nil)
+		if (check(next, []*http.Request{original}) == nil) != test.allowed {
+			t.Fatalf("unexpected redirect decision for %s", test.url)
+		}
+		if check(next, []*http.Request{original, next}) == nil {
+			t.Fatal("accepted second redirect")
+		}
+	}
+	next, _ := http.NewRequest(http.MethodGet, target, nil)
+	manifest, _ := http.NewRequest(http.MethodGet, base+"SHA512SUMS", nil)
+	if check(next, []*http.Request{manifest}) == nil || imageRedirect("ubuntu-24.04", base, file)(next, []*http.Request{original}) == nil {
+		t.Fatal("mirror rule escaped the Debian image request")
+	}
+}
 
 func TestVMPrepareRejectsInactiveAutostartNetwork(t *testing.T) {
 	for _, active := range []bool{false, true} {
