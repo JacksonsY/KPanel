@@ -2,9 +2,10 @@ package auth
 
 import (
 	"errors"
-	"github.com/kejilion/kejilion-panel/internal/store"
 	"runtime"
 	"testing"
+
+	"github.com/kejilion/kejilion-panel/internal/store"
 )
 
 func TestPasswordVerifierUsesConfiguredWorkBudget(t *testing.T) {

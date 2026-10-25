@@ -65,16 +65,17 @@ func run(arguments []string) error {
 	if err := panel.RecoverPanelRestore(config); err != nil {
 		return fmt.Errorf("recover panel restore: %w", err)
 	}
+	return runPanelInstances(config, runPanelInstance)
+}
+
+func runPanelInstances(config panel.Config, instance func(panel.Config) error) error {
 	for {
-		err := runPanelInstance(config)
+		err := instance(config)
 		if !errors.Is(err, panel.ErrBackupRestart) {
-			if err != nil && panel.PanelRestorePending(config) {
-				if recoveryErr := panel.RecoverPanelRestore(config); recoveryErr != nil {
-					return errors.Join(err, recoveryErr)
-				}
-				slog.Error("restore startup failed; previous configuration restored", "error", err)
-				return runPanelInstance(config)
-			}
+			// Only ErrBackupRestart proves that HTTP shutdown drained every
+			// handler. On other failures an old login/write may still be alive;
+			// exit and let a fresh process perform the initial journal recovery.
+			// Reopening/restoring identity here could resurrect stale sessions.
 			return err
 		}
 		if err := panel.ApplyPanelRestore(config); err != nil {
