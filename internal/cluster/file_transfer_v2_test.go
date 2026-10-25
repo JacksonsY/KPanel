@@ -300,7 +300,7 @@ func TestAuthorizeLinkedFederationFileV2RequiresActiveMatchingParentHost(t *test
 		t.Fatalf("replacement linked authorization = %#v, err=%v", replacementAuthorization, err)
 	}
 	_ = secondAuthorization.Close()
-	_ = replacementAuthorization.Close()
+	defer replacementAuthorization.Close()
 
 	host.State = hostStateV2PendingRevoke
 	host.UpdatedAt = now.Add(time.Second)
@@ -313,6 +313,30 @@ func TestAuthorizeLinkedFederationFileV2RequiresActiveMatchingParentHost(t *test
 	if !errors.Is(err, ErrAuthentication) {
 		t.Fatalf("revoked parent authorization error = %v, want ErrAuthentication", err)
 	}
+	// The documented legacy contract grants one already-authorized export.
+	// Revoking its parent blocks new paths, but does not turn that issued
+	// authorization into a stream-wide cancellation callback.
+	started := time.Now()
+	_, encrypt, err := replacementAuthorization.SealMetadata(contract.FileTransferMetadata{
+		Name: "status.txt", Kind: "file", SizeBytes: 8192, ResourceVersion: input.ResourceVersion,
+	})
+	if err != nil {
+		t.Fatalf("issued single-read authorization was unexpectedly revoked: %v", err)
+	}
+	var stream bytes.Buffer
+	writer := NewFederationFileWriter(&stream, encrypt)
+	payload := bytes.Repeat([]byte("a"), 8192)
+	if written, err := writer.Write(payload); err != nil || written != len(payload) {
+		t.Fatalf("bounded issued stream: bytes=%d err=%v", written, err)
+	}
+	if err := writer.Finish(nil); err != nil {
+		t.Fatal(err)
+	}
+	input.Path = "/different/not-authorized.txt"
+	if _, _, err := service.AuthorizeLinkedFederationFileV2("203.0.113.10", seal("ffffffffffffffffffffffffffffffff")); !errors.Is(err, ErrAuthentication) {
+		t.Fatalf("revoked parent authorized a second path: %v", err)
+	}
+	t.Logf("issued read: %d plaintext bytes / %d framed bytes in %s after parent revocation; fresh same/different-path requests both rejected", len(payload), stream.Len(), time.Since(started))
 }
 
 func TestFileStreamLimiterBoundsGlobalAndPerPeer(t *testing.T) {
@@ -354,6 +378,54 @@ func TestFileStreamLimiterBoundsGlobalAndPerPeer(t *testing.T) {
 	}
 	second()
 	replacement()
+}
+
+func TestLegacyIssuedExportCannotAuthorizeAnotherReadAfterControllerRevocation(t *testing.T) {
+	f := newStreamFixture(t, nil)
+	input := FederationFileOpenRequest{Path: "/one/approved.txt", ResourceVersion: "sha256:approved"}
+	seal := func(id string) v2Envelope {
+		t.Helper()
+		payload, _ := json.Marshal(input)
+		envelope, _, err := sealV2Request(http.MethodPost, v2FileOpenPath, v2Envelope{
+			Protocol: FederationProtocolV2, ControllerID: f.controller, TargetID: f.service.NodeID(),
+			Timestamp: f.service.now().Unix(), RequestID: strings.Repeat(id, 32),
+		}, f.key, nodeNoiseKeyV2(f.service.nodeIdentityV2).Public, nil, payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return envelope
+	}
+	opened, issued, err := f.service.AuthorizeFederationFileV2("198.51.100.10", seal("a"))
+	if err != nil || opened != input {
+		t.Fatalf("single export authorization: %#v %v", opened, err)
+	}
+	defer issued.Close()
+	if err := f.service.DeleteController(f.controller); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.service.AuthorizeFederationFileV2("198.51.100.10", seal("b")); !errors.Is(err, ErrAuthentication) {
+		t.Fatalf("revoked controller started another read: %v", err)
+	}
+	input.Path = "/two/not-approved.txt"
+	if _, _, err := f.service.AuthorizeFederationFileV2("198.51.100.10", seal("c")); !errors.Is(err, ErrAuthentication) {
+		t.Fatalf("revoked controller selected another path: %v", err)
+	}
+	started := time.Now()
+	_, cipher, err := issued.SealMetadata(contract.FileTransferMetadata{
+		Name: "approved.txt", Kind: "file", SizeBytes: 8192, ResourceVersion: opened.ResourceVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stream bytes.Buffer
+	writer := NewFederationFileWriter(&stream, cipher)
+	if _, err := writer.Write(bytes.Repeat([]byte("a"), 8192)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Finish(nil); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("issued direct read: 8192 plaintext bytes / %d framed bytes in %s after revocation; both fresh reads rejected", stream.Len(), time.Since(started))
 }
 
 func TestOpenRemoteFileV2UsesLinkedRouteOnlyWithoutAnyDirectHost(t *testing.T) {

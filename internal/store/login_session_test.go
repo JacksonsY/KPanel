@@ -15,12 +15,16 @@ func TestLoginSessionCommitsBudgetsAndSessionTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
+	user := User{ID: "admin", Username: "admin", PasswordHash: "hash", Role: "admin"}
+	if err := s.CreateInitialAdmin(user); err != nil {
+		t.Fatal(err)
+	}
 	attempts := []LoginAttempt{{Key: "ip:192.0.2.1", OccurredAt: now, Success: true}, {Key: "account:admin", OccurredAt: now, Success: true}}
 	session := Session{TokenHash: "token-hash", CSRFHash: "csrf-hash", UserID: "admin", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
 	if err := s.RecordLoginAttempt(LoginAttempt{Key: attempts[0].Key, OccurredAt: now.Add(-time.Second)}, now.Add(-time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PutLoginSession(session, attempts, now.Add(-time.Minute)); err != nil {
+	if err := s.PutLoginSession(user, session, attempts, now.Add(-time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {
@@ -49,6 +53,10 @@ func TestLoginSessionRollsBackBothChangesOnPersistenceFailure(t *testing.T) {
 	}
 	defer s.Close()
 	now := time.Now().UTC()
+	user := User{ID: "admin", Username: "admin", PasswordHash: "hash", Role: "admin"}
+	if err := s.CreateInitialAdmin(user); err != nil {
+		t.Fatal(err)
+	}
 	attempt := LoginAttempt{Key: "ip:192.0.2.1", OccurredAt: now.Add(-time.Second)}
 	if err := s.RecordLoginAttempt(attempt, now.Add(-time.Minute)); err != nil {
 		t.Fatal(err)
@@ -59,7 +67,7 @@ func TestLoginSessionRollsBackBothChangesOnPersistenceFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.path = filepath.Join(t.TempDir(), "missing", "state.json")
-	err = s.PutLoginSession(Session{TokenHash: "new-token", ExpiresAt: now.Add(time.Hour)}, []LoginAttempt{{Key: attempt.Key, OccurredAt: now, Success: true}}, now.Add(-time.Minute))
+	err = s.PutLoginSession(user, Session{UserID: user.ID, TokenHash: "new-token", ExpiresAt: now.Add(time.Hour)}, []LoginAttempt{{Key: attempt.Key, OccurredAt: now, Success: true}}, now.Add(-time.Minute))
 	s.path = originalPath
 	if err == nil {
 		t.Fatal("expected failed persistence")
@@ -83,11 +91,15 @@ func TestLoginSessionCannotBypassAttemptCapacity(t *testing.T) {
 	}
 	defer s.Close()
 	now := time.Now().UTC()
+	user := User{ID: "admin", Username: "admin", PasswordHash: "hash", Role: "admin"}
+	if err := s.CreateInitialAdmin(user); err != nil {
+		t.Fatal(err)
+	}
 	s.data.LoginAttempts = make([]LoginAttempt, maxLoginAttempts)
 	for i := range s.data.LoginAttempts {
 		s.data.LoginAttempts[i] = LoginAttempt{Key: "account:other", OccurredAt: now}
 	}
-	err = s.PutLoginSession(Session{TokenHash: "new-token", ExpiresAt: now.Add(time.Hour)}, []LoginAttempt{{Key: "account:admin", OccurredAt: now, Success: true}}, now.Add(-time.Minute))
+	err = s.PutLoginSession(user, Session{UserID: user.ID, TokenHash: "new-token", ExpiresAt: now.Add(time.Hour)}, []LoginAttempt{{Key: "account:admin", OccurredAt: now, Success: true}}, now.Add(-time.Minute))
 	if !errors.Is(err, ErrLimitReached) {
 		t.Fatalf("expected capacity rejection: %v", err)
 	}

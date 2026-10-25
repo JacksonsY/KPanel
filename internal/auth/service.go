@@ -329,7 +329,7 @@ func (s *Service) Login(ip, username, password, secondFactor string) (Credential
 	if err != nil {
 		return Credentials{}, err
 	}
-	if err := s.store.PutLoginSession(session, []store.LoginAttempt{
+	if err := s.store.PutLoginSession(user, session, []store.LoginAttempt{
 		{Key: ipKey, OccurredAt: now, Success: true},
 		{Key: accountKey, OccurredAt: now, Success: true},
 	}, now.Add(-s.config.LoginWindow)); err != nil {
@@ -380,7 +380,7 @@ func (s *Service) StartTOTPEnrollment(userID, currentPassword string) (TOTPEnrol
 	if len(s.enrollments) >= maxPendingEnrollments {
 		return TOTPEnrollment{}, &RateLimitError{RetryAfter: time.Minute}
 	}
-	s.enrollments[userID] = pendingTOTPEnrollment{id: id, secret: secret, expiresAt: expiresAt, credentialVersion: user.CredentialVersion}
+	s.enrollments[userID] = pendingTOTPEnrollment{id: id, secret: secret, expiresAt: expiresAt, credentialEpoch: user.CredentialEpoch, credentialVersion: user.CredentialVersion}
 	return TOTPEnrollment{ID: id, Secret: secret, OTPAuthURI: buildOTPAuthURI(user.Username, secret), ExpiresAt: expiresAt}, nil
 }
 
@@ -417,7 +417,7 @@ func (s *Service) ConfirmTOTPEnrollment(userID, enrollmentID, code string) ([]st
 		return nil, err
 	}
 	now := s.now()
-	if err := s.store.EnableUserTOTP(userID, pending.credentialVersion, encryptedSecret, now, step, hashes); err != nil {
+	if err := s.store.EnableUserTOTP(userID, pending.credentialEpoch, pending.credentialVersion, encryptedSecret, now, step, hashes); err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			return nil, ErrTOTPEnrollmentExpired
 		}

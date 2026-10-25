@@ -86,6 +86,7 @@ type passkeyCeremony struct {
 	data                                     webauthn.SessionData
 	userID, username, purpose, binding, name string
 	source                                   string
+	epoch                                    string
 	version                                  uint64
 	expires                                  time.Time
 }
@@ -275,7 +276,7 @@ func (p *PasskeyService) BeginRegistration(session Session, password, second, na
 	if err != nil {
 		return PasskeyOptions{}, err
 	}
-	return p.save(passkeyCeremony{data: *data, userID: user.ID, purpose: "register", binding: session.TokenHash, name: name, version: user.CredentialVersion}, creation.Response)
+	return p.save(passkeyCeremony{data: *data, userID: user.ID, purpose: "register", binding: session.TokenHash, name: name, epoch: user.CredentialEpoch, version: user.CredentialVersion}, creation.Response)
 }
 
 func (p *PasskeyService) FinishRegistration(session Session, id string, response []byte) error {
@@ -286,7 +287,7 @@ func (p *PasskeyService) FinishRegistration(session Session, id string, response
 	p.auth.credentialMu.Lock()
 	defer p.auth.credentialMu.Unlock()
 	user, err := p.auth.store.UserByID(session.User.ID)
-	if err != nil || user.ID != c.userID || user.CredentialVersion != c.version {
+	if err != nil || user.ID != c.userID || user.CredentialEpoch != c.epoch || user.CredentialVersion != c.version {
 		return ErrPasskeyInvalid
 	}
 	u, err := p.user(user)
@@ -356,7 +357,7 @@ func (p *PasskeyService) BeginLogin(ip, username, binding string) (PasskeyOption
 		return PasskeyOptions{}, err
 	}
 	user, _ := s.store.UserByUsername(username)
-	return p.save(passkeyCeremony{data: *data, userID: user.ID, username: username, version: user.CredentialVersion, purpose: "login", binding: binding, source: source}, dataOptions.Response)
+	return p.save(passkeyCeremony{data: *data, userID: user.ID, username: username, epoch: user.CredentialEpoch, version: user.CredentialVersion, purpose: "login", binding: binding, source: source}, dataOptions.Response)
 }
 
 func (p *PasskeyService) FinishLogin(ip, binding, id string, response []byte, second string) (Credentials, error) {
@@ -385,7 +386,7 @@ func (p *PasskeyService) FinishLogin(ip, binding, id string, response []byte, se
 		return Credentials{}, err
 	}
 	user, err := s.store.UserByID(c.userID)
-	if err != nil || user.CredentialVersion != c.version {
+	if err != nil || user.CredentialEpoch != c.epoch || user.CredentialVersion != c.version {
 		return failure(ErrInvalidCredentials)
 	}
 	u, err := p.user(user)

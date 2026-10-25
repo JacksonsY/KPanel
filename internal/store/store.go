@@ -48,6 +48,9 @@ type processLock interface {
 }
 
 type User struct {
+	// CredentialEpoch separates local counter generations across restores and
+	// rollover. Empty is the compatible generation of legacy Store files.
+	CredentialEpoch        string     `json:"credentialEpoch,omitempty"`
 	CredentialVersion      uint64     `json:"credentialVersion,omitempty"`
 	Passkeys               []Passkey  `json:"passkeys,omitempty"`
 	ID                     string     `json:"id"`
@@ -237,6 +240,9 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("unsupported store schema version %d", s.data.SchemaVersion)
 		}
 		for _, user := range s.data.Users {
+			if !validCredentialEpoch(user.CredentialEpoch) {
+				return nil, ErrInvalidRecord
+			}
 			if len(user.Passkeys) != 0 && s.data.SchemaVersion < 2 {
 				return nil, ErrInvalidRecord
 			}
@@ -458,9 +464,6 @@ func (s *Store) RecoverUserPassword(input PasswordRecovery) error {
 	if user.PasswordHash != input.ExpectedHash {
 		return ErrConflict
 	}
-	if user.CredentialVersion == ^uint64(0) {
-		return ErrLimitReached
-	}
 
 	// The recovery is audited before the credential changes: the audit
 	// database is a separate file, so the two cannot commit atomically, and
@@ -547,15 +550,15 @@ func (s *Store) ReplaceUserUsername(userID, expectedUsername, newUsername string
 
 // EnableUserTOTP persists the encrypted authenticator secret and one-time
 // recovery hashes in the same atomic transition that revokes existing sessions.
-// The enrollment's version must still hold at commit, including across restore.
-func (s *Store) EnableUserTOTP(userID string, expectedVersion uint64, encryptedSecret string, enabledAt time.Time, lastUsedStep int64, recoveryHashes []string) error {
+// The enrollment's epoch and version must still hold at commit, including restore.
+func (s *Store) EnableUserTOTP(userID, expectedEpoch string, expectedVersion uint64, encryptedSecret string, enabledAt time.Time, lastUsedStep int64, recoveryHashes []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	userIndex := s.userIndexLocked(userID)
 	if userIndex < 0 {
 		return ErrNotFound
 	}
-	if s.data.Users[userIndex].TOTPSecret != "" || s.data.Users[userIndex].CredentialVersion != expectedVersion {
+	if s.data.Users[userIndex].TOTPSecret != "" || s.data.Users[userIndex].CredentialEpoch != expectedEpoch || s.data.Users[userIndex].CredentialVersion != expectedVersion {
 		return ErrConflict
 	}
 	previous := cloneDiskState(s.data)
@@ -719,10 +722,19 @@ func (s *Store) PutSession(session Session) error {
 }
 
 // PutLoginSession commits the successful login budgets and session together.
-// A failed persistence operation must expose neither half of the login.
-func (s *Store) PutLoginSession(session Session, attempts []LoginAttempt, retainSince time.Time) error {
+// The verified credential snapshot must still hold after password computation;
+// a failed persistence operation must expose neither half of the login.
+func (s *Store) PutLoginSession(expected User, session Session, attempts []LoginAttempt, retainSince time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	index := s.userIndexLocked(expected.ID)
+	if index < 0 || session.UserID != expected.ID {
+		return ErrConflict
+	}
+	current := s.data.Users[index]
+	if current.CredentialEpoch != expected.CredentialEpoch || current.CredentialVersion != expected.CredentialVersion || !secureStringEqual(current.PasswordHash, expected.PasswordHash) {
+		return ErrConflict
+	}
 	previous := cloneDiskState(s.data)
 	if err := s.recordLoginAttemptsLocked(attempts, retainSince); err != nil {
 		return err

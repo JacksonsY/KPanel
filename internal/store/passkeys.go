@@ -2,8 +2,10 @@ package store
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -67,7 +69,7 @@ func (s *Store) DisablePasskeys(expected User, expectedOriginResourceVersion, se
 		return ErrNotFound
 	}
 	current := s.data.Users[index]
-	if current.CredentialVersion != expected.CredentialVersion || !secureStringEqual(current.PasswordHash, expected.PasswordHash) {
+	if current.CredentialEpoch != expected.CredentialEpoch || current.CredentialVersion != expected.CredentialVersion || !secureStringEqual(current.PasswordHash, expected.PasswordHash) {
 		return ErrConflict
 	}
 	validSession := false
@@ -215,10 +217,37 @@ func validPasskeyRPID(value string) bool {
 
 func advanceCredentialVersion(user *User) error {
 	if user.CredentialVersion == ^uint64(0) {
-		return ErrLimitReached
+		epoch, err := newCredentialEpoch()
+		if err != nil {
+			return err
+		}
+		user.CredentialEpoch = epoch
+		user.CredentialVersion = 1
+		return nil
 	}
 	user.CredentialVersion++
 	return nil
+}
+
+// The empty epoch belongs to legacy stores. Every restore and counter rollover
+// creates a fresh local epoch; external backups cannot choose it.
+func newCredentialEpoch() (string, error) {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", fmt.Errorf("generate credential epoch: %w", err)
+	}
+	return hex.EncodeToString(value[:]), nil
+}
+
+func validCredentialEpoch(value string) bool {
+	if value == "" {
+		return true
+	}
+	if len(value) != 32 {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 16 && hex.EncodeToString(decoded) == value
 }
 
 // ReplaceUserPasskeys commits a management change only while the authenticated
@@ -235,7 +264,7 @@ func (s *Store) ReplaceUserPasskeys(expected User, values []Passkey, sessionHash
 		return ErrNotFound
 	}
 	current := s.data.Users[index]
-	if current.CredentialVersion != expected.CredentialVersion || !secureStringEqual(current.PasswordHash, expected.PasswordHash) {
+	if current.CredentialEpoch != expected.CredentialEpoch || current.CredentialVersion != expected.CredentialVersion || !secureStringEqual(current.PasswordHash, expected.PasswordHash) {
 		return ErrConflict
 	}
 	validSession := false
@@ -292,7 +321,7 @@ func (s *Store) UpdateUserPasskey(expected User, value Passkey, session Session)
 		return ErrNotFound
 	}
 	current := s.data.Users[index]
-	if current.CredentialVersion != expected.CredentialVersion || !secureStringEqual(current.PasswordHash, expected.PasswordHash) {
+	if current.CredentialEpoch != expected.CredentialEpoch || current.CredentialVersion != expected.CredentialVersion || !secureStringEqual(current.PasswordHash, expected.PasswordHash) {
 		return ErrConflict
 	}
 	credentialIndex := -1

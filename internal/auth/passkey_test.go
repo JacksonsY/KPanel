@@ -341,6 +341,14 @@ func TestPendingTOTPEnrollmentExpiresOnCredentialChanges(t *testing.T) {
 	for _, change := range []string{"password", "username", "passkey", "restore", "recovery"} {
 		t.Run(change, func(t *testing.T) {
 			p, _, session := setupPasskeys(t)
+			// The restored counter starts at 1. Make the pending ceremony use
+			// that same counter, so restore must reject it by its local epoch.
+			if change == "restore" {
+				user, _ := p.auth.store.UserByID(session.User.ID)
+				if err := p.auth.store.ReplaceUserPassword(user.ID, user.PasswordHash, user.PasswordHash, p.auth.now()); err != nil {
+					t.Fatal(err)
+				}
+			}
 			enrollment, err := p.auth.StartTOTPEnrollment(session.User.ID, passkeyPassword)
 			if err != nil {
 				t.Fatal(err)
@@ -376,6 +384,58 @@ func TestPendingTOTPEnrollmentExpiresOnCredentialChanges(t *testing.T) {
 				t.Fatalf("TOTP changed after stale enrollment: %+v %v", status, err)
 			}
 		})
+	}
+}
+
+func TestPasskeyLoginCannotReviveAcrossRestoredEpochWithEqualVersion(t *testing.T) {
+	p, _, session := setupPasskeys(t)
+	a := registerTestPasskey(t, p, session, 5)
+	user, _ := p.auth.store.UserByID(session.User.ID)
+	if err := p.auth.store.ReplaceUserPassword(user.ID, user.PasswordHash, user.PasswordHash, p.auth.now()); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := p.auth.store.UserByID(user.ID)
+	old, err := p.BeginLogin("192.0.2.1", "admin", "old-browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+	backup, err := p.auth.store.ExportIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := p.auth.store.RestoreIdentity(backup); err != nil {
+			t.Fatal(err)
+		}
+	}
+	credentials, err := p.auth.Login("192.0.2.1", "admin", passkeyPassword, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := p.auth.Authenticate(credentials.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registration, err := p.BeginRegistration(current, passkeyPassword, "", "same authenticator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.FinishRegistration(current, registration.CeremonyID, a.registration(t, registration, passkeyTestOrigin, 5)); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := p.auth.store.UserByID(user.ID)
+	if before.CredentialVersion != after.CredentialVersion || before.ID != after.ID || before.CredentialEpoch == after.CredentialEpoch {
+		t.Fatal("fixture did not preserve ID and collide versions across epochs")
+	}
+	if _, err := p.FinishLogin("192.0.2.1", "old-browser", old.CeremonyID, a.assertion(t, old, passkeyTestOrigin, 5, 1), ""); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("old login revived after identical authenticator enrollment: %v", err)
+	}
+	fresh, err := p.BeginLogin("192.0.2.1", "admin", "new-browser")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.FinishLogin("192.0.2.1", "new-browser", fresh.CeremonyID, a.assertion(t, fresh, passkeyTestOrigin, 5, 1), ""); err != nil {
+		t.Fatalf("fresh login after restore failed: %v", err)
 	}
 }
 

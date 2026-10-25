@@ -401,21 +401,22 @@ func TestIdentityBackupAndRecoveryNeverRestorePasskeys(t *testing.T) {
 	if err := s.RestoreIdentity(backup); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.UserByID(u.ID)
-	if len(got.Passkeys) != 0 || got.CredentialVersion != 2 || s.data.SchemaVersion != 2 {
+	got, _ := s.UserByUsername(u.Username)
+	if got.ID != u.ID || got.CredentialEpoch == u.CredentialEpoch || len(got.Passkeys) != 0 || got.CredentialVersion != 1 || s.data.SchemaVersion != 2 {
 		t.Fatalf("restore reactivated older state: %#v", got)
 	}
+	session.UserID = got.ID
 	if err := s.PutSession(session); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.ReplaceUserPasskeys(got, []Passkey{key}, session.TokenHash, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecoverUserPassword(PasswordRecovery{UserID: u.ID, ExpectedHash: u.PasswordHash, NewHash: "new-hash", UpdatedAt: time.Now(), AuditEvent: AuditEvent{ID: "recover", Action: "auth.password.recover"}}); err != nil {
+	if err := s.RecoverUserPassword(PasswordRecovery{UserID: got.ID, ExpectedHash: u.PasswordHash, NewHash: "new-hash", UpdatedAt: time.Now(), AuditEvent: AuditEvent{ID: "recover", Action: "auth.password.recover"}}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.UserByID(u.ID)
-	if len(got.Passkeys) != 0 || got.CredentialVersion != 4 {
+	got, _ = s.UserByUsername(u.Username)
+	if len(got.Passkeys) != 0 || got.CredentialVersion != 3 {
 		t.Fatalf("recovery retained passkeys: %#v", got)
 	}
 }
@@ -463,7 +464,9 @@ func TestCredentialVersionTracksSecurityChangesOnly(t *testing.T) {
 	}{
 		{func() error { return s.ReplaceUserPassword(u.ID, u.PasswordHash, "new-hash", now) }, 1},
 		{func() error { return s.ReplaceUserUsername(u.ID, u.Username, "new-name", now) }, 2},
-		{func() error { return s.EnableUserTOTP(u.ID, 2, "secret", now, 1, []string{"recovery"}) }, 3},
+		{func() error {
+			return s.EnableUserTOTP(u.ID, u.CredentialEpoch, 2, "secret", now, 1, []string{"recovery"})
+		}, 3},
 		{func() error { return s.ConsumeUserTOTPStep(u.ID, "secret", 2, now) }, 3},
 		{func() error { return s.ConsumeUserRecoveryCode(u.ID, "recovery", now) }, 3},
 		{func() error { return s.ReplaceUserRecoveryCodes(u.ID, []string{"new-recovery"}, now) }, 4},
@@ -479,11 +482,11 @@ func TestCredentialVersionTracksSecurityChangesOnly(t *testing.T) {
 		}
 	}
 	s.data.Users[0].CredentialVersion = ^uint64(0)
-	if err := s.ReplaceUserPassword(u.ID, "new-hash", "another", now); !errors.Is(err, ErrLimitReached) {
-		t.Fatalf("version overflow accepted: %v", err)
+	if err := s.ReplaceUserPassword(u.ID, "new-hash", "another", now); err != nil {
+		t.Fatalf("version rollover failed: %v", err)
 	}
-	if s.data.Users[0].PasswordHash != "new-hash" {
-		t.Fatal("overflow changed password")
+	if got := s.data.Users[0]; got.PasswordHash != "another" || got.CredentialVersion != 1 || got.CredentialEpoch == u.CredentialEpoch {
+		t.Fatal("counter rollover did not establish a fresh local credential epoch")
 	}
 }
 

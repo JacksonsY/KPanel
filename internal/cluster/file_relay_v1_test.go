@@ -5,13 +5,16 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -58,6 +61,99 @@ func TestFileRelayV1RequestFromHTTPKeepsTheEnvelopeFixed(t *testing.T) {
 			t.Fatalf("invalid envelope error = %v, want ErrAuthentication", err)
 		}
 	}
+}
+
+func TestLegacyFileRelayRequiresVerifiedTLSAndExplicitGrant(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	service := newLightServiceForTest(t, &serviceTestClock{now: now})
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controllerID := strings.Repeat("e", 32)
+	code, err := service.CreatePairingCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.AcceptPair("198.51.100.10", PairRequest{
+		PairingCode: code.Code, ControllerID: controllerID, ControllerName: "legacy",
+		PublicKey: encodePublicKey(public), FederationProtocol: FederationProtocol,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const original = "authorized file contents"
+	var calls atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		input, err := service.AuthorizeFileRelayV1("198.51.100.10", r)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		body, err := io.ReadAll(io.LimitReader(input.Body, 1024))
+		if err != nil || string(body) != original || input.RawQuery != "path=%2Ftmp%2Fapproved.txt" {
+			t.Errorf("authenticated TLS request changed: %q %v", body, err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	_, port, _ := net.SplitHostPort(server.Listener.Addr().String())
+	origin := "https://example.com:" + port
+	// Preserve the approved-address gate and real certificate validation;
+	// only the last test dial maps the approved public address to loopback.
+	config := RemoteClientConfig{
+		Resolver: staticResolver{"example.com": {net.ParseIP("8.8.8.8")}},
+		Dialer: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+		},
+	}
+	untrusted, err := NewRemoteClient(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := func(client *RemoteClient, origin string) (*http.Response, error) {
+		return client.OpenSignedFileRelayV1(context.Background(), origin, controllerID, service.NodeID(), private, now, LightFileRequest{
+			Method: http.MethodPut, Path: "/v1/files/content", RawQuery: "path=%2Ftmp%2Fapproved.txt",
+			Body: strings.NewReader(original), BodyLength: int64(len(original)),
+		})
+	}
+	if response, err := open(untrusted, origin); err == nil {
+		response.Body.Close()
+		t.Fatal("legacy relay trusted an unverified TLS certificate")
+	}
+	if calls.Load() != 0 {
+		t.Fatal("unverified TLS reached authorization")
+	}
+	config.RootCAs = x509.NewCertPool()
+	config.RootCAs.AddCert(server.Certificate())
+	trusted, err := NewRemoteClient(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response, err := open(trusted, strings.Replace(origin, "https:", "http:", 1)); err == nil {
+		response.Body.Close()
+		t.Fatal("legacy relay downgraded to HTTP")
+	}
+	response, err := open(trusted, origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatal("summary-only pairing reached a file write")
+	}
+	if _, err := service.SetControllerFileRelay(controllerID, true); err != nil {
+		t.Fatal(err)
+	}
+	response, err = open(trusted, origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent || calls.Load() != 2 {
+		t.Fatalf("granted legacy write failed: status=%d requests=%d", response.StatusCode, calls.Load())
+	}
+	t.Logf("real TLS: untrusted certificate/HTTP rejected before handler; summary-only denied; one granted write delivered %d bytes to its signed path", len(original))
 }
 
 func TestAuthorizeFileRelayV1RequiresTargetGrantAndBoundSignature(t *testing.T) {

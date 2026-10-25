@@ -18,6 +18,7 @@ func (s *Store) ExportIdentity() ([]byte, error) {
 	users := make([]User, len(s.data.Users))
 	copy(users, s.data.Users)
 	for i := range users {
+		users[i].CredentialEpoch = ""
 		users[i].TOTPRecoveryCodeHashes = nil
 		users[i].Passkeys = nil
 	}
@@ -58,7 +59,7 @@ func ValidateIdentityBackup(data []byte) error {
 		return errors.New("invalid cluster traffic backup")
 	}
 	u := state.Users[0]
-	if u.ID == "" || len(u.ID) > 128 || u.Role != "admin" || u.Username == "" || len(u.Username) > 128 || len(u.PasswordHash) > 1024 || len(u.PasswordHash) < 32 || len(u.TOTPRecoveryCodeHashes) != 0 || len(u.Passkeys) != 0 {
+	if u.ID == "" || len(u.ID) > 128 || u.Role != "admin" || u.Username == "" || len(u.Username) > 128 || len(u.PasswordHash) > 1024 || len(u.PasswordHash) < 32 || len(u.TOTPRecoveryCodeHashes) != 0 || len(u.Passkeys) != 0 || !validCredentialEpoch(u.CredentialEpoch) {
 		return errors.New("invalid backup account")
 	}
 	if err := validateUserAvatar(u.Avatar); err != nil {
@@ -79,16 +80,17 @@ func (s *Store) RestoreIdentity(data []byte) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Restoring an older backup must not resurrect a credential snapshot.
+	// Imported versions and epochs are not local freshness evidence. Rotate
+	// the credential epoch while retaining account IDs and their history.
+	// Old ceremonies and store snapshots cannot match the new epoch, even
+	// after an exhausted counter or repeated restoration of the same backup.
 	for i := range incoming.Users {
-		for _, current := range s.data.Users {
-			if current.CredentialVersion > incoming.Users[i].CredentialVersion {
-				incoming.Users[i].CredentialVersion = current.CredentialVersion
-			}
-		}
-		if err := advanceCredentialVersion(&incoming.Users[i]); err != nil {
+		epoch, err := newCredentialEpoch()
+		if err != nil {
 			return err
 		}
+		incoming.Users[i].CredentialEpoch = epoch
+		incoming.Users[i].CredentialVersion = 1
 		incoming.Users[i].Passkeys = nil
 	}
 	previous := cloneDiskState(s.data)

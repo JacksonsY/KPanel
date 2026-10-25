@@ -54,6 +54,7 @@ type pendingTOTPEnrollment struct {
 	id                string
 	secret            string
 	expiresAt         time.Time
+	credentialEpoch   string
 	credentialVersion uint64
 }
 
