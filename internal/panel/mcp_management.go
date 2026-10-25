@@ -224,6 +224,24 @@ func mcpManagedOutput(body []byte, offset, limit int) (map[string]any, error) {
 		return nil, errors.New("agent_response_invalid")
 	}
 	truncated := false
+	if object, ok := data.(map[string]any); ok {
+		var err error
+		truncated, err = mcpTerminalProjection(object)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// Project the complete decoded display tree before paging or truncation.
+	// Independent per-string calls lose credential continuation across logs and
+	// cannot classify structured keys emitted by the installation scripts.
+	display, err := json.Marshal(data)
+	if err != nil {
+		return nil, errors.New("agent_response_invalid")
+	}
+	display, err = redact.JSON(display)
+	if err != nil || json.Unmarshal(display, &data) != nil {
+		return nil, errors.New("agent_response_projection_invalid")
+	}
 	var sanitize func(any, int) any
 	sanitize = func(value any, depth int) any {
 		if depth > 12 {
@@ -272,11 +290,6 @@ func mcpManagedOutput(body []byte, offset, limit int) (map[string]any, error) {
 		}
 	}
 	if object, ok := data.(map[string]any); ok {
-		var err error
-		truncated, err = mcpTerminalProjection(object)
-		if err != nil {
-			return nil, err
-		}
 		if items, ok := object["items"].([]any); ok {
 			end := min(offset+limit, len(items))
 			start := min(offset, len(items))

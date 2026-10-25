@@ -284,7 +284,7 @@ func secretNormalizedJSONKey(key string) bool {
 	if key == "auth" || key == "auths" || key == "key" || key == "stringdata" {
 		return true
 	}
-	for _, part := range []string{"password", "passwd", "pwd", "token", "secret", "apikey", "accesskey", "authorization", "cookie", "credential", "privatekey"} {
+	for _, part := range []string{"password", "passwd", "pwd", "token", "secret", "apikey", "accesskey", "authorization", "cookie", "credential", "privatekey", "密码", "口令", "令牌", "密钥", "私钥"} {
 		if strings.Contains(key, part) {
 			return true
 		}

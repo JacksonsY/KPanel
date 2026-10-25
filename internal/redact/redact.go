@@ -11,12 +11,16 @@ import (
 
 const privateKeyReplacement = "[REDACTED PRIVATE KEY]"
 
+// These labels are emitted by the authoritative installation scripts as well
+// as English configuration keys. All display formats share this classifier.
+const secretNamePattern = `password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key|密码|口令|令牌|密钥|私钥`
+
 var (
 	mysqlCommand                = regexp.MustCompile(`(?i:\b(?:mysql|mariadb|mysqldump|mariadb-dump|mysqladmin)\b)[^\r\n]*`)
-	jsonSecretAssignment        = regexp.MustCompile(`(?i)("(?:[^"\\]|\\.)*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)(?:[^"\\]|\\.)*"\s*:\s*)("(?:\\.|[^"\\])*"|[^,\s}\]]+)`)
-	secretLineAssignment        = regexp.MustCompile(`(?i)^([ \t]*(?:-[ \t]+)*(?:export[ \t]+)?["']?[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*["']?[ \t]*[:=][ \t]*)[^\r\n]*$`)
-	secretAssignment            = regexp.MustCompile(`(?i)(^|[^?&%A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*)(\s*[:=]\s*)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|\\$|[^\s'"\\])+)`)
-	secretFlag                  = regexp.MustCompile(`(?i)(--?[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key)[A-Za-z0-9_.-]*\s+)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|\\$|[^\s'"\\])+)`)
+	jsonSecretAssignment        = regexp.MustCompile(`(?i)("(?:[^"\\]|\\.)*(?:` + secretNamePattern + `)(?:[^"\\]|\\.)*"\s*[:：]\s*)("(?:\\.|[^"\\])*"|[^,\s}\]]+)`)
+	secretLineAssignment        = regexp.MustCompile(`(?i)^([ \t]*(?:-[ \t]+)*(?:export[ \t]+)?["']?[\p{L}\p{N}_.-]*(?:` + secretNamePattern + `)[\p{L}\p{N}_.-]*["']?[ \t]*[:：=][ \t]*)[^\r\n]*$`)
+	secretAssignment            = regexp.MustCompile(`(?i)(^|[^?&%\p{L}\p{N}_.-])([\p{L}\p{N}_.-]*(?:` + secretNamePattern + `)[\p{L}\p{N}_.-]*)(\s*[:：=]\s*)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|\\$|[^\s'"\\])+)`)
+	secretFlag                  = regexp.MustCompile(`(?i)(--?[\p{L}\p{N}_.-]*(?:` + secretNamePattern + `)[\p{L}\p{N}_.-]*\s+)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|\\$|[^\s'"\\])+)`)
 	mysqlPasswordAttachedOption = regexp.MustCompile(`(\s-p)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|[^\s;&|'"\\])+)`)
 	mysqlPasswordSpacedOption   = regexp.MustCompile(`(\s-p)(\s+)((?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|[^\s;&|'"\\-])(?:"(?:\\.|[^"\\])*"?|'[^']*'?|\\.|[^\s;&|'"\\])*)`)
 	authorizationHeader         = regexp.MustCompile(`(?i)\b(authorization|proxy-authorization)(\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\r\n]+)`)
@@ -27,7 +31,7 @@ var (
 	openAISecret                = regexp.MustCompile(`(?i)\bsk-[A-Za-z0-9._~+/=-]{4,}`)
 	urlCredentials              = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s@]+@`)
 	urlQueryParameter           = regexp.MustCompile(`(?i)([?&]((?:[A-Za-z0-9_.-]|%[0-9a-f]{2})+)=)([^&#\s]*)`)
-	sensitiveURLQueryName       = regexp.MustCompile(`(?i)(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|authorization|cookie|credential|private[_-]?key|signature)`)
+	sensitiveURLQueryName       = regexp.MustCompile(`(?i)(?:` + secretNamePattern + `|signature)`)
 	terminalEscape              = regexp.MustCompile(`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))`)
 	privateKeyBegin             = regexp.MustCompile(`(?i)-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
 	privateKeyEnd               = regexp.MustCompile(`(?i)-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
@@ -237,7 +241,7 @@ func (c *configurationContinuation) begin(value string, indent int, inlineSensit
 	}
 	// YAML node properties precede the scalar's own lexical syntax. They do
 	// not turn a following block indicator or quote into a plain value.
-	if strings.HasSuffix(prefix, ":") {
+	if strings.HasSuffix(prefix, ":") || strings.HasSuffix(prefix, "：") {
 		for len(tail) > 0 && (tail[0] == '&' || tail[0] == '!') {
 			end := strings.IndexAny(tail, " \t")
 			if end < 0 {
