@@ -162,9 +162,11 @@ const scopePolicy = () => JSON.parse(readFileSync(join(repo, 'scripts/torrent-ba
 const scopeIdentity = policy => Object.fromEntries(['sourceManifestSha256', 'selectedGraphSha256', 'buildTargetFilesSha256', 'closureSha256', 'firstPartySourceSha256'].map(key => [key, structuredClone(policy[key])]));
 
 test('bounded scan scope expires, binds source and targets, and requires exact independently reviewed findings', () => {
-  const policy = scopePolicy(), identity = scopeIdentity(policy), observed = new Date('2026-10-11T12:00:00Z');
+  const policy = scopePolicy(), identity = scopeIdentity(policy), observed = new Date('2026-10-25T12:00:00Z');
   assert.doesNotThrow(() => validateScanScope(policy, identity, observed));
-  for (const date of ['2026-10-10T12:00:00Z', '2026-10-25T00:00:00Z']) assert.throws(() => validateScanScope(policy, identity, new Date(date)), /window/);
+  for (const date of ['2026-10-24T23:59:59Z', '2026-11-08T00:00:00Z']) assert.throws(() => validateScanScope(policy, identity, new Date(date)), /window/);
+  const stale = { ...policy, observedAt: '2026-10-11', expiresAt: '2026-10-25' };
+  assert.throws(() => validateScanScope(stale, identity, new Date('2026-10-12T12:00:00Z')), /window/);
   for (const key of ['sourceManifestSha256', 'selectedGraphSha256', 'closureSha256', 'buildTargetFilesSha256', 'firstPartySourceSha256']) {
     assert.throws(() => validateScanScope(policy, { ...identity, [key]: 'changed' }, observed), /changed/);
   }

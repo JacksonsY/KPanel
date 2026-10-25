@@ -95,7 +95,7 @@ export function scannerManifest(modules, scope) {
 export function validateScanScope(policy, identity, now = new Date()) {
   const date = value => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '') ? Date.parse(value + 'T00:00:00Z') : NaN;
   const observed = date(policy.observedAt), expires = date(policy.expiresAt);
-  if (policy.schemaVersion !== 1 || policy.observedAt !== '2026-10-11' || policy.expiresAt !== '2026-10-25'
+  if (policy.schemaVersion !== 1 || policy.observedAt !== '2026-10-25' || policy.expiresAt !== '2026-11-08'
       || !Number.isFinite(observed) || !Number.isFinite(expires) || now.getTime() < observed || now.getTime() >= expires
       || expires - observed > 14 * 86400000) throw new Error('Scan scope is not within its reviewed observation window');
   if (policy.sourceManifestSha256 !== SOURCE_MANIFEST_SHA256 || policy.sourceManifestSha256 !== identity.sourceManifestSha256
