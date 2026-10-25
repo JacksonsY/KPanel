@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><title>KPanel gallery — original xp inspired artwork</title><defs>
+<linearGradient id="metal" x2=".8" y2="1"><stop stop-color="#fff"/><stop offset=".5" stop-color="#dce7f0"/><stop offset="1" stop-color="#7f98b5"/></linearGradient>
+<linearGradient id="blue" x2=".8" y2="1"><stop stop-color="#8fddff"/><stop offset=".35" stop-color="#238aed"/><stop offset="1" stop-color="#1546a4"/></linearGradient>
+<linearGradient id="sky" x2=".5" y2="1"><stop stop-color="#093c9c"/><stop offset="1" stop-color="#70d8ff"/></linearGradient>
+<linearGradient id="yellow" x2=".5" y2="1"><stop stop-color="#fff8a8"/><stop offset=".35" stop-color="#ffda59"/><stop offset="1" stop-color="#efa51e"/></linearGradient>
+<linearGradient id="paper" x2=".8" y2="1"><stop stop-color="#fff"/><stop offset=".7" stop-color="#f6fbff"/><stop offset="1" stop-color="#c4d7ea"/></linearGradient>
+<linearGradient id="green" x2=".6" y2="1"><stop stop-color="#c9f88e"/><stop offset=".5" stop-color="#5db52c"/><stop offset="1" stop-color="#247716"/></linearGradient>
+<linearGradient id="red" x2=".7" y2="1"><stop stop-color="#ffb3a3"/><stop offset=".4" stop-color="#f34f35"/><stop offset="1" stop-color="#b8211e"/></linearGradient>
+<linearGradient id="dark" x2=".4" y2="1"><stop stop-color="#517093"/><stop offset="1" stop-color="#142f55"/></linearGradient>
+</defs><ellipse cx="33" cy="59" rx="23" ry="3" fill="#14355d" opacity=".16"/><path d="M7 8L47 4L52 40L10 46Z" fill="url(#metal)" stroke="#6586a7" stroke-width="1" stroke-linejoin="round"/><path d="M13 15L56 17L53 56L10 54Z" fill="url(#paper)" stroke="#6382a3" stroke-width="1" stroke-linejoin="round"/><path d="M17 20L51 22L49 47L15 45Z" fill="url(#sky)" stroke="#7b98b6" stroke-width="1" stroke-linejoin="round"/><circle cx="42" cy="28" r="4" fill="url(#yellow)" stroke="none"/><path d="M16 40L24 29L34 39L40 33L50 44L49 47L15 45Z" fill="url(#green)" stroke="#38794b" stroke-width="1" stroke-linejoin="round"/><path d="M19 21L49 23" fill="none" stroke="#fff" stroke-width="1" stroke-linejoin="round"/></svg>

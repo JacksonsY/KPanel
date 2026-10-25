@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { FileText, FolderOpen } from '@lucide/vue'
 import DesktopEntryIcon from './DesktopEntryIcon.vue'
+import { resetDesktopShellStyleForTest, useDesktopShellStyle } from '@/stores/desktopShellStyle'
 
 function pointer(
   type: string,
@@ -31,6 +32,7 @@ function mountIcon() {
 
 describe('DesktopEntryIcon touch interaction', () => {
   afterEach(() => {
+    resetDesktopShellStyleForTest()
     vi.useRealTimers()
     document.body.innerHTML = ''
   })
@@ -78,6 +80,53 @@ describe('DesktopEntryIcon touch interaction', () => {
     expect(wrapper.find('img').exists()).toBe(false)
     expect(wrapper.find('.desktop__icon-monogram').exists()).toBe(true)
     wrapper.unmount()
+  })
+
+  it('reloads period artwork on theme changes and preserves image failure recovery', async () => {
+    const wrapper = mountIcon()
+    await wrapper.setProps({ navIconURL: '/desktop-icons/win98/overview-v1.svg' })
+    const glyph = () => wrapper.get('.desktop__icon-glyph')
+    expect(glyph().classes()).toContain('desktop__icon-glyph--period')
+    expect((glyph().element as HTMLElement).style.background).toBe('transparent')
+    await wrapper.get('img').trigger('load')
+    await wrapper.setProps({ navIconURL: '/desktop-icons/xp/overview-v1.svg' })
+    expect(wrapper.get('img').classes()).toContain('desktop__icon-img--loading')
+    await wrapper.get('img').trigger('error')
+    expect(wrapper.get('.desktop__icon-monogram').text()).toBe('概')
+    await wrapper.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('open')).toHaveLength(1)
+    await wrapper.setProps({ navIconURL: '/desktop-icons/overview-kpanel-flat-v1.webp' })
+    expect(glyph().classes()).not.toContain('desktop__icon-glyph--period')
+    expect(wrapper.find('img').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it.each(['win98', 'xp'] as const)('frames third-party artwork and its failed-image fallback only in %s', async (style) => {
+    const shell = useDesktopShellStyle()
+    shell.setStyle(style)
+    for (const kind of ['app', 'site', 'shortcut'] as const) {
+      const wrapper = mount(DesktopEntryIcon, {
+        props: { label: '第三方', gradient: 'linear-gradient(#0aa, #066)', entry: {
+          key: `${kind}:third-party`, id: 'third-party', kind, name: '第三方', launch: 'external', iconURL: '/custom-logo.webp',
+        } },
+      })
+      const glyph = () => wrapper.get('.desktop__icon-glyph')
+      expect(glyph().classes()).toContain('desktop__icon-glyph--framed')
+      expect(wrapper.get('img').attributes('src')).toBe('/custom-logo.webp')
+      await wrapper.get('img').trigger('error')
+      expect(glyph().classes()).toContain('desktop__icon-glyph--framed')
+      await wrapper.trigger('keydown', { key: 'Enter' })
+      expect(wrapper.emitted('open')).toHaveLength(1)
+      await wrapper.setProps({ entry: { ...wrapper.props('entry')!, iconURL: '/repaired.webp' } })
+      expect(wrapper.get('img').attributes('src')).toBe('/repaired.webp')
+      shell.setStyle('modern')
+      await wrapper.vm.$nextTick()
+      expect(glyph().classes()).not.toContain('desktop__icon-glyph--framed')
+      shell.setStyle(style)
+      await wrapper.setProps({ entry: { ...wrapper.props('entry')!, kind: 'shortcut', launch: 'directory' } })
+      expect(glyph().classes()).not.toContain('desktop__icon-glyph--framed')
+      wrapper.unmount()
+    }
   })
 
   it.each(['site', 'shortcut'] as const)('uses the solid %s fallback only until its image loads', async (kind) => {

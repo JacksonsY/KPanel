@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { Copy, LoaderCircle } from '@lucide/vue'
 import type { DesktopEntry } from '@/lib/desktopEntries'
+import { useDesktopShellStyle } from '@/stores/desktopShellStyle'
 import DesktopShortcutArtwork from './DesktopShortcutArtwork.vue'
 
 /**
@@ -42,6 +43,7 @@ const LONG_PRESS_MOVE_TOLERANCE = 10
 const CLICK_SUPPRESSION_DURATION = 800
 
 const iconElement = ref<HTMLButtonElement>()
+const shellStyle = useDesktopShellStyle()
 const imageFailed = ref(false)
 const imageLoaded = ref(false)
 let activePointerId: number | undefined
@@ -63,18 +65,22 @@ watch(
 )
 
 const monogram = computed(() => props.label.trim().slice(0, 1).toLocaleUpperCase() || 'K')
+const periodArtwork = computed(() => /^\/desktop-icons\/(?:win98|xp)\//.test(props.navIconURL || props.entry?.iconURL || ''))
 const fileShortcutKind = computed<'file' | 'directory' | undefined>(() => {
   if (props.entry?.kind !== 'shortcut') return undefined
   return props.entry.launch === 'file' || props.entry.launch === 'directory'
     ? props.entry.launch
     : undefined
 })
+const framedArtwork = computed(() => Boolean(props.entry && !props.navIconURL
+  && !periodArtwork.value && !fileShortcutKind.value && shellStyle.preference.value !== 'modern'))
 const fileArtworkVisible = computed(() => fileShortcutKind.value === 'file'
   && (!imageLoaded.value || imageFailed.value))
 const webFallbackVisible = computed(() => (props.entry?.kind === 'site'
   || (props.entry?.kind === 'shortcut' && props.entry.launch === 'external'))
   && !props.navIcon && !props.entry?.icon && (!imageLoaded.value || imageFailed.value))
 const artworkBackground = computed(() => {
+  if (periodArtwork.value || framedArtwork.value) return 'transparent'
   if (fileArtworkVisible.value) return 'transparent'
   if (webFallbackVisible.value) return props.fallbackBackground ?? props.gradient
   return props.gradient
@@ -260,6 +266,8 @@ onBeforeUnmount(clearLongPress)
     <span
       class="desktop__icon-glyph"
       :class="{
+        'desktop__icon-glyph--period': periodArtwork,
+        'desktop__icon-glyph--framed': framedArtwork,
         'desktop__icon-glyph--dynamic': Boolean(entry),
         'desktop__icon-glyph--shortcut': Boolean(fileShortcutKind),
         'desktop__icon-glyph--file': fileArtworkVisible,

@@ -166,8 +166,8 @@ describe('desktop visual and interaction contract', () => {
 
     const win98Body = cssRule(win98Styles, ".desktop[data-shell-style='win98'] .desktop-window__body")
     expect(win98Body).toContain('--bg: var(--desktop-window-client-background);')
-    expect(win98Body).toContain('--surface-subtle: #d4d0c8;')
-    expect(win98Body).toContain('--surface-raised: #fff;')
+    expect(win98Body).toContain('--surface-subtle: var(--win98-surface);')
+    expect(win98Body).toContain('--surface-raised: var(--win98-button-face);')
     expect(win98Body).toContain('background: var(--bg);')
     expect(win98Body).toContain('--brand: var(--win98-dialog-blue);')
     expect(win98Body).not.toMatch(/--(?:success|warning|danger)\s*:/)
