@@ -132,6 +132,7 @@ function titleKeyForPath(path: string): string {
   if (path === '/processes') return 'route.processes'
   if (path === '/system') return 'route.systemCenter'
   if (path === '/sites/environment') return 'route.environment'
+  if (path === '/sites/monitor') return 'route.siteMonitoring'
   return findDesktopApp(path)?.labelKey ?? props.windowState.titleKey
 }
 

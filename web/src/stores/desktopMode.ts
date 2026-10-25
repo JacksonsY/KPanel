@@ -193,6 +193,7 @@ function titleKeyForWindowPath(path: string): string | undefined {
   if (path === '/processes') return 'route.processes'
   if (path === '/system') return 'route.systemCenter'
   if (path === '/sites/environment') return 'route.environment'
+  if (path === '/sites/monitor') return 'route.siteMonitoring'
   if (path.startsWith('/ai/s/') && !/^\/ai\/s\/[A-Za-z0-9_-]{1,128}$/.test(path)) return undefined
   return findDesktopApp(path)?.labelKey
 }

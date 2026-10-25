@@ -228,7 +228,7 @@ export function desktopRoutePath(fullPath: string): string {
 export function canonicalDesktopAppPath(path: string): string {
   path = desktopRoutePath(path)
   if (path === '/settings/guides') return '/guides'
-  if (path === '/sites/environment') return '/sites'
+  if (path === '/sites/environment' || path === '/sites/monitor') return '/sites'
   if (path.startsWith('/ai/s/')) return '/ai'
   if (path === '/jobs' || path === '/audit') return '/activity'
   return path

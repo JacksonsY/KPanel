@@ -189,6 +189,11 @@ export function windowRouteRecords(): RouteRecordRaw[] {
       component: WINDOW_ROUTE_PLACEHOLDER,
     },
     {
+      path: '/sites/monitor',
+      name: 'sites-monitor',
+      component: WINDOW_ROUTE_PLACEHOLDER,
+    },
+    {
       path: '/apps',
       name: 'apps',
       component: WINDOW_ROUTE_PLACEHOLDER,
