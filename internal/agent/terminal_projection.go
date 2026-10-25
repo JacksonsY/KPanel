@@ -199,7 +199,20 @@ func writeTaskDisplay[T any](w http.ResponseWriter, r *http.Request, value any, 
 		return
 	}
 	result["projection"] = terminalDisplayVersion
-	writeJSON(w, 200, result)
+	// Progress messages and events also originate in script output. The model
+	// view must project the entire metadata tree, independently of the Panel's
+	// additional boundary projection; owner state and the raw admin view stay intact.
+	display, err := json.Marshal(result)
+	if err == nil && len(display) <= 8<<20 {
+		display, err = redact.JSON(display)
+	} else {
+		err = errors.New("terminal_projection_limit")
+	}
+	if err != nil || len(display) > 8<<20 {
+		writeProblem(w, requestIDFrom(w), 503, "terminal_projection_unavailable", "Task output projection unavailable", "")
+		return
+	}
+	writeJSON(w, 200, json.RawMessage(display))
 }
 
 func writeTerminalDisplay[T any](w http.ResponseWriter, r *http.Request, offset int64, read func(int64) (T, error)) {

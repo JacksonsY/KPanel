@@ -27,6 +27,21 @@ func terminalFixtureReader(source string, chunkSize int) func(int64) (terminalSo
 	}
 }
 
+func TestTaskDisplayProjectsScriptMetadata(t *testing.T) {
+	metadata := map[string]any{"id": "test-job", "status": "running", "message": "password=synthetic-message-secret", "events": []string{"服务密码: synthetic-event-secret"}}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/?projection=model-v1", nil)
+	writeTaskDisplay(w, r, metadata, func(_ string, offset int64) (terminalSourceChunk, error) {
+		return terminalFixtureReader("status: ready\n", 1024)(offset)
+	})
+	if w.Code != 200 || strings.Contains(w.Body.String(), "synthetic-") || !strings.Contains(w.Body.String(), "running") || !strings.Contains(w.Body.String(), "ready") {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if metadata["message"] != "password=synthetic-message-secret" {
+		t.Fatal("display projection changed owner metadata")
+	}
+}
+
 func TestTerminalDisplayProjectsBeforeArbitraryPagination(t *testing.T) {
 	source := strings.Repeat("visible\n", 5000) + "password='synthetic-first\nsynthetic-second'\n-----BEGIN PRIVATE KEY-----\nsynthetic-private\n-----END PRIVATE KEY-----\n状态: ready\n"
 	var output strings.Builder
