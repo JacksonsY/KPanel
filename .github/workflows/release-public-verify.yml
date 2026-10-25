@@ -136,7 +136,8 @@ jobs:
           const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
           const { GITHUB_SHA: controller, EXPECTED_SHA: candidate, EXPECTED_VERSION: version,
             GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: attempt, PUBLIC_EVIDENCE: evidence } = process.env;
-          const paths = ['packaging/release-runner/Dockerfile', 'packaging/tests/release-browser/real-feature-public.sh'];
+          const paths = ['packaging/release-runner/Dockerfile', 'packaging/tests/release-browser/real-feature-public.sh', 'packaging/tests/release-browser/real-feature-browser-public.cjs'];
+          const receipts = ['test-runner-recipe.json', 'test-fixture-source.json', 'test-browser-source.json'];
           const sha = bytes => createHash('sha256').update(bytes).digest('hex');
           if (!/^[a-f0-9]{40}$/.test(controller ?? '') || !/^[a-f0-9]{40}$/.test(candidate ?? '')
             || !/^[1-9][0-9]*$/.test(runId ?? '') || !/^[1-9][0-9]*$/.test(attempt ?? '') || !evidence) {
@@ -145,23 +146,26 @@ jobs:
           git('merge-base', '--is-ancestor', controller, 'origin/main');
           if (git('rev-parse', 'HEAD') !== candidate || readFileSync('VERSION', 'utf8').trim() !== version
             || git('status', '--porcelain')) throw Error('Frozen product source must start clean');
-          // Only these two verifier resources come from the trusted controller; the
+          // Only these three named verifier resources come from the trusted controller; the
           // product Dockerfile, binaries, version and immutable image remain frozen.
           const overlays = paths.map(path => {
             const original = readFileSync(path);
             const recipe = execFileSync('git', ['show', `${controller}:${path}`]);
-            writeFileSync(path, recipe);
             return { path, originalSha256: sha(original), recipeSha256: sha(recipe),
-              original: original.toString('utf8'), recipe: recipe.toString('utf8'),
-              diff: git('diff', '--', path) };
+              original: original.toString('utf8'), recipe: recipe.toString('utf8') };
           });
+          // Resolve every named companion before changing any verifier file.
+          for (const overlay of overlays) {
+            writeFileSync(overlay.path, overlay.recipe);
+            overlay.diff = git('diff', '--', overlay.path);
+          }
           const changed = git('diff', '--name-only').split('\n').filter(Boolean);
           if (git('rev-parse', 'HEAD') !== candidate || readFileSync('VERSION', 'utf8').trim() !== version
             || changed.some(path => !paths.includes(path)) || git('diff', '--cached', '--name-only')) {
             throw Error('Test runner overlay changed frozen product identity');
           }
           for (const [index, overlay] of overlays.entries()) {
-            writeFileSync(join(evidence, index === 0 ? 'test-runner-recipe.json' : 'test-fixture-source.json'), JSON.stringify({
+            writeFileSync(join(evidence, receipts[index]), JSON.stringify({
               schemaVersion: 1, candidate, controller, version, runId, attempt,
               ...overlay, productImageUnchanged: true,
             }, null, 2) + '\n', { flag: 'wx' });

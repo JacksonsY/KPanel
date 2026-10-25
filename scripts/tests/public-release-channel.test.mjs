@@ -19,6 +19,7 @@ function runControllerOverlay(options = {}) {
   const evidence = mkdtempSync(join(tmpdir(), 'kpanel-verifier-proof-'));
   const runner = 'packaging/release-runner/Dockerfile';
   const fixturePath = 'packaging/tests/release-browser/real-feature-public.sh';
+  const browserPath = 'packaging/tests/release-browser/real-feature-browser-public.cjs';
   const git = (...args) => {
     const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
@@ -26,7 +27,7 @@ function runControllerOverlay(options = {}) {
   };
   try {
     git('init', '--quiet');
-    for (const path of [runner, fixturePath]) {
+    for (const path of [runner, fixturePath, browserPath]) {
       mkdirSync(join(root, path, '..'), { recursive: true });
       writeFileSync(join(root, path), 'original verifier\n');
     }
@@ -38,7 +39,9 @@ function runControllerOverlay(options = {}) {
     commit('published candidate');
     const candidate = git('rev-parse', 'HEAD');
     writeFileSync(join(root, fixturePath), 'corrected verifier\n');
-    git('add', fixturePath); commit('trusted verifier');
+    if (options.missingBrowser) git('rm', browserPath);
+    else writeFileSync(join(root, browserPath), 'corrected browser companion\n');
+    git('add', fixturePath, ...(options.missingBrowser ? [] : [browserPath])); commit('trusted verifier');
     const controller = git('rev-parse', 'HEAD');
     git('update-ref', 'refs/remotes/origin/main', options.untrusted ? candidate : controller);
     git('checkout', '--quiet', '--detach', candidate);
@@ -50,14 +53,16 @@ function runControllerOverlay(options = {}) {
       cwd: root, encoding: 'utf8', env: { ...process.env, GITHUB_SHA: controller, EXPECTED_SHA: candidate,
         EXPECTED_VERSION: '1.28.0-rc.3', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', PUBLIC_EVIDENCE: evidence },
     });
-    if (options.dirty || options.untrusted) {
+    if (options.dirty || options.untrusted || options.missingBrowser) {
       assert.notEqual(result.status, 0);
       assert.equal(existsSync(join(evidence, 'test-fixture-source.json')), false);
       assert.equal(readFileSync(join(root, fixturePath), 'utf8'), 'original verifier\n');
+      assert.equal(readFileSync(join(root, browserPath), 'utf8'), 'original verifier\n');
+      assert.equal(existsSync(join(evidence, 'test-browser-source.json')), false);
     } else {
       assert.equal(result.status, 0, result.stderr);
       assert.equal(git('rev-parse', 'HEAD'), candidate);
-      assert.equal(git('diff', '--name-only'), fixturePath);
+      assert.deepEqual(git('diff', '--name-only').split('\n').sort(), [fixturePath, browserPath].sort());
       assert.equal(readFileSync(join(root, 'Dockerfile'), 'utf8'), 'immutable product\n');
       assert.equal(readFileSync(join(root, 'VERSION'), 'utf8'), '1.28.0-rc.3\n');
       const record = JSON.parse(readFileSync(join(evidence, 'test-fixture-source.json')));
@@ -68,6 +73,13 @@ function runControllerOverlay(options = {}) {
       assert.equal(record.recipeSha256, sha256(Buffer.from(record.recipe)));
       assert.match(record.diff, /corrected verifier/);
       assert.ok(existsSync(join(evidence, 'test-runner-recipe.json')));
+      const browserRecord = JSON.parse(readFileSync(join(evidence, 'test-browser-source.json')));
+      assert.equal(browserRecord.path, browserPath); assert.equal(browserRecord.candidate, candidate);
+      assert.equal(browserRecord.controller, controller); assert.equal(browserRecord.productImageUnchanged, true);
+      assert.equal(browserRecord.original, 'original verifier\n'); assert.equal(browserRecord.recipe, 'corrected browser companion\n');
+      assert.equal(browserRecord.originalSha256, sha256(Buffer.from(browserRecord.original)));
+      assert.equal(browserRecord.recipeSha256, sha256(Buffer.from(browserRecord.recipe)));
+      assert.match(browserRecord.diff, /corrected browser companion/);
     }
   } finally {
     rmSync(root, { recursive: true, force: true }); rmSync(evidence, { recursive: true, force: true });
@@ -77,6 +89,8 @@ function runControllerOverlay(options = {}) {
 test('read-only controller fixture overlay preserves product identity and records exact bytes', () => runControllerOverlay());
 test('read-only controller fixture overlay rejects dirty product source', () => runControllerOverlay({ dirty: true }));
 test('read-only controller fixture overlay rejects a controller outside trusted main', () => runControllerOverlay({ untrusted: true }));
+
+test('read-only controller fixture overlay rejects a missing browser companion before any overlay', () => runControllerOverlay({ missingBrowser: true }));
 
 test('real public fixture binds script checks to the canonical frozen-source contract', () => {
   const source = readFileSync(new URL('../../packaging/tests/release-browser/real-feature-public.sh', import.meta.url), 'utf8');

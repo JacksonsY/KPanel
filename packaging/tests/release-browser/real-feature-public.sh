@@ -51,7 +51,9 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout "$f
 chmod 644 "$fixture/ca.crt"
 cat "$fixture/system-ca.crt" "$fixture/ca.crt" > "$fixture/ca-bundle.crt"
 port=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
-printf '{"listen":":8080","dataDir":"/data/panel","agentSocket":"/ipc/agent.sock","agentTokenFile":"/ipc/agent.token","updateFreezeFile":"/data/update-freeze","webRoot":"/app/web","secureCookie":false,"allowIpHosts":true,"publicUrl":"https://rc2-panel.test"}\n' > "$data/panel.json"
+# This journey starts in explicit HTTP mode and enables real TLS through the UI.
+# Declaring an HTTPS PublicURL here would correctly reject plaintext bootstrap.
+printf '{"listen":":8080","dataDir":"/data/panel","agentSocket":"/ipc/agent.sock","agentTokenFile":"/ipc/agent.token","updateFreezeFile":"/data/update-freeze","webRoot":"/app/web","secureCookie":false,"allowIpHosts":true,"publicUrl":"http://rc2-panel.test"}\n' > "$data/panel.json"
 docker network create "$network" > "$out/network.id"
 docker network inspect "$network" > "$out/network.json"
 runner=$RELEASE_TEST_RUNNER
@@ -93,7 +95,21 @@ printf 'corrupt-test-certificate\n' > "$data/panel/self-signed-tls/cert.pem"
 docker start "$panel" >/dev/null
 for i in $(seq 1 60);do curl -fsS http://127.0.0.1:$port/api/v1/health > "$out/health-after-certificate-fallback.json" 2>/dev/null && break;sleep 1;done
 test -s "$out/health-after-certificate-fallback.json"
-docker logs "$panel" 2>&1 | grep -F 'self-signed HTTPS disabled; certificate could not be loaded' > "$out/certificate-fallback.txt"
+docker logs "$panel" 2>&1 | grep -F 'self-signed certificate could not be loaded; secure transport policy retained' > "$out/certificate-fail-closed.txt"
+test "$(curl -sS -o "$out/plain-session-after-certificate-fault.json" -w '%{http_code}' http://127.0.0.1:$port/api/v1/auth/session)" = 426
+test "$(curl -sS -o "$out/plain-login-after-certificate-fault.json" -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:$port/api/v1/auth/login)" = 426
+python3 - "$out" <<'PY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+for name in ['plain-session-after-certificate-fault.json', 'plain-login-after-certificate-fault.json']:
+    assert json.loads((root / name).read_text())['code'] == 'https_required'
+PY
+docker stop "$panel" >/dev/null
+docker run --rm --user 65532:65532 --read-only --cap-drop ALL --security-opt no-new-privileges --memory 256m --cpus 1 --pids-limit 128 -v "$data/panel:/data/panel" -v "$data/panel.json:/config/panel.json:ro" "$image" self-signed-tls -config /config/panel.json disable > "$out/offline-recovery-after-certificate-fault.txt"
+test ! -e "$data/panel/self-signed-tls/enabled"
+docker start "$panel" >/dev/null
+for i in $(seq 1 60);do curl -fsS http://127.0.0.1:$port/api/v1/health >/dev/null 2>&1 && break;sleep 1;done
+test "$(curl -sS -o "$out/session-after-explicit-offline-recovery.json" -w '%{http_code}' http://127.0.0.1:$port/api/v1/auth/session)" = 401
 docker stop "$panel" >/dev/null
 cp -p "$data/private/cert-backup.pem" "$data/panel/self-signed-tls/cert.pem"
 test ! -e "$out/resource-guard.failed"

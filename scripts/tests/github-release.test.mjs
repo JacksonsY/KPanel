@@ -552,9 +552,11 @@ test('public recovery binds only the trusted controller runner recipe and reject
       const original = 'FROM example@sha256:' + 'a'.repeat(64) + '\nRUN old-fixed-recipe\n';
       const recipe = original.replace('old-fixed', 'new-fixed');
       const fixturePath = 'packaging/tests/release-browser/real-feature-public.sh';
+      const browserPath = 'packaging/tests/release-browser/real-feature-browser-public.cjs';
       const fixture = '#!/usr/bin/env bash\n# fixed verifier fixture\n';
       mkdirSync(join(root, 'packaging/tests/release-browser'), { recursive: true });
       writeFileSync(join(root, fixturePath), fixture);
+      writeFileSync(join(root, browserPath), 'fixed browser companion\n');
       writeFileSync(join(root, path), original); writeFileSync(join(root, 'VERSION'), '1.27.0-rc.5\n');
       git('add', '.'); git('commit', '-qm', 'frozen product');
       const candidate = git('rev-parse', 'HEAD');
@@ -588,6 +590,12 @@ test('public recovery binds only the trusted controller runner recipe and reject
           assert.equal(fixtureReceipt.originalSha256, createHash('sha256').update(fixture).digest('hex'));
           assert.equal(fixtureReceipt.recipeSha256, fixtureReceipt.originalSha256);
           assert.equal(fixtureReceipt.diff, ''); assert.equal(fixtureReceipt.productImageUnchanged, true);
+          const browserReceipt = JSON.parse(readFileSync(join(evidence, 'test-browser-source.json')));
+          assert.equal(browserReceipt.path, browserPath); assert.equal(browserReceipt.candidate, candidate);
+          assert.equal(browserReceipt.controller, controller); assert.equal(browserReceipt.productImageUnchanged, true);
+          assert.equal(browserReceipt.original, 'fixed browser companion\n'); assert.equal(browserReceipt.recipe, browserReceipt.original);
+          assert.equal(browserReceipt.originalSha256, createHash('sha256').update(browserReceipt.original).digest('hex'));
+          assert.equal(browserReceipt.recipeSha256, browserReceipt.originalSha256); assert.equal(browserReceipt.diff, '');
           assert.equal(readFileSync(join(root, 'VERSION'), 'utf8'), '1.27.0-rc.5\n');
         } else assert.equal(readFileSync(join(root, path), 'utf8'), original);
       } finally { rmSync(evidence, { recursive: true, force: true }); }
