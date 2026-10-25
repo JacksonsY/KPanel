@@ -290,7 +290,9 @@ func (s *Service) recordCloudOS(ctx context.Context, id, image, state string) er
 	if !contract.ValidVMID(id) || osID == "" {
 		return ErrInvalid
 	}
-	metadata := `<libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0"><libosinfo:os id="` + osID + `"/></libosinfo:libosinfo>`
+	// libvirt injects the --key namespace into every element. Predeclaring that
+	// prefix makes virXMLInjectNamespace fail on supported libvirt versions.
+	metadata := `<libosinfo><os id="` + osID + `"/></libosinfo>`
 	args := []string{"metadata", id, "--uri", "http://libosinfo.org/xmlns/libvirt/domain/1.0", "--key", "libosinfo", "--set", metadata, "--config"}
 	if state == "running" || state == "paused" {
 		args = append(args, "--live")

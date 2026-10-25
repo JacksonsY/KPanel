@@ -39,7 +39,10 @@ func TestRecordCloudOSPersistsRecognizedMetadata(t *testing.T) {
 			r := &fakeRunner{respond: func(a []string) ([]byte, error) {
 				switch a[3] {
 				case "metadata":
-					metadata = a[10]
+					if strings.Contains(a[10], "xmlns") || strings.Contains(a[10], "libosinfo:") {
+						return nil, errors.New("libvirt must inject the metadata namespace")
+					}
+					metadata = strings.Replace(a[10], "<libosinfo>", `<libosinfo xmlns="http://libosinfo.org/xmlns/libvirt/domain/1.0">`, 1)
 				case "dumpxml":
 					return []byte(`<domain><name>renamed-workload</name><uuid>` + testID + `</uuid><metadata>` + metadata + `</metadata></domain>`), nil
 				case "dominfo":
@@ -56,7 +59,7 @@ func TestRecordCloudOSPersistsRecognizedMetadata(t *testing.T) {
 				t.Fatalf("wrong metadata target: %v", args)
 			}
 			var d domainXML
-			if err := xml.Unmarshal([]byte("<domain><metadata>"+args[10]+"</metadata></domain>"), &d); err != nil || d.Metadata.LibOSInfo.OS.ID == "" {
+			if err := xml.Unmarshal([]byte("<domain><metadata>"+metadata+"</metadata></domain>"), &d); err != nil || d.Metadata.LibOSInfo.OS.ID == "" {
 				t.Fatalf("unreadable metadata: %v %v", args, err)
 			}
 			want := "http://debian.org/debian/12"
