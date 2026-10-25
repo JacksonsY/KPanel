@@ -39,6 +39,7 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/offers"
 	"github.com/kejilion/kejilion-panel/internal/remotedownload"
 	"github.com/kejilion/kejilion-panel/internal/scenepacks"
+	trafficHistory "github.com/kejilion/kejilion-panel/internal/sitetraffic/history"
 	"github.com/kejilion/kejilion-panel/internal/store"
 	"github.com/kejilion/kejilion-panel/internal/terminalbatch"
 	"github.com/kejilion/kejilion-panel/internal/terminalcommands"
@@ -59,6 +60,7 @@ var (
 )
 
 type Server struct {
+	siteTraffic             *trafficHistory.Manager
 	requestsMu              sync.Mutex
 	requests                sync.WaitGroup
 	requestsClosed          bool
@@ -342,6 +344,7 @@ func NewServer(config Config, authService *auth.Service, storage *store.Store, a
 	if server.btCache != nil {
 		server.btDownload = bittorrent.NewEngine(server.btCache, downloadClient).Download
 	}
+	server.siteTraffic = trafficHistory.New(filepath.Join(config.DataDir, "site-traffic"), server.collectSiteTraffic)
 	return server, nil
 }
 
@@ -558,6 +561,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleScenePacks(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/desktop/shortcuts/"):
 		s.handleDesktopShortcutIcon(w, r)
+	case r.URL.Path == "/api/v1/site-traffic" || r.URL.Path == "/api/v1/site-traffic/actions":
+		s.handleSiteTraffic(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/sites/") &&
 		strings.HasSuffix(r.URL.Path, "/icon"):
 		s.handleSiteIcon(w, r)

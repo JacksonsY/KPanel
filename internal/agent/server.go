@@ -32,6 +32,7 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/monitoring"
 	"github.com/kejilion/kejilion-panel/internal/selfupdate"
 	"github.com/kejilion/kejilion-panel/internal/sites"
+	"github.com/kejilion/kejilion-panel/internal/sitetraffic"
 	"github.com/kejilion/kejilion-panel/internal/systeminfo"
 	"github.com/kejilion/kejilion-panel/internal/systemmanage"
 	"github.com/kejilion/kejilion-panel/internal/terminal"
@@ -103,6 +104,7 @@ type Server struct {
 	sshLoginSource    SSHLoginSource
 	sites             *sites.Discoverer
 	sitesManager      *sites.Manager
+	siteTraffic       *sitetraffic.Reader
 	docker            *dockerx.Client
 	appMarket         *appmarket.Service
 	diagnostics       *diagnostics.Service
@@ -261,6 +263,7 @@ func NewServer(config Config) (*Server, error) {
 		sshLoginSource:   config.SSHLoginSource,
 		sites:            config.Sites,
 		sitesManager:     config.SitesManager,
+		siteTraffic:      sitetraffic.NewReader(config.WebRoot),
 		docker:           config.Docker,
 		appMarket:        config.AppMarket,
 		diagnostics:      config.Diagnostics,
@@ -456,6 +459,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.terminalOperation(w, r, requestID)
 	case strings.HasPrefix(r.URL.Path, "/v1/job-terminals/"):
 		s.jobTerminalInput(w, r, requestID)
+	case r.URL.Path == "/v1/site-traffic/collect":
+		s.requireMethod(w, r, requestID, http.MethodPost, func(w http.ResponseWriter, r *http.Request) { s.siteTrafficCollect(w, r, requestID) })
 	case r.URL.Path == "/v1/sites":
 		s.siteCollection(w, r, requestID)
 	case r.URL.Path == "/v1/site-installations":

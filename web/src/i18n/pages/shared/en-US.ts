@@ -1,6 +1,12 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ['请求', 'requests'],
+  ['事件', 'events'],
+  ["站点管理", "Site management"],
+  ["环境管理", "Environment"],
+
+  ["流量与安全", "Traffic and security"],
   ['授权已过期，请重新连接 OneDrive。', 'Authorization expired. Connect OneDrive again.'],
   ['连接未完成，请重新连接 OneDrive。', 'Connection incomplete. Connect OneDrive again.'],
   ['OneDrive 已连接。', 'OneDrive connected.'],

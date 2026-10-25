@@ -4,15 +4,15 @@
   "expiresAt": "2026-11-08",
   "owner": "KPanel release maintainers",
   "sourceManifestSha256": "3165b3c3e3fcdefe8dc52fba19a0a872eb26238692d6fedff4db2fc48ecf2580",
-  "selectedGraphSha256": "24c24be50e4477fc28044d24ae11c26ff0e6f75603d7f8ae91e798034fa81927",
+  "selectedGraphSha256": "145130563ab26d84307387f7fd8e71f2d41d7a1152a808c5fd6e8759faa9f818",
   "buildTargetFilesSha256": {
     "Dockerfile": "2dcc56a68487566a9a7273b2269cf371b5dc0d9b6d5c08ed7cca304afba8eb38",
     ".github/workflows/release.yml": "5b04c8691d7dae007fbe5dd16aea49f779088ee0a3a698d279c4f3f91ae23036",
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "5e7fdf830e94bea33c448771ac8d1e6012bea4e28abd5f3a9f0c579aea5e1b3f",
-  "firstPartySourceSha256": "c58f3d6edb15e8a1babf81378003287ffc68c3a6f87d94c60be83cb2e177851b",
+  "closureSha256": "d35c81e186d23b6b440e2aaa187cd0c96b86441d97d31d5e2e547a37c9b518f8",
+  "firstPartySourceSha256": "bef27786b0b0c3c31340a07c266dbad60fc218ff855f552bb399b05c185387d4",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -83,7 +83,11 @@
     },
     "ledgerClosureObservationSha256": "425cc1856a0203c050978cd7b23f3b516580d95a82b0e03d83a6e6f55ead809d",
     "ledgerClosureSummary": "Fresh pinned Trivy observations downloaded the 2026-10-24 database on 2026-10-25. Complete production/selected/standalone inventories retain real exits 0/1/1 and exactly the existing 37 independently checked findings; production has no HIGH/CRITICAL finding. All 1108 first-party Go files match Git blobs, all six actual/original production closures agree, and 110 production modules, selected graph, build inputs and upstream sources are unchanged. A new fixed 14-day observation window is based on these actual scans, not an expiry-only extension. Final exact-candidate canonical source scans, audit and L2 remain required; no release or production approval.",
-    "ledgerClosureIndependentSourceEvidenceSha256": "db5eeb3792c857471770069b66a3d9d12f73e1924322f3b00ef90bd3cc052019"
+    "ledgerClosureIndependentSourceEvidenceSha256": "db5eeb3792c857471770069b66a3d9d12f73e1924322f3b00ef90bd3cc052019",
+    "siteMonitoringEvidenceSha256": "2a4a39d88ef081be371591e860248e968ec0bf9967f746b19bc2c2af0feca4ee",
+    "siteMonitoringSummary": "Independent review of c60b537c verified 1039 first-party Go files against Git objects and six actual/original production closures. The only new production dependency is maxminddb-golang/v2 v2.8.0 (111 production modules). Native site traffic/WAF monitoring and its regression tests are reviewed, with three confirmed correctness defects fixed. All 37 finding dispositions, vendored torrent source, build targets, original observation and expiry remain unchanged. Rebind selected graph, source and closure identities only. Exact-candidate L2, scans and release L3 remain required; no publication approval is implied. Checkpoint rotation/outage follow-up and bounded opaque source metadata independently reviewed; original observation and expiry are retained.",
+    "rc4IntegrationObservationSha256": "809c07ec35328dac6b31af11f759eba4e1c4f312d1e74515fdfd73d8b66b5050",
+    "rc4IntegrationSummary": "Release owner independently reconstructed the delivered security and site-monitoring branches, retained both mock handlers and all37 dispositions, and re-observed six actual/original production closures with Go1.27.3. New monitoring dependency is maxminddb-golang/v2 v2.8.0. Derived source/graph/closure only rebound; reviewed2026-10-25..2026-11-08 window and findings unchanged. This local observation is not a scanner, Linux CI, L3 or publication pass."
   },
   "findings": [
     {

@@ -1,3 +1,4 @@
+import type { SiteTrafficSnapshot } from '@/types/siteTraffic'
 import type { TerminalBatch, TerminalBatchList } from '@/types/terminalBatch'
 import type { DockerImageUpdateResult } from '@/lib/dockerImageUpdate'
 import { TerminalStreamClient } from '@/lib/terminalStream'
@@ -2126,6 +2127,12 @@ export const api = {
     },
     publicNetwork: (signal?: AbortSignal): Promise<RawPublicNetworkSummary> =>
       request<RawPublicNetworkSummary>('/system/public-network', { signal }),
+  },
+  siteTraffic: {
+    summary: (query: { period: string; host?: string }, signal?: AbortSignal): Promise<SiteTrafficSnapshot> =>
+      request<SiteTrafficSnapshot>('/site-traffic', { query, signal }),
+    action: (action: 'enable' | 'pause' | 'clear'): Promise<{ ok: boolean }> =>
+      request<{ ok: boolean }>('/site-traffic/actions', { method: 'POST', body: { action } }),
   },
   sites: {
     iconURL: (id: string): string =>
