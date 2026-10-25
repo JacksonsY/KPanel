@@ -16,7 +16,7 @@ test ! -e "$proof"
 mkdir -m 755 "$proof" "$proof/evidence" "$proof/build" "$proof/http"
 evidence="$proof/evidence"
 controller="$GITHUB_WORKSPACE/controller"
-image='bash:5.2.37-alpine3.22@sha256:3bee76a96d86d5d2d5efc7c1c570e5a7c95db22348a26944e0e546fa174e3324'
+image='node:24.22.1-alpine@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d'
 network="kpanel-native-$key"; server="kpanel-native-http-$key"
 install_dir="/usr/local/libexec/kpanel-release-qualification-$key"
 state_dir="/var/lib/kpanel-release-qualification-$key"
@@ -60,12 +60,17 @@ sudo install -d -m 700 "$state_dir"
 docker pull "$image"
 docker network create "$network" > "$evidence/docker-network-id.txt"
 printf 'KPanel-native-%s\n' "$key" > "$proof/http/index.html"
-docker run -d --name "$server" --network "$network" --read-only --cap-drop ALL --security-opt no-new-privileges --memory 64m --cpus .25 --pids-limit 32 -p 127.0.0.1::8080 -v "$proof/http:/web:ro" --entrypoint /bin/busybox "$image" httpd -f -p 8080 -h /web
+docker run -d --name "$server" --network "$network" --read-only --cap-drop ALL --security-opt no-new-privileges --memory 64m --cpus .25 --pids-limit 32 -p 127.0.0.1::8080 -v "$proof/http:/web:ro" --entrypoint node "$image" --max-old-space-size=16 -e 'require("node:http").createServer((req,res)=>res.end(require("node:fs").readFileSync("/web/index.html"))).listen(8080,"0.0.0.0")'
 port=$(docker port "$server" 8080/tcp | sed -n 's/^127\.0\.0\.1://p')
 [[ "$port" =~ ^[0-9]{1,5}$ ]]
 url="http://127.0.0.1:$port/"
-curl -fsS --max-time 10 "$url" | grep -Fx "KPanel-native-$key"
-docker run --rm --network "$network" --read-only --cap-drop ALL --security-opt no-new-privileges --memory 64m --cpus .25 --pids-limit 32 --entrypoint /bin/busybox "$image" wget -qO- "http://$server:8080/" | grep -Fx "KPanel-native-$key"
+# A bounded readiness window covers container startup without weakening the
+# exact response or later post-installation coexistence assertions.
+curl -fsS --max-time 10 --retry 5 --retry-connrefused --retry-delay 1 --retry-max-time 15 "$url" | grep -Fx "KPanel-native-$key"
+peer_probe() {
+  docker run --rm --network "$network" --read-only --cap-drop ALL --security-opt no-new-privileges --memory 64m --cpus .25 --pids-limit 32 --entrypoint node "$image" --max-old-space-size=16 -e 'require("node:http").get(process.argv[1],r=>{if(r.statusCode!==200)process.exitCode=1;r.pipe(process.stdout)}).on("error",()=>process.exit(1)).setTimeout(10000,function(){this.destroy(Error("timeout"))})' "http://$server:8080/" | grep -Fx "KPanel-native-$key"
+}
+peer_probe
 sudo iptables -S FORWARD | head -n 1 > "$evidence/forward-before.txt"
 sudo iptables-save > "$evidence/iptables-before.txt"
 docker network inspect "$network" bridge > "$evidence/docker-networks-before.json"
@@ -75,7 +80,7 @@ sudo env GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted GITHUB_REPOSITORY=
 grep -F -- '--- PASS: TestWorkerRunsOnceAndPersistsFailure' "$evidence/native-tests.log"
 grep -F -- '--- PASS: TestNativeReleaseQualification' "$evidence/native-tests.log"
 curl -fsS --max-time 10 "$url" | grep -Fx "KPanel-native-$key"
-docker run --rm --network "$network" --read-only --cap-drop ALL --security-opt no-new-privileges --memory 64m --cpus .25 --pids-limit 32 --entrypoint /bin/busybox "$image" wget -qO- "http://$server:8080/" | grep -Fx "KPanel-native-$key"
+peer_probe
 sudo iptables -S FORWARD | head -n 1 > "$evidence/forward-after.txt"
 diff -u "$evidence/forward-before.txt" "$evidence/forward-after.txt"
 sudo iptables-save > "$evidence/iptables-after.txt"
