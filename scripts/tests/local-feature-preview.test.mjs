@@ -1,5 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { handleMockVirtualMachines } from '../mock-virtual-machines.mjs';
+
+test('VM preview rejects malformed actions and remains available', async () => {
+  const replies = [];
+  const send = (_response, status, body) => replies.push({ status, body });
+  const url = new URL('http://127.0.0.1/api/v1/virtual-machines/actions');
+  for (const input of [null, { requestId: 'bad-name', action: 'create', name: { toString: null } }]) {
+    assert.equal(await handleMockVirtualMachines({ method: 'POST' }, {}, url, { send, readJSON: async () => input }), true);
+    assert.equal(replies.at(-1).status, 422);
+  }
+  await handleMockVirtualMachines({ method: 'GET' }, {}, new URL('http://127.0.0.1/api/v1/virtual-machines'), { send });
+  assert.equal(replies.at(-1).status, 200);
+  assert.ok(replies.at(-1).body.machines.length > 0);
+});
 
 import {
   choosePort,
