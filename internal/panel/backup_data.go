@@ -197,7 +197,14 @@ func sanitizeBackupFile(name string, data []byte) ([]byte, error) {
 		// Durable active/revoked relationships and identity keys travel together.
 		// One-time pairing codes and unfinished enrollment transactions never do.
 		for _, key := range []string{"pairingCodes", "enrollments"} {
-			if _, ok := value[key]; ok {
+			found := false
+			for actual := range value {
+				if strings.EqualFold(actual, key) {
+					delete(value, actual)
+					found = true
+				}
+			}
+			if found {
 				value[key] = json.RawMessage(`[]`)
 			}
 		}

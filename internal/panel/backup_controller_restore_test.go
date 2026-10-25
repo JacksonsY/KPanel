@@ -64,3 +64,23 @@ func TestBackupRestoreRejectsAmbiguousControllerEnvelope(t *testing.T) {
 		}
 	}
 }
+
+func TestBackupSanitizerDropsCaseFoldedPairingCredentials(t *testing.T) {
+	for _, key := range []string{"pairingcodes", "PairingCodes", "pairingCode\u017f"} {
+		input := []byte(`{"` + key + `":[{"hash":"known-code"}],"ENROLLMENTS":[{"token":"one-time"}]}`)
+		data, err := sanitizeBackupFile("cluster-state.json", input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var state struct {
+			PairingCodes []json.RawMessage `json:"pairingCodes"`
+			Enrollments  []json.RawMessage `json:"enrollments"`
+		}
+		if err := json.Unmarshal(data, &state); err != nil {
+			t.Fatal(err)
+		}
+		if len(state.PairingCodes) != 0 || len(state.Enrollments) != 0 {
+			t.Fatalf("one-time credentials survived import: %s", data)
+		}
+	}
+}
