@@ -12,7 +12,7 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "99216a10ed733026a04ccd8518445070760895f9532e038842cdacb023193637",
-  "firstPartySourceSha256": "6a027ea96c6c1b83ecd4dec2bff0a6c6c0ce553b63bdbf20da991e4d992dc96b",
+  "firstPartySourceSha256": "0ba4420026b6e5f13352fb0c2e7c703cfb65bc0fa873245e27a667b7b449b589",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -95,8 +95,8 @@
     "rc5IntegrationObservationSha256": "c785e1284ea6d32ba8191b17688311a155f2c6546e02f128a55bdaf6e2b0f02a",
     "rc5IntegrationSummary": "Release owner independently reconstructed Win98/XP16d9dd18 cluster access8d684ed6, archive dismissal83d19409 and release-owned backup controller authorization repairbb3e3c5d on approved f83f29ae, retaining RC4 security and monitoring. Re-observed all six actual/original production closures and current first-party source bytes using Go1.27.3. Existing module versions,37 finding dispositions and2026-10-25..2026-11-08 observation remain unchanged. This is source/closure identity qualification; final hosted CI/L3/scans/public verification remain required.",
     "virtualMachinesClosureQualificationSha256": "38822affe7d76f53c5026c06c9b875df686913d6f4c8556c08910e122c15c92e",
-    "virtualMachinesIncrementalQualificationSha256": "565b6bc996ebc47ad2f0ea2542c2053a3ca937e4132a52e6ebf9b3c0fa6bff77",
-    "virtualMachinesQualificationSummary": "Independent actual/original six-platform qualification of d4ff07fc and Git-blob incremental review through 56b14dfb verify 1156 first-party Go files. Linux closures add the native virtualmachine package and existing x/crypto bcrypt, blowfish, ssh and bcrypt_pbkdf packages; non-Linux closures are unchanged. Module versions, selected graph, vendor/build inputs, all 37 dispositions and original observation/expiry are retained. Only source and closure identities are rebound. This is source qualification, not a scanner, L2, L3 or publication pass."
+    "virtualMachinesIncrementalQualificationSha256": "1c5db042352f4478c8f5dd76cc644469893f51344ab1974e3173aba4fb6ff2c2",
+    "virtualMachinesQualificationSummary": "Independent actual/original six-platform qualification of d4ff07fc and Git-blob incremental review through 3ae0f6dc verify 1156 first-party Go files. Linux closures add the native virtualmachine package and existing x/crypto bcrypt, blowfish, ssh and bcrypt_pbkdf packages; non-Linux closures are unchanged. Module versions, selected graph, vendor/build inputs, all 37 dispositions and original observation/expiry are retained. Only source and closure identities are rebound. This is source qualification, not a scanner, L2, L3 or publication pass."
   },
   "findings": [
     {
