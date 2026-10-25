@@ -5,9 +5,13 @@
 > 不再作为当前门槛。run-41 已按用户要求封存 incomplete，没有 confirmed 新发现；不宣称完整覆盖或风险关闭。
 > 产品验证与已证实漏洞处置要求继续有效。
 
-- 复核日期：`2026-10-25`
-- 基线提交：`c274e8979e1b8553b3a27c4f2205b691ea23b39e`
+- 复核日期：`2026-10-26`
+- 基线提交：`f244152d9930bd65dc20241ce333ddf2d9626d97`
 - 基线版本：`v1.27.2`
+
+### 2026-10-26 RC7 已公开验收
+
+[v1.28.0-rc.7](https://github.com/kejilion/KPanel/releases/tag/v1.28.0-rc.7) 已公开，冻结产品`f244152d9930bd65dc20241ce333ddf2d9626d97`、version/preview index`sha256:05514ee580e703bfb2abc8b0df457ce196ac6f025eb8d491a5ef1b34c12b50ca`，Release ID=423561273。run40215313371/attempt1完整发布链成功，当前同SHA原生KVM9项、Mock28项及真实公开镜像150项通过；15附件/11校验项、双架构及5条更新/运行时3条升级提示核对通过，详见[RC7验收](release-v1.28.0-rc.7-acceptance.md)。GitHub Latest/latest仍v1.27.2，生产未部署；来源端60秒断流、默认全新Node入网限制及RC5桌面恢复偶发继续保留。当前元数据写入已以本版精确源码在GitHub-hosted Ubuntu amd64真实systemd/KVM验证，不外推为物理ARM64、所有防火墙或完整浏览器控制台保证。
 
 ### 2026-10-26 RC7 候选增量复核
 
