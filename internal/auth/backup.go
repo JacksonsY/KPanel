@@ -17,7 +17,11 @@ func ValidateBackupIdentity(user store.User, key []byte) error {
 	if !usernamePattern.MatchString(user.Username) {
 		return errors.New("invalid backup username")
 	}
-	if _, _, _, err := parseArgon2id(user.PasswordHash); err != nil {
+	params, _, _, err := parseArgon2id(user.PasswordHash)
+	if err != nil {
+		return err
+	}
+	if err := validateVerificationBudget(params, DefaultArgon2idParams()); err != nil {
 		return err
 	}
 	if user.TOTPLastUsedStep < 0 || user.TOTPLastUsedStep > time.Now().Unix()/30+1 {

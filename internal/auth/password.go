@@ -107,6 +107,9 @@ func (h *Argon2idHasher) Verify(password, encoded string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if err := validateVerificationBudget(params, h.params); err != nil {
+		return false, err
+	}
 	actual := argon2.IDKey(
 		[]byte(password),
 		salt,
@@ -116,6 +119,16 @@ func (h *Argon2idHasher) Verify(password, encoded string) (bool, error) {
 		params.KeyLength,
 	)
 	return subtle.ConstantTimeCompare(actual, expected) == 1, nil
+}
+
+// The PHC envelope is untrusted, even when syntactically valid. It may not
+// raise the memory or total memory-pass work chosen by the trusted verifier.
+// Keep parallelism portable across hosts and accept cheaper legacy profiles.
+func validateVerificationBudget(params, configured Argon2idParams) error {
+	if params.MemoryKiB > configured.MemoryKiB || uint64(params.MemoryKiB)*uint64(params.Iterations) > uint64(configured.MemoryKiB)*uint64(configured.Iterations) {
+		return ErrInvalidPasswordHash
+	}
+	return nil
 }
 
 func parseArgon2id(encoded string) (Argon2idParams, []byte, []byte, error) {
