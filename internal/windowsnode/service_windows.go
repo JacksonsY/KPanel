@@ -374,9 +374,24 @@ func runSystemTool(name string, args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, filepath.Join(directory, name), args...)
-	command.Stdout = nil
-	command.Stderr = nil
-	return command.Run()
+	// These fixed Task Scheduler operations carry no enrollment credentials.
+	// Retain a bounded diagnostic rather than losing the actual error to SCM.
+	output := &systemToolDiagnostics{}
+	command.Stdout, command.Stderr = output, output
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("%s: %w: %s", name, err, strings.TrimSpace(string(output.data)))
+	}
+	return nil
+}
+
+type systemToolDiagnostics struct{ data []byte }
+
+func (output *systemToolDiagnostics) Write(data []byte) (int, error) {
+	remaining := 2048 - len(output.data)
+	if remaining > 0 {
+		output.data = append(output.data, data[:min(remaining, len(data))]...)
+	}
+	return len(data), nil
 }
 func registerUpdateTask() error {
 	executable := filepath.Join(InstallDir(), "kejilion-node-bootstrap.exe")
