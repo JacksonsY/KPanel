@@ -12,7 +12,7 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "6f641ed67b62e36a3250d839a8d91ac4b51382ebca08e3b06dc948dad2948c2b",
-  "firstPartySourceSha256": "cb3ddc5bfa1fe4becf55b0e16e3934886f10c7ce10fc6a7d78a4afcb14c07341",
+  "firstPartySourceSha256": "593a2ac7a996c47b7bf986a6fceeab49828f968bc3ee49d9749f4d884d8a8505",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -100,7 +100,9 @@
     "rc6IntegrationObservationSha256": "61746f89736867035296ead5d79042e5f2be68907ad17c1c8b347bbe01dded4c",
     "rc6IntegrationSummary": "Release owner integrates exact VM4b711c0b, transfer60b0e50e and desktop monitoring b8a7522e on approved5bdd93b8. VM runtime source qualification was independently checked, all1156 first-party Go files and all six actual/original production closures are re-observed using Go1.27.3 after RC6 version metadata and ownership-fixture test repair98873aca. Product runtime ownership checks remain unchanged. No Go module/version,37 finding disposition or original2026-10-25..2026-11-08 window changes. Native host qualification, final hosted CI/L3 and public artifacts remain required; no scanner success is claimed.",
     "rc7IntegrationObservationSha256": "a06496cf83ed67c507455f1e228370f8f9c79eb003877128e35de7a0dd25805e",
-    "rc7IntegrationSummary": "RC7 integrates exact VMf354f0de, offline-countryd647d5e0 and transfer14512f3a. Release owner independently reviewed source and retained original native/test-driver evidence boundaries. Re-observed tracked first-party Go files and all six actual/original production closures using Go1.27.3 after RC7 version metadata. Go modules, existing37 dispositions and 2026-10-25..2026-11-08 observation window unchanged. Exact frozen CI/L3 and public acceptance still required; identity qualification is not scanner or release success."
+    "rc7IntegrationSummary": "RC7 integrates exact VMf354f0de, offline-countryd647d5e0 and transfer14512f3a. Release owner independently reviewed source and retained original native/test-driver evidence boundaries. Re-observed tracked first-party Go files and all six actual/original production closures using Go1.27.3 after RC7 version metadata. Go modules, existing37 dispositions and 2026-10-25..2026-11-08 observation window unchanged. Exact frozen CI/L3 and public acceptance still required; identity qualification is not scanner or release success.",
+    "preferencesRouteReviewSha256": "9782bb2ab0cfeb207cb8ead19e4726d7c8ab65a5ef6a482a7c33b4719c0fcd69",
+    "preferencesRouteSummary": "Desktop preference route validation: the two existing store files were independently blind-reviewed with no credible security findings. Only two already-shipped route alternatives and their regression tests change; no imports, production GoFiles, dependencies, build targets or closure membership change. Canonical firstPartySources rebinds the source identity; existing findings, dispositions, observation and expiry remain unchanged. Exact-candidate Linux CI must recompute actual/original six-target closures and all scanners; this refresh does not claim scanner success."
   },
   "findings": [
     {
