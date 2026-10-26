@@ -129,9 +129,10 @@ func ScopeAllowsFiles(scope string) bool {
 }
 
 type LightEnrollment struct {
-	ID        string    `json:"id"`
-	Command   string    `json:"command"`
-	ExpiresAt time.Time `json:"expiresAt"`
+	WindowsCommand string    `json:"windowsCommand,omitempty"`
+	ID             string    `json:"id"`
+	Command        string    `json:"command"`
+	ExpiresAt      time.Time `json:"expiresAt"`
 }
 
 type CreateLightBatchEnrollmentInput struct {
@@ -141,6 +142,7 @@ type CreateLightBatchEnrollmentInput struct {
 }
 
 type LightBatchEnrollment struct {
+	WindowsCommand string    `json:"windowsCommand,omitempty"`
 	ID             string    `json:"id"`
 	Command        string    `json:"command,omitempty"`
 	NamePrefix     string    `json:"namePrefix,omitempty"`

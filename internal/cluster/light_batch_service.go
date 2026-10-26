@@ -103,6 +103,7 @@ func (s *Service) CreateLightBatchEnrollmentForOriginWithTLSPin(
 	if err != nil {
 		return LightBatchEnrollment{}, err
 	}
+	result.WindowsCommand, _ = s.windowsEnrollmentCommand(token, "")
 	return result, nil
 }
 
@@ -175,6 +176,7 @@ func (s *Service) EnrollLightNodeBatch(
 		lightBatchTerminalKey(terminalPublicKey),
 		hasCapacity,
 		now,
+		platform,
 	)
 	if err != nil {
 		return LightEnrollResponse{}, "", err
@@ -183,7 +185,7 @@ func (s *Service) EnrollLightNodeBatch(
 	switch {
 	case err == nil:
 		storedTerminalKey, keyErr := s.light.ReadTerminalPublicKey(record)
-		if keyErr != nil || record.Name != attempt.Name || !bytes.Equal(storedTerminalKey, terminalPublicKey) {
+		if keyErr != nil || record.Platform != platform || record.Name != attempt.Name || !bytes.Equal(storedTerminalKey, terminalPublicKey) {
 			return LightEnrollResponse{}, "", ErrIdentityMismatch
 		}
 	case errors.Is(err, ErrNotFound):
@@ -195,8 +197,8 @@ func (s *Service) EnrollLightNodeBatch(
 			return LightEnrollResponse{}, "", err
 		}
 		record = lightHostRecord{
-			Platform: platform,
-			ID:       attempt.NodeID, Name: attempt.Name, NodeVersion: attempt.NodeVersion,
+			Platform: platform, WindowsCommand: platform == "windows",
+			ID: attempt.NodeID, Name: attempt.Name, NodeVersion: attempt.NodeVersion,
 			CreatedAt: now, UpdatedAt: now,
 		}
 		if err := s.light.AddHostWithTerminal(record, reportingKey, terminalPublicKey); err != nil {

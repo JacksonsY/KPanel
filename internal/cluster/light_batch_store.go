@@ -26,6 +26,7 @@ const (
 )
 
 type lightBatchAttemptRecord struct {
+	Platform          string    `json:"platform,omitempty"`
 	ID                string    `json:"id"`
 	NodeID            string    `json:"nodeId"`
 	Name              string    `json:"name"`
@@ -144,7 +145,7 @@ func decodeLightBatchState(content []byte, state *lightBatchPersistedState) erro
 			validatedName, nameErr := validateRequiredName(attempt.Name)
 			if !validID(attempt.ID) || !validID(attempt.NodeID) || nameErr != nil ||
 				validatedName != attempt.Name || cleanDisplayText(attempt.NodeVersion, 64) != attempt.NodeVersion ||
-				terminalErr != nil || (len(terminalPublicKey) != 0 && len(terminalPublicKey) != 32) ||
+				validateLightPlatformChoice(attempt.Platform) != nil || terminalErr != nil || (len(terminalPublicKey) != 0 && len(terminalPublicKey) != 32) ||
 				attempt.CreatedAt.IsZero() || attempt.CreatedAt.Before(enrollment.CreatedAt) ||
 				attempt.CreatedAt.After(enrollment.ExpiresAt) {
 				return errors.New("light node batch store contains an invalid attempt")
@@ -223,7 +224,18 @@ func (s *lightBatchStore) Reserve(
 	terminalPublicKey string,
 	allowNew bool,
 	now time.Time,
+	platforms ...string,
 ) (lightBatchAttemptRecord, bool, error) {
+	platform := "linux"
+	if len(platforms) > 1 {
+		return lightBatchAttemptRecord{}, false, ErrIdentityMismatch
+	}
+	if len(platforms) == 1 && platforms[0] != "" {
+		platform = platforms[0]
+	}
+	if err := validateLightPlatformChoice(platform); err != nil {
+		return lightBatchAttemptRecord{}, false, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for policyIndex := range s.state.Enrollments {
@@ -238,7 +250,7 @@ func (s *lightBatchStore) Reserve(
 				continue
 			}
 			expectedName := lightBatchNodeName(policy.NamePrefix, requestedName, attempt.NodeID)
-			if expectedName != attempt.Name || attempt.TerminalPublicKey != terminalPublicKey {
+			if expectedName != attempt.Name || attempt.TerminalPublicKey != terminalPublicKey || normalizedLightPlatform(attempt.Platform) != platform {
 				return lightBatchAttemptRecord{}, false, ErrIdentityMismatch
 			}
 			return attempt, false, nil
@@ -263,7 +275,7 @@ func (s *lightBatchStore) Reserve(
 		attempt := lightBatchAttemptRecord{
 			ID: attemptID, NodeID: candidateNodeID,
 			Name:        lightBatchNodeName(policy.NamePrefix, requestedName, candidateNodeID),
-			NodeVersion: cleanDisplayText(nodeVersion, 64), TerminalPublicKey: terminalPublicKey,
+			NodeVersion: cleanDisplayText(nodeVersion, 64), TerminalPublicKey: terminalPublicKey, Platform: platform,
 			CreatedAt: now.UTC(),
 		}
 		policy.Attempts = append(policy.Attempts, attempt)

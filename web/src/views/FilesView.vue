@@ -149,7 +149,7 @@ import type {
 const FileEditorWorkspace = defineAsyncComponent(() => import('@/components/files/FileEditorWorkspace.vue'))
 const OfficeWorkspace = defineAsyncComponent(() => import('@/components/files/OfficeWorkspace.vue'))
 const FileExecutionTerminal = defineAsyncComponent(() => import('@/components/files/FileExecutionTerminal.vue'))
-const executionTarget = ref<{ entry: FileEntry; hostId: string; hostName: string }>()
+const executionTarget = ref<{ entry: FileEntry; hostId: string; hostName: string; shell: 'posix' | 'powershell' }>()
 let executionOpener: HTMLElement | undefined
 const route = useRoute()
 const router = useRouter()
@@ -230,7 +230,8 @@ const activeFileHost = computed(() =>
     || (!fileHostId.value ? fileHosts.value.find((host) => host.isLocal) : undefined),
 )
 const isRemoteFileHost = computed(() => Boolean(fileHostId.value))
-const fileShortcuts = ['/', '/home', '/root', '/etc', '/var']
+const windowsFileHost = computed(() => activeFileHost.value?.platform === 'windows')
+const fileShortcuts = computed(() => windowsFileHost.value ? ['/'] : ['/', '/home', '/root', '/etc', '/var'])
 const activeFileHostNodeId = computed(() => {
   const host = activeFileHost.value
   return fileHostId.value ? (host?.remoteNodeId || '') : localClusterNodeId.value
@@ -1155,13 +1156,14 @@ function openEntry(entry: FileEntry): void {
 }
 
 function executeFile(entry: FileEntry, hostId = fileHostId.value): void {
-  if (executionTarget.value || !canExecuteFile(entry)) return
   const host = fileHostInventory.value?.items.find((item) => item.id === (hostId || 'local'))
+  const shell = host?.terminalShell || (host?.platform === 'windows' ? 'powershell' : 'posix')
+  if (executionTarget.value || !canExecuteFile(entry, shell)) return
   executionOpener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
   if (contextMenu.value) executionOpener = contextMenuOpener || undefined
   contextMenu.value = undefined
   executionOpener?.focus({ preventScroll: true })
-  executionTarget.value = { entry: { ...entry }, hostId, hostName: host?.name || hostId || phrase('本机') }
+  executionTarget.value = { entry: { ...entry }, hostId, hostName: host?.name || hostId || phrase('本机'), shell }
 }
 
 function closeExecutionTerminal(): void {
@@ -3799,7 +3801,7 @@ onBeforeUnmount(() => {
           <button v-if="archiveTools?.available && selectedEntries.every(entry => archiveFormat(entry))" type="button" @click="openDialog('extract')"><FolderOpen :size="15" />{{ i18n.t('files.archive.extractAll') }}</button>
           <button type="button" @click="setClipboard('copy')"><Copy :size="15" />复制</button>
           <button type="button" @click="setClipboard('move')"><Scissors :size="15" />剪切</button>
-          <button type="button" @click="openDialog('chmod')"><ShieldCheck :size="15" />权限</button>
+          <button v-if="!windowsFileHost" type="button" @click="openDialog('chmod')"><ShieldCheck :size="15" />权限</button>
           <button
             v-if="!isRemoteFileHost && selectedEntries.some(canAddToDesktop)"
             type="button"
@@ -3833,7 +3835,7 @@ onBeforeUnmount(() => {
       <button v-if="contextMenu.entry" role="menuitem" type="button" @click="openEntry(contextMenu.entry)">
         <Eye :size="15" />{{ phrase(contextMenu.entry.kind === 'directory' ? '打开' : '查看') }}
       </button>
-      <button v-if="contextMenu.entry && !contextHasMultipleEntries && canExecuteFile(contextMenu.entry)" role="menuitem" type="button" @click="executeFile(contextMenu.entry)">
+      <button v-if="contextMenu.entry && !contextHasMultipleEntries && canExecuteFile(contextMenu.entry, windowsFileHost ? 'powershell' : 'posix')" role="menuitem" type="button" @click="executeFile(contextMenu.entry)">
         <SquareTerminal :size="15" />{{ phrase('在终端中执行') }}
       </button>
       <button v-if="!contextMenu.entry && !isRemoteFileHost" role="menuitem" type="button" :disabled="desktopAdding" @click="addEntriesToDesktop(undefined, true)">
@@ -3883,7 +3885,7 @@ onBeforeUnmount(() => {
         :disabled="pasteBusy"
         @click="pasteClipboard()"
       ><ClipboardPaste :size="15" />{{ phrase('粘贴到当前目录') }}</button>
-      <button v-if="contextMenu.entry" role="menuitem" type="button" @click="openDialog('chmod', contextMenu.entry)">
+      <button v-if="contextMenu.entry && !windowsFileHost" role="menuitem" type="button" @click="openDialog('chmod', contextMenu.entry)">
         <ShieldCheck :size="15" />{{ phrase('修改权限') }}
       </button>
       <button
@@ -3956,7 +3958,7 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <FileShareDialog v-if="shareEntry" :entry="shareEntry" @close="closeFileShare" />
-    <FileExecutionTerminal v-if="executionTarget" :entry="executionTarget.entry" :host-id="executionTarget.hostId" :host-name="executionTarget.hostName" @close="closeExecutionTerminal" />
+    <FileExecutionTerminal v-if="executionTarget" :entry="executionTarget.entry" :host-id="executionTarget.hostId" :host-name="executionTarget.hostName" :shell="executionTarget.shell" @close="closeExecutionTerminal" />
     <FileShareManagerDialog v-if="shareManagerOpen" @close="closeShareManager" />
 
     <ModalDialog

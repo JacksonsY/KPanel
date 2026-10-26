@@ -194,7 +194,7 @@ func (m *Manager) cleanupArchiveTemp(record *archiveJobRecord, virtual string) e
 		return err
 	}
 	defer workspace.Close()
-	if identity.Workspace != stableReceiveIdentity(workspaceInfo) || !archiveWorkspaceProtected(workspaceInfo) || !archiveSameFilesystem(info, workspaceInfo) {
+	if identity.Workspace != stableReceiveIdentity(workspaceInfo) || !archiveWorkspaceProtected(workspaceInfo, workspace) || !archiveSameFilesystem(info, workspaceInfo) {
 		return ErrConflict
 	}
 	visible, err := workspace.Lstat(path.Base(virtual))

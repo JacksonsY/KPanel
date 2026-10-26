@@ -130,12 +130,12 @@ test('release notes reject unsupported prerelease names', () => {
   assert.match(invalid.stderr, /X\.Y\.Z or X\.Y\.Z-rc\.N/);
 });
 
-test('release notes describe only Linux node artifacts', () => {
+test('release notes describe Linux and command-line Windows artifacts', () => {
   for (const version of ['1.2.3', '1.3.0-rc.2']) {
     const result = render(version);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.notes, /Linux Agent、Linux 轻量节点/);
-    assert.doesNotMatch(result.notes, /Windows|install-windows\.ps1|bootstrap-windows\.ps1/);
+    assert.match(result.notes, /Windows.*SHA256SUMS/);
   }
 });
 
@@ -170,18 +170,21 @@ test('modified-component upload queries the draft by its numeric release ID', ()
   assert.match(step, /\.\[0\]\.digest == \$digest and \.\[0\]\.size == \$size/);
 });
 
-test('release has no Windows node build or release-artifact dependency', () => {
+test('release includes Windows command nodes without an RDP dependency', () => {
   const workflow = readFileSync(join(repoRoot, '.github', 'workflows', 'release.yml'), 'utf8').replaceAll('\r\n', '\n');
-  assert.doesNotMatch(workflow, /^  windows-node:/m);
-  assert.doesNotMatch(workflow, /needs\.windows-node|windows-node-release|merge-windows-release|kejilion-node-windows|bootstrap-windows\.ps1|install-windows\.ps1/);
+  assert.match(workflow, /^  windows-node:/m);
+  assert.match(workflow, /needs: \[l3, windows-node\]/);
+  for (const asset of ['kejilion-node-windows-amd64.exe','kejilion-node-windows-arm64.exe','bootstrap-windows.ps1','install-windows.ps1']) assert.ok(workflow.includes(asset));
+  assert.doesNotMatch(workflow, /IronRDP|desktop_broker|windows-rdp/);
   const release = workflow.slice(workflow.indexOf('  release:\n'));
   for (const marker of ['name: Prepare draft GitHub release', 'name: Build and push multi-architecture image',
     'name: Promote image to its release channel', 'name: Publish GitHub release']) {
     assert.ok(release.includes(marker), `${marker} remains part of the release lane`);
   }
   const ci = readFileSync(join(repoRoot, '.github', 'workflows', 'ci.yml'), 'utf8').replaceAll('\r\n', '\n');
-  assert.doesNotMatch(ci, /^  windows-node:/m);
-  assert.doesNotMatch(ci, /internal\/windowsnode|cmd\/kejilion-node|windows-node-release/);
+  assert.match(ci, /^  windows-node:/m);
+  assert.match(ci, /verify-windows-node\.ps1/);
+  assert.match(workflow, /verify-windows-node\.ps1/);
 });
 
 test('release metadata archive is named and described consistently', () => {

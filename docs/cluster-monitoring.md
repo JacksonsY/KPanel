@@ -678,3 +678,5 @@ cron 成员关系，写入 `0640 root:kejilion-node /run/kejilion-node-monitorin
 - 统计网卡：旧版本忽略 `traffic-interfaces.json` 与 `traffic-continuity.json`，恢复自动选择和原始计数和；
   存在偏移时回滚瞬间报告值回到原始值，中心端按计数回退标记一次 `partial` 或计入一次跳变。轻量节点回退旧
   二进制后选择文件同样被忽略；如需彻底清除，执行 `interfaces auto` 后再回退。
+
+Windows 命令行轻量节点候选及指标可用性见 [平台契约](windows-command-node.md)。它复用 light-v1、现有历史存储和出站中继，旧 Windows 预览身份仍需重新接入。

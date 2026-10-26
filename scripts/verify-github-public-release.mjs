@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { expectedReleaseAssetNames } from './stable-release-recovery.mjs';
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const env = process.env;
@@ -100,7 +101,7 @@ const target = await manifest(version), preview = await manifest('preview');
 if (target.digest !== env.IMAGE_DIGEST || (isPreview ? preview.digest !== target.digest : latestImage.digest !== target.digest)) throw new Error('Version/channel digest mismatch');
 if (!isPreview && (latestRelease.tag_name !== `v${version}` || preview.digest !== before.previousPreview?.digest)) throw new Error('Stable publication changed preview or did not become Latest');
 const release = await json(`https://api.github.com/repos/kejilion/KPanel/releases/tags/v${version}`);
-if (release.draft || release.prerelease !== isPreview || release.tag_name !== `v${version}` || release.assets.length !== 15) throw new Error('Release identity mismatch');
+if (release.draft || release.prerelease !== isPreview || release.tag_name !== `v${version}` || JSON.stringify(release.assets.map(asset => asset.name).sort()) !== JSON.stringify(expectedReleaseAssetNames(version))) throw new Error('Release identity mismatch');
 const tagRef = await json(`https://api.github.com/repos/kejilion/KPanel/git/ref/tags/v${version}`);
 if (tagRef.object.type !== 'tag') throw new Error('Annotated release tag required');
 const tagObject = await json(tagRef.object.url);
@@ -136,7 +137,7 @@ await Promise.all(Array.from({ length: 3 }, async () => {
   }
 }));
 const sums = readFileSync(join(assetDirectory, 'SHA256SUMS'), 'utf8').trim().split(/\r?\n/);
-if (sums.length !== 11) throw new Error('Checksum inventory incomplete');
+if (sums.length !== 15) throw new Error('Checksum inventory incomplete');
 for (const line of sums) {
   const match = line.match(/^([a-f0-9]{64})\s+\*?([A-Za-z0-9_.-]+)$/);
   if (!match || !assets.some(a => a.name === match[2] && a.digest === 'sha256:' + match[1])) throw new Error('SHA256SUMS mismatch');

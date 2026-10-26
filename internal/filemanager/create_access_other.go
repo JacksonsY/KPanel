@@ -1,6 +1,10 @@
+//go:build !windows
+
 package filemanager
 
 import "os"
+
+func openAccessTarget(root *fileRoot, name string) (*os.File, error) { return root.Open(name) }
 
 // Source-preserving operations start private; final metadata is applied only
 // after copying content. Ordinary copies inherit the destination policy.

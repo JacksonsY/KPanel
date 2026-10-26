@@ -217,7 +217,7 @@ func (m *Manager) compressArchive(
 	}
 	defer stage.Close()
 	ownedStage, err := stage.Stat(".")
-	if err != nil || !os.SameFile(stageInfo, ownedStage) || !archiveStagePrivate(ownedStage) {
+	if err != nil || !os.SameFile(stageInfo, ownedStage) || !archiveStagePrivate(ownedStage, stage) {
 		return contract.FileEntry{}, ErrConflict
 	}
 	defer func() {
@@ -355,7 +355,7 @@ func (m *Manager) openArchiveWorkspace(target string, targetInfo os.FileInfo) (*
 			_ = root.Close()
 			return nil, "", nil, ErrConflict
 		}
-		if archiveWorkspaceProtected(info) {
+		if archiveWorkspaceProtected(info, root) {
 			return root, current, info, nil
 		}
 		_ = root.Close()
@@ -630,7 +630,7 @@ func (m *Manager) extractArchive(
 	}
 	defer publication.Close()
 	opened, err := publication.Stat(".")
-	if err != nil || !os.SameFile(stageInfo, opened) || !archiveStagePrivate(opened) {
+	if err != nil || !os.SameFile(stageInfo, opened) || !archiveStagePrivate(opened, publication) {
 		return contract.FileEntry{}, ErrConflict
 	}
 	ownedStage = opened

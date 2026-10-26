@@ -86,3 +86,10 @@ Agent 标准输出通过 OpenRC `output_logger`/`error_logger` 送入本机 sysl
 所有维护任务均由固定参数的 systemd transient unit 或 OpenRC
 `start-stop-daemon` 独立进程组执行，不自动重启宿主机，不清理
 Docker、网站目录、KPanel 备份、`/tmp` 或完整日志目录。
+
+## Windows 轻量节点候选
+
+Windows 10 1809 / Server 2019 及以后可作为轻量节点候选接入，提供历史监控、文件管理和
+PowerShell 命令行终端；不提供 Windows Panel/Agent 或 RDP。原生 amd64 自动测试与 ARM64
+交叉构建不等于各发行版安装、服务身份、重启与更新实机准入。接入、权限和回滚见
+[Windows 命令行轻量节点](windows-command-node.md)。旧预览身份不会自动恢复权限。

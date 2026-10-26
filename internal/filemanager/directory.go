@@ -9,16 +9,16 @@ import (
 // openDirectoryRoot resolves one component at a time and pins each checked
 // directory before descending. The returned root owns that directory identity;
 // callers must keep later reads, writes and publication relative to it.
-func openDirectoryRoot(root *fileRoot, directory string, create bool) (*fileRoot, os.FileInfo, error) {
+func openOSDirectoryRoot(root *os.Root, directory string, create bool) (*os.Root, os.FileInfo, error) {
 	normalized, err := normalizeVirtual(directory)
 	if err != nil || normalized != directory {
 		return nil, nil, ErrInvalidPath
 	}
-	pinned, info, err := openCheckedDirectory(rawFileRoot(root), rootName(directory), create, 0700)
+	pinned, info, err := openCheckedDirectory(root, rootName(directory), create, 0700)
 	if err != nil {
 		return nil, nil, err
 	}
-	return wrapFileRoot(pinned), info, nil
+	return pinned, info, nil
 }
 
 func openCheckedDirectory(root *os.Root, relative string, create bool, mode os.FileMode) (*os.Root, os.FileInfo, error) {

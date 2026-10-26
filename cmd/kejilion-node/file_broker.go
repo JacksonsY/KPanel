@@ -53,6 +53,10 @@ func runFileBroker(arguments []string) error {
 	}
 	ctx, stop := nodeSignalContext()
 	defer stop()
+	if runtime.GOOS == "windows" {
+		stopHealth := startPlatformHealthPublisher(ctx)
+		defer stopHealth()
+	}
 	stopProcdHealth := startNodeProcdHealth(ctx)
 	defer stopProcdHealth()
 	stateDir, err := nodeStateDirectory("/")
@@ -65,6 +69,12 @@ func runFileBroker(arguments []string) error {
 	for {
 		// Local sampling must survive an offline center during boot. Remote
 		// identity provisioning and each subsequent connection still fail closed.
+		if err := requireWindowsCapability(ctx, config, "files"); err != nil {
+			if !waitContext(ctx, time.Minute) {
+				return nil
+			}
+			continue
+		}
 		updated, relayIdentity, capabilityErr := ensureFileCapability(ctx, *configPath, config, secret, *fileConfigPath)
 		if capabilityErr == nil {
 			config, identity = updated, relayIdentity

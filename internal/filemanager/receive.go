@@ -341,7 +341,7 @@ func (m *Manager) pinReceiveExtractParent(record *receiveRecord) (*fileRoot, err
 	if err != nil {
 		return nil, err
 	}
-	if record.ExtractDirectory != record.Input.Directory && !isWithin(record.Input.Directory, record.ExtractDirectory) || !archiveWorkspaceProtected(info) || !archiveSameFilesystem(targetInfo, info) || record.ExtractParentIdentity != stableReceiveIdentity(info) {
+	if record.ExtractDirectory != record.Input.Directory && !isWithin(record.Input.Directory, record.ExtractDirectory) || !archiveWorkspaceProtected(info, workspace) || !archiveSameFilesystem(targetInfo, info) || record.ExtractParentIdentity != stableReceiveIdentity(info) {
 		_ = workspace.Close()
 		return nil, ErrConflict
 	}
@@ -1049,7 +1049,7 @@ func (m *Manager) CommitReceive(ctx context.Context, id, sourceKey string, size 
 		}
 		defer stage.Close()
 		openedStage, err := stage.Stat(".")
-		if err != nil || !os.SameFile(stageInfo, openedStage) || !archiveStagePrivate(openedStage) {
+		if err != nil || !os.SameFile(stageInfo, openedStage) || !archiveStagePrivate(openedStage, stage) {
 			return contract.FileReceiveSession{}, ErrConflict
 		}
 		record.extractInfo, record.ExtractIdentity = openedStage, stableReceiveIdentity(openedStage)

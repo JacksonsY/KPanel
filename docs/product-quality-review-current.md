@@ -9,6 +9,14 @@
 - 基线提交：`f244152d9930bd65dc20241ce333ddf2d9626d97`
 - 基线版本：`v1.27.2`
 
+### 2026-10-26 Windows 命令行轻量节点候选
+
+本地候选从 af2c6fbc 扩展 Windows light_node，Panel/Agent 仍在 Linux。Windows 原生 API、SCM 服务分权、ConPTY 与受限 NT 文件句柄复用现有 light-v1/Noise、历史配额、访问策略、任务和界面；不包含 RDP、账户创建或 Windows 系统管理。旧 Windows 身份继续撤销，只有新接入标记可管理，批量重试的平台在预留身份时固定。宿主文件与指标仍为真源，没有中心历史影子库。
+
+本机 amd64 自动测试已验证原生采集、中文 ConPTY、历史落盘/重开、文件 DACL 保留与路径/占用失败边界；定向界面测试覆盖系统命令选择、终端入口及指标缺失。暂存权限以 DACL 核对，不能使用 POSIX mode 推断 Windows 私有性。三个服务、既有会话/历史配额及有界更新事务为实现范围，不从测试推断低配常驻内存或长期性能。Linux 全量 L2、候选审查与最终预览由本次精确提交回执记录；Server/ARM64 真机、干净安装、服务账户权限、更新/重启/卸载、公开产物和生产均未因此通过。
+
+发行准备增加 Windows 原生 CI 和四项 Windows 附件，未来发布冻结 19 项；旧控制器冻结的 15 项清单仍按原身份校验。这里只修改候选代码，不执行发布。scriptLinkageState=not-required（无需发布脚本（不适用）），内置脚本仍固定 614d58ce 与原摘要；回退中心前保留升级前状态，旧解析器可能拒绝新增平台字段或清理 Windows 身份。详细边界见 [Windows 节点契约](windows-command-node.md)。
+
 ### 2026-10-26 RC7 已公开验收
 
 [v1.28.0-rc.7](https://github.com/kejilion/KPanel/releases/tag/v1.28.0-rc.7) 已公开，冻结产品`f244152d9930bd65dc20241ce333ddf2d9626d97`、version/preview index`sha256:05514ee580e703bfb2abc8b0df457ce196ac6f025eb8d491a5ef1b34c12b50ca`，Release ID=423561273。run40215313371/attempt1完整发布链成功，当前同SHA原生KVM9项、Mock28项及真实公开镜像150项通过；15附件/11校验项、双架构及5条更新/运行时3条升级提示核对通过，详见[RC7验收](release-v1.28.0-rc.7-acceptance.md)。GitHub Latest/latest仍v1.27.2，生产未部署；来源端60秒断流、默认全新Node入网限制及RC5桌面恢复偶发继续保留。当前元数据写入已以本版精确源码在GitHub-hosted Ubuntu amd64真实systemd/KVM验证，不外推为物理ARM64、所有防火墙或完整浏览器控制台保证。

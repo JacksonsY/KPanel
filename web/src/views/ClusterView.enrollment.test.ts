@@ -83,19 +83,23 @@ afterEach(() => {
 })
 
 describe('light node enrollment form', () => {
-  it('offers Linux light-node enrollment without platform selection', async () => {
+  it('offers Linux and Windows commands using one enrollment identity', async () => {
     wrapper = mount(ClusterView, { attachTo: document.body, global: { stubs: { RouterLink: true } } })
     await flushPromises()
     await wrapper.get('.cluster-hero__add').trigger('click')
     const cards=Array.from(document.querySelectorAll<HTMLElement>('.cluster-light-enrollment'))
     expect(cards).toHaveLength(1)
     expect(cards[0]!.textContent).toContain('Linux')
-    expect(cards[0]!.querySelector('select')).toBeNull()
-    mocks.createLightEnrollment.mockResolvedValue({id:'linux-node',command:'Linux enrollment command',expiresAt:'2026-09-12T10:05:00Z'})
+    expect(cards[0]!.querySelector('select')?.querySelectorAll('option')).toHaveLength(2)
+    mocks.createLightEnrollment.mockResolvedValue({id:'linux-node',command:'Linux enrollment command',windowsCommand:'Windows verified installer command',expiresAt:'2026-09-12T10:05:00Z'})
     cards[0]!.querySelector<HTMLButtonElement>('button')!.click()
     await flushPromises()
     expect(mocks.createLightEnrollment).toHaveBeenCalledWith(undefined)
     expect(cards[0]!.textContent).toContain('Linux enrollment command')
+    const select = cards[0]!.querySelector('select')!; select.value = 'windows'; select.dispatchEvent(new Event('change', { bubbles: true })); await flushPromises()
+    expect(cards[0]!.textContent).toContain('Windows verified installer command')
+    expect(cards[0]!.textContent).not.toContain('Linux enrollment command')
+    expect(mocks.createLightEnrollment).toHaveBeenCalledTimes(1)
   })
   it('shows reported public IPs in the host address position without making them links', async () => {
     items = [reportedNode({ ipv4: '198.51.100.20', ipv6: '2001:db8::20' })]

@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build !linux && !windows
 
 package filemanager
 
@@ -12,10 +12,10 @@ import (
 
 func stableReceiveIdentity(os.FileInfo) string { return "" }
 
-func archiveStagePrivate(info os.FileInfo) bool { return info.IsDir() }
+func archiveStagePrivate(info os.FileInfo, _ ...*fileRoot) bool { return info.IsDir() }
 
-func archiveWorkspaceProtected(info os.FileInfo) bool { return info.IsDir() }
-func archiveSameFilesystem(a, b os.FileInfo) bool     { return true }
+func archiveWorkspaceProtected(info os.FileInfo, _ ...*fileRoot) bool { return info.IsDir() }
+func archiveSameFilesystem(a, b os.FileInfo) bool                     { return true }
 
 func inheritArchiveDestinationDefaults(stage, target *fileRoot) error { return nil }
 

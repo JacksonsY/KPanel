@@ -336,7 +336,7 @@ test('original release asset inventory binds every uploaded name, byte digest an
     }
     assert.equal(existsSync(join(releaseDirectory, 'LICENSE')), false);
     const manifest = createReleaseAssetManifest({ releaseDirectory, expected, controllerSha, snapshotSha256, releaseId: 42 });
-    assert.equal(manifest.assets.length, 15);
+    assert.equal(manifest.assets.length, 19);
     assert.equal(manifest.imageDigest, expected.digest);
     const release = { id: 42, tag_name: 'v' + version, draft: true, prerelease: false,
       assets: manifest.assets.map(asset => ({ ...asset, state: 'uploaded' })) };
@@ -387,7 +387,7 @@ test('freeze-assets binds the original uploaded release inventory before writing
       GITHUB_SHA: controllerSha, GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: attempt,
       EXPECTED_SHA: candidate, VERSION: version, IMAGE_DIGEST: digest, GH_TOKEN: 'fixture',
       GITHUB_API_URL: 'https://api.example.test', PUBLIC_EVIDENCE: evidence, ASSET_DIRECTORY: releaseDirectory });
-    assert.equal(manifest.assets.length, 15);
+    assert.equal(manifest.assets.length, 19);
     const rawManifest = readFileSync(join(evidence, 'release-assets.json'));
     const identity = JSON.parse(readFileSync(join(evidence, 'publication-identity.json'), 'utf8'));
     assert.equal(identity.assetManifestSha256, createHash('sha256').update(rawManifest).digest('hex'));
@@ -437,7 +437,7 @@ test(`stable recovery validates exact artifact identity for ${version} after ${p
   const notes = Buffer.from(`### 版本更新内容\n- image ${imageDigest}\n`);
   const components = Buffer.from('{"schemaVersion":1}\n');
   const componentDigest = createHash('sha256').update(components).digest('hex');
-  const assetManifest = { schemaVersion: 1, phase: 'before-channel-promotion', candidate, version: expected.version, releaseId: 42,
+  const assetManifest = { schemaVersion: 1, phase: 'before-channel-promotion', assetSet: 'windows-command-v1', candidate, version: expected.version, releaseId: 42,
     runId: expected.runId, attempt: expected.attempt, controllerSha, imageDigest,
     snapshotSha256: createHash('sha256').update(snapshotBytes).digest('hex'),
     assets: expectedReleaseAssetNames(expected.version).map((name, index) => ({ name,
@@ -467,7 +467,7 @@ test(`stable recovery validates exact artifact identity for ${version} after ${p
     const valid = validatePublicationArtifacts({ snapshotDirectory, publicationDirectory, expected });
     assert.equal(valid.snapshot.tag, 'v1.26.0');
     assert.equal(valid.identity.controllerSha, controllerSha);
-    assert.equal(valid.assetManifest.assets.length, 15);
+    assert.equal(valid.assetManifest.assets.length, 19);
     assert.equal(valid.notesSha256, createHash('sha256').update(notes).digest('hex'));
     write(join(evidence, 'stable-before.json'), Buffer.from('tampered'));
     assert.throws(() => validatePublicationArtifacts({ snapshotDirectory, publicationDirectory, expected }));
@@ -486,7 +486,7 @@ test('stable recovery only publishes the frozen draft or restores the exact prio
   const expectedDigest = 'sha256:' + 'b'.repeat(64), componentDigest = createHash('sha256').update('{"schemaVersion":1}\n').digest('hex');
   const assets = expectedReleaseAssetNames('1.27.0').map((name, i) => ({ name, size: name === 'KPANEL_MODIFIED_COMPONENTS.json' ? 19 : 100 + i,
     digest: name === 'KPANEL_MODIFIED_COMPONENTS.json' ? 'sha256:' + componentDigest : 'sha256:' + String(i + 1).padStart(64, '0') }));
-  const assetManifest = { version: '1.27.0', assets, releaseId: 42 };
+  const assetManifest = { version: '1.27.0', assets, releaseId: 42, assetSet: 'windows-command-v1' };
   const release = { id: 42, tag_name: 'v1.27.0', draft: true, prerelease: false, expectedDigest,
     assets: assets.map(asset => ({ ...asset, state: 'uploaded' })) };
   const state = { snapshot, release, assetManifest, version: '1.27.0', expectedDigest, latestReleaseTag: snapshot.tag, latestDigest: expectedDigest,

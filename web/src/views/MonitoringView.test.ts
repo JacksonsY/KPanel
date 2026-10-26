@@ -47,6 +47,17 @@ async function selectHost(view: VueWrapper, id: string) {
 }
 
 describe('monitoring host selection', () => {
+  it('shows Windows CPU and history while omitting unavailable zero-valued metrics', async () => {
+    const value=history(); value.unavailableMetrics=['load','swap','diskIO','networkConnections']
+    mocks.history.mockResolvedValue(value)
+    const {wrapper:view}=await mountAt()
+    expect(view.findAll('button').some(item=>item.text()==='读写 I/O')).toBe(false)
+    expect(view.findAll('button').some(item=>item.text()==='连接数')).toBe(false)
+    expect(view.findAllComponents(TrendChart)[0]?.props('series').some((item:{label:string})=>item.label.includes('负载'))).toBe(false)
+    expect(view.text()).not.toContain('CPU 与负载')
+    mocks.history.mockResolvedValue(history()); await selectHost(view,a)
+    expect(view.findAll('button').some(item=>item.text()==='读写 I/O')).toBe(true)
+  })
   it('loads each selected host history without platform-specific metric fallbacks', async () => {
     const remoteHistory = history(35)
     mocks.hosts.mockResolvedValue({ items: [

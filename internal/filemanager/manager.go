@@ -78,6 +78,7 @@ type Manager struct {
 }
 
 type Config struct {
+	VolumeRoots      map[string]string
 	Root             string
 	ProtectedVirtual []string
 	ReadOnlyVirtual  []string
@@ -101,7 +102,7 @@ type trashMetadata struct {
 }
 
 func New(config Config) (*Manager, error) {
-	if strings.TrimSpace(config.Root) == "" || !filepath.IsAbs(config.Root) {
+	if strings.TrimSpace(config.Root) == "" || (!filepath.IsAbs(config.Root) && !platformVirtualRoot(config.Root)) {
 		return nil, errors.New("file manager root must be absolute")
 	}
 	if config.Now == nil {
@@ -114,7 +115,7 @@ func New(config Config) (*Manager, error) {
 		config.MaxCopyBytes = maxCopyBytes
 	}
 	rootPath := filepath.Clean(config.Root)
-	rootFS, err := openFileRoot(config.Root)
+	rootFS, err := openFileRoot(config.Root, config.VolumeRoots)
 	if err != nil {
 		return nil, fmt.Errorf("open file manager root: %w", err)
 	}
@@ -193,6 +194,9 @@ func (m *Manager) ListPage(
 	virtual string,
 	options ListOptions,
 ) (contract.FileDirectory, error) {
+	if directory, err, handled := m.listPlatformRoot(ctx, virtual, options); handled {
+		return directory, err
+	}
 	if options.Limit <= 0 || options.Limit > MaxDirectoryEntries {
 		options.Limit = MaxDirectoryEntries
 	}
@@ -779,8 +783,10 @@ func (m *Manager) rename(
 	if err := m.mutationError(targetNormalized); err != nil {
 		return contract.FileEntry{}, err
 	}
-	if _, err := m.rootFS.Lstat(rootName(targetNormalized)); err == nil {
-		return contract.FileEntry{}, ErrAlreadyExists
+	if targetInfo, err := m.rootFS.Lstat(rootName(targetNormalized)); err == nil {
+		if normalizedSource == targetNormalized || platformPathKey(normalizedSource) != platformPathKey(targetNormalized) || !os.SameFile(sourceInfo, targetInfo) {
+			return contract.FileEntry{}, ErrAlreadyExists
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return contract.FileEntry{}, err
 	}
@@ -1334,6 +1340,13 @@ func (m *Manager) resolveExisting(virtual string) (string, string, error) {
 	if m.isProtected(normalized) {
 		return "", "", ErrProtected
 	}
+	normalized, err = m.platformCanonical(normalized)
+	if err != nil {
+		return "", "", err
+	}
+	if m.isProtected(normalized) {
+		return "", "", ErrProtected
+	}
 	relative := strings.TrimPrefix(normalized, "/")
 	absolute := m.root
 	if relative != "" {
@@ -1368,8 +1381,9 @@ func (m *Manager) resolveExisting(virtual string) (string, string, error) {
 }
 
 func (m *Manager) isProtected(virtual string) bool {
+	virtual = platformPathKey(virtual)
 	for _, protected := range m.protected {
-		if virtual == protected || isWithin(virtual, protected) {
+		if virtual == platformPathKey(protected) || isWithin(virtual, protected) {
 			return true
 		}
 	}
@@ -1393,7 +1407,7 @@ func (m *Manager) mutationError(virtual string) error {
 		return ErrProtected
 	}
 	for _, readOnly := range m.readOnly {
-		if virtual == readOnly || isWithin(virtual, readOnly) || isWithin(readOnly, virtual) {
+		if platformPathKey(virtual) == platformPathKey(readOnly) || isWithin(virtual, readOnly) || isWithin(readOnly, virtual) {
 			return ErrReadOnly
 		}
 	}
@@ -1409,7 +1423,7 @@ func normalizeVirtual(value string) (string, error) {
 		return "", ErrInvalidPath
 	}
 	for _, component := range strings.Split(strings.TrimPrefix(value, "/"), "/") {
-		if component == "." || component == ".." {
+		if component == "." || component == ".." || component != "" && !platformNameValid(component) {
 			return "", ErrInvalidPath
 		}
 	}
@@ -1423,13 +1437,14 @@ func normalizeVirtual(value string) (string, error) {
 func validateName(value string) error {
 	if value == "" || value == "." || value == ".." || len(value) > 255 ||
 		strings.ContainsAny(value, `/\`) || strings.ContainsRune(value, 0) ||
-		isInternalComponent(value) {
+		isInternalComponent(value) || !platformNameValid(value) {
 		return ErrInvalidPath
 	}
 	return nil
 }
 
 func isInternalComponent(value string) bool {
+	value = platformPathKey(value)
 	return strings.HasPrefix(value, ".kpanel-edit-") ||
 		strings.HasPrefix(value, ".kpanel-upload-") ||
 		strings.HasPrefix(value, ".kpanel-copy-") ||
@@ -1453,6 +1468,7 @@ func rootName(virtual string) string {
 }
 
 func isWithin(candidate, parent string) bool {
+	candidate, parent = platformPathKey(candidate), platformPathKey(parent)
 	return strings.HasPrefix(candidate, strings.TrimSuffix(parent, "/")+"/")
 }
 
@@ -1759,7 +1775,7 @@ func (m *Manager) copyTreeWithAccess(
 		if err := mkdirWithSourceAccess(m.rootFS, rootName(targetVirtual), info.Mode().Perm(), accessSource); err != nil {
 			return err
 		}
-		targetDirectory, err := m.rootFS.Open(rootName(targetVirtual))
+		targetDirectory, err := openAccessTarget(m.rootFS, rootName(targetVirtual))
 		if err != nil {
 			return err
 		}

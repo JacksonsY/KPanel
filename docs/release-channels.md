@@ -102,7 +102,7 @@ run 下载 `snapshot-<run ID>-<attempt>` artifact，并核对候选、版本、r
 稳定版若在 Docker `latest` 提升成功后、GitHub Release 发布步骤失败，从 main 的
 `Recover stable release publication` 输入原发布 run ID/attempt、精确 candidate/version/digest，
 选择 `publish-draft` 或 `restore-latest`。入口只接受原稳定 tag `push`，核验两份原始 artifact、
-15 个附件的名称/大小/SHA-256、原最终正文SHA-256、不可变版本镜像与未改变的公开通道状态；正文只读验证，写入前再次核验。
+19 个附件（含两个 Windows Node 二进制和两个安装脚本）的名称/大小/SHA-256、原最终正文SHA-256、不可变版本镜像与未改变的公开通道状态；正文只读验证，写入前再次核验。
 许可证按原上传入口从仓库根目录读取；冻结阶段通过草稿可见查询解析精确 Release ID，并写入清单与身份工件。
 恢复按该冻结 ID 读取和发布同一对象；前一预览允许来自更早补丁列车，但版本必须低于目标正式版，摘要仍精确绑定原快照。
 恢复仍受 GitHub 的工作流权限检查约束：若目标 tag 的 `.github/workflows` 与后续默认分支不兼容，

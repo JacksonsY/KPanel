@@ -25,11 +25,12 @@ const stableVersionIsOlder = (left, right) => {
   return false;
 };
 
-export function expectedReleaseAssetNames(version) {
+export function expectedReleaseAssetNames(version, { windowsCommandNode = true } = {}) {
   if (!releaseVersionPattern.test(version ?? '')) fail('Valid release version required for the asset inventory');
   return [
     'kejilion-agent-linux-amd64', 'kejilion-agent-linux-arm64',
     'kejilion-node-linux-amd64', 'kejilion-node-linux-arm64',
+    ...(windowsCommandNode ? ['kejilion-node-windows-amd64.exe', 'kejilion-node-windows-arm64.exe', 'bootstrap-windows.ps1', 'install-windows.ps1'] : []),
     'kejilion-panel-meta-' + version + '.tar.gz',
     'kpanel-mcp-darwin-amd64', 'kpanel-mcp-darwin-arm64',
     'kpanel-mcp-linux-amd64', 'kpanel-mcp-linux-arm64',
@@ -38,10 +39,11 @@ export function expectedReleaseAssetNames(version) {
   ].sort();
 }
 
-function validateAssetEntries(assets, version) {
-  const names = expectedReleaseAssetNames(version);
+function validateAssetEntries(assets, version, assetSet = 'windows-command-v1') {
+  if (assetSet !== undefined && assetSet !== 'windows-command-v1' && assetSet !== 'legacy') fail('Unknown release asset set');
+  const names = expectedReleaseAssetNames(version, { windowsCommandNode: assetSet === 'windows-command-v1' });
   if (!Array.isArray(assets) || assets.length !== names.length || assets.some(asset => !asset || typeof asset !== 'object')) {
-    fail('Release asset manifest must contain the exact 15 expected files');
+    fail('Release asset manifest must contain the exact expected files');
   }
   const sorted = [...assets].sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
   for (let i = 0; i < names.length; i++) {
@@ -71,6 +73,7 @@ export function createReleaseAssetManifest({ releaseDirectory, expected, control
   return {
     schemaVersion: 1,
     phase: 'before-channel-promotion',
+    assetSet: 'windows-command-v1',
     candidate: expected.candidate,
     version: expected.version,
     runId: expected.runId,
@@ -95,7 +98,7 @@ export function validateReleaseAssetInventory(release, manifest, { allowPublishe
     if (!asset || typeof asset !== 'object' || asset.state !== 'uploaded') fail('A release asset is not fully uploaded');
     return { name: asset.name, size: asset.size, digest: asset.digest };
   }).sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
-  const frozen = validateAssetEntries(manifest.assets, manifest.version);
+  const frozen = validateAssetEntries(manifest.assets, manifest.version, manifest.assetSet ?? 'legacy');
   if (remote.length !== frozen.length || JSON.stringify(remote) !== JSON.stringify(frozen)) {
     fail('GitHub draft assets do not match the original release bytes');
   }
@@ -182,7 +185,7 @@ export function validatePublicationArtifacts({ snapshotDirectory, publicationDir
     || !sha.test(identity.controllerSha ?? '') || identity.snapshotSha256 !== sha256(snapshotArtifact.bytes)
     || identity.assetManifestSha256 !== sha256(publishedManifest.bytes)
     || identity.notesSha256 !== sha256(notes.bytes)) fail('Original publication artifact identity mismatch');
-  const manifestAssets = validateAssetEntries(assetManifest.assets, expected.version);
+  const manifestAssets = validateAssetEntries(assetManifest.assets, expected.version, assetManifest.assetSet ?? 'legacy');
   if (assetManifest.schemaVersion !== 1 || assetManifest.phase !== 'before-channel-promotion'
     || assetManifest.candidate !== expected.candidate || assetManifest.version !== expected.version
     || assetManifest.runId !== expected.runId || assetManifest.attempt !== expected.attempt
