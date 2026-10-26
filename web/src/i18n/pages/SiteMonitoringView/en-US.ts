@@ -143,18 +143,6 @@ export default [
     "Monitoring action failed"
   ],
   [
-    "网站监控",
-    "Website monitoring"
-  ],
-  [
-    "流量与安全，一目了然",
-    "Your traffic and security at a glance"
-  ],
-  [
-    "从访问来源到防御事件，持续了解您的网站。",
-    "Understand your websites through traffic sources and security events."
-  ],
-  [
     "网站监控暂不可用",
     "Website monitoring unavailable"
   ],
