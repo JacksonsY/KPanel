@@ -108,7 +108,10 @@ async function refresh(): Promise<void> {
       if (!current()) return
       response.items = response.items.map(job => job.id === detail.id ? detail : job)
     }
-    const following = [...outputPreElements].filter(([, pre]) => pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8).map(([id]) => id)
+    const following = [...outputPreElements].filter(([, pre]) => {
+      const lineHeight = Number.parseFloat(getComputedStyle(pre).lineHeight) || 18
+      return pre.scrollHeight - pre.scrollTop - pre.clientHeight <= 2 * lineHeight
+    }).map(([id]) => id)
     syncError.value = ''
     jobs.value = response.items
     available.value = response.available

@@ -69,6 +69,15 @@ beforeEach(() => {
 afterEach(() => { for (const wrapper of wrappers.splice(0)) wrapper.unmount(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe.each(['session', 'task'] as const)('shared %s terminal controller', mode => {
+  it.each([0, 1, 2, 3])('follows output only within two lines of the bottom (gap %s)', gap => {
+    const f = fixture(mode, true)
+    const terminal = f.core.terminal.value!
+    Object.assign(terminal.buffer.active, { baseY: 100, viewportY: 100 - gap })
+    const bottom = vi.spyOn(terminal, 'scrollToBottom')
+    f.subscriptions[0]!.handlers.chunk(chunk('new output\r\n'))
+    expect(bottom).toHaveBeenCalledTimes(gap <= 2 ? 1 : 0)
+  })
+
   it('allows explicit touch focus while suppressing automatic focus and blocked input', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true }))
     const f = fixture(mode)

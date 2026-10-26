@@ -307,5 +307,20 @@ describe('server scheduled terminal batches', () => {
       expectBottom(output(wrapper))
       wrapper.unmount()
     })
+
+    it.each([20, 32])('uses two rendered lines as the follow range with %spx line height', async lineHeight => {
+      mocks.batches.mockResolvedValue({ available: true, items: [job()] })
+      const wrapper = mountPanel(); await flushPromises()
+      await button(wrapper, '全部展开').trigger('click'); await flushPromises()
+      const pre = output(wrapper); pre.style.lineHeight = `${lineHeight}px`
+      pre.scrollTop = pre.scrollHeight - pre.clientHeight - 2 * lineHeight
+      await vi.advanceTimersByTimeAsync(1000); await flushPromises()
+      expectBottom(pre)
+      pre.scrollTop = pre.scrollHeight - pre.clientHeight - 2 * lineHeight - 1
+      const reading = pre.scrollTop
+      await vi.advanceTimersByTimeAsync(1000); await flushPromises()
+      expect(pre.scrollTop).toBe(reading)
+      wrapper.unmount()
+    })
   })
 })
