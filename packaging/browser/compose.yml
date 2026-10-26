@@ -1,0 +1,40 @@
+# Merge with deploy/compose/compose.yml. Pin the browser image to its tested digest.
+services:
+  panel:
+    environment:
+      KEJILION_PANEL_BROWSER_SERVICE_URL: http://browser:8092
+      KEJILION_PANEL_BROWSER_TOKEN_FILE: /run/secrets/browser-token
+    volumes:
+      - ${KPANEL_BROWSER_TOKEN_FILE:?Set a private token file readable by UID 65532}:/run/secrets/browser-token:ro
+    networks:
+      browser-control: {}
+
+  browser:
+    image: ${KPANEL_BROWSER_IMAGE:?Set the tested browser image digest}
+    user: "65532:65532"
+    init: false # tini is already the image entrypoint.
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=${KPANEL_BROWSER_SECCOMP_FILE:?Set the absolute path of browser-seccomp.json}
+    pids_limit: 512
+    mem_limit: 1536m
+    cpus: 1.5
+    shm_size: 256m
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    volumes:
+      - ${KPANEL_BROWSER_TOKEN_FILE:?Set a private token file readable by UID 65532}:/run/secrets/browser-token:ro
+    networks:
+      browser-control: {}
+      browser-egress: {}
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+
+networks:
+  browser-control:
+    internal: true
+  browser-egress: {}

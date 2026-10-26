@@ -1,0 +1,56 @@
+# KPanel Browser 镜像
+
+可选独立组件：Debian 13、官方仓库 Chromium、中文字体和 `kpanel-browser`。
+不包含桌面环境，不挂载 Docker Socket，不发布宿主机端口，不改变 KPanel 主镜像。
+`amd64` / `arm64` 分别原生构建、运行和扫描后，才允许发布对应版本。
+
+启动使用 UID/GID `65532:65532`，要求只读根目录、可写临时目录、独立共享内存、
+资源上限、`no-new-privileges` 和提供的 seccomp profile。组件启动前实际检查
+Chromium 的 PID namespace 与 seccomp 沙箱；不满足时以 `browser_runtime_unsupported`
+退出，不自动改用 `--no-sandbox`、特权容器或放宽宿主机全局安全配置。
+
+## 本地验证
+
+在 Linux Docker 环境、仓库根目录执行：
+
+```sh
+docker build -f packaging/browser/Dockerfile --target runtime -t kpanel-browser:check .
+docker build -f packaging/browser/Dockerfile --target test -t kpanel-browser:test .
+sudo bash packaging/browser/verify.sh kpanel-browser:check kpanel-browser:test /absolute/evidence/path
+```
+
+测试使用临时凭据和只对本次夹具开放的 `127.0.0.1/32`。覆盖沙箱状态、实际服务启动、
+认证、带禁止嵌入响应头的页面、画面、中文输入、回车、滚动、缩放、8 标签上限和进程清理。
+成功后保留日志、版本、包清单、容器配置和截图；不保留 token。
+
+## 接入现有 Panel
+
+`compose.yml` 是与 `deploy/compose/compose.yml` 合并的可选覆盖文件。
+先生成不少于 32 字节的独立随机 token，权限设为 `0400`、所有者 `65532:65532`，
+供 Panel 与浏览器容器只读挂载。设置：
+
+- `KPANEL_BROWSER_IMAGE=docker.io/kjlion/kpanel-browser@sha256:<已验证摘要>`
+- `KPANEL_BROWSER_TOKEN_FILE=<token 的宿主机绝对路径>`
+- `KPANEL_BROWSER_SECCOMP_FILE=<browser-seccomp.json 的宿主机绝对路径>`
+
+然后将此覆盖文件追加到现有 Compose 命令中。Panel 版本必须包含 browser service 协议；
+当前稳定主镜像不能因浏览器组件已运行就被视为已具备该功能。
+默认仍禁止内网与元数据目标；需要访问内网应用时单独配置精确 CIDR。
+
+## 更新与发布
+
+镜像通过固定 Debian 基础层与签名软件源构建；镜像内的
+`/usr/share/kpanel-browser-packages.txt` 记录实际包版本。更新 Chromium 时构建新的组件版本，
+重新验收后替换摘要并重建容器；宿主机系统升级不会更新镜像中的 Chromium。
+会话使用临时目录，替换容器将结束当前网页会话。
+
+`Publish browser component` 只从 `main` 手动调度，输入已通过候选 CI 的精确源码 SHA
+和未使用的组件版本。运行工作流必须与候选内该文件完全相同；完整 L3 与两架构组件验收
+全部通过后才使用 Docker Hub 凭据发布，再拉取公开摘要复测。没有自动发布 `latest`，
+也不修改 KPanel 的 VERSION、Release 或默认更新通道。
+
+seccomp profile 原样来自 Microsoft Playwright `v1.64.1` 的
+[`utils/docker/seccomp_profile.json`](https://github.com/microsoft/playwright/blob/v1.64.1/utils/docker/seccomp_profile.json)，
+SHA-256 `cc3e61cabda6bbc1e53e54d27ba4d55a9d3be829b6dd1a596f4a7b31b1cc7849`，
+Apache-2.0；保留上游许可于 `PLAYWRIGHT-LICENSE`。它允许 Chromium 用户命名空间，
+仍默认拒绝未允许的系统调用。容器继续共享宿主机内核，不能用容器替代浏览器沙箱。
