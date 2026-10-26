@@ -9,6 +9,13 @@ describe('remote browser boundary', () => {
     expect(chunks.length).toBeGreaterThan(1)
     expect(chunks.every(chunk => new TextEncoder().encode(chunk).length <= 8192)).toBe(true)
   })
+  it('also bounds JSON escaping in complete text commands', () => {
+    for (const char of ['"', '\t', '\u0001']) {
+      const value = char.repeat(8192), chunks = browserTextChunks(value)
+      expect(chunks.join('')).toBe(value)
+      expect(chunks.every(text => new TextEncoder().encode(JSON.stringify({ type: 'text', text })).length <= 16 * 1024)).toBe(true)
+    }
+  })
   it('accepts web addresses and searches, rejecting credentials and native schemes', () => {
     expect(browserInput('example.com/docs')).toBe('https://example.com/docs')
     expect(browserInput('http://192.168.1.5:8080')).toBe('http://192.168.1.5:8080/')

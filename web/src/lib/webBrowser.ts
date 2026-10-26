@@ -10,11 +10,15 @@ export const browserLaunchKey: InjectionKey<Readonly<Ref<BrowserLaunch | undefin
 // Wire limits are UTF-8 bytes, while textarea maxlength counts UTF-16 units.
 export function browserTextChunks(value: string): string[] {
   const chunks: string[] = []
-  let text = '', bytes = 0
+  let text = '', bytes = 0, encodedBytes = 0
+  const encoder = new TextEncoder()
   for (const char of value.slice(0, 8192)) {
-    const size = new TextEncoder().encode(char).length
-    if (bytes + size > 8192) { chunks.push(text); text = ''; bytes = 0 }
-    text += char; bytes += size
+    const size = encoder.encode(char).length
+    const escapedSize = encoder.encode(JSON.stringify(char).slice(1, -1)).length
+    if (bytes + size > 8192 || encodedBytes + escapedSize > 16 * 1024 - 128) {
+      chunks.push(text); text = ''; bytes = 0; encodedBytes = 0
+    }
+    text += char; bytes += size; encodedBytes += escapedSize
   }
   if (text) chunks.push(text)
   return chunks

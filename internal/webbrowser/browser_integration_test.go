@@ -39,6 +39,26 @@ func TestRealBrowserNavigationCanStopAndPopupSelfClose(t *testing.T) {
 	defer app.Close()
 	s := newBrowserSession(context.Background())
 	defer s.Close()
+	frameContext, stopFrames := context.WithCancel(context.Background())
+	defer stopFrames()
+	frames := make(chan Event, 1)
+	go func() {
+		for {
+			select {
+			case <-frameContext.Done():
+				return
+			case event := <-s.frames:
+				select {
+				case <-frames:
+				default:
+				}
+				select {
+				case frames <- event:
+				default:
+				}
+			}
+		}
+	}()
 	ranges := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
 	execute := func(c Command) {
 		t.Helper()
@@ -72,11 +92,28 @@ func TestRealBrowserNavigationCanStopAndPopupSelfClose(t *testing.T) {
 	wait(func(e Event) bool { return len(e.Tabs) == 1 && e.Active == e.Tabs[0].ID })
 	execute(Command{Type: "new", URL: app.URL})
 	wait(func(e Event) bool { return len(e.Tabs) == 2 && e.Tabs[1].Title == "Main" })
-	s.mu.Lock()
-	streaming := s.selected("").streaming
-	s.mu.Unlock()
-	if !streaming {
-		t.Fatal("closed popup prevented next tab stream")
+	active := s.Snapshot().Active
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case <-deadline.C:
+			t.Fatal("closed popup prevented next tab frame")
+			return
+		case frame := <-frames:
+			if frame.Tab != active {
+				continue
+			}
+			data, err := base64.StdEncoding.DecodeString(frame.Image)
+			if err != nil {
+				t.Fatal(err)
+			}
+			image, err := jpeg.Decode(bytes.NewReader(data))
+			if err != nil || image.Bounds().Dx() < 320 {
+				t.Fatal("invalid new tab frame", err)
+			}
+			return
+		}
 	}
 }
 
