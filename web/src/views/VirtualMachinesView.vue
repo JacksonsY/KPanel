@@ -149,7 +149,7 @@ onBeforeUnmount(pause)
 </script>
 
 <template>
-  <main class="vm-page">
+  <main class="page vm-page">
     <header class="vm-header">
       <div><h1>{{ t('title') }}</h1><p>{{ t('subtitle') }}</p></div>
       <div class="vm-actions"><button class="button button--secondary" :disabled="loading" @click="load"><RefreshCw :size="16" />{{ t('refresh') }}</button><button class="button button--primary" :disabled="!snapshot?.environment.ready || !writable" @click="openCreate"><Plus :size="17" />{{ t('create') }}</button></div>
@@ -210,7 +210,7 @@ onBeforeUnmount(pause)
 </template>
 
 <style scoped>
-.vm-page { display: grid; gap: 1.5rem; color: var(--text); font-size: .875rem; min-width: 0; }
+.vm-page { display: grid; align-content: start; gap: 1.5rem; color: var(--text); font-size: .875rem; min-width: 0; }
 .vm-header,.vm-actions,.vm-toolbar,.vm-machine { display: flex; align-items: center; gap: .75rem; }
 .vm-header { justify-content: space-between; flex-wrap: wrap; }
 .vm-header h1 { margin: 0; font-size: 1.5rem; font-weight: 600; }
@@ -233,7 +233,8 @@ onBeforeUnmount(pause)
 .vm-search input { width: 100%; }
 .vm-page input,.vm-page select,.vm-form input,.vm-form select,.vm-form textarea { min-width: 0; padding: .65rem .75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-size: .875rem; }
 .vm-list { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
-.vm-row { display: grid; grid-template-columns: minmax(10rem,1.3fr) minmax(10rem,1fr) auto; gap: 1rem; align-items: center; padding: 1.125rem 1.25rem; }
+.vm-row { display: grid; grid-template-columns: minmax(10rem,1.3fr) minmax(10rem,1fr) minmax(0,1fr); gap: 1rem; align-items: center; padding: 1.125rem 1.25rem; }
+.vm-row>.vm-actions { min-width: 0; justify-content: flex-end; }
 .vm-row+.vm-row { border-top: 1px solid var(--border); }
 .vm-machine>div,.vm-resource { display: grid; gap: .45rem; min-width: 0; }
 .vm-machine :deep(.vm-system-icon) { color: var(--brand); }
@@ -278,4 +279,6 @@ onBeforeUnmount(pause)
 .vm-name:focus-visible,.vm-task:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: var(--radius-sm); }
 @media(max-width:850px) { .vm-row { grid-template-columns: 1fr 1fr; }.vm-row>.vm-actions { grid-column: 1/-1; }.vm-summary { grid-template-columns: 1fr 1fr; }.vm-summary>div:last-child { grid-column: 1/-1; } }
 @media(max-width:480px) { .vm-form-grid,.vm-source { grid-template-columns: 1fr; }.vm-row { grid-template-columns: 1fr; padding: 1rem; }.vm-header>.vm-actions { width:100%; }.vm-page { gap: 1rem; }.vm-steps { gap: .5rem; }.vm-review { grid-template-columns: 1fr; gap: .25rem; }.vm-review dd { margin-bottom: .5rem; } }
+@container desktop-window (max-width:850px) { .vm-row { grid-template-columns: 1fr 1fr; }.vm-row>.vm-actions { grid-column: 1/-1; }.vm-summary { grid-template-columns: 1fr 1fr; }.vm-summary>div:last-child { grid-column: 1/-1; } }
+@container desktop-window (max-width:480px) { .vm-row { grid-template-columns: 1fr; padding: 1rem; }.vm-header>.vm-actions { width:100%; }.vm-page { gap: 1rem; } }
 </style>

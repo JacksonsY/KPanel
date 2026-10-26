@@ -235,6 +235,11 @@ export function windowRouteRecords(): RouteRecordRaw[] {
       component: WINDOW_ROUTE_PLACEHOLDER,
     },
     {
+      path: '/virtual-machines',
+      name: 'virtual-machines',
+      component: WINDOW_ROUTE_PLACEHOLDER,
+    },
+    {
       path: '/activity',
       name: 'activity',
       component: WINDOW_ROUTE_PLACEHOLDER,

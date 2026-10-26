@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { desktopApps } from './desktopApps'
 import {
   createWindowRouter,
   resolveWindowComponent,
@@ -14,6 +15,20 @@ vi.mock('@/views/AppScriptView.vue', () => ({
 }))
 
 describe('desktop window route', () => {
+  it.each(desktopApps)('opens $path without falling back to another app', async ({ path }) => {
+    const router = createWindowRouter(path)
+    await router.isReady()
+    expect(router.currentRoute.value.path).toBe(path)
+    expect(router.currentRoute.value.redirectedFrom).toBeUndefined()
+  })
+
+  it('restores the virtual machine route with its query and canonical name', async () => {
+    const router = createWindowRouter('/virtual-machines?node=local')
+    await router.isReady()
+    expect(router.currentRoute.value.name).toBe('virtual-machines')
+    expect(router.currentRoute.value.fullPath).toBe('/virtual-machines?node=local')
+  })
+
   it('keeps site monitoring navigation and its filters in the Sites window', async () => {
     const handoff = vi.fn(() => true)
     const router = createWindowRouter('/sites', vi.fn(), handoff)
