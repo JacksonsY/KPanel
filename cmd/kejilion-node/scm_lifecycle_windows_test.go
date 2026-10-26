@@ -132,8 +132,8 @@ func TestWindowsHostedSCMLifecycle(t *testing.T) {
 		}
 		cleanupCtx, stop := context.WithTimeout(context.Background(), 90*time.Second)
 		defer stop()
-		if err := exec.CommandContext(cleanupCtx, live, "uninstall").Run(); err != nil {
-			t.Errorf("SCM cleanup/uninstall failed: %v", err)
+		if output, err := exec.CommandContext(cleanupCtx, live, "uninstall").CombinedOutput(); err != nil {
+			t.Errorf("SCM cleanup/uninstall failed: %v: %.1500s", err, output)
 		}
 	})
 	pin := sha256.Sum256(center.Certificate().RawSubjectPublicKeyInfo)
@@ -141,8 +141,10 @@ func TestWindowsHostedSCMLifecycle(t *testing.T) {
 	request, _ := json.Marshal(windowsInstallRequest{Token: lightTokenPrefix + base64.RawURLEncoding.EncodeToString(wire), Name: "isolated-hosted-scm", Capabilities: "monitoring,terminal,files", SHA256: hex.EncodeToString(digest[:])})
 	install := exec.CommandContext(ctx, live, "install", "--stdin")
 	install.Stdin = bytes.NewReader(request)
-	if err := install.Run(); err != nil {
-		t.Fatalf("real SYSTEM bootstrap failed: %v", err)
+	if output, err := install.CombinedOutput(); err != nil {
+		message := strings.ReplaceAll(string(output), lightTokenPrefix+base64.RawURLEncoding.EncodeToString(wire), "<redacted-enrollment>")
+		message = strings.ReplaceAll(message, base64.RawURLEncoding.EncodeToString(secret), "<redacted-reporting-key>")
+		t.Fatalf("real SYSTEM bootstrap failed: %v: %.1500s", err, message)
 	}
 	clear(request)
 	assertRunning := func() {
