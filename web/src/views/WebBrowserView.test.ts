@@ -208,4 +208,31 @@ describe('desktop remote browser', () => {
     expect(socket.sent).toHaveLength(0)
     wrapper.unmount()
   })
+  it('waits for the resized frame before mapping pointer input and safely releases a held mouse button', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ close() {} }))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage() {} } as unknown as CanvasRenderingContext2D)
+    const visible = ref(true), wrapper = await render(visible, 'https://example.com/'), socket = Socket.instances[0]!
+    socket.state(); await nextTick()
+    socket.state([{ id: 'tab-1', url: 'https://example.com/', title: 'Page', loading: false, back: false, forward: false }], 'tab-1'); await nextTick()
+    const canvas = wrapper.get('canvas')
+    const box = { left: 0, top: 0, width: 800, height: 500 } as DOMRect
+    vi.spyOn(canvas.element, 'getBoundingClientRect').mockReturnValue(box)
+    vi.spyOn(wrapper.get('.web-browser__content').element, 'getBoundingClientRect').mockReturnValue(box)
+    const frame = async (width: number, height: number) => { socket.onmessage?.({ data: JSON.stringify({ type: 'frame', tab: 'tab-1', image: 'AA==', width, height }) }); await flushPromises() }
+    await frame(1600, 900)
+    visible.value = false; await nextTick(); visible.value = true; await nextTick(); await nextTick(); await vi.advanceTimersByTimeAsync(140)
+    expect(socket.sent.at(-1)).toEqual({ type: 'resize', width: 800, height: 500 })
+    const pointer = (type: string) => { const event = new Event(type, { cancelable: true }); for (const [key, value] of Object.entries({ pointerType: 'mouse', clientX: 799, clientY: 499, button: 0, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false })) Object.defineProperty(event, key, { value }); canvas.element.dispatchEvent(event) }
+    socket.sent.length = 0
+    pointer('pointermove')
+    canvas.element.dispatchEvent(new WheelEvent('wheel', { clientX: 799, clientY: 499, deltaY: 120, cancelable: true }))
+    expect(socket.sent).toHaveLength(0)
+    pointer('pointerup')
+    expect(socket.sent).toEqual([{ type: 'mouse', action: 'mouseReleased', x: 799, y: 499, button: 'left', modifiers: 0 }])
+    await frame(800, 500); await vi.advanceTimersByTimeAsync(40)
+    pointer('pointermove')
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'mouse', action: 'mouseMoved', x: 799, y: 499 })
+    wrapper.unmount()
+  })
 })

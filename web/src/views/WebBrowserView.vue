@@ -52,6 +52,7 @@ let observer: ResizeObserver | undefined
 let resizeTimer: ReturnType<typeof setTimeout> | undefined
 let connectTimer: ReturnType<typeof setTimeout> | undefined
 let lastPointer = 0
+let requestedViewport: { width: number; height: number } | undefined
 const composing = ref(false)
 let pendingURL: string | undefined
 const closingTabIDs = new Set<string>()
@@ -113,7 +114,7 @@ function receive(raw: unknown): void {
 }
 function disconnect(end = false): void {
   if (end) send({ type: 'end' })
-  epoch++; clearTimeout(connectTimer); controller?.abort(); socket?.close(); socket = undefined; bitmapSequence++
+  epoch++; clearTimeout(connectTimer); controller?.abort(); socket?.close(); socket = undefined; bitmapSequence++; requestedViewport = undefined
 }
 async function connect(): Promise<void> {
   disconnect(); const current = epoch; status.value = 'connecting'; notice.value = ''; controller = new AbortController()
@@ -169,15 +170,21 @@ function resize(): void {
   const box = screen.value.getBoundingClientRect()
   if (box.width <= 0 || box.height <= 0) return
   const scale = Math.max(1, box.width / 1600, box.height / 1000)
+  const next = { width: Math.max(320, Math.round(box.width / scale)), height: Math.max(240, Math.round(box.height / scale)) }
   clearTimeout(resizeTimer)
-  resizeTimer = setTimeout(() => send({ type: 'resize', width: Math.max(320, Math.round(box.width / scale)), height: Math.max(240, Math.round(box.height / scale)) }), 140)
+  if (next.width === requestedViewport?.width && next.height === requestedViewport.height) return
+  resizeTimer = setTimeout(() => { if (send({ type: 'resize', ...next })) { requestedViewport = next; touchGesture = undefined } }, 140)
 }
+function viewportReady(): boolean { return !requestedViewport || (requestedViewport.width === width.value && requestedViewport.height === height.value) }
 function pointer(event: PointerEvent, action: string): void {
   if (!imageReady.value || !frame.value || startPage.value) return
+  // Frames can lag a successful resize. Do not interpret old pixels against
+  // the new viewport; an outstanding mouse press may still be released safely.
+  if (!viewportReady() && (event.pointerType === 'touch' || action !== 'mouseReleased')) return
   if (event.pointerType === 'touch') { touch(event, action); return }
   if (action === 'mouseMoved' && performance.now() - lastPointer < 40) return
   lastPointer = performance.now()
-  const point = browserCoordinates(event.clientX, event.clientY, frame.value.getBoundingClientRect(), width.value, height.value)
+  const point = browserCoordinates(event.clientX, event.clientY, frame.value.getBoundingClientRect(), requestedViewport?.width || width.value, requestedViewport?.height || height.value)
   if (!point) return
   if (action === 'mousePressed') { typing.value?.focus({ preventScroll: true }); frame.value.setPointerCapture?.(event.pointerId) }
   send({ type: 'mouse', action, ...point, button: ['left', 'middle', 'right'][event.button] || 'none', modifiers: modifiers(event) })
@@ -215,7 +222,7 @@ function touch(event: PointerEvent, action: string): void {
   touchGesture = undefined
 }
 function wheel(event: WheelEvent): void {
-  if (!frame.value || !imageReady.value) return
+  if (!frame.value || !imageReady.value || !viewportReady()) return
   const box = frame.value.getBoundingClientRect()
   const point = browserCoordinates(event.clientX, event.clientY, box, width.value, height.value)
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? box.height : 1
