@@ -53,9 +53,11 @@ jobs:
           count=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$CANDIDATE&status=success&per_page=10" \
             --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
           test "$count" -gt 0
-          code=$(curl --silent --show-error --location --max-time 30 --output /tmp/browser-tag.json \
-            --write-out '%{http_code}' "https://hub.docker.com/v2/repositories/kjlion/kpanel-browser/tags/$VERSION")
-          test "$code" = 404 # Existing or uncertain versions must never be overwritten.
+          for suffix in '' -amd64 -arm64; do
+            code=$(curl --silent --show-error --location --max-time 30 --output /tmp/browser-tag.json \
+              --write-out '%{http_code}' "https://hub.docker.com/v2/repositories/kjlion/kpanel-browser/tags/$VERSION$suffix")
+            test "$code" = 404 # Never overwrite an index or a partially published native image.
+          done
           echo "candidate=$CANDIDATE" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -166,6 +168,11 @@ jobs:
       - name: Publish tested native images and immutable index
         run: |
           set -euo pipefail
+          for suffix in '' -amd64 -arm64; do
+            code=$(curl --silent --show-error --location --max-time 30 --output /tmp/browser-tag.json \
+              --write-out '%{http_code}' "https://hub.docker.com/v2/repositories/kjlion/kpanel-browser/tags/$VERSION$suffix")
+            test "$code" = 404
+          done
           for arch in amd64 arm64; do
             directory="$RUNNER_TEMP/images/browser-$arch-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             echo "$(cut -d ' ' -f1 "$directory/browser-$arch.tar.gz.sha256")  $directory/browser-$arch.tar.gz" | sha256sum -c -

@@ -19,6 +19,12 @@ docker build -f packaging/browser/Dockerfile --target test -t kpanel-browser:tes
 sudo bash packaging/browser/verify.sh kpanel-browser:check kpanel-browser:test /absolute/evidence/path
 ```
 
+本地下载慢时可添加 `--build-arg DEBIAN_MIRROR=https://mirrors.ustc.edu.cn/debian`
+或使用清华镜像。仅切换构建容器的软件包下载地址，安全更新仍使用 Debian 官方源；
+保留 HTTPS、Debian 签名校验和构建缓存。公开 Actions 构建默认使用官方源。
+构建代理使用 `--secret id=https_proxy,env=HTTPS_PROXY`；代理需要额外可信证书时，
+可通过 `--secret id=proxy_ca,src=<可信 CA bundle>` 提供，仅在构建期间读取，不写入镜像。
+
 测试使用临时凭据和只对本次夹具开放的 `127.0.0.1/32`。覆盖沙箱状态、实际服务启动、
 认证、带禁止嵌入响应头的页面、画面、中文输入、回车、滚动、缩放、8 标签上限和进程清理。
 成功后保留日志、版本、包清单、容器配置和截图；不保留 token。
@@ -47,10 +53,15 @@ sudo bash packaging/browser/verify.sh kpanel-browser:check kpanel-browser:test /
 `Publish browser component` 只从 `main` 手动调度，输入已通过候选 CI 的精确源码 SHA
 和未使用的组件版本。运行工作流必须与候选内该文件完全相同；完整 L3 与两架构组件验收
 全部通过后才使用 Docker Hub 凭据发布，再拉取公开摘要复测。没有自动发布 `latest`，
-也不修改 KPanel 的 VERSION、Release 或默认更新通道。
+也不修改 KPanel 的 VERSION、Release 或默认更新通道。当前试验发布入口不恢复部分成功的发布：
+任一版本或架构标签已占用便拒绝重新推送；修复后使用新的 RC 版本。
+首次稳定组件前需补齐发布附件恢复与新 Dockerfile 的统一依赖检测覆盖，由组件维护者负责。
 
-seccomp profile 原样来自 Microsoft Playwright `v1.64.1` 的
+seccomp profile 基于 Microsoft Playwright `v1.64.1` 的
 [`utils/docker/seccomp_profile.json`](https://github.com/microsoft/playwright/blob/v1.64.1/utils/docker/seccomp_profile.json)，
-SHA-256 `cc3e61cabda6bbc1e53e54d27ba4d55a9d3be829b6dd1a596f4a7b31b1cc7849`，
-Apache-2.0；保留上游许可于 `PLAYWRIGHT-LICENSE`。它允许 Chromium 用户命名空间，
+上游 SHA-256 `cc3e61cabda6bbc1e53e54d27ba4d55a9d3be829b6dd1a596f4a7b31b1cc7849`，
+Apache-2.0；保留上游许可于 `PLAYWRIGHT-LICENSE`。本地增加 `chroot` syscall 规则，
+用于外层 `cap_drop: ALL` 时 Chromium 在自身 user namespace 内完成沙箱隔离；外层依然无此能力。
+本地 SHA-256 `07ea7eec42cb37c0bfb2b8c5e1e19d65ee15046d415e7c34854849a934e06b51`。
+它允许 Chromium 用户命名空间，
 仍默认拒绝未允许的系统调用。容器继续共享宿主机内核，不能用容器替代浏览器沙箱。

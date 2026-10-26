@@ -1,10 +1,12 @@
 package webbrowser
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"image/jpeg"
 	"net"
 	"net/http"
 	"net/netip"
@@ -251,10 +253,15 @@ func (s *browserSession) listen(tab *browserTab) {
 			}
 			if !time.Now().Before(next) && len(event.Data) < MaxEventBytes/2 {
 				next = time.Now().Add(100 * time.Millisecond)
-				frame := Event{Type: "frame", Tab: tab.ID, Image: base64.StdEncoding.EncodeToString(event.Data), Width: int64(event.Metadata.DeviceWidth), Height: int64(event.Metadata.DeviceHeight)}
-				select {
-				case s.frames <- frame:
-				default:
+				// Chromium can attach new viewport metadata to a compositor frame
+				// still rendered at the previous size. Never stretch those pixels.
+				size, decodeErr := jpeg.DecodeConfig(bytes.NewReader(event.Data))
+				if decodeErr == nil && size.Width == int(event.Metadata.DeviceWidth) && size.Height == int(event.Metadata.DeviceHeight) {
+					frame := Event{Type: "frame", Tab: tab.ID, Image: base64.StdEncoding.EncodeToString(event.Data), Width: int64(event.Metadata.DeviceWidth), Height: int64(event.Metadata.DeviceHeight)}
+					select {
+					case s.frames <- frame:
+					default:
+					}
 				}
 			}
 			ctx, cancel := context.WithTimeout(tab.ctx, 3*time.Second)

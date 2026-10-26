@@ -51,6 +51,11 @@
 	],
 	"syscalls": [
 		{
+			"comment": "Chromium chroots inside its own unprivileged user namespace; outer capabilities remain empty",
+			"names": ["chroot"],
+			"action": "SCMP_ACT_ALLOW"
+		},
+		{
 			"comment": "Allow create user namespaces",
 			"names": [
 				"clone",

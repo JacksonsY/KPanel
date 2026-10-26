@@ -21,11 +21,19 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go test -p 2 -c -o /out/browser-tests ./internal/webbrowser'
 
 FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS browser-base
+ARG DEBIAN_MIRROR=https://deb.debian.org/debian
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 RUN --mount=type=secret,id=https_proxy,required=false \
+    --mount=type=secret,id=proxy_ca,required=false,mode=0444 \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
     sh -eu -c 'if [ -f /run/secrets/https_proxy ]; then \
       export http_proxy="$(cat /run/secrets/https_proxy)" https_proxy="$(cat /run/secrets/https_proxy)"; fi; \
-    apt-get update -o APT::Update::Error-Mode=any \
-    && apt-get install -y --no-install-recommends \
+    case "$DEBIAN_MIRROR" in https://deb.debian.org/debian|https://mirrors.ustc.edu.cn/debian|https://mirrors.tuna.tsinghua.edu.cn/debian) ;; *) exit 2;; esac; \
+    sed -i "s|http://deb.debian.org/debian-security|https://security.debian.org/debian-security|; s|http://deb.debian.org/debian$|$DEBIAN_MIRROR|" /etc/apt/sources.list.d/debian.sources; \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    if [ -f /run/secrets/proxy_ca ]; then export SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
+    apt-get -o Acquire::https::CaInfo="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}" update -o APT::Update::Error-Mode=any \
+    && apt-get -o Acquire::https::CaInfo="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}" install -y --no-install-recommends \
        ca-certificates chromium chromium-sandbox fonts-noto-cjk fonts-liberation tini \
     && dpkg-query -W > /usr/share/kpanel-browser-packages.txt \
     && rm -rf /var/lib/apt/lists/* \
