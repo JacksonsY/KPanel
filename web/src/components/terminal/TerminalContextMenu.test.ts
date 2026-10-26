@@ -41,6 +41,8 @@ describe('TerminalContextMenu', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    terminal.getSelection.mockReturnValue('selected output')
+    terminal.hasSelection.mockReturnValue(true)
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText, readText },
@@ -82,6 +84,8 @@ describe('TerminalContextMenu', () => {
   })
 
   it('pastes directly on a desktop right click', async () => {
+    terminal.getSelection.mockReturnValue('')
+    terminal.hasSelection.mockReturnValue(false)
     const menu = wrapper.vm as unknown as ExposedMenu
     menu.open(new MouseEvent('contextmenu', { button: 2, cancelable: true }))
     await flushPromises()
@@ -91,6 +95,8 @@ describe('TerminalContextMenu', () => {
   })
 
   it('opens the menu when direct clipboard access is blocked', async () => {
+    terminal.getSelection.mockReturnValue('')
+    terminal.hasSelection.mockReturnValue(false)
     readText.mockRejectedValueOnce(new Error('blocked'))
     const menu = wrapper.vm as unknown as ExposedMenu
     menu.open(new MouseEvent('contextmenu', { button: 2, cancelable: true }))
@@ -208,7 +214,7 @@ describe('TerminalContextMenu', () => {
     expect(stopPropagation).toHaveBeenCalled()
   })
 
-  it('handles terminal copy shortcuts but leaves normal Ctrl+C available for SIGINT', async () => {
+  it('handles terminal copy shortcuts and Ctrl+C with a selection', async () => {
     const menu = wrapper.vm as unknown as ExposedMenu
     const copyEvent = new KeyboardEvent('keydown', {
       key: 'c',
@@ -216,14 +222,37 @@ describe('TerminalContextMenu', () => {
       shiftKey: true,
       cancelable: true,
     })
-    expect(menu.handleKeyEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true }))).toBe(true)
+    expect(menu.handleKeyEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true }))).toBe(false)
     expect(menu.handleKeyEvent(copyEvent)).toBe(false)
     expect(menu.handleKeyEvent(new KeyboardEvent('keyup', { key: 'c', ctrlKey: true, shiftKey: true }))).toBe(true)
     await flushPromises()
 
     expect(writeText).toHaveBeenCalledWith('selected output')
-    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(writeText).toHaveBeenCalledTimes(2)
     expect(copyEvent.defaultPrevented).toBe(true)
+  })
+
+  it('leaves Ctrl+C available for SIGINT without a selection or with Alt', () => {
+    const menu = wrapper.vm as unknown as ExposedMenu
+    expect(menu.handleKeyEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, altKey: true }))).toBe(true)
+    terminal.hasSelection.mockReturnValue(false)
+    const event = new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, cancelable: true })
+    expect(menu.handleKeyEvent(event)).toBe(true)
+    expect(event.defaultPrevented).toBe(false)
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it('offers Copy on right click when text is selected without pasting into the running process', async () => {
+    const menu = wrapper.vm as unknown as ExposedMenu
+    menu.open(new MouseEvent('contextmenu', { button: 2, cancelable: true }))
+    await flushPromises()
+    const copy = document.body.querySelector<HTMLButtonElement>('.terminal-context-menu button')!
+    expect(copy.disabled).toBe(false)
+    expect(readText).not.toHaveBeenCalled()
+    expect(terminal.paste).not.toHaveBeenCalled()
+    copy.click()
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith('selected output')
   })
 
   it.each([

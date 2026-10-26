@@ -3,6 +3,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ClipboardPaste, Copy, TextSelect } from '@lucide/vue'
 import type { Terminal } from '@xterm/xterm'
 import { useI18n } from '@/i18n'
+import { terminalSelectionText } from '@/lib/terminalWrappedLinks'
 import {
   contextMenuFocusOrigin,
   type ContextMenuFocusOrigin,
@@ -54,14 +55,14 @@ function open(event: MouseEvent): void {
   const y = event.clientY
   const focusOrigin = contextMenuFocusOrigin(event)
   const showMenu = () => {
-    selection.value = props.getTerminal()?.getSelection() || ''
+    selection.value = terminalSelectionText(props.getTerminal())
     contextMenuAnchor = anchor
     left.value = x
     top.value = y
     visible.value = true
     void positionMenu(focusOrigin)
   }
-  if (event.button === 2 && !event.shiftKey && !window.matchMedia?.('(pointer: coarse)').matches && props.canPaste) {
+  if (event.button === 2 && !event.shiftKey && !props.getTerminal()?.hasSelection() && !window.matchMedia?.('(pointer: coarse)').matches && props.canPaste) {
     void pasteClipboard().then((pasted) => { if (!pasted) showMenu() })
     return
   }
@@ -75,7 +76,7 @@ function handleSelectionPointerDown(event: PointerEvent): void {
 
 function handleSelectionMouseUp(): void {
   queueMicrotask(() => {
-    const value = props.getTerminal()?.getSelection() || ''
+    const value = terminalSelectionText(props.getTerminal())
     if (value) void writeClipboard(value)
   })
 }
@@ -111,7 +112,7 @@ async function writeClipboard(value: string): Promise<boolean> {
 }
 
 async function copySelection(): Promise<void> {
-  const value = props.getTerminal()?.getSelection() || selection.value
+  const value = terminalSelectionText(props.getTerminal()) || selection.value
   if (!value) return
   if (await writeClipboard(value)) {
     close(true)
@@ -152,7 +153,7 @@ async function handleTouchHold(action: 'copy' | 'paste' | 'menu', x: number, y: 
     return
   }
   if (action === 'copy') {
-    const value = target?.getSelection() || ''
+    const value = terminalSelectionText(target)
     if (value && await writeClipboard(value)) return
     if (disposed || props.getTerminal() !== target) return
     showMenu()
@@ -184,8 +185,9 @@ function handleKeyEvent(event: KeyboardEvent): boolean {
   if (event.type !== 'keydown') return true
   const isMacCopy = event.metaKey && !event.ctrlKey && event.key.toLowerCase() === 'c'
   const isTerminalCopy = event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'c'
+  const isSelectionCopy = event.ctrlKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'c'
   const isInsertCopy = event.ctrlKey && event.key === 'Insert'
-  if ((isMacCopy || isTerminalCopy || isInsertCopy) && props.getTerminal()?.hasSelection()) {
+  if ((isMacCopy || isTerminalCopy || isSelectionCopy || isInsertCopy) && props.getTerminal()?.hasSelection()) {
     event.preventDefault()
     event.stopPropagation()
     void copySelection()

@@ -1,7 +1,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import { WebLinksAddon } from '@xterm/addon-web-links'
+import { TerminalWebLinksAddon } from '@/lib/terminalWrappedLinks'
 import '@xterm/xterm/css/xterm.css'
 import type TerminalContextMenu from '@/components/terminal/TerminalContextMenu.vue'
 import type { TerminalAdapter, TerminalChunk } from '@/lib/terminalAdapters'
@@ -428,7 +428,7 @@ export function useTerminalController(options: Options) {
     terminal.value = screen
     fitAddon = new FitAddon()
     screen.loadAddon(fitAddon)
-    screen.loadAddon(new WebLinksAddon((_event, uri) => void openTerminalURL(uri)))
+    screen.loadAddon(new TerminalWebLinksAddon((_event, uri) => void openTerminalURL(uri)))
     // Both viewers ignore hyperlinks/clipboard escape sequences from untrusted output.
     screen.parser.registerOscHandler(8, () => true)
     screen.parser.registerOscHandler(52, () => true)
