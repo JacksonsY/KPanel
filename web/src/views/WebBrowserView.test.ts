@@ -77,6 +77,24 @@ describe('desktop remote browser', () => {
     expect(socket.sent).toContainEqual({ type: 'navigate', tab: 'tab-0', url: 'https://example.org/' })
     wrapper.unmount(); expect(target.children).toHaveLength(0); target.remove()
   })
+  it('keeps one add button and lets every tab, including the start tab, close', async () => {
+    const wrapper = await render(), socket = Socket.instances[0]!
+    socket.state(); await nextTick()
+    expect(wrapper.findAll('button[title="新建标签页"]')).toHaveLength(1)
+    await wrapper.get('.web-browser__address input').setValue('unfinished.example')
+    await wrapper.get('button[aria-label="关闭标签页"]').trigger('click')
+    expect((wrapper.get('.web-browser__address input').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.findAll('[role="tab"]')).toHaveLength(1)
+    socket.state([{ id: 'first', url: 'https://example.com/', title: 'First', loading: false, back: false, forward: false }], 'first')
+    await nextTick(); await wrapper.get('[role="tab"]').trigger('click')
+    await wrapper.get('button[title="新建标签页"]').trigger('click')
+    expect(wrapper.findAll('.web-browser__tab')).toHaveLength(2)
+    expect(wrapper.findAll('.web-browser__tab').every(tab => tab.findAll('button').length === 2)).toBe(true)
+    await wrapper.get('button[aria-label="关闭标签页"]').trigger('click')
+    expect(wrapper.findAll('[role="tab"]')).toHaveLength(1)
+    expect(socket.sent).toContainEqual({ type: 'select', tab: 'first' })
+    wrapper.unmount()
+  })
   it('keeps page titles as text and pauses transmission when the desktop window is hidden', async () => {
     const visible = ref(true), wrapper = await render(visible), socket = Socket.instances[0]!
     socket.state([{ id: 'tab-1', url: 'https://example.com', title: '<img src=x>', loading: false, back: true, forward: false }], 'tab-1')

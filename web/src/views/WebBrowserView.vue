@@ -139,6 +139,7 @@ function submit(): void { const url = browserInput(address.value); if (!url) { n
 function select(tab: BrowserTab): void { startPage.value = false; newTabPending.value = false; imageReady.value = false; send({ type: 'select', tab: tab.id }); void nextTick(resize) }
 function close(tab: BrowserTab): void { send({ type: 'close', tab: tab.id }); if (tabs.value.length === 1) { startPage.value = true; newTabPending.value = true } }
 function home(): void { startPage.value = true; newTabPending.value = !activeTab.value; address.value = ''; void nextTick(() => addressInput.value?.focus()) }
+function closeStartTab(): void { const previous = tabs.value[tabs.value.length - 1]; if (previous) select(previous); else { pendingURL = undefined; notice.value = ''; home() } }
 function newTab(): void { if (tabs.value.length >= BROWSER_MAX_TABS) { notice.value = t('limit'); return }; home(); newTabPending.value = true }
 function external(): void { const url = browserInput(address.value || activeTab.value?.url || pendingURL || ''); if (url) window.open(url, '_blank', 'noopener,noreferrer') }
 function resize(): void {
@@ -191,7 +192,7 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); clearTimeout(r
         <button role="tab" :aria-selected="(!startPage || !newTabPending) && tab.id === activeID" :title="tab.title || t('untitled')" @click="select(tab)"><LoaderCircle v-if="tab.loading" :size="15" class="is-spinning" /><Globe2 v-else :size="15" /><span>{{ startPage && !newTabPending && tab.id === activeID ? t('untitled') : tab.title || t('untitled') }}</span></button>
         <button :aria-label="`${t('closeTab')} · ${tab.title || t('untitled')}`" @click="close(tab)"><X :size="14" /></button>
       </div>
-      <div v-if="startPage && newTabPending" class="web-browser__tab is-active"><button role="tab" aria-selected="true" @click="addressInput?.focus()"><Globe2 :size="15" /><span>{{ t('untitled') }}</span></button><button v-if="tabs.length" :aria-label="t('closeTab')" @click="select(tabs[tabs.length - 1]!)"><X :size="14" /></button></div>
+      <div v-if="startPage && newTabPending" class="web-browser__tab is-active"><button role="tab" aria-selected="true" @click="addressInput?.focus()"><Globe2 :size="15" /><span>{{ t('untitled') }}</span></button><button :aria-label="t('closeTab')" @click="closeStartTab"><X :size="14" /></button></div>
       </div>
       <button class="web-browser__icon" :disabled="tabs.length >= BROWSER_MAX_TABS" :title="t('newTab')" :aria-label="t('newTab')" @click="newTab"><Plus :size="18" /></button>
       <span class="web-browser__tab-count">{{ tabs.length + Number(startPage && newTabPending) }}/{{ BROWSER_MAX_TABS }}</span>
@@ -233,7 +234,7 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); clearTimeout(r
 <style scoped>
 .web-browser{display:flex;flex-direction:column;width:100%;height:100%;min-height:24rem;overflow:hidden;background:var(--surface);color:var(--text);font-size:.875rem}
 .web-browser__tabs{display:flex;align-items:center;gap:.25rem;padding:.4rem .65rem 0;min-width:0;min-height:2.6rem;background:var(--surface-subtle);font-size:.875rem}
-.web-browser__tabs--titlebar{height:42px;min-height:42px;padding:0 .25rem;background:transparent}.web-browser__tab-track{display:flex;align-items:center;flex:1;min-width:0;gap:.25rem;overflow-x:auto;scrollbar-width:thin}.web-browser__tab-count{flex-shrink:0;font-size:.8125rem;color:var(--muted);padding:0 .25rem}.web-browser__tabs--titlebar .web-browser__tab{border-radius:var(--radius-sm);height:32px}.web-browser__tabs--titlebar .web-browser__tab button{padding:.4rem}.web-browser__tabs--titlebar .web-browser__tab.is-active{border-color:var(--border)}
+.web-browser__tabs--titlebar{height:42px;min-height:42px;padding:0 .25rem;background:transparent}.web-browser__tab-track{display:flex;align-items:center;flex:0 1 auto;min-width:0;gap:.25rem;overflow-x:auto;scrollbar-width:thin}.web-browser__tab-count{margin-left:auto;flex-shrink:0;font-size:.8125rem;color:var(--muted);padding:0 .25rem}.web-browser__tabs--titlebar .web-browser__tab{border-radius:var(--radius-sm);height:32px}.web-browser__tabs--titlebar .web-browser__tab button{padding:.4rem}.web-browser__tabs--titlebar .web-browser__tab.is-active{border-color:var(--border)}
 .web-browser__tab{display:flex;align-items:center;min-width:7rem;max-width:13rem;border:1px solid transparent;border-radius:var(--radius-sm) var(--radius-sm) 0 0;flex-shrink:0}
 .web-browser__tab.is-active{background:var(--surface);border-color:var(--border);border-bottom-color:var(--surface)}
 .web-browser__tab button{display:flex;align-items:center;gap:.5rem;border:0;background:none;color:inherit;padding:.65rem .5rem;font:inherit;min-width:0;cursor:pointer}.web-browser__tab button:first-child{flex:1}.web-browser__tab span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
