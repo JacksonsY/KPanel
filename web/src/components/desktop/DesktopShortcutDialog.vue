@@ -368,7 +368,7 @@ onBeforeUnmount(() => { clearPreview(); importController?.abort() })
         {{ i18n.t('common.cancel') }}
       </button>
       <button class="button button--primary" type="button" :disabled="saving" @click="submit">
-        {{ saving ? i18n.t('common.saving') : i18n.t('desktop.shortcutSave') }}
+        {{ saving ? i18n.t('common.saving') : i18n.t(site ? 'desktop.renameSave' : 'desktop.shortcutSave') }}
       </button>
     </template>
   </ModalDialog>
