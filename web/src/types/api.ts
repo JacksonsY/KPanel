@@ -2361,6 +2361,8 @@ export interface DesktopWorkspace {
   positions: Record<string, DesktopIconPosition>
   widgetPositions: Record<string, DesktopIconPosition>
   labels: Record<string, string>
+  /** Custom desktop site icon versions; host favicons remain unchanged. */
+  siteIcons?: Record<string, string>
   shortcuts: DesktopShortcut[]
 }
 

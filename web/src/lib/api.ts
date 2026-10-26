@@ -599,6 +599,35 @@ function normalizeSystemResources(system: RawSystemSummary): SystemResourceSnaps
   }
 }
 
+function uploadDesktopIcon(kind: 'shortcuts' | 'sites', id: string, file: File): Promise<DesktopShortcutIconResult> {
+  return new Promise<DesktopShortcutIconResult>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', buildUrl(`/desktop/${kind}/${encodeURIComponent(id)}/icon`))
+    xhr.withCredentials = true
+    xhr.responseType = 'json'
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+    if (csrfToken) xhr.setRequestHeader('X-CSRF-Token', csrfToken)
+    xhr.timeout = 30_000
+    xhr.ontimeout = xhr.onerror = () => reject(new ApiError('图标上传连接中断。', 0, 'network_error'))
+    xhr.onload = () => {
+      const payload = xhr.response
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(payload as DesktopShortcutIconResult)
+        return
+      }
+      const problem = payload && typeof payload === 'object' ? (payload as ProblemPayload) : undefined
+      reject(new ApiError(
+        problem?.detail || problem?.title || '图标上传失败。',
+        xhr.status,
+        problem?.code || 'desktop_icon_upload_failed',
+        payload,
+        problem?.requestId,
+      ))
+    }
+    xhr.send(file)
+  })
+}
+
 function buildUrl(path: string, query?: Record<string, QueryValue>): string {
   const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/+$/, '')
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
@@ -1420,31 +1449,13 @@ export const api = {
     shortcutIconURL: (id: string, version?: string): string =>
       buildUrl(`/desktop/shortcuts/${encodeURIComponent(id)}/icon`, version ? { v: version } : undefined),
     uploadShortcutIcon: (id: string, file: File): Promise<DesktopShortcutIconResult> =>
-      new Promise<DesktopShortcutIconResult>((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('PUT', buildUrl(`/desktop/shortcuts/${encodeURIComponent(id)}/icon`))
-        xhr.withCredentials = true
-        xhr.responseType = 'json'
-        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
-        if (csrfToken) xhr.setRequestHeader('X-CSRF-Token', csrfToken)
-        xhr.onerror = () => reject(new ApiError('图标上传连接中断。', 0, 'network_error'))
-        xhr.onload = () => {
-          const payload = xhr.response
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(payload as DesktopShortcutIconResult)
-            return
-          }
-          const problem = payload && typeof payload === 'object' ? (payload as ProblemPayload) : undefined
-          reject(new ApiError(
-            problem?.detail || problem?.title || '图标上传失败。',
-            xhr.status,
-            problem?.code || 'desktop_icon_upload_failed',
-            payload,
-            problem?.requestId,
-          ))
-        }
-        xhr.send(file)
-      }),
+      uploadDesktopIcon('shortcuts', id, file),
+    siteIconURL: (id: string, version?: string): string =>
+      buildUrl(`/desktop/sites/${encodeURIComponent(id)}/icon`, version ? { v: version } : undefined),
+    uploadSiteIcon: (id: string, file: File): Promise<DesktopShortcutIconResult> =>
+      uploadDesktopIcon('sites', id, file),
+    removeSiteIcon: (id: string): Promise<void> =>
+      request<void>(`/desktop/sites/${encodeURIComponent(id)}/icon`, { method: 'DELETE' }),
     removeShortcutIcon: (id: string): Promise<void> =>
       request<void>(`/desktop/shortcuts/${encodeURIComponent(id)}/icon`, { method: 'DELETE' }),
     wallpapers: (signal?: AbortSignal): Promise<CustomWallpaperList> =>

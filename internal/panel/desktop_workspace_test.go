@@ -156,104 +156,110 @@ func TestDesktopWorkspaceUnavailableStateIsReadOnly(t *testing.T) {
 	}
 }
 
-func TestDesktopShortcutIconAPIValidationCachingAndDeletion(t *testing.T) {
-	server, tokenPath := newTestServer(t)
-	sessionCookie, csrfCookie := bootstrapCookies(t, server, tokenPath)
-	workspace := server.desktopWorkspace.Workspace()
-	workspace, err := server.desktopWorkspace.Replace(desktopworkspace.ReplaceInput{
-		ExpectedResourceVersion: workspace.ResourceVersion,
-		Shortcuts: []desktopworkspace.ShortcutInput{{
-			ID: panelTestShortcutID, Name: "Console", URL: "https://example.com/",
-		}},
-	})
-	if err != nil || len(workspace.Shortcuts) != 1 {
-		t.Fatalf("prepare shortcut: %#v, %v", workspace, err)
-	}
-	path := "/api/v1/desktop/shortcuts/" + panelTestShortcutID + "/icon"
+func TestDesktopIconAPIValidationCachingAndDeletion(t *testing.T) {
+	for _, kind := range []string{"shortcuts", "sites"} {
+		t.Run(kind, func(t *testing.T) {
+			server, tokenPath := newTestServer(t)
+			sessionCookie, csrfCookie := bootstrapCookies(t, server, tokenPath)
+			workspace := server.desktopWorkspace.Workspace()
+			workspace, err := server.desktopWorkspace.Replace(desktopworkspace.ReplaceInput{
+				ExpectedResourceVersion: workspace.ResourceVersion,
+				Shortcuts: []desktopworkspace.ShortcutInput{{
+					ID: panelTestShortcutID, Name: "Console", URL: "https://example.com/",
+				}},
+			})
+			if err != nil || len(workspace.Shortcuts) != 1 {
+				t.Fatalf("prepare shortcut: %#v, %v", workspace, err)
+			}
+			path := "/api/v1/desktop/" + kind + "/" + panelTestShortcutID + "/icon"
 
-	unauthenticated := performRequest(server, http.MethodGet, path, nil, nil)
-	if unauthenticated.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated icon GET status = %d", unauthenticated.Code)
-	}
-	writeHeaders := map[string]string{
-		"Content-Type": "image/png", "Origin": "http://panel.test", "X-CSRF-Token": csrfCookie.Value,
-	}
-	missingCSRF := authenticatedRequest(server, http.MethodPut, path, []byte("x"), sessionCookie, csrfCookie, map[string]string{
-		"Content-Type": "image/png", "Origin": "http://panel.test",
-	})
-	if missingCSRF.Code != http.StatusForbidden {
-		t.Fatalf("missing icon CSRF status = %d", missingCSRF.Code)
-	}
-	forged := authenticatedRequest(server, http.MethodPut, path, []byte(`<svg/>`), sessionCookie, csrfCookie, writeHeaders)
-	if forged.Code != http.StatusUnprocessableEntity || !strings.Contains(forged.Body.String(), "validation_failed") {
-		t.Fatalf("forged PNG response = %d %s", forged.Code, forged.Body.String())
-	}
-	svg := authenticatedRequest(server, http.MethodPut, path, []byte(`<svg/>`), sessionCookie, csrfCookie, map[string]string{
-		"Content-Type": "image/svg+xml", "Origin": "http://panel.test", "X-CSRF-Token": csrfCookie.Value,
-	})
-	if svg.Code != http.StatusUnsupportedMediaType {
-		t.Fatalf("SVG status = %d", svg.Code)
-	}
-	tooLarge := authenticatedRequest(server, http.MethodPut, path, bytes.Repeat([]byte("x"), desktopworkspace.MaxIconBytes+1), sessionCookie, csrfCookie, writeHeaders)
-	if tooLarge.Code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("oversized icon status = %d", tooLarge.Code)
-	}
+			unauthenticated := performRequest(server, http.MethodGet, path, nil, nil)
+			if unauthenticated.Code != http.StatusUnauthorized {
+				t.Fatalf("unauthenticated icon GET status = %d", unauthenticated.Code)
+			}
+			writeHeaders := map[string]string{
+				"Content-Type": "image/png", "Origin": "http://panel.test", "X-CSRF-Token": csrfCookie.Value,
+			}
+			missingCSRF := authenticatedRequest(server, http.MethodPut, path, []byte("x"), sessionCookie, csrfCookie, map[string]string{
+				"Content-Type": "image/png", "Origin": "http://panel.test",
+			})
+			if missingCSRF.Code != http.StatusForbidden {
+				t.Fatalf("missing icon CSRF status = %d", missingCSRF.Code)
+			}
+			forged := authenticatedRequest(server, http.MethodPut, path, []byte(`<svg/>`), sessionCookie, csrfCookie, writeHeaders)
+			if forged.Code != http.StatusUnprocessableEntity || !strings.Contains(forged.Body.String(), "validation_failed") {
+				t.Fatalf("forged PNG response = %d %s", forged.Code, forged.Body.String())
+			}
+			svg := authenticatedRequest(server, http.MethodPut, path, []byte(`<svg/>`), sessionCookie, csrfCookie, map[string]string{
+				"Content-Type": "image/svg+xml", "Origin": "http://panel.test", "X-CSRF-Token": csrfCookie.Value,
+			})
+			if svg.Code != http.StatusUnsupportedMediaType {
+				t.Fatalf("SVG status = %d", svg.Code)
+			}
+			tooLarge := authenticatedRequest(server, http.MethodPut, path, bytes.Repeat([]byte("x"), desktopworkspace.MaxIconBytes+1), sessionCookie, csrfCookie, writeHeaders)
+			if tooLarge.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("oversized icon status = %d", tooLarge.Code)
+			}
 
-	pngData := panelTestPNG(t)
-	put := authenticatedRequest(server, http.MethodPut, path, pngData, sessionCookie, csrfCookie, writeHeaders)
-	if put.Code != http.StatusOK {
-		t.Fatalf("PUT icon failed: %d %s", put.Code, put.Body.String())
-	}
-	var result struct {
-		IconVersion string `json:"iconVersion"`
-		IconURL     string `json:"iconURL"`
-	}
-	if err := json.Unmarshal(put.Body.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if len(result.IconVersion) != 64 || result.IconURL != path+"?v="+result.IconVersion {
-		t.Fatalf("unexpected icon response: %#v", result)
-	}
+			pngData := panelTestPNG(t)
+			put := authenticatedRequest(server, http.MethodPut, path, pngData, sessionCookie, csrfCookie, writeHeaders)
+			if put.Code != http.StatusOK {
+				t.Fatalf("PUT icon failed: %d %s", put.Code, put.Body.String())
+			}
+			var result struct {
+				IconVersion string `json:"iconVersion"`
+				IconURL     string `json:"iconURL"`
+			}
+			if err := json.Unmarshal(put.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if len(result.IconVersion) != 64 || result.IconURL != path+"?v="+result.IconVersion {
+				t.Fatalf("unexpected icon response: %#v", result)
+			}
 
-	get := authenticatedRequest(server, http.MethodGet, path, nil, sessionCookie, csrfCookie, nil)
-	if get.Code != http.StatusOK || !bytes.Equal(get.Body.Bytes(), pngData) {
-		t.Fatalf("GET icon response = %d %d bytes", get.Code, get.Body.Len())
-	}
-	if get.Header().Get("Content-Type") != "image/png" || get.Header().Get("X-Content-Type-Options") != "nosniff" ||
-		get.Header().Get("Cache-Control") != "private, no-cache" {
-		t.Fatalf("unexpected icon headers: %v", get.Header())
-	}
-	versioned := authenticatedRequest(server, http.MethodGet, result.IconURL, nil, sessionCookie, csrfCookie, nil)
-	if versioned.Code != http.StatusOK || !strings.Contains(versioned.Header().Get("Cache-Control"), "immutable") {
-		t.Fatalf("versioned icon response = %d %v", versioned.Code, versioned.Header())
-	}
-	notModified := authenticatedRequest(server, http.MethodGet, result.IconURL, nil, sessionCookie, csrfCookie, map[string]string{
-		"If-None-Match": get.Header().Get("ETag"),
-	})
-	if notModified.Code != http.StatusNotModified || notModified.Body.Len() != 0 {
-		t.Fatalf("conditional icon response = %d %q", notModified.Code, notModified.Body.String())
-	}
-	invalidQuery := authenticatedRequest(server, http.MethodGet, path+"?v="+strings.ToUpper(result.IconVersion), nil, sessionCookie, csrfCookie, nil)
-	if invalidQuery.Code != http.StatusBadRequest {
-		t.Fatalf("invalid icon query status = %d", invalidQuery.Code)
-	}
+			get := authenticatedRequest(server, http.MethodGet, path, nil, sessionCookie, csrfCookie, nil)
+			if get.Code != http.StatusOK || !bytes.Equal(get.Body.Bytes(), pngData) {
+				t.Fatalf("GET icon response = %d %d bytes", get.Code, get.Body.Len())
+			}
+			if get.Header().Get("Content-Type") != "image/png" || get.Header().Get("X-Content-Type-Options") != "nosniff" ||
+				get.Header().Get("Cache-Control") != "private, no-cache" {
+				t.Fatalf("unexpected icon headers: %v", get.Header())
+			}
+			versioned := authenticatedRequest(server, http.MethodGet, result.IconURL, nil, sessionCookie, csrfCookie, nil)
+			if versioned.Code != http.StatusOK || !strings.Contains(versioned.Header().Get("Cache-Control"), "immutable") {
+				t.Fatalf("versioned icon response = %d %v", versioned.Code, versioned.Header())
+			}
+			notModified := authenticatedRequest(server, http.MethodGet, result.IconURL, nil, sessionCookie, csrfCookie, map[string]string{
+				"If-None-Match": get.Header().Get("ETag"),
+			})
+			if notModified.Code != http.StatusNotModified || notModified.Body.Len() != 0 {
+				t.Fatalf("conditional icon response = %d %q", notModified.Code, notModified.Body.String())
+			}
+			invalidQuery := authenticatedRequest(server, http.MethodGet, path+"?v="+strings.ToUpper(result.IconVersion), nil, sessionCookie, csrfCookie, nil)
+			if invalidQuery.Code != http.StatusBadRequest {
+				t.Fatalf("invalid icon query status = %d", invalidQuery.Code)
+			}
 
-	workspaceResponse := authenticatedRequest(server, http.MethodGet, "/api/v1/desktop/workspace", nil, sessionCookie, csrfCookie, nil)
-	var enriched desktopworkspace.Workspace
-	if workspaceResponse.Code != http.StatusOK || json.Unmarshal(workspaceResponse.Body.Bytes(), &enriched) != nil ||
-		len(enriched.Shortcuts) != 1 || enriched.Shortcuts[0].IconURL != result.IconURL {
-		t.Fatalf("workspace icon metadata missing: %d %#v", workspaceResponse.Code, enriched)
-	}
+			workspaceResponse := authenticatedRequest(server, http.MethodGet, "/api/v1/desktop/workspace", nil, sessionCookie, csrfCookie, nil)
+			var enriched desktopworkspace.Workspace
+			if workspaceResponse.Code != http.StatusOK || json.Unmarshal(workspaceResponse.Body.Bytes(), &enriched) != nil ||
+				len(enriched.Shortcuts) != 1 ||
+				(kind == "shortcuts" && enriched.Shortcuts[0].IconURL != result.IconURL) ||
+				(kind == "sites" && (enriched.SiteIcons[panelTestShortcutID] != result.IconVersion || enriched.Shortcuts[0].IconURL != "")) {
+				t.Fatalf("workspace icon metadata missing: %d %#v", workspaceResponse.Code, enriched)
+			}
 
-	deleted := authenticatedRequest(server, http.MethodDelete, path, nil, sessionCookie, csrfCookie, map[string]string{
-		"Origin": "http://panel.test", "X-CSRF-Token": csrfCookie.Value,
-	})
-	if deleted.Code != http.StatusNoContent {
-		t.Fatalf("DELETE icon failed: %d %s", deleted.Code, deleted.Body.String())
-	}
-	missing := authenticatedRequest(server, http.MethodGet, path, nil, sessionCookie, csrfCookie, nil)
-	if missing.Code != http.StatusNotFound {
-		t.Fatalf("deleted icon GET status = %d", missing.Code)
+			deleted := authenticatedRequest(server, http.MethodDelete, path, nil, sessionCookie, csrfCookie, map[string]string{
+				"Origin": "http://panel.test", "X-CSRF-Token": csrfCookie.Value,
+			})
+			if deleted.Code != http.StatusNoContent {
+				t.Fatalf("DELETE icon failed: %d %s", deleted.Code, deleted.Body.String())
+			}
+			missing := authenticatedRequest(server, http.MethodGet, path, nil, sessionCookie, csrfCookie, nil)
+			if missing.Code != http.StatusNotFound {
+				t.Fatalf("deleted icon GET status = %d", missing.Code)
+			}
+		})
 	}
 }
 

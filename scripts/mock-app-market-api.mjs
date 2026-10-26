@@ -1,6 +1,6 @@
 import { handleMockVirtualMachines } from './mock-virtual-machines.mjs'
 import { createServer } from 'node:http'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { mockSiteMonitoring } from './mock-site-monitoring.mjs'
 import { mockMonitoringHistory } from './mock-monitoring-history.mjs'
 import { mockBackups } from './mock-backups.mjs'
@@ -1402,6 +1402,7 @@ function materializeDiskSnapshot() {
   }
 }
 
+const desktopSiteIcons = new Map()
 let desktopWorkspaceRevision = 1
 let desktopWorkspace = {
   schemaVersion: 5,
@@ -2231,8 +2232,33 @@ createServer(async (request, response) => {
     send(response, 202, mockAutomaticUpdate)
     return
   }
+  const desktopSiteIcon = url.pathname.match(/^\/api\/v1\/desktop\/sites\/([a-f0-9]{32})\/icon$/)
+  if (desktopSiteIcon) {
+    const id = desktopSiteIcon[1]
+    if (request.method === 'PUT') {
+      const chunks = []; let size = 0
+      for await (const chunk of request) {
+        size += chunk.length
+        if (size > 256 * 1024) { send(response, 413, { title: 'Icon exceeds 256 KiB' }); return }
+        chunks.push(chunk)
+      }
+      const data = Buffer.concat(chunks)
+      const contentType = request.headers['content-type']
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(contentType) || !size) { send(response, 422, { title: 'Invalid icon' }); return }
+      if (!desktopSiteIcons.has(id) && desktopSiteIcons.size >= 512) { send(response, 507, { title: 'Icon limit reached' }); return }
+      const version = createHash('sha256').update(data).digest('hex')
+      desktopSiteIcons.set(id, { data, contentType, version })
+      send(response, 200, { iconVersion: version, iconURL: url.pathname + '?v=' + version })
+    } else if (request.method === 'DELETE') {
+      desktopSiteIcons.delete(id); response.writeHead(204); response.end()
+    } else if (request.method === 'GET' && desktopSiteIcons.has(id)) {
+      const icon = desktopSiteIcons.get(id)
+      sendBinary(response, 200, icon.data, icon.contentType)
+    } else send(response, 404, { title: 'Icon not found' })
+    return
+  }
   if (request.method === 'GET' && url.pathname === '/api/v1/desktop/workspace') {
-    send(response, 200, desktopWorkspace)
+    send(response, 200, { ...desktopWorkspace, siteIcons: Object.fromEntries([...desktopSiteIcons].map(([id, icon]) => [id, icon.version])) })
     return
   }
   if (request.method === 'PUT' && url.pathname === '/api/v1/desktop/workspace') {
@@ -2241,7 +2267,7 @@ createServer(async (request, response) => {
       send(response, 409, { title: 'Desktop workspace changed', code: 'desktop_workspace_changed' })
       return
     }
-    send(response, 200, commitDesktopWorkspace(input))
+    send(response, 200, { ...commitDesktopWorkspace(input), siteIcons: Object.fromEntries([...desktopSiteIcons].map(([id, icon]) => [id, icon.version])) })
     return
   }
   if (request.method === 'GET' && url.pathname === '/api/v1/agent/health') {

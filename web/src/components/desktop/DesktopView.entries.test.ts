@@ -16,7 +16,7 @@ import {
   NATIVE_FILE_DOWNLOAD_DRAG_TYPE,
 } from '@/lib/desktopFileShortcuts'
 import { api } from '@/lib/api'
-import type { DesktopWorkspace, DesktopWorkspaceUpdate } from '@/types/api'
+import type { DesktopWorkspace, DesktopWorkspaceUpdate, Site } from '@/types/api'
 
 vi.mock('@/lib/desktopEntries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/desktopEntries')>()
@@ -41,6 +41,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
         workspace: vi.fn(),
         updateWorkspace: vi.fn(),
         uploadShortcutIcon: vi.fn(),
+        uploadSiteIcon: vi.fn(),
+        removeSiteIcon: vi.fn(),
         removeShortcutIcon: vi.fn(),
       },
       files: {
@@ -148,6 +150,8 @@ describe('DesktopView dynamic entries', () => {
         updatedAt: '2026-08-14T00:00:00Z',
       })),
     }))
+    vi.mocked(api.desktop.uploadSiteIcon).mockReset()
+    vi.mocked(api.desktop.removeSiteIcon).mockReset()
     mockedUploadShortcutIcon.mockReset()
     mockedUploadShortcutIcon.mockResolvedValue({
       iconVersion: 'c'.repeat(64),
@@ -356,7 +360,7 @@ describe('DesktopView dynamic entries', () => {
     await siteItems[2]?.trigger('click')
     await nextTick()
 
-    const input = document.body.querySelector<HTMLInputElement>('.desktop__rename-form input')
+    const input = document.body.querySelector<HTMLInputElement>('.desktop-shortcut-form input:not([type="file"])')
     expect(input).not.toBeNull()
     if (!input) throw new Error('rename input was not rendered')
     input.value = '我的博客'
@@ -370,6 +374,97 @@ describe('DesktopView dynamic entries', () => {
     }))
     expect(window.localStorage.getItem('kpanel:desktop-site-names:v1')).toBeNull()
     expect(wrapper.findAll('.desktop__icon-label').map((label) => label.text())).toContain('我的博客')
+    wrapper.unmount()
+  })
+
+  it('saves a site name and custom icon and reuses the confirmed version after reload', async () => {
+    const version = 'd'.repeat(64)
+    vi.mocked(api.desktop.uploadSiteIcon).mockResolvedValue({ iconVersion: version, iconURL: '/custom-site-icon' })
+    const wrapper = mount(DesktopView, { attachTo: document.body })
+    await flushPromises()
+    await wrapper.find('button[title="blog.example.com"]').trigger('contextmenu', { clientX: 120, clientY: 80 })
+    await nextTick()
+    await wrapper.findAll('.desktop__context-menu [role="menuitem"]')[2]!.trigger('click')
+    await nextTick()
+    const dialog = wrapper.findAllComponents(DesktopShortcutDialog).find(item => item.props('open'))!
+    expect(dialog.props('site')).toMatchObject({ id: 'blog', name: 'blog.example.com', customIcon: false })
+    const icon = new File(['png'], 'site.png', { type: 'image/png' })
+    mockedWorkspace.mockResolvedValue(makeWorkspace({ labels: { 'site:blog': '我的站点' }, siteIcons: { blog: version } }))
+    dialog.vm.$emit('save', { id: 'blog', name: '我的站点', description: '', targetType: 'url', url: 'https://blog.example.com' }, icon, false)
+    await flushPromises()
+    expect(api.desktop.uploadSiteIcon).toHaveBeenCalledWith('blog', icon)
+    expect(wrapper.find('button[title="我的站点"] img').attributes('src')).toContain('/desktop/sites/blog/icon?v=' + version)
+    expect(document.body.textContent).not.toContain('编辑站点')
+    wrapper.unmount()
+  })
+
+  it('keeps the site editor and draft open when the icon upload fails after saving the name', async () => {
+    vi.mocked(api.desktop.uploadSiteIcon).mockRejectedValue(new Error('upload offline'))
+    const wrapper = mount(DesktopView, { attachTo: document.body })
+    await flushPromises()
+    await wrapper.find('button[title="blog.example.com"]').trigger('contextmenu', { clientX: 120, clientY: 80 })
+    await nextTick()
+    await wrapper.findAll('.desktop__context-menu [role="menuitem"]')[2]!.trigger('click')
+    await nextTick()
+    const dialog = wrapper.findAllComponents(DesktopShortcutDialog).find(item => item.props('open'))!
+    const file = new File(['png'], 'site.png', { type: 'image/png' })
+    dialog.vm.$emit('save', { id: 'blog', name: '已保存名称', description: '', targetType: 'url', url: 'https://blog.example.com' }, file, false)
+    await flushPromises()
+    expect(dialog.props('open')).toBe(true)
+    expect(dialog.props('errorMessage')).toContain('名称已保存')
+    expect(dialog.props('errorMessage')).toContain('请重试')
+    expect(wrapper.find('button[title="已保存名称"]').exists()).toBe(true)
+    expect(dialog.props('saving')).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('deletes the uploaded icon when restoring defaults after a failed confirmation read', async () => {
+    vi.mocked(api.desktop.uploadSiteIcon).mockResolvedValue({ iconVersion: 'f'.repeat(64), iconURL: '/custom' })
+    vi.mocked(api.desktop.removeSiteIcon).mockReset()
+    vi.mocked(api.desktop.removeSiteIcon).mockResolvedValue(undefined)
+    const wrapper = mount(DesktopView, { attachTo: document.body })
+    await flushPromises()
+    await wrapper.find('button[title="blog.example.com"]').trigger('contextmenu', { clientX: 120, clientY: 80 })
+    await nextTick()
+    await wrapper.findAll('.desktop__context-menu [role="menuitem"]')[2]!.trigger('click')
+    await nextTick()
+    const fileInput = document.body.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(fileInput, 'files', { configurable: true, value: [new File(['png'], 'icon.png', { type: 'image/png' })] })
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+    mockedWorkspace.mockRejectedValueOnce(new Error('confirmation offline'))
+    document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
+    await flushPromises()
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toContain('名称已保存')
+    const restore = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('恢复默认图标'))!
+    restore.click(); await nextTick()
+    document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
+    await flushPromises()
+    expect(api.desktop.removeSiteIcon).toHaveBeenCalledWith('blog')
+    expect(wrapper.findAllComponents(DesktopShortcutDialog).some(item => item.props('site'))).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each([false, true])('preserves a full long default domain when saving site identity (custom alias: %s)', async (hasAlias) => {
+    const domain = 'a'.repeat(50) + '.example.com'
+    const entries = makeEntries()
+    entries.visible[2]!.site = { primaryDomain: domain } as Site
+    entries.visible[2]!.name = domain
+    entries.visible[2]!.url = 'https://' + domain
+    mockedLoad.mockResolvedValue(entries)
+    mockedWorkspace.mockResolvedValue(makeWorkspace({ labels: hasAlias ? { 'site:blog': '原别名' } : {} }))
+    vi.mocked(api.desktop.removeSiteIcon).mockResolvedValue(undefined)
+    const wrapper = mount(DesktopView, { attachTo: document.body })
+    await flushPromises()
+    await wrapper.find('button[title="' + (hasAlias ? '原别名 · ' + domain : domain) + '"]').trigger('contextmenu', { clientX: 120, clientY: 80 })
+    await nextTick()
+    await wrapper.findAll('.desktop__context-menu [role="menuitem"]')[2]!.trigger('click')
+    await nextTick()
+    const dialog = wrapper.findAllComponents(DesktopShortcutDialog).find(item => item.props('open'))!
+    dialog.vm.$emit('save', { id: 'blog', name: domain, description: '', targetType: 'url', url: 'https://' + domain }, undefined, false)
+    await flushPromises()
+    expect(mockedWorkspaceUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ labels: {} }))
+    expect(wrapper.find('button[title="' + domain + '"]').exists()).toBe(true)
     wrapper.unmount()
   })
 
