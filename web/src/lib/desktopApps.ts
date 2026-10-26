@@ -189,7 +189,7 @@ export const desktopApps: DesktopApp[] = [
     gradient: ['#6765d9', '#35316f'],
     windowSize: { width: 1080, height: 760 },
   },
-  { path: '/browser', labelKey: 'route.browser', icon: Globe2, desktopIconURL: '/desktop-icons/browser-kpanel-flat-v1.webp', allowMultiple: false, gradient: ['#38bdf8', '#2563eb'], windowSize: { width: 1100, height: 760 } },
+  { path: '/browser', labelKey: 'route.browser', icon: Globe2, desktopIconURL: '/desktop-icons/browser-kpanel-flat-v2.webp', allowMultiple: false, gradient: ['#38bdf8', '#2563eb'], windowSize: { width: 1100, height: 760 } },
 ]
 
 /** Workspace keys of fixed desktop entries; every system icon can be hidden. */
