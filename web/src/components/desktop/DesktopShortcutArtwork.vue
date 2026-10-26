@@ -2,8 +2,13 @@
 import { computed } from 'vue'
 import FileEntryIcon from '@/components/files/FileEntryIcon.vue'
 import { fileEntryIconKind, fileIconPalette } from '@/lib/fileEntryPresentation'
+import { useDesktopShellStyle } from '@/stores/desktopShellStyle'
 
 const DIRECTORY_ARTWORK_URL = '/desktop-icons/folder-open-shortcut-kpanel-flat-v1.webp'
+const shellStyle = useDesktopShellStyle()
+const directoryArtworkURL = computed(() => shellStyle.preference.value === 'modern'
+  ? DIRECTORY_ARTWORK_URL
+  : `/desktop-icons/${shellStyle.preference.value}/files-v1.svg`)
 
 const props = defineProps<{
   kind: 'file' | 'directory'
@@ -25,7 +30,7 @@ const fileColor = computed(() => fileIconPalette[fileEntryIconKind({
     <img
       v-if="kind === 'directory'"
       class="desktop__shortcut-directory-image"
-      :src="DIRECTORY_ARTWORK_URL"
+      :src="directoryArtworkURL"
       alt=""
       draggable="false"
       width="58"

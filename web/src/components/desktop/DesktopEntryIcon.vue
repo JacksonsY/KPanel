@@ -73,7 +73,7 @@ const fileShortcutKind = computed<'file' | 'directory' | undefined>(() => {
     : undefined
 })
 const framedArtwork = computed(() => Boolean(props.entry && !props.navIconURL
-  && !periodArtwork.value && !fileShortcutKind.value && shellStyle.preference.value !== 'modern'))
+  && !periodArtwork.value && shellStyle.preference.value !== 'modern'))
 const fileArtworkVisible = computed(() => fileShortcutKind.value === 'file'
   && (!imageLoaded.value || imageFailed.value))
 const webFallbackVisible = computed(() => (props.entry?.kind === 'site'

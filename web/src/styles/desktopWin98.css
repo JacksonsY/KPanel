@@ -110,7 +110,7 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] body {
   z-index: 1;
 }
 
-.desktop[data-shell-style='win98'] .desktop__icon-glyph--framed :is(.desktop__icon-img, .desktop__icon-monogram, .desktop__site-fallback-letter) {
+.desktop[data-shell-style='win98'] .desktop__icon-glyph--framed :is(.desktop__icon-img, .desktop__icon-monogram, .desktop__site-fallback-letter, .desktop__shortcut-artwork) {
   width: calc(100% - 16px);
   height: calc(100% - 16px);
   font-size: 20px;
@@ -120,6 +120,14 @@ html.desktop-mode-open[data-desktop-shell-style='win98'] body {
   border-radius: 0;
   box-shadow: none;
   text-shadow: none;
+}
+
+.desktop[data-shell-style='win98'] .desktop__icon-glyph--framed :is(.desktop__shortcut-artwork > svg, .desktop__shortcut-directory-image) {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 0;
+  filter: none;
 }
 
 /* Group frames and inset titlebars match the desktop widgets. */
