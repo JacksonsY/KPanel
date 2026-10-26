@@ -377,6 +377,11 @@ func TestWindowsHostedSCMUpdaterHelper(t *testing.T) {
 			if json.Unmarshal(data, &plan) != nil || (plan.Mode != "apply" && plan.Mode != "rollback" && plan.Mode != "bootstrap-diagnostic") {
 				return errors.New("invalid acceptance plan")
 			}
+			// Consume this private fixture as SYSTEM. The administrator cannot
+			// replace an existing SYSTEM-only plan for the next acceptance step.
+			if err := os.Remove(filepath.Join(windowsnode.DataDir(), "acceptance-plan.json")); err != nil {
+				return err
+			}
 			if plan.Mode == "bootstrap-diagnostic" {
 				data, err := windowsnode.ReadFile(filepath.Join(windowsnode.DataDir(), "enrollment-request.json"), 8192, windowsnode.SystemOnly)
 				if err != nil {
