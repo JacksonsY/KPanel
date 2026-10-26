@@ -125,18 +125,15 @@ onBeforeUnmount(() => { disposed = true; sequence++; controller?.abort(); iconCo
 </script>
 
 <template>
- <section class="monitor-page" :class="{ 'is-security': view === 'security' }">
+ <section class="page monitor-page" :class="{ 'is-security': view === 'security' }">
   <SitesSectionTabs />
-  <div class="monitor-heading">
-   <div class="heading-title"><span class="heading-emblem" aria-hidden="true"><Activity :size="25" /></span><div><p class="eyebrow">网站监控</p><h2>流量与安全，一目了然</h2><p class="heading-description">从访问来源到防御事件，持续了解您的网站。</p></div></div>
-   <div class="heading-actions"><span class="collection-status" :class="{ 'is-live': healthy }"><span aria-hidden="true" />{{ status }}</span><button class="button button--secondary" :disabled="refreshing || loading" @click="load"><RefreshCw :size="16" :class="{ spinning: refreshing }" /><span>刷新</span></button></div>
-  </div>
   <LoadingState v-if="loading" :rows="4" cards />
   <ErrorState v-else-if="error && !data" title="网站监控暂不可用" :message="error" @retry="load" />
   <template v-else-if="data">
    <div class="monitor-toolbar">
     <div class="monitor-view-switch" role="group" aria-label="监控视图"><button :class="{ active: view === 'traffic' }" :aria-pressed="view === 'traffic'" @click="view = 'traffic'"><BarChart3 :size="17" />流量分析</button><button :class="{ active: view === 'security' }" :aria-pressed="view === 'security'" @click="view = 'security'"><ShieldCheck :size="17" />WAF 防御</button></div>
     <div class="monitor-filters"><label><span class="sr-only">站点筛选</span><select v-model="host" aria-label="站点筛选"><option value="">全部站点</option><option v-for="name in data.hosts" :key="name" :value="name">{{ name }}</option></select></label><label><span class="sr-only">统计时间</span><select v-model="period" aria-label="统计时间"><option value="24h">近 24 小时</option><option value="7d">近 7 天</option><option value="30d">近 30 天</option></select></label><button class="icon-button" aria-label="统计口径与设置" title="统计口径与设置" @click="guideOpen = true"><CircleHelp :size="18" /></button></div>
+    <div class="monitor-actions"><span class="collection-status" :class="{ 'is-live': healthy }"><span aria-hidden="true" />{{ status }}</span><button class="button button--secondary" :disabled="refreshing || loading" @click="load"><RefreshCw :size="16" :class="{ spinning: refreshing }" /><span>刷新</span></button></div>
    </div>
    <div class="monitor-scope"><span class="scope-icon" aria-hidden="true"><SiteFavicon v-if="host && siteID(host)" :site-id="siteID(host)!" :domain="host" :refresh-key="0" /><Globe2 v-else-if="host" :size="22" /><Layers3 v-else :size="22" /></span><div><strong>{{ host || phrase('全部站点') }}</strong><span>{{ phrase('源站日志统计') }}</span></div><span class="scope-summary"><Globe2 :size="15" aria-hidden="true" />{{ number(visibleCountries.length ? countries.filter(item => item.code !== 'ZZ' && item.requests > 0).length : 0) }} {{ phrase('个地区') }}</span></div>
    <div v-if="!data.enabled" class="monitor-callout"><Database :size="21" /><div><strong>{{ data.startedAt ? phrase('采集已暂停') : phrase('开启您的网站监控') }}</strong><p>增量采集访问与防御日志，保留最长 30 天的聚合统计。</p></div><button class="button button--primary" :disabled="busy" @click="perform('enable')"><Play :size="15" />开始监控</button></div>
