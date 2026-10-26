@@ -12,7 +12,7 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "13f49225edf8cef0095f7fead0af97c16e45755b075d839ea8fabe51f5e06750",
-  "firstPartySourceSha256": "05bc141c873a29d500b89de4b98bb85df86ae74edea7efc1656e589d55b73419",
+  "firstPartySourceSha256": "597580e25f8b8490780647688b9544d1be0e354a7cf1441b5f4f4bc91dd35763",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -112,7 +112,7 @@
     "browserPreferencesRouteSummary": "Candidate integration accepts the already-visible /browser catalogue route for persisted desktop windows and canonical window sizes, retaining exact route boundaries and existing query rules. No authentication, CSRF, schema, production GoFiles/imports, selected graph, build targets, findings or expiry change. The independently published browser worker remains pinned to its qualified immutable rc.2 digest; this source change is in Panel preferences only.",
     "rc128RC8IntegrationObservationSha256": "f2db8752c6c514c593991134e95285019a25f553983810f10123c4cf7b88bb60",
     "rc128RC8IntegrationSummary": "RC8 release takeover integrates exact eight handed-off sources from the frozen contract and preserves their original review/test boundaries. Release owner re-observed all tracked first-party Go files and six actual/original production closures using Go1.27.3, including Windows node entry points. Browser selected dependencies are observed, not copied from RC7. All37 dispositions and original 2026-10-25..2026-11-08 observation window remain unchanged. Exact candidate CI/L3/scanners/public acceptance are separate required evidence; identity qualification does not claim scanner or lifecycle success.",
-    "rc128RC8NativeAcceptanceEvidenceSha256": "81205c8c665eab560eed4807a728f273c001e0afa47aca4cf1fc9cc82ec3957d",
+    "rc128RC8NativeAcceptanceEvidenceSha256": "f6e4582a3192f0cca81d8bf3a1e337c36696010728ecfae3534c15babb389669",
     "rc128RC8NativeAcceptanceSummary": "Only one Windows-only SCM acceptance test was added. All1219 existing first-party files are byte-identical to the six-target RC8 combined observation. Production GoFiles, imports, actual/original closures, build targets, module graph, all37 findings and original dates are unchanged. Local native compile explicitly skips installation; hosted lifecycle acceptance and exact CI/L3 remain required. Browser page contract also records the already implemented full-height workspace; no runtime layout is changed."
   },
   "findings": [
