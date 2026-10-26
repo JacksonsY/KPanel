@@ -4,6 +4,12 @@
 不包含桌面环境，不挂载 Docker Socket，不发布宿主机端口，不改变 KPanel 主镜像。
 `amd64` / `arm64` 分别原生构建、运行和扫描后，才允许发布对应版本。
 
+当前验证版本为 `docker.io/kjlion/kpanel-browser:0.1.0-rc.2`，源码提交
+`94d88f035ee5eb899896a29d25b2d2d1c71991c1`。两架构检查、完整 L3 及公开镜像拉取复测
+见[发布记录](https://github.com/kejilion/KPanel/actions/runs/40382052237)。接入时使用
+`.env.example` 中固定的镜像摘要，避免标签变化影响实际运行内容。
+`0.1.0-rc.1` 的公开复测发现静态标签恢复缺帧问题，保留作历史记录；接入使用已修复的 `rc.2`。
+
 启动使用 UID/GID `65532:65532`，要求只读根目录、可写临时目录、独立共享内存、
 资源上限、`no-new-privileges` 和提供的 seccomp profile。组件启动前实际检查
 Chromium 的 PID namespace 与 seccomp 沙箱；不满足时以 `browser_runtime_unsupported`
@@ -32,6 +38,8 @@ sudo bash packaging/browser/verify.sh kpanel-browser:check kpanel-browser:test /
 ## 接入现有 Panel
 
 `compose.yml` 是与 `deploy/compose/compose.yml` 合并的可选覆盖文件。
+将本目录 `.env.example` 复制到私有环境文件，保留已验证的镜像摘要，并填写下面两个文件路径；
+与原有 Panel 环境文件一起传给 Compose，不覆盖原有 Panel 配置。
 先生成不少于 32 字节的独立随机 token，权限设为 `0400`、所有者 `65532:65532`，
 供 Panel 与浏览器容器只读挂载。设置：
 
