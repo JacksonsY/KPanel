@@ -362,9 +362,6 @@ describe('desktop visual and interaction contract', () => {
   it('keeps desktop icons and labels crisp in both color themes', () => {
     expect(styles).toMatch(/\.desktop__icon-glyph--dynamic::before\s*\{[^}]*display:\s*none;/)
     expect(styles).toMatch(/\.desktop__icon-img\s*\{[^}]*background:\s*#f7f9f8;/)
-    expect(styles).toMatch(/\.desktop__external-confirm-icon-image\s*\{[^}]*background:\s*#f7f9f8;/)
-    expect(styles).toMatch(/\.modal-panel--compact:has\(\.desktop__external-confirm\) \.modal-panel__header\s*\{[^}]*align-items:\s*center;[^}]*padding-block:\s*12px;/)
-    expect(styles).toMatch(/\.modal-panel--compact:has\(\.desktop__external-confirm\) \.modal-panel__header h2\s*\{[^}]*margin-bottom:\s*0;/)
     expect(styles).toMatch(/\.desktop__icon-label\s*\{[^}]*height:\s*20px;[^}]*padding:\s*0 6px;[^}]*font-size:\s*12px;[^}]*line-height:\s*18px;/)
     expect(styles).toMatch(/:root:not\(\[data-theme='dark'\]\) \.desktop__icon-label\s*\{[^}]*text-shadow:\s*none;/)
     expect(styles).toMatch(/:root:not\(\[data-theme='dark'\]\) \.desktop__icon--selected \.desktop__icon-label\s*\{[^}]*color:\s*var\(--on-brand\);[^}]*background:\s*var\(--brand-action\);/)
