@@ -113,7 +113,7 @@ func validateDescriptor(sd *windows.SECURITY_DESCRIPTOR, access Access, ancestor
 			if len(programDataMetadata) == 1 && programDataMetadata[0] && sid.IsWellKnown(windows.WinBuiltinUsersSid) {
 				blocked &^= windows.FILE_WRITE_EA | windows.FILE_WRITE_ATTRIBUTES
 			}
-			if mask&blocked != 0 {
+			if uint32(mask)&uint32(blocked) != 0 {
 				return errors.New("unsafe parent DACL")
 			}
 			continue
