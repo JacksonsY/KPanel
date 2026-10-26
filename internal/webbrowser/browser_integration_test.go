@@ -132,37 +132,26 @@ func TestRealBrowserWheelAndViewport(t *testing.T) {
 	if size != [2]int{1400, 800} {
 		t.Fatalf("selected tab kept stale viewport: %v", size)
 	}
+	// A static page need not emit another screencast frame. The guaranteed
+	// resume seed must itself contain the full current viewport pixels.
 	select {
-	case seed := <-s.keyframes:
-		if seed.Tab != first || seed.Width != 1400 || seed.Height != 800 {
+	case frame := <-s.keyframes:
+		if frame.Tab != first || frame.Width != 1400 || frame.Height != 800 {
 			t.Fatal("resumed static tab did not replace the previous tab's seed")
+		}
+		data, err := base64.StdEncoding.DecodeString(frame.Image)
+		if err != nil {
+			t.Fatal(err)
+		}
+		image, err := jpeg.DecodeConfig(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if image.Width != 1400 || image.Height != 800 {
+			t.Fatalf("capture scaled inside viewport: %dx%d", image.Width, image.Height)
 		}
 	default:
 		t.Fatal("resumed static tab has no seed frame")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	for {
-		select {
-		case <-ctx.Done():
-			t.Fatal("resized tab did not produce a full viewport frame")
-		case frame := <-s.frames:
-			if frame.Tab != first || frame.Width != 1400 || frame.Height != 800 {
-				continue
-			}
-			data, err := base64.StdEncoding.DecodeString(frame.Image)
-			if err != nil {
-				t.Fatal(err)
-			}
-			image, err := jpeg.DecodeConfig(bytes.NewReader(data))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if image.Width != 1400 || image.Height != 800 {
-				t.Fatalf("capture scaled inside viewport: %dx%d", image.Width, image.Height)
-			}
-			return
-		}
 	}
 }
 
