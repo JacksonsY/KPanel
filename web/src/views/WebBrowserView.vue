@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, ArrowRight, ExternalLink, Globe2, Home, LoaderCircle, Network, Plus, RefreshCw, Search, X } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Ellipsis, ExternalLink, Globe2, Home, LoaderCircle, Network, Plus, RefreshCw, Search, X } from '@lucide/vue'
 import { api } from '@/lib/api'
 import { BROWSER_MAX_TABS, browserCoordinates, browserEvent, browserInput, browserTextChunks, browserLinksKey, browserLaunchKey, type BrowserEvent, type BrowserTab } from '@/lib/webBrowser'
 import { desktopWindowTitleKey, desktopWindowTitlebarTargetKey, desktopWindowVisibleKey } from '@/lib/desktopRouteKeys'
@@ -31,12 +31,16 @@ const screen = ref<HTMLElement>()
 const addressInput = ref<HTMLInputElement>()
 const typing = ref<HTMLTextAreaElement>()
 const dialog = ref<BrowserEvent>()
+const mobile = ref(false)
+const tabsOpen = ref(false)
+const moreOpen = ref(false)
+const tabCount = computed(() => tabs.value.length + Number(startPage.value && newTabPending.value))
 const imageReady = ref(false)
 const width = ref(1280)
 const height = ref(720)
 const activeTab = computed(() => tabs.value.find(tab => tab.id === activeID.value))
 const workspace = Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, '0')).join('')
-const visible = computed(() => windowVisible.value && !startPage.value && documentVisible.value)
+const visible = computed(() => windowVisible.value && !startPage.value && documentVisible.value && !tabsOpen.value && !moreOpen.value)
 const documentVisible = ref(!document.hidden)
 let socket: WebSocket | undefined
 let epoch = 0
@@ -51,6 +55,8 @@ let lastPointer = 0
 const composing = ref(false)
 let pendingURL: string | undefined
 const closingTabIDs = new Set<string>()
+let mobileQuery: MediaQueryList | undefined
+let touchGesture: { id: number; startX: number; startY: number; x: number; y: number; sentX: number; sentY: number; moved: boolean; sentAt: number } | undefined
 
 function send(command: Record<string, unknown>): boolean {
   if (socket?.readyState !== WebSocket.OPEN || status.value !== 'connected') return false
@@ -138,7 +144,7 @@ function openURL(url: string): void {
     send({ type: 'new', url })
   } else send({ type: 'navigate', tab: activeID.value, url })
   startPage.value = false; newTabPending.value = false; imageReady.value = false; notice.value = ''; address.value = url
-  void nextTick(() => { resize(); typing.value?.focus() })
+  void nextTick(() => { resize(); if (!mobile.value) typing.value?.focus() })
 }
 function submit(): void { const url = browserInput(address.value); if (!url) { notice.value = t('invalid'); return }; openURL(url) }
 function select(tab: BrowserTab): void { startPage.value = false; newTabPending.value = false; imageReady.value = false; send({ type: 'select', tab: tab.id }); void nextTick(resize) }
@@ -153,6 +159,11 @@ function home(): void { startPage.value = true; newTabPending.value = !activeTab
 function closeStartTab(): void { const previous = tabs.value[tabs.value.length - 1]; if (previous) select(previous); else { pendingURL = undefined; notice.value = ''; home() } }
 function newTab(): void { if (tabs.value.length >= BROWSER_MAX_TABS) { notice.value = t('limit'); return }; home(); newTabPending.value = true }
 function external(): void { const url = browserInput(address.value || activeTab.value?.url || pendingURL || ''); if (url) window.open(url, '_blank', 'noopener,noreferrer') }
+function tabHost(url: string): string { try { return new URL(url).host } catch { return '' } }
+function chooseTab(tab: BrowserTab): void { select(tab); tabsOpen.value = false }
+function addTab(): void { newTab(); tabsOpen.value = false }
+function reload(): void { send({ type: activeTab.value?.loading ? 'stop' : 'reload', tab: activeID.value }); moreOpen.value = false }
+function mobileChanged(): void { mobile.value = mobileQuery?.matches || false; tabsOpen.value = false; moreOpen.value = false; touchGesture = undefined; void nextTick(resize) }
 function resize(): void {
   if (!screen.value || !visible.value) return
   const box = screen.value.getBoundingClientRect()
@@ -163,12 +174,45 @@ function resize(): void {
 }
 function pointer(event: PointerEvent, action: string): void {
   if (!imageReady.value || !frame.value || startPage.value) return
+  if (event.pointerType === 'touch') { touch(event, action); return }
   if (action === 'mouseMoved' && performance.now() - lastPointer < 40) return
   lastPointer = performance.now()
   const point = browserCoordinates(event.clientX, event.clientY, frame.value.getBoundingClientRect(), width.value, height.value)
   if (!point) return
   if (action === 'mousePressed') { typing.value?.focus({ preventScroll: true }); frame.value.setPointerCapture?.(event.pointerId) }
   send({ type: 'mouse', action, ...point, button: ['left', 'middle', 'right'][event.button] || 'none', modifiers: modifiers(event) })
+}
+function touch(event: PointerEvent, action: string): void {
+  const canvas = frame.value
+  if (!canvas) return
+  if (action === 'mousePressed') {
+    if (touchGesture) { touchGesture = undefined; return }
+    touchGesture = { id: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, sentX: event.clientX, sentY: event.clientY, moved: false, sentAt: 0 }
+    canvas.setPointerCapture?.(event.pointerId)
+    return
+  }
+  const gesture = touchGesture
+  if (!gesture || gesture.id !== event.pointerId) return
+  gesture.x = event.clientX; gesture.y = event.clientY
+  gesture.moved ||= Math.hypot(gesture.x - gesture.startX, gesture.y - gesture.startY) > 8
+  const box = canvas.getBoundingClientRect()
+  const point = browserCoordinates(gesture.x, gesture.y, box, width.value, height.value)
+  if (!point) { touchGesture = undefined; return }
+  if (gesture.moved && (gesture.sentX !== gesture.x || gesture.sentY !== gesture.y) && (action === 'mouseReleased' || performance.now() - gesture.sentAt >= 40)) {
+    send({ type: 'mouse', action: 'mouseWheel', ...point, button: 'none', deltaX: Math.max(-3000, Math.min(3000, (gesture.sentX - gesture.x) * width.value / box.width)), deltaY: Math.max(-3000, Math.min(3000, (gesture.sentY - gesture.y) * height.value / box.height)) })
+    gesture.sentX = gesture.x; gesture.sentY = gesture.y; gesture.sentAt = performance.now()
+  }
+  if (action !== 'mouseReleased') return
+  if (!gesture.moved) {
+    if (typing.value) {
+      typing.value.style.left = `${Math.max(0, Math.min(box.width - 2, gesture.x - box.left))}px`
+      typing.value.style.top = `${Math.max(0, Math.min(box.height - 20, gesture.y - box.top))}px`
+    }
+    typing.value?.focus({ preventScroll: true })
+    send({ type: 'mouse', action: 'mousePressed', ...point, button: 'left' })
+    send({ type: 'mouse', action: 'mouseReleased', ...point, button: 'left' })
+  }
+  touchGesture = undefined
 }
 function wheel(event: WheelEvent): void {
   if (!frame.value || !imageReady.value) return
@@ -188,19 +232,19 @@ function insertText(value: string): void { for (const text of browserTextChunks(
 function textInput(event: Event): void { if (composing.value || (event as InputEvent).isComposing) return; const value = typing.value?.value; if (value) insertText(value); if (typing.value) typing.value.value = '' }
 function answer(accept: boolean): void { if (dialog.value) send({ type: 'dialog', tab: dialog.value.tab, accept }); dialog.value = undefined }
 function documentVisibility(): void { documentVisible.value = !document.hidden }
-watch(visible, value => { send({ type: 'visible', visible: value }); if (value) void nextTick(resize) })
+watch(visible, value => { send({ type: 'visible', visible: value }); if (value) void nextTick(resize); else touchGesture = undefined })
 watch([activeID, startPage, newTabPending], () => void nextTick(() => tabStrip.value?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })))
 watch(launch, value => { if (!value) return; const url = browserInput(value.url); if (!url) return; const tab = tabs.value.find(tab => tab.url === url); if (tab) select(tab); else { newTabPending.value = true; openURL(url) } }, { immediate: true })
 watch(() => route.query.url, raw => { const value = Array.isArray(raw) ? raw[0] : raw; if (value) { const url = browserInput(value); if (url) openURL(url) } }, { immediate: true })
 watch(() => route.query.request, () => { const value = route.query.url; if (typeof value === 'string') { const url = browserInput(value); if (url) openURL(url) } })
-onMounted(() => { observer = new ResizeObserver(resize); if (screen.value) observer.observe(screen.value); document.addEventListener('visibilitychange', documentVisibility); void connect() })
-onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); clearTimeout(resizeTimer); document.removeEventListener('visibilitychange', documentVisibility) })
+onMounted(() => { mobileQuery = window.matchMedia?.('(max-width: 600px)'); mobileChanged(); mobileQuery?.addEventListener('change', mobileChanged); observer = new ResizeObserver(resize); if (screen.value) observer.observe(screen.value); document.addEventListener('visibilitychange', documentVisibility); void connect() })
+onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); mobileQuery?.removeEventListener('change', mobileChanged); clearTimeout(resizeTimer); document.removeEventListener('visibilitychange', documentVisibility) })
 </script>
 
 <template>
   <section class="web-browser" :aria-label="t('title')">
-    <Teleport :to="titlebarTarget || 'body'" :disabled="!titlebarTarget">
-    <div ref="tabStrip" class="web-browser__tabs" :class="{ 'web-browser__tabs--titlebar': titlebarTarget }" role="tablist" :aria-label="t('title')" @dblclick.stop>
+    <Teleport :to="titlebarTarget || 'body'" :disabled="!titlebarTarget || mobile">
+    <div v-if="!mobile" ref="tabStrip" class="web-browser__tabs" :class="{ 'web-browser__tabs--titlebar': titlebarTarget }" role="tablist" :aria-label="t('title')" @dblclick.stop>
       <div class="web-browser__tab-track">
       <div v-for="tab in tabs" :key="tab.id" class="web-browser__tab" :class="{ 'is-active': (!startPage || !newTabPending) && tab.id === activeID }">
         <button role="tab" :aria-selected="(!startPage || !newTabPending) && tab.id === activeID" :title="tab.title || t('untitled')" @click="select(tab)"><LoaderCircle v-if="tab.loading" :size="15" class="is-spinning" /><Globe2 v-else :size="15" /><span>{{ startPage && !newTabPending && tab.id === activeID ? t('untitled') : tab.title || t('untitled') }}</span></button>
@@ -213,12 +257,14 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); clearTimeout(r
     </div>
     </Teleport>
     <form class="web-browser__toolbar" @submit.prevent="submit">
-      <button type="button" class="web-browser__icon" :disabled="!activeTab?.back || startPage || status !== 'connected'" :title="t('back')" :aria-label="t('back')" @click="send({ type: 'back', tab: activeID })"><ArrowLeft :size="18" /></button>
-      <button type="button" class="web-browser__icon" :disabled="!activeTab?.forward || startPage || status !== 'connected'" :title="t('forward')" :aria-label="t('forward')" @click="send({ type: 'forward', tab: activeID })"><ArrowRight :size="18" /></button>
-      <button type="button" class="web-browser__icon" :disabled="!activeTab || startPage || status !== 'connected'" :title="t(activeTab?.loading ? 'stop' : 'reload')" :aria-label="t(activeTab?.loading ? 'stop' : 'reload')" @click="send({ type: activeTab?.loading ? 'stop' : 'reload', tab: activeID })"><X v-if="activeTab?.loading" :size="18" /><RefreshCw v-else :size="17" /></button>
-      <label class="web-browser__address"><Search :size="16" aria-hidden="true" /><input ref="addressInput" v-model="address" :aria-label="t('address')" :placeholder="t('address')" maxlength="4096" autocomplete="off" spellcheck="false" @focus="editingAddress = true" @blur="editingAddress = false" /><button type="submit" :aria-label="t('go')"><ArrowRight :size="17" /></button></label>
-      <button type="button" class="web-browser__icon" :title="t('home')" :aria-label="t('home')" @click="home"><Home :size="17" /></button>
-      <button type="button" class="web-browser__icon" :disabled="!address && !activeTab" :title="t('external')" :aria-label="t('external')" @click="external"><ExternalLink :size="17" /></button>
+      <button type="button" class="web-browser__icon web-browser__back" :disabled="!activeTab?.back || startPage || status !== 'connected'" :title="t('back')" :aria-label="t('back')" @click="send({ type: 'back', tab: activeID })"><ArrowLeft :size="18" /></button>
+      <button type="button" class="web-browser__icon web-browser__forward" :disabled="!activeTab?.forward || startPage || status !== 'connected'" :title="t('forward')" :aria-label="t('forward')" @click="send({ type: 'forward', tab: activeID })"><ArrowRight :size="18" /></button>
+      <button type="button" class="web-browser__icon web-browser__reload" :disabled="!activeTab || startPage || status !== 'connected'" :title="t(activeTab?.loading ? 'stop' : 'reload')" :aria-label="t(activeTab?.loading ? 'stop' : 'reload')" @click="reload"><X v-if="activeTab?.loading" :size="18" /><RefreshCw v-else :size="17" /></button>
+      <label class="web-browser__address"><Search :size="16" aria-hidden="true" /><input ref="addressInput" v-model="address" :aria-label="t('address')" :placeholder="t('address')" maxlength="4096" autocomplete="off" spellcheck="false" enterkeyhint="go" @focus="editingAddress = true" @blur="editingAddress = false" /><button type="submit" :aria-label="t('go')"><ArrowRight :size="17" /></button></label>
+      <button type="button" class="web-browser__icon web-browser__home" :title="t('home')" :aria-label="t('home')" @click="home"><Home :size="17" /></button>
+      <button v-if="!mobile" type="button" class="web-browser__icon" :disabled="!address && !activeTab" :title="t('external')" :aria-label="t('external')" @click="external"><ExternalLink :size="17" /></button>
+      <button v-if="mobile" type="button" class="web-browser__icon web-browser__tab-switch" :aria-label="`${t('tabs')} · ${tabCount}/${BROWSER_MAX_TABS}`" aria-haspopup="dialog" @click="tabsOpen = true"><span>{{ tabCount }}</span></button>
+      <button v-if="mobile" type="button" class="web-browser__icon web-browser__more" :aria-label="t('more')" aria-haspopup="dialog" @click="moreOpen = true"><Ellipsis :size="22" /></button>
     </form>
     <div v-if="notice" class="web-browser__notice" role="alert"><span>{{ notice }}</span><button class="web-browser__icon" :aria-label="t('clear')" @click="notice = ''"><X :size="15" /></button></div>
     <main ref="screen" class="web-browser__content">
@@ -236,11 +282,26 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); clearTimeout(r
       </div>
       <div v-else class="web-browser__viewport">
         <div v-if="!imageReady" class="web-browser__loading" role="status"><LoaderCircle :size="24" class="is-spinning" /><span>{{ t('loading') }}</span></div>
-        <canvas ref="frame" :class="{ 'is-ready': imageReady }" :aria-label="t('screen')" @pointerdown.prevent="pointer($event, 'mousePressed')" @pointerup.prevent="pointer($event, 'mouseReleased')" @pointermove.prevent="pointer($event, 'mouseMoved')" @wheel.prevent="wheel" @contextmenu.prevent />
+        <canvas ref="frame" :class="{ 'is-ready': imageReady }" :aria-label="t('screen')" @pointerdown.prevent="pointer($event, 'mousePressed')" @pointerup.prevent="pointer($event, 'mouseReleased')" @pointermove.prevent="pointer($event, 'mouseMoved')" @pointercancel="touchGesture = undefined" @wheel.prevent="wheel" @contextmenu.prevent />
         <textarea ref="typing" class="web-browser__keyboard" :aria-label="t('input')" autocapitalize="off" autocomplete="off" spellcheck="false" @keydown="key($event, 'keyDown')" @keyup="key($event, 'keyUp')" @compositionstart="composing = true" @compositionend="composing = false; textInput($event)" @input="textInput" />
       </div>
     </main>
     <footer class="web-browser__footer"><span :title="t('sessionHint')"><span class="web-browser__dot" :class="{ 'is-connected': status === 'connected' }" />{{ t(status === 'connected' ? 'connected' : status === 'connecting' ? 'connecting' : 'disconnected') }}</span><span class="web-browser__network"><Network :size="13" />{{ t('server') }}</span></footer>
+    <ModalDialog :open="tabsOpen" :title="`${t('tabs')} · ${tabCount}/${BROWSER_MAX_TABS}`" size="medium" @close="tabsOpen = false">
+      <div class="web-browser__tab-grid">
+        <div v-for="tab in tabs" :key="tab.id" class="web-browser__tab-card" :class="{ 'is-active': !startPage && tab.id === activeID }">
+          <button class="web-browser__tab-choice" :title="tab.title || t('untitled')" :aria-current="!startPage && tab.id === activeID ? 'page' : undefined" @click="chooseTab(tab)"><Globe2 :size="28" /><strong>{{ tab.title || t('untitled') }}</strong><span>{{ tabHost(tab.url) }}</span></button>
+          <button class="web-browser__card-close" :aria-label="`${t('closeTab')} · ${tab.title || t('untitled')}`" @click="close(tab)"><X :size="18" /></button>
+        </div>
+        <div v-if="startPage && newTabPending" class="web-browser__tab-card is-active"><button class="web-browser__tab-choice" aria-current="page" @click="tabsOpen = false"><Globe2 :size="28" /><strong>{{ t('untitled') }}</strong></button><button class="web-browser__card-close" :aria-label="t('closeTab')" @click="closeStartTab"><X :size="18" /></button></div>
+      </div>
+      <template #footer><button class="button button--secondary web-browser__sheet-action" :disabled="tabs.length >= BROWSER_MAX_TABS" @click="addTab"><Plus :size="18" />{{ t('newTab') }}</button><button class="button button--primary web-browser__sheet-action" @click="tabsOpen = false">{{ t('done') }}</button></template>
+    </ModalDialog>
+    <ModalDialog :open="moreOpen" :title="t('more')" size="compact" @close="moreOpen = false">
+      <div class="web-browser__menu-actions"><button :disabled="!activeTab || startPage || status !== 'connected'" @click="reload"><RefreshCw :size="19" />{{ t(activeTab?.loading ? 'stop' : 'reload') }}</button><button :disabled="!address && !activeTab" @click="external(); moreOpen = false"><ExternalLink :size="19" />{{ t('external') }}</button></div>
+      <p class="web-browser__menu-info"><Network :size="15" />{{ t('server') }} · {{ t(status === 'connected' ? 'connected' : status === 'connecting' ? 'connecting' : 'disconnected') }}</p>
+      <p class="web-browser__menu-hint">{{ t('sessionHint') }}</p>
+    </ModalDialog>
     <ModalDialog :open="Boolean(dialog)" :title="t('dialog')" size="compact" @close="answer(false)"><p class="web-browser__dialog">{{ dialog?.text }}</p><template #footer><button class="button button--secondary" @click="answer(false)">{{ t('cancel') }}</button><button class="button button--primary" @click="answer(true)">{{ t('accept') }}</button></template></ModalDialog>
   </section>
 </template>
@@ -263,5 +324,15 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); clearTimeout(r
 .web-browser__quick{width:min(100%,36rem);margin-top:2rem;text-align:left}.web-browser__quick h2{font-size:.8125rem;font-weight:500;color:var(--muted);margin:0 0 .75rem}.web-browser__quick>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(5rem,1fr));gap:.5rem}.web-browser__quick button{display:flex;flex-direction:column;align-items:center;gap:.6rem;min-width:0;padding:.8rem .4rem;border:0;border-radius:var(--radius-sm);background:none;color:var(--text);font:inherit;cursor:pointer}.web-browser__quick button:hover{background:var(--surface-subtle)}.web-browser__quick img{width:2rem;height:2rem;object-fit:contain}.web-browser__quick span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .web-browser__viewport{position:absolute;inset:0;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;background:var(--surface-subtle)}.web-browser__viewport canvas{display:block;width:100%;height:100%;visibility:hidden;touch-action:none}.web-browser__viewport canvas.is-ready{visibility:visible}.web-browser__loading{position:absolute;inset:0;display:flex;gap:.75rem;align-items:center;justify-content:center;color:var(--muted)}.web-browser__keyboard{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;resize:none;padding:0;border:0}
 .web-browser__footer{display:flex;align-items:center;flex-shrink:0;gap:1rem;min-height:1.75rem;box-sizing:border-box;border-top:1px solid var(--border);padding:.25rem .75rem;color:var(--muted);font-size:.8125rem}.web-browser__footer>span:first-child{display:flex;gap:.4rem;align-items:center;white-space:nowrap}.web-browser__dot{width:.4rem;height:.4rem;border-radius:50%;background:var(--muted)}.web-browser__dot.is-connected{background:var(--brand)}.web-browser__notice{display:flex;gap:.75rem;align-items:center;justify-content:space-between;padding:.4rem .85rem;border-bottom:1px solid var(--border);background:var(--brand-soft);font-size:.875rem;line-height:1.5}.web-browser__dialog{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.875rem;line-height:1.6}
-.web-browser button:focus-visible,.web-browser__tabs button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}.is-spinning{animation:browser-spin calc(var(--motion-duration-ambient) * 2) linear infinite}@keyframes browser-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.is-spinning{animation:none}}@media(max-width:600px){.web-browser__toolbar{flex-wrap:wrap}.web-browser__address{order:-1;flex-basis:100%}.web-browser__network{font-size:.8125rem}.web-browser__start,.web-browser__state{padding:1.5rem 1rem}}
+.web-browser__sheet-action{display:flex;align-items:center;gap:.5rem;min-height:2.75rem}.web-browser__tab-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}.web-browser__tab-card{position:relative;min-width:0;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface-subtle);overflow:hidden}.web-browser__tab-card.is-active{border:2px solid var(--brand);background:var(--brand-soft)}.web-browser__tab-choice{display:flex;flex-direction:column;align-items:flex-start;gap:.75rem;width:100%;min-height:10rem;padding:1rem;border:0;background:none;color:var(--text);text-align:left;cursor:pointer}.web-browser__tab-choice>svg{margin:.25rem 0;color:var(--brand)}.web-browser__tab-choice strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:.875rem;line-height:1.5;font-weight:500}.web-browser__tab-choice span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:.8125rem}.web-browser__card-close{position:absolute;right:0;top:0;display:grid;place-items:center;width:2.75rem;height:2.75rem;border:0;background:none;color:var(--text);cursor:pointer}.web-browser__card-close:hover{background:var(--surface-raised)}
+.web-browser__menu-actions{display:grid;gap:.25rem}.web-browser__menu-actions button{display:flex;align-items:center;gap:.75rem;min-height:2.75rem;padding:.65rem .5rem;border:0;border-radius:var(--radius-sm);background:none;color:var(--text);font-size:.875rem;text-align:left;cursor:pointer}.web-browser__menu-actions button:hover{background:var(--surface-subtle)}.web-browser__menu-actions button:disabled{opacity:.4;cursor:default}.web-browser__menu-info{display:flex;align-items:center;gap:.4rem;margin:1rem 0 .5rem;color:var(--muted);font-size:.8125rem}.web-browser__menu-hint{margin:0;color:var(--muted);font-size:.8125rem;line-height:1.6}
+.web-browser button:focus-visible,.web-browser__tabs button:focus-visible,.web-browser__tab-grid button:focus-visible,.web-browser__menu-actions button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}.is-spinning{animation:browser-spin calc(var(--motion-duration-ambient) * 2) linear infinite}@keyframes browser-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.is-spinning{animation:none}}
+@media(max-width:600px){
+  .web-browser{min-height:0}.web-browser__tabs{display:none}.web-browser__content{order:1}.web-browser__notice{order:0}.web-browser__footer{display:none}
+  .web-browser__toolbar{position:relative;order:2;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.25rem;padding:.5rem .5rem max(.35rem,env(safe-area-inset-bottom));border-top:1px solid var(--border);border-bottom:0;background:var(--surface-raised);flex-shrink:0}
+  .web-browser__toolbar>.web-browser__icon{width:100%;height:2.75rem;min-height:2.75rem}.web-browser__back{grid-column:1;grid-row:2}.web-browser__forward{grid-column:2;grid-row:2}.web-browser__home{grid-column:3;grid-row:2}.web-browser__tab-switch{grid-column:4;grid-row:2}.web-browser__more{grid-column:5;grid-row:2}
+  .web-browser__tab-switch span{display:grid;place-items:center;min-width:1.35rem;height:1.35rem;border:1.5px solid currentColor;border-radius:.3rem;font-size:.875rem;font-weight:600}
+  .web-browser__address{grid-column:1/-1;grid-row:1;min-height:2.75rem;box-sizing:border-box;padding:.25rem 3rem .25rem .85rem;border-radius:var(--radius-lg)}.web-browser__address input{font-size:1rem;min-height:2rem}.web-browser__address>button{display:none}.web-browser__address>svg{flex-shrink:0}.web-browser__toolbar>.web-browser__reload{position:absolute;right:.5rem;top:.5rem;width:2.75rem;height:2.75rem}
+  .web-browser__start,.web-browser__state{padding:1.5rem 1rem}.web-browser__start h1{font-size:1.25rem}.web-browser__search{flex-wrap:wrap;padding:.6rem;gap:.5rem}.web-browser__search input{font-size:1rem;min-height:2.75rem;width:0}.web-browser__search .button{min-height:2.75rem}.web-browser__keyboard{font-size:1rem}
+}
 </style>
