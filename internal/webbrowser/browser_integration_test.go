@@ -18,6 +18,56 @@ import (
 	"github.com/coder/websocket"
 )
 
+func TestRealBrowserEnterSubmitsAndInsertsNewline(t *testing.T) {
+	executable := os.Getenv("KPANEL_TEST_CHROME")
+	if executable == "" {
+		t.Skip("set KPANEL_TEST_CHROME")
+	}
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<title>Input</title><form onsubmit="event.preventDefault();document.title='Submitted:'+this.query.value"><input name="query" style="position:absolute;left:20px;top:20px;width:300px;height:50px"></form><textarea style="position:absolute;left:20px;top:100px;width:300px;height:100px"></textarea>`))
+	}))
+	defer app.Close()
+	s := newBrowserSession(context.Background())
+	defer s.Close()
+	execute := func(c Command) {
+		t.Helper()
+		if err := s.Execute(c, executable, []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	execute(Command{Type: "new", URL: app.URL})
+	deadline := time.Now().Add(8 * time.Second)
+	for s.Snapshot().Tabs[0].Title != "Input" && time.Now().Before(deadline) {
+		time.Sleep(30 * time.Millisecond)
+	}
+	click := func(y float64) {
+		execute(Command{Type: "mouse", Action: "mousePressed", Button: "left", X: 60, Y: y})
+		execute(Command{Type: "mouse", Action: "mouseReleased", Button: "left", X: 60, Y: y})
+	}
+	enter := func() {
+		execute(Command{Type: "key", Action: "keyDown", Key: "Enter", Code: "Enter"})
+		execute(Command{Type: "key", Action: "keyUp", Key: "Enter", Code: "Enter"})
+	}
+	click(40)
+	execute(Command{Type: "text", Text: "query"})
+	enter()
+	deadline = time.Now().Add(2 * time.Second)
+	for s.Snapshot().Tabs[0].Title != "Submitted:query" && time.Now().Before(deadline) {
+		time.Sleep(30 * time.Millisecond)
+	}
+	if s.Snapshot().Tabs[0].Title != "Submitted:query" {
+		t.Fatal("Enter did not submit the form")
+	}
+	click(130)
+	execute(Command{Type: "text", Text: "first"})
+	enter()
+	execute(Command{Type: "text", Text: "second"})
+	value, err := chromedp.Run(s.selected(s.active).ctx, chromedp.Evaluate[string](`document.querySelector('textarea').value`))
+	if err != nil || value != "first\nsecond" {
+		t.Fatalf("Enter did not insert one newline: %q %v", value, err)
+	}
+}
+
 func TestRealBrowserWheelAndViewport(t *testing.T) {
 	executable := os.Getenv("KPANEL_TEST_CHROME")
 	if executable == "" {

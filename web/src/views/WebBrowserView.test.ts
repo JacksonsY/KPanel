@@ -192,4 +192,20 @@ describe('desktop remote browser', () => {
     expect(socket.sent).toHaveLength(0)
     wrapper.unmount()
   })
+  it('forwards a soft-keyboard return once and leaves composition commits alone', async () => {
+    const wrapper = await render(ref(true), 'https://example.com/'), socket = Socket.instances[0]!
+    socket.state(); await nextTick()
+    socket.state([{ id: 'tab-1', url: 'https://example.com/', title: 'Page', loading: false, back: false, forward: false }], 'tab-1'); await nextTick()
+    const input = wrapper.get('textarea')
+    socket.sent.length = 0
+    const enter = new InputEvent('beforeinput', { inputType: 'insertLineBreak', cancelable: true })
+    input.element.dispatchEvent(enter)
+    expect(enter.defaultPrevented).toBe(true)
+    expect(socket.sent).toEqual([{ type: 'key', action: 'keyDown', key: 'Enter', code: 'Enter' }, { type: 'key', action: 'keyUp', key: 'Enter', code: 'Enter' }])
+    socket.sent.length = 0
+    await input.trigger('compositionstart')
+    input.element.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertParagraph', cancelable: true }))
+    expect(socket.sent).toHaveLength(0)
+    wrapper.unmount()
+  })
 })

@@ -482,7 +482,13 @@ func (s *browserSession) Execute(c Command, executable string, private []netip.P
 		if len(c.Key) == 1 && c.Key[0] >= 'a' && c.Key[0] <= 'z' {
 			vk = int64(c.Key[0] - 'a' + 'A')
 		}
-		err = send(ctx, input.DispatchKeyEvent, input.DispatchKeyEventParams{Type: input.DispatchKeyEventType(c.Action), Key: c.Key, Code: c.Code, Modifiers: c.Modifiers, WindowsVirtualKeyCode: vk})
+		p := input.DispatchKeyEventParams{Type: input.DispatchKeyEventType(c.Action), Key: c.Key, Code: c.Code, Modifiers: c.Modifiers, WindowsVirtualKeyCode: vk}
+		// Enter's character event drives native form submission and newline insertion.
+		if c.Action == "keyDown" && c.Key == "Enter" && c.Modifiers&7 == 0 {
+			p.Text = "\r"
+			p.UnmodifiedText = "\r"
+		}
+		err = send(ctx, input.DispatchKeyEvent, p)
 	case "mouse":
 		if c.X < 0 || c.Y < 0 || c.X > float64(s.width) || c.Y > float64(s.height) {
 			return errors.New("invalid_coordinates")

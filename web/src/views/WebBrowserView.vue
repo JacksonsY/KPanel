@@ -146,7 +146,7 @@ function openURL(url: string): void {
   startPage.value = false; newTabPending.value = false; imageReady.value = false; notice.value = ''; address.value = url
   void nextTick(() => { resize(); if (!mobile.value) typing.value?.focus() })
 }
-function submit(): void { const url = browserInput(address.value); if (!url) { notice.value = t('invalid'); return }; openURL(url) }
+function submit(): void { const url = browserInput(address.value); if (!url) { notice.value = t('invalid'); return }; openURL(url); if (mobile.value) addressInput.value?.blur() }
 function select(tab: BrowserTab): void { startPage.value = false; newTabPending.value = false; imageReady.value = false; send({ type: 'select', tab: tab.id }); void nextTick(resize) }
 function close(tab: BrowserTab): void {
   if (!send({ type: 'close', tab: tab.id })) return
@@ -230,6 +230,12 @@ function key(event: KeyboardEvent, action: string): void {
 }
 function insertText(value: string): void { for (const text of browserTextChunks(value)) { if (!send({ type: 'text', text })) break } }
 function textInput(event: Event): void { if (composing.value || (event as InputEvent).isComposing) return; const value = typing.value?.value; if (value) insertText(value); if (typing.value) typing.value.value = '' }
+function beforeTextInput(event: InputEvent): void {
+  if (composing.value || event.isComposing || !['insertLineBreak', 'insertParagraph'].includes(event.inputType)) return
+  event.preventDefault()
+  send({ type: 'key', action: 'keyDown', key: 'Enter', code: 'Enter' })
+  send({ type: 'key', action: 'keyUp', key: 'Enter', code: 'Enter' })
+}
 function answer(accept: boolean): void { if (dialog.value) send({ type: 'dialog', tab: dialog.value.tab, accept }); dialog.value = undefined }
 function documentVisibility(): void { documentVisible.value = !document.hidden }
 watch(visible, value => { send({ type: 'visible', visible: value }); if (value) void nextTick(resize); else touchGesture = undefined })
@@ -283,7 +289,7 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); mobileQuery?.r
       <div v-else class="web-browser__viewport">
         <div v-if="!imageReady" class="web-browser__loading" role="status"><LoaderCircle :size="24" class="is-spinning" /><span>{{ t('loading') }}</span></div>
         <canvas ref="frame" :class="{ 'is-ready': imageReady }" :aria-label="t('screen')" @pointerdown.prevent="pointer($event, 'mousePressed')" @pointerup.prevent="pointer($event, 'mouseReleased')" @pointermove.prevent="pointer($event, 'mouseMoved')" @pointercancel="touchGesture = undefined" @wheel.prevent="wheel" @contextmenu.prevent />
-        <textarea ref="typing" class="web-browser__keyboard" :aria-label="t('input')" autocapitalize="off" autocomplete="off" spellcheck="false" @keydown="key($event, 'keyDown')" @keyup="key($event, 'keyUp')" @compositionstart="composing = true" @compositionend="composing = false; textInput($event)" @input="textInput" />
+        <textarea ref="typing" class="web-browser__keyboard" :aria-label="t('input')" autocapitalize="off" autocomplete="off" spellcheck="false" @keydown="key($event, 'keyDown')" @keyup="key($event, 'keyUp')" @beforeinput="beforeTextInput" @compositionstart="composing = true" @compositionend="composing = false; textInput($event)" @input="textInput" />
       </div>
     </main>
     <footer class="web-browser__footer"><span :title="t('sessionHint')"><span class="web-browser__dot" :class="{ 'is-connected': status === 'connected' }" />{{ t(status === 'connected' ? 'connected' : status === 'connecting' ? 'connecting' : 'disconnected') }}</span><span class="web-browser__network"><Network :size="13" />{{ t('server') }}</span></footer>
