@@ -1964,7 +1964,7 @@ onBeforeUnmount(() => {
             <Server :size="17" />
             <span>
               <strong>{{ phrase('非面板 Linux / Windows 主机') }}</strong>
-              <small>{{ phrase('无需 Docker；Linux 以 root、Windows 以管理员 PowerShell 执行命令，接入监控、历史监控、文件和命令行终端。') }}</small>
+              <small>{{ phrase('无需 Docker；Linux 以 root、Windows 以管理员 PowerShell 执行命令，接入实时与历史监控、文件管理（含写入与删除）和命令行终端。') }}</small>
             </span>
             <button
               v-if="!lightEnrollment"

@@ -2,7 +2,7 @@ import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
   ["非面板 Linux / Windows 主机","非面板 Linux / Windows 主機"],
-  ["无需 Docker；Linux 以 root、Windows 以管理员 PowerShell 执行命令，接入监控、历史监控、文件和命令行终端。","無需 Docker；Linux 以 root、Windows 以系統管理員 PowerShell 執行命令，接入監控、歷史監控、檔案和命令列終端。"],
+  ["无需 Docker；Linux 以 root、Windows 以管理员 PowerShell 执行命令，接入实时与历史监控、文件管理（含写入与删除）和命令行终端。","無需 Docker；Linux 以 root、Windows 以系統管理員 PowerShell 執行命令，接入即時與歷史監控、檔案管理（含寫入與刪除）和命令列終端。"],
   ["节点系统","節點系統"],
   ["当前版本未提供 Windows 安装器，请升级中心。","目前版本未提供 Windows 安裝程式，請升級中心。"],
   ["复制命令并在目标节点以管理员身份执行，连接成功后这里会自动更新。","複製命令並在目標節點以系統管理員身分執行，連線成功後這裡會自動更新。"],

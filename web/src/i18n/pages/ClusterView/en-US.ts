@@ -2,7 +2,7 @@ import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
   ["非面板 Linux / Windows 主机","Linux / Windows hosts without a panel"],
-  ["无需 Docker；Linux 以 root、Windows 以管理员 PowerShell 执行命令，接入监控、历史监控、文件和命令行终端。","No Docker required. Run as root on Linux or in administrator PowerShell on Windows to connect monitoring, history, files and command-line terminals."],
+  ["无需 Docker；Linux 以 root、Windows 以管理员 PowerShell 执行命令，接入实时与历史监控、文件管理（含写入与删除）和命令行终端。","No Docker required. Run as root on Linux or in administrator PowerShell on Windows to connect live and historical monitoring, file management (including writes and deletion), and command-line terminals."],
   ["节点系统","Node operating system"],
   ["当前版本未提供 Windows 安装器，请升级中心。","This version has no Windows installer. Upgrade the center."],
   ["复制命令并在目标节点以管理员身份执行，连接成功后这里会自动更新。","Copy and run the command as administrator on the target node. This status updates after connection."],
