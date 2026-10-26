@@ -3,7 +3,7 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } fr
 import { useRoute } from 'vue-router'
 import { ArrowLeft, ArrowRight, ExternalLink, Globe2, Home, LoaderCircle, Network, Plus, RefreshCw, Search, X } from '@lucide/vue'
 import { api } from '@/lib/api'
-import { browserCoordinates, browserEvent, browserInput, browserLinksKey, browserLaunchKey, type BrowserEvent, type BrowserTab } from '@/lib/webBrowser'
+import { browserCoordinates, browserEvent, browserInput, browserTextChunks, browserLinksKey, browserLaunchKey, type BrowserEvent, type BrowserTab } from '@/lib/webBrowser'
 import { desktopWindowTitleKey, desktopWindowVisibleKey } from '@/lib/desktopRouteKeys'
 import { useBrowserText } from '@/i18n/webBrowser'
 import { usePhraseCatalog } from '@/i18n/phrase'
@@ -123,7 +123,7 @@ async function connect(): Promise<void> {
   } catch { if (current === epoch) status.value = 'unavailable' }
 }
 function openURL(url: string): void {
-  if (status.value !== 'connected') { pendingURL = url; startPage.value = false; return }
+  if (status.value !== 'connected') { address.value = url; pendingURL = url; startPage.value = false; return }
   if (startPage.value || !activeTab.value) {
     if (tabs.value.length >= 4) { notice.value = t('limit'); return }
     send({ type: 'new', url })
@@ -163,8 +163,9 @@ function key(event: KeyboardEvent, action: string): void {
   if (event.key === 'Tab' && event.shiftKey) return
   event.preventDefault(); send({ type: 'key', action, key: event.key, code: event.code, modifiers: modifiers(event) })
 }
-function textInput(event: Event): void { if (composing.value || (event as InputEvent).isComposing) return; const value = typing.value?.value; if (value) send({ type: 'text', text: value.slice(0, 8192) }); if (typing.value) typing.value.value = '' }
-function insert(): void { if (text.value) { send({ type: 'text', text: text.value }); text.value = '' } }
+function insertText(value: string): void { for (const text of browserTextChunks(value)) { if (!send({ type: 'text', text })) break } }
+function textInput(event: Event): void { if (composing.value || (event as InputEvent).isComposing) return; const value = typing.value?.value; if (value) insertText(value); if (typing.value) typing.value.value = '' }
+function insert(): void { if (text.value) { insertText(text.value); text.value = '' } }
 function answer(accept: boolean): void { if (dialog.value) send({ type: 'dialog', tab: dialog.value.tab, accept }); dialog.value = undefined }
 function documentVisibility(): void { documentVisible.value = !document.hidden }
 watch(visible, value => send({ type: 'visible', visible: value }))

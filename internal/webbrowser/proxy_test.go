@@ -1,18 +1,83 @@
 package webbrowser
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
 )
+
+type trackedUpgradeConn struct {
+	net.Conn
+	closed  chan struct{}
+	writing chan struct{}
+	once    sync.Once
+	writes  int
+}
+
+func (c *trackedUpgradeConn) Close() error {
+	c.once.Do(func() { close(c.closed) })
+	return c.Conn.Close()
+}
+func (c *trackedUpgradeConn) Write(p []byte) (int, error) {
+	c.writes++
+	if c.writes == 2 {
+		close(c.writing)
+	}
+	return c.Conn.Write(p)
+}
+
+func TestEgressClosesBlockedWebSocketUpstream(t *testing.T) {
+	p := NewEgress(nil)
+	defer p.Close()
+	a, b := net.Pipe()
+	defer b.Close()
+	upstream := &trackedUpgradeConn{Conn: a, closed: make(chan struct{}), writing: make(chan struct{})}
+	p.Lookup = func(context.Context, string, string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("1.1.1.1")}, nil
+	}
+	p.Dial = func(context.Context, string, string) (net.Conn, error) { return upstream, nil }
+	go func() {
+		_, _ = http.ReadRequest(bufio.NewReader(b))
+		_, _ = io.WriteString(b, "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
+	}()
+	server := httptest.NewServer(p)
+	defer server.Close()
+	client, err := net.Dial("tcp", strings.TrimPrefix(server.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_ = client.SetDeadline(time.Now().Add(5 * time.Second))
+	_, _ = fmt.Fprint(client, "GET http://example.invalid/socket HTTP/1.1\r\nHost: example.invalid\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
+	response, err := http.ReadResponse(bufio.NewReader(client), nil)
+	if err != nil || response.StatusCode != 101 {
+		t.Fatal("upgrade failed", err)
+	}
+	_, _ = client.Write([]byte("blocked upstream write"))
+	select {
+	case <-upstream.writing:
+	case <-time.After(time.Second):
+		t.Fatal("upstream did not block")
+	}
+	p.Close()
+	select {
+	case <-upstream.closed:
+	case <-time.After(time.Second):
+		t.Fatal("browser teardown did not close blocked upstream")
+	}
+}
 
 func TestEgressPinsDNSAndRejectsMixedAndMetadata(t *testing.T) {
 	p := NewEgress([]netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")})

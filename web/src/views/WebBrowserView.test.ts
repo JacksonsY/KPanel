@@ -5,7 +5,7 @@ import { nextTick, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import WebBrowserView from './WebBrowserView.vue'
 import { api } from '@/lib/api'
-import { browserLinksKey } from '@/lib/webBrowser'
+import { browserLinksKey, browserLaunchKey } from '@/lib/webBrowser'
 import { desktopWindowVisibleKey } from '@/lib/desktopRouteKeys'
 
 vi.mock('@/lib/api', () => ({ api: { browser: { status: vi.fn(), csrf: () => 'test-csrf' } } }))
@@ -32,19 +32,21 @@ describe('desktop remote browser', () => {
     vi.mocked(api.browser.status).mockResolvedValue({ ready: true, maxTabs: 4 })
   })
   afterEach(() => { vi.unstubAllGlobals() })
-  async function render(visible = ref(true)) {
+  async function render(visible = ref(true), url?: string) {
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/browser', component: { template: '<div />' } }] })
     await router.push('/browser')
-    const wrapper = mount(WebBrowserView, { global: { plugins: [router], provide: { [desktopWindowVisibleKey as symbol]: visible, [browserLinksKey as symbol]: ref([{ id: 'app', name: 'App', url: 'https://example.com' }]) } } })
+    const wrapper = mount(WebBrowserView, { global: { plugins: [router], provide: { [desktopWindowVisibleKey as symbol]: visible, [browserLaunchKey as symbol]: ref(url ? { url, request: 'test' } : undefined), [browserLinksKey as symbol]: ref([{ id: 'app', name: 'App', url: 'https://example.com' }]) } } })
     await flushPromises()
     return wrapper
   }
   it('explains a missing optional component and keeps external opening available', async () => {
     vi.mocked(api.browser.status).mockResolvedValue({ ready: false, reason: 'browser_unconfigured', maxTabs: 4 })
-    const wrapper = await render()
+    const wrapper = await render(ref(true), 'https://example.com/')
     expect(wrapper.text()).toContain('浏览器组件尚未启用')
     expect(wrapper.find('iframe').exists()).toBe(false)
     expect(Socket.instances).toHaveLength(0)
+    expect((wrapper.get('.web-browser__address input').element as HTMLInputElement).value).toBe('https://example.com/')
+    expect(wrapper.findAll('button').some(button => button.text().includes('用系统浏览器打开') && !button.attributes('disabled'))).toBe(true)
     wrapper.unmount()
   })
   it('authenticates the socket and opens addresses through bounded commands', async () => {

@@ -22,9 +22,12 @@ import (
 
 type browserTab struct {
 	Tab
-	ctx       context.Context
-	cancel    context.CancelFunc
-	streaming bool
+	ctx              context.Context
+	cancel           context.CancelFunc
+	streaming        bool
+	navigationCancel context.CancelFunc
+	navigationID     uint64
+	navigating       bool
 }
 type browserSession struct {
 	mu              sync.Mutex
@@ -138,6 +141,40 @@ func (s *browserSession) start(executable string, private []netip.Prefix) error 
 
 func (s *browserSession) listenBrowser() {
 	root := s.root
+	destroyed := chromedp.BrowserEvents(root, target.TargetDestroyed)
+	go func() {
+		for event, err := range destroyed {
+			if err != nil {
+				return
+			}
+			s.mu.Lock()
+			if s.root != root {
+				s.mu.Unlock()
+				return
+			}
+			for i, tab := range s.tabs {
+				if chromedp.FromContext(tab.ctx).Target.TargetID != event.TargetID {
+					continue
+				}
+				s.tabs = append(s.tabs[:i], s.tabs[i+1:]...)
+				tab.cancel()
+				if s.active == tab.ID {
+					s.active = ""
+					if len(s.tabs) > 0 {
+						s.active = s.tabs[len(s.tabs)-1].ID
+					}
+				}
+				if len(s.tabs) == 0 {
+					s.stopBrowser()
+				} else {
+					_ = s.stream()
+				}
+				break
+			}
+			s.mu.Unlock()
+			s.signal()
+		}
+	}()
 	created := chromedp.BrowserEvents(root, target.TargetCreated)
 	go func() {
 		for event, err := range created {
@@ -340,7 +377,36 @@ func (s *browserSession) Execute(c Command, executable string, private []netip.P
 			return err
 		}
 		tab.Loading = true
-		err = chromedp.Do(ctx, chromedp.Navigate(c.URL))
+		// Start from the active blank page before navigation can detach it.
+		// Navigation waits outside the command channel, so Stop/Close remain usable.
+		if err = s.stream(); err != nil {
+			return err
+		}
+		if tab.navigationCancel != nil {
+			tab.navigationCancel()
+		}
+		tab.navigationID++
+		generation := tab.navigationID
+		navigation, cancel := context.WithTimeout(tab.ctx, 30*time.Second)
+		tab.navigationCancel = cancel
+		tab.navigating = true
+		tab.URL = c.URL
+		go func() {
+			err := chromedp.Do(navigation, chromedp.Navigate(c.URL))
+			cancel()
+			s.mu.Lock()
+			if tab.navigationID == generation {
+				tab.navigationCancel = nil
+				tab.navigating = false
+				tab.Loading = false
+				if err != nil && !errors.Is(err, context.Canceled) && tab.ctx.Err() == nil {
+					s.notice(Event{Type: "error", Code: "browser_action_failed"})
+				}
+			}
+			s.mu.Unlock()
+			s.signal()
+		}()
+		return nil
 	case "select":
 		s.active = tab.ID
 	case "close":
@@ -378,7 +444,11 @@ func (s *browserSession) Execute(c Command, executable string, private []netip.P
 	case "reload":
 		err = send(ctx, page.Reload, page.ReloadParams{})
 	case "stop":
+		if tab.navigationCancel != nil {
+			tab.navigationCancel()
+		}
 		err = send(ctx, page.StopLoading, cdp.Empty{})
+		tab.Loading = false
 	case "resize":
 		err = send(ctx, emulation.SetDeviceMetricsOverride, emulation.SetDeviceMetricsOverrideParams{Width: c.Width, Height: c.Height, DeviceScaleFactor: 1})
 		if tab.streaming {
@@ -422,7 +492,9 @@ func (s *browserSession) Snapshot() Event {
 		if err == nil && history.CurrentIndex >= 0 && history.CurrentIndex < int64(len(history.Entries)) {
 			index := history.CurrentIndex
 			entry := history.Entries[index]
-			tab.URL = entry.URL
+			if !tab.navigating {
+				tab.URL = entry.URL
+			}
 			tab.Title = entry.Title
 			if len(tab.Title) > 160 {
 				tab.Title = tab.Title[:160]
@@ -436,8 +508,10 @@ func (s *browserSession) Snapshot() Event {
 		if title, e := chromedp.Run(ctx, chromedp.Title()); e == nil && len(title) <= 160 {
 			tab.Title = title
 		}
-		if loading, e := chromedp.Run(ctx, chromedp.Evaluate[bool](`document.readyState !== 'complete'`)); e == nil {
-			tab.Loading = loading
+		if !tab.navigating {
+			if loading, e := chromedp.Run(ctx, chromedp.Evaluate[bool](`document.readyState !== 'complete'`)); e == nil {
+				tab.Loading = loading
+			}
 		}
 		cancel()
 		event.Tabs = append(event.Tabs, tab.Tab)

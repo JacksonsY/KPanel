@@ -17,6 +17,69 @@ import (
 	"github.com/coder/websocket"
 )
 
+func TestRealBrowserNavigationCanStopAndPopupSelfClose(t *testing.T) {
+	executable := os.Getenv("KPANEL_TEST_CHROME")
+	if executable == "" {
+		t.Skip("set KPANEL_TEST_CHROME")
+	}
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		switch r.URL.Path {
+		case "/hung":
+			<-r.Context().Done()
+		case "/slow":
+			_, _ = w.Write([]byte(`<title>Slow</title><img src="/hung">`))
+			w.(http.Flusher).Flush()
+		case "/popup":
+			_, _ = w.Write([]byte(`<title>Popup</title><script>setTimeout(()=>window.close(),1000)</script>`))
+		default:
+			_, _ = w.Write([]byte(`<title>Main</title><button style="position:absolute;left:0;top:0;width:200px;height:70px" onclick="window.open('/popup')">Popup</button>`))
+		}
+	}))
+	defer app.Close()
+	s := newBrowserSession(context.Background())
+	defer s.Close()
+	ranges := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	execute := func(c Command) {
+		t.Helper()
+		if err := s.Execute(c, executable, ranges); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wait := func(match func(Event) bool) {
+		t.Helper()
+		deadline := time.Now().Add(8 * time.Second)
+		for time.Now().Before(deadline) {
+			if match(s.Snapshot()) {
+				return
+			}
+			time.Sleep(30 * time.Millisecond)
+		}
+		t.Fatal("browser condition not reached")
+	}
+	execute(Command{Type: "new", URL: app.URL + "/slow"})
+	wait(func(e Event) bool { return len(e.Tabs) == 1 && e.Tabs[0].Title == "Slow" && e.Tabs[0].Loading })
+	started := time.Now()
+	execute(Command{Type: "stop"})
+	if time.Since(started) > 3*time.Second {
+		t.Fatal("stop was blocked by navigation")
+	}
+	execute(Command{Type: "navigate", URL: app.URL})
+	wait(func(e Event) bool { return len(e.Tabs) == 1 && e.Tabs[0].Title == "Main" && !e.Tabs[0].Loading })
+	execute(Command{Type: "mouse", Action: "mousePressed", Button: "left", X: 50, Y: 30})
+	execute(Command{Type: "mouse", Action: "mouseReleased", Button: "left", X: 50, Y: 30})
+	wait(func(e Event) bool { return len(e.Tabs) == 2 })
+	wait(func(e Event) bool { return len(e.Tabs) == 1 && e.Active == e.Tabs[0].ID })
+	execute(Command{Type: "new", URL: app.URL})
+	wait(func(e Event) bool { return len(e.Tabs) == 2 && e.Tabs[1].Title == "Main" })
+	s.mu.Lock()
+	streaming := s.selected("").streaming
+	s.mu.Unlock()
+	if !streaming {
+		t.Fatal("closed popup prevented next tab stream")
+	}
+}
+
 func TestRealBrowserRoundTrip(t *testing.T) {
 	executable := os.Getenv("KPANEL_TEST_CHROME")
 	if executable == "" {

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { browserCoordinates, browserEvent, browserInput } from './webBrowser'
+import { browserCoordinates, browserEvent, browserInput, browserTextChunks } from './webBrowser'
 
 describe('remote browser boundary', () => {
+  it('splits Chinese and emoji input using the Go protocol UTF-8 byte budget', () => {
+    const value = '中'.repeat(3000) + '🙂'.repeat(1000)
+    const chunks = browserTextChunks(value)
+    expect(chunks.join('')).toBe(value)
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks.every(chunk => new TextEncoder().encode(chunk).length <= 8192)).toBe(true)
+  })
   it('accepts web addresses and searches, rejecting credentials and native schemes', () => {
     expect(browserInput('example.com/docs')).toBe('https://example.com/docs')
     expect(browserInput('http://192.168.1.5:8080')).toBe('http://192.168.1.5:8080/')

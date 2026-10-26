@@ -23,13 +23,13 @@ type Egress struct {
 	Dial        func(context.Context, string, string) (net.Conn, error)
 	gate        chan struct{}
 	mu          sync.Mutex
-	connections map[net.Conn]struct{}
+	connections map[io.Closer]struct{}
 	closed      bool
 	transport   *http.Transport
 }
 
 func NewEgress(private []netip.Prefix) *Egress {
-	p := &Egress{Private: private, Lookup: net.DefaultResolver.LookupNetIP, Dial: (&net.Dialer{Timeout: 8 * time.Second, KeepAlive: 20 * time.Second}).DialContext, gate: make(chan struct{}, 32), connections: make(map[net.Conn]struct{})}
+	p := &Egress{Private: private, Lookup: net.DefaultResolver.LookupNetIP, Dial: (&net.Dialer{Timeout: 8 * time.Second, KeepAlive: 20 * time.Second}).DialContext, gate: make(chan struct{}, 32), connections: make(map[io.Closer]struct{})}
 	p.transport = &http.Transport{Proxy: nil, DialContext: p.dial, MaxIdleConns: 16, MaxIdleConnsPerHost: 4, MaxConnsPerHost: 8, IdleConnTimeout: 30 * time.Second, ResponseHeaderTimeout: 20 * time.Second, MaxResponseHeaderBytes: 64 << 10}
 	return p
 }
@@ -158,8 +158,13 @@ func (p *Egress) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.connections[client] = struct{}{}
+		p.connections[duplex] = struct{}{}
 		p.mu.Unlock()
-		defer func() { p.mu.Lock(); delete(p.connections, client); p.mu.Unlock() }()
+		// Closing the client cannot interrupt a blocked write to the upstream.
+		// Own both sides independently, including the hard lifetime timer.
+		timer := time.AfterFunc(30*time.Minute, func() { _ = duplex.Close(); _ = client.Close() })
+		defer timer.Stop()
+		defer func() { p.mu.Lock(); delete(p.connections, client); delete(p.connections, duplex); p.mu.Unlock() }()
 		done := make(chan struct{})
 		go func() { _, _ = io.Copy(duplex, buffered); _ = duplex.Close(); close(done) }()
 		_, _ = io.Copy(client, duplex)

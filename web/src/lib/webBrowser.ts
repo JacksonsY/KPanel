@@ -7,6 +7,19 @@ export const browserLinksKey: InjectionKey<Readonly<Ref<BrowserLink[]>>> = Symbo
 export interface BrowserLaunch { url: string; request: string }
 export const browserLaunchKey: InjectionKey<Readonly<Ref<BrowserLaunch | undefined>>> = Symbol('browser-launch')
 
+// Wire limits are UTF-8 bytes, while textarea maxlength counts UTF-16 units.
+export function browserTextChunks(value: string): string[] {
+  const chunks: string[] = []
+  let text = '', bytes = 0
+  for (const char of value.slice(0, 8192)) {
+    const size = new TextEncoder().encode(char).length
+    if (bytes + size > 8192) { chunks.push(text); text = ''; bytes = 0 }
+    text += char; bytes += size
+  }
+  if (text) chunks.push(text)
+  return chunks
+}
+
 export function browserInput(raw: string): string | undefined {
   const value = raw.trim()
   if (!value || value.length > 4096) return undefined
