@@ -48,6 +48,7 @@ type browserSession struct {
 	nextID          int
 	dirty           chan struct{}
 	frames          chan Event
+	keyframes       chan Event
 	notices         chan Event
 }
 
@@ -75,7 +76,7 @@ func browserCall[P, R any](ctx context.Context, command cdp.Command[P, R], param
 }
 func newBrowserSession(parent context.Context) *browserSession {
 	ctx, cancel := context.WithCancel(parent)
-	return &browserSession{ctx: ctx, cancel: cancel, width: 1280, height: 720, visible: true, dirty: make(chan struct{}, 1), frames: make(chan Event, 1), notices: make(chan Event, 8)}
+	return &browserSession{ctx: ctx, cancel: cancel, width: 1280, height: 720, visible: true, dirty: make(chan struct{}, 1), frames: make(chan Event, 1), keyframes: make(chan Event, 1), notices: make(chan Event, 8)}
 }
 func (s *browserSession) signal() {
 	select {
@@ -88,6 +89,16 @@ func (s *browserSession) notice(e Event) {
 	case s.notices <- e:
 	default:
 	}
+}
+
+// The caller holds mu, so resize producers are serialized. Keep only the latest
+// seed independently of ordinary frames and error/dialog notifications.
+func (s *browserSession) seedFrame(e Event) {
+	select {
+	case <-s.keyframes:
+	default:
+	}
+	s.keyframes <- e
 }
 func (s *browserSession) Close() {
 	s.cancel()
@@ -360,7 +371,7 @@ func (s *browserSession) viewportFrame(tab *browserTab) {
 	}
 	size, err := jpeg.DecodeConfig(bytes.NewReader(shot.Data))
 	if err == nil && size.Width == int(tab.width) && size.Height == int(tab.height) {
-		s.notice(Event{Type: "frame", Tab: tab.ID, Image: base64.StdEncoding.EncodeToString(shot.Data), Width: tab.width, Height: tab.height})
+		s.seedFrame(Event{Type: "frame", Tab: tab.ID, Image: base64.StdEncoding.EncodeToString(shot.Data), Width: tab.width, Height: tab.height})
 	}
 }
 

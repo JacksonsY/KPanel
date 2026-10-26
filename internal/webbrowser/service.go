@@ -229,6 +229,7 @@ func (s *Service) writeEvents(ctx context.Context, ws *websocket.Conn, browser *
 				lastActive = state.Active
 			}
 		case event = <-browser.notices:
+		case event = <-browser.keyframes:
 		}
 		if event.Type == "frame" {
 			browser.mu.Lock()

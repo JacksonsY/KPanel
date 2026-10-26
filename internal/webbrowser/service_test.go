@@ -13,6 +13,21 @@ import (
 	"github.com/coder/websocket"
 )
 
+func TestResizeSeedKeepsLatestWithoutDroppingNotices(t *testing.T) {
+	session := newBrowserSession(context.Background())
+	defer session.Close()
+	for i := 0; i < cap(session.notices); i++ {
+		session.notice(Event{Type: "error"})
+	}
+	session.mu.Lock()
+	session.seedFrame(Event{Type: "frame", Image: "old"})
+	session.seedFrame(Event{Type: "frame", Image: "latest"})
+	session.mu.Unlock()
+	if len(session.keyframes) != 1 || (<-session.keyframes).Image != "latest" || len(session.notices) != cap(session.notices) {
+		t.Fatal("resize seed lost or displaced a notification")
+	}
+}
+
 func TestServiceDiscardsStaleViewportFramesFromBothQueues(t *testing.T) {
 	executable, _ := os.Executable()
 	service, err := NewService(executable, strings.Repeat("s", 48), nil)
@@ -74,6 +89,17 @@ func TestServiceDiscardsStaleViewportFramesFromBothQueues(t *testing.T) {
 			}
 			if event.Image != "current" || event.Width != 640 || event.Height != 480 {
 				t.Fatal("delivered an obsolete viewport after resize")
+			}
+			break
+		}
+	}
+	session.mu.Lock()
+	session.seedFrame(Event{Type: "frame", Tab: "tab-1", Width: 640, Height: 480, Image: "seed"})
+	session.mu.Unlock()
+	for event := read(); ; event = read() {
+		if event.Type == "frame" {
+			if event.Image != "seed" {
+				t.Fatal("missing current resize seed")
 			}
 			break
 		}
