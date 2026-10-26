@@ -94,7 +94,7 @@ export function useTerminalController(options: Options) {
     const screen = terminal.value
     if (!screen || !data.length) { done?.(); return }
     const buffer = screen.buffer.active
-    const follow = buffer.viewportY >= buffer.baseY
+    const follow = buffer.baseY - buffer.viewportY <= 2
     const parsed = writeFlow.track(data.length)
     const generation = targetGeneration
     screen.write(data, () => {
