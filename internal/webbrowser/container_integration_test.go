@@ -110,8 +110,10 @@ func TestContainerServiceRoundTrip(t *testing.T) {
 	send(Command{Type: "mouse", Action: "mouseWheel", Button: "none", X: 500, Y: 300, DeltaY: 400})
 	wait(title("Scrolled:"))
 	for _, size := range [][2]int64{{1600, 1000}, {640, 480}, {1280, 720}} {
+		t.Logf("waiting for viewport %dx%d", size[0], size[1])
 		send(Command{Type: "resize", Width: size[0], Height: size[1]})
 		wait(func(e Event) bool { return e.Type == "frame" && e.Width == size[0] && e.Height == size[1] })
+		t.Logf("received viewport %dx%d", size[0], size[1])
 	}
 	for i := 1; i < MaxTabs; i++ {
 		send(Command{Type: "new", URL: app.URL})

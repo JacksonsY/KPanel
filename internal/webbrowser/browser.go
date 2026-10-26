@@ -127,6 +127,9 @@ func (s *browserSession) start(executable string, private []netip.Prefix) error 
 	s.proxyServer = &http.Server{Handler: s.proxy, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 60 * time.Second, WriteTimeout: 30 * time.Minute, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 64 << 10}
 	go func() { _ = s.proxyServer.Serve(listener) }()
 	options := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
+	// Keep the headless compositor larger than every supported emulated viewport.
+	// A smaller native surface can otherwise clip resize frames on Linux runners.
+	options = append(options, chromedp.Flag("window-size", "1920,1200"), chromedp.Flag("force-device-scale-factor", "1"))
 	options = append(options, chromedp.ExecPath(executable), chromedp.ProxyServer("http://"+listener.Addr().String()), chromedp.Flag("no-sandbox", false), chromedp.Flag("proxy-bypass-list", "<-loopback>"), chromedp.Flag("disable-quic", true), chromedp.Flag("force-webrtc-ip-handling-policy", "disable_non_proxied_udp"), chromedp.Flag("host-resolver-rules", "MAP * ~NOTFOUND, EXCLUDE 127.0.0.1"), chromedp.Flag("disable-features", "Translate,BlinkGenPropertyTrees,MediaRouter"), chromedp.Flag("disable-popup-blocking", false), chromedp.Flag("disk-cache-size", "33554432"), chromedp.Flag("media-cache-size", "16777216"))
 	allocator, stopAllocator := chromedp.NewExecAllocator(s.ctx, options...)
 	s.allocatorCancel = stopAllocator
