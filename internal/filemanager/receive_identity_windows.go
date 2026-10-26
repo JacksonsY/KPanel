@@ -4,13 +4,39 @@ package filemanager
 
 import (
 	"errors"
+	"fmt"
 	"golang.org/x/sys/windows"
 	"io"
 	"os"
 	"time"
+	"unsafe"
 )
 
-func stableReceiveIdentity(os.FileInfo) string { return "" }
+// A checkpoint must identify the opened object across process restarts. Names,
+// size and timestamps cannot distinguish a replacement sibling.
+func stableReceiveIdentity(info os.FileInfo, files ...*os.File) string {
+	if len(files) != 1 || files[0] == nil {
+		return ""
+	}
+	file := files[0]
+	opened, err := file.Stat()
+	if err != nil || !os.SameFile(info, opened) {
+		return ""
+	}
+	var id struct {
+		Volume uint64
+		ID     [16]byte
+	}
+	handle := windows.Handle(file.Fd())
+	if err := windows.GetFileInformationByHandleEx(handle, windows.FileIdInfo, (*byte)(unsafe.Pointer(&id)), uint32(unsafe.Sizeof(id))); err != nil {
+		return ""
+	}
+	var basic windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &basic); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("winfile:%016x:%x:%08x%08x", id.Volume, id.ID, basic.CreationTime.HighDateTime, basic.CreationTime.LowDateTime)
+}
 func archiveStagePrivate(info os.FileInfo, roots ...*fileRoot) bool {
 	return trustedWindowsDirectory(info, roots, true)
 }

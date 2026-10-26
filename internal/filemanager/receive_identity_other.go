@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func stableReceiveIdentity(os.FileInfo) string { return "" }
+func stableReceiveIdentity(os.FileInfo, ...*os.File) string { return "" }
 
 func archiveStagePrivate(info os.FileInfo, _ ...*fileRoot) bool { return info.IsDir() }
 

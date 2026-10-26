@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func stableReceiveIdentity(info os.FileInfo) string {
+func stableReceiveIdentity(info os.FileInfo, _ ...*os.File) string {
 	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
 		return fmt.Sprintf("inode:%d:%d", stat.Dev, stat.Ino)
 	}

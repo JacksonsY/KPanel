@@ -186,7 +186,7 @@ func (m *Manager) cleanupArchiveTemp(record *archiveJobRecord, virtual string) e
 	}
 	defer parent.Close()
 	identity := record.TempIdentities[virtual]
-	if identity.Parent == "" || identity.Object == "" || identity.Parent != stableReceiveIdentity(info) || identity.Directory == "" || identity.Directory != record.Job.Target && !isWithin(record.Job.Target, identity.Directory) {
+	if identity.Parent == "" || identity.Object == "" || identity.Parent != stableRootReceiveIdentity(parent, ".", info) || identity.Directory == "" || identity.Directory != record.Job.Target && !isWithin(record.Job.Target, identity.Directory) {
 		return ErrConflict
 	}
 	workspace, workspaceInfo, err := m.openReceiveDirectory(identity.Directory, false)
@@ -194,7 +194,7 @@ func (m *Manager) cleanupArchiveTemp(record *archiveJobRecord, virtual string) e
 		return err
 	}
 	defer workspace.Close()
-	if identity.Workspace != stableReceiveIdentity(workspaceInfo) || !archiveWorkspaceProtected(workspaceInfo, workspace) || !archiveSameFilesystem(info, workspaceInfo) {
+	if identity.Workspace != stableRootReceiveIdentity(workspace, ".", workspaceInfo) || !archiveWorkspaceProtected(workspaceInfo, workspace) || !archiveSameFilesystem(info, workspaceInfo) {
 		return ErrConflict
 	}
 	visible, err := workspace.Lstat(path.Base(virtual))
@@ -462,14 +462,14 @@ func (m *Manager) runArchiveJob(ctx context.Context, cancel context.CancelFunc, 
 					item.Name = archiveBaseName(path.Base(source))
 				}
 			}
-			operation := &archiveOperation{budget: budget, tempSuffix: fmt.Sprintf("%s-%d", id, index), tempReady: func(parent os.FileInfo, directory string, workspace, stage os.FileInfo) error {
+			operation := &archiveOperation{budget: budget, tempSuffix: fmt.Sprintf("%s-%d", id, index), tempReady: func(identity archiveTempIdentity) error {
 				a.mu.Lock()
 				defer a.mu.Unlock()
 				record := a.records[id]
 				if record.TempIdentities == nil {
 					record.TempIdentities = make(map[string]archiveTempIdentity)
 				}
-				record.TempIdentities[record.Temps[index]] = archiveTempIdentity{Parent: stableReceiveIdentity(parent), Object: stableReceiveIdentity(stage), Directory: directory, Workspace: stableReceiveIdentity(workspace)}
+				record.TempIdentities[record.Temps[index]] = identity
 				return m.persistArchiveJobsLocked()
 			}, progress: func(value *copyBudget) {
 				a.mu.Lock()

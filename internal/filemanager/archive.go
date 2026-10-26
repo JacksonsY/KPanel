@@ -228,7 +228,7 @@ func (m *Manager) compressArchive(
 	if err := syncRootDirectory(workspace, "."); err != nil {
 		return contract.FileEntry{}, err
 	}
-	if err := recordArchiveTemp(ctx, openedTarget, workspacePath, workspaceInfo, ownedStage); err != nil {
+	if err := recordArchiveTemp(ctx, parent, openedTarget, workspacePath, workspace, workspaceInfo, stage, ownedStage); err != nil {
 		return contract.FileEntry{}, err
 	}
 	if err := inheritArchiveDestinationDefaults(stage, parent); err != nil {
@@ -637,7 +637,7 @@ func (m *Manager) extractArchive(
 	if err := syncRootDirectory(workspace, "."); err != nil {
 		return contract.FileEntry{}, err
 	}
-	if err := recordArchiveTemp(ctx, openedTarget, workspacePath, workspaceInfo, ownedStage); err != nil {
+	if err := recordArchiveTemp(ctx, parent, openedTarget, workspacePath, workspace, workspaceInfo, publication, ownedStage); err != nil {
 		return contract.FileEntry{}, err
 	}
 	if err := inheritArchiveDestinationDefaults(publication, parent); err != nil {

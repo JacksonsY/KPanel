@@ -333,7 +333,7 @@ L2，未知值或重复声明拒绝执行。L3 声明不代表 L3 已完成，�
    发布前稳定通道及上一预览快照连同 candidate/version/run/attempt 身份必须先成功上传独立 artifact；
    上传失败不进入公开发布。恢复读取该原件并核对摘要，不重新生成旧基线或重推版本镜像。
    Docker Hub 最小范围 Token 仅在正式发布 job 使用；候选 CI/L3 无镜像推送或仓库写权限。
-   公开验收复核两架构 OCI/source、15 个附件、校验清单、Latest/latest 不变，并运行真实 Panel/Agent 的
+   公开验收复核两架构 OCI/source、`expectedReleaseAssetNames()` 定义的完整附件、校验清单、Latest/latest 不变，并运行真实 Panel/Agent 的
    浏览器与隔离业务断言。GitHub artifact 保存失败/成功日志、截图与回执，run ID/attempt 唯一，禁止覆盖失败。
    旧 bundle 只读准备/历史证据工具保留兼容，不再执行 SSH/WSL 发布，不把旧 kit 当作 GitHub L3 证据。
 10. 稳定版与预览版统一遵守 [`docs/release-channels.md`](docs/release-channels.md)。稳定版是公共默认；
