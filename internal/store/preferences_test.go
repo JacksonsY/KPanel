@@ -118,7 +118,7 @@ func TestPreferencesRejectInvalidAndUnboundedState(t *testing.T) {
 
 // Desktop routes accepted by the shipped catalogue must round-trip as UI state.
 func TestPreferencesAcceptCatalogueWindowRoutes(t *testing.T) {
-	for _, path := range []string{"/virtual-machines", "/virtual-machines?tab=instances", "/sites/monitor"} {
+	for _, path := range []string{"/virtual-machines", "/virtual-machines?tab=instances", "/sites/monitor", "/browser", "/browser?tab=history"} {
 		p := Preferences{Desktop: sampleDesktop()}
 		p.Desktop.Windows[0].Path = path
 		p.Desktop.WindowSizes[0].Path = strings.SplitN(path, "?", 2)[0]
@@ -126,7 +126,7 @@ func TestPreferencesAcceptCatalogueWindowRoutes(t *testing.T) {
 			t.Errorf("catalogue route %q: %v", path, err)
 		}
 	}
-	for _, path := range []string{"/virtual-machines/../settings", "/virtual-machines-extra", "/sites/monitor/other", "//virtual-machines"} {
+	for _, path := range []string{"/virtual-machines/../settings", "/virtual-machines-extra", "/sites/monitor/other", "//virtual-machines", "/browser/child", "/browser-extra", "/browser/../settings", "//browser"} {
 		p := Preferences{Desktop: sampleDesktop()}
 		p.Desktop.Windows[0].Path = path
 		if ValidatePreferences(p) == nil {

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>KPanel browser — orbital network globe</title>
+  <defs>
+    <linearGradient id="tile" x2=".8" y2="1"><stop stop-color="#dbf6ff"/><stop offset="1" stop-color="#a9d8f4"/></linearGradient>
+    <radialGradient id="ocean" cx=".3" cy=".2" r=".85"><stop stop-color="#56d1ec"/><stop offset=".55" stop-color="#168dcb"/><stop offset="1" stop-color="#1855a1"/></radialGradient>
+    <linearGradient id="orbit" x2=".8" y2="1"><stop stop-color="#ffe69b"/><stop offset=".5" stop-color="#ffc65b"/><stop offset="1" stop-color="#f49b36"/></linearGradient>
+  </defs>
+  <path fill="url(#tile)" d="M0 0h512v512H0z"/>
+  <ellipse cx="256" cy="256" rx="222" ry="72" transform="rotate(-28 256 256)" fill="none" stroke="#d58e32" stroke-width="25"/>
+  <circle cx="256" cy="256" r="184" fill="url(#ocean)" stroke="#2174ac" stroke-width="5"/>
+  <g fill="none" stroke="#a4e7f5" stroke-width="13">
+    <ellipse cx="256" cy="256" rx="78" ry="177"/>
+    <path d="M79 256h354M107 164q149 50 298 0M107 348q149-50 298 0"/>
+  </g>
+  <path d="M34 256a222 72 0 0 0 444 0" transform="rotate(-28 256 256)" fill="none" stroke="url(#orbit)" stroke-width="27" stroke-linecap="round"/>
+  <circle cx="452" cy="152" r="19" fill="#ffcb63" stroke="#d78e32" stroke-width="5"/>
+</svg>

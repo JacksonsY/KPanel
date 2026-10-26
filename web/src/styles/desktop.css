@@ -2041,9 +2041,7 @@ body.desktop-mode-open::-webkit-scrollbar {
 }
 
 .desktop__icon-glyph--web-fallback .desktop__site-fallback-letter,
-.desktop__icon-glyph--web-fallback .desktop__icon-monogram,
-.desktop__external-confirm-icon--web-fallback .desktop__site-fallback-letter,
-.desktop__external-confirm-icon--web-fallback .desktop__icon-monogram {
+.desktop__icon-glyph--web-fallback .desktop__icon-monogram {
   background: #f7f9fc;
 }
 
@@ -2356,6 +2354,17 @@ body.desktop-mode-open::-webkit-scrollbar {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.desktop-window__title-extension {
+  min-width: 0;
+  height: 100%;
+  flex: 1 1 auto;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+.desktop-window__title-extension:empty { display: none; }
+.desktop-window__title:has(.desktop-window__title-extension:not(:empty)) .desktop-window__title-label { display: none; }
 
 .desktop-window__app-glyph {
   display: grid;
@@ -3935,75 +3944,6 @@ body.desktop-mode-open::-webkit-scrollbar {
   color: var(--text);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.desktop__external-confirm {
-  display: grid;
-  gap: 14px;
-  color: var(--text);
-  font-size: 13px;
-}
-
-.modal-panel--compact:has(.desktop__external-confirm) .modal-panel__header {
-  align-items: center;
-  padding-block: 12px;
-}
-
-.modal-panel--compact:has(.desktop__external-confirm) .modal-panel__header h2 {
-  margin-bottom: 0;
-}
-
-.modal-panel--compact:has(.desktop__external-confirm) .modal-panel__body {
-  padding-block: 14px;
-}
-
-.desktop__external-confirm-entry {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 14px;
-  align-items: center;
-}
-
-.desktop__external-confirm-icon {
-  position: relative;
-  display: grid;
-  width: 64px;
-  height: 64px;
-  overflow: hidden;
-  place-items: center;
-  color: #fff;
-  border: 1px solid rgb(255 255 255 / 28%);
-  border-radius: var(--radius-lg);
-}
-
-.desktop__external-confirm-icon-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: #f7f9f8;
-}
-
-.desktop__external-confirm-identity {
-  display: grid;
-  min-width: 0;
-  gap: 7px;
-}
-
-.desktop__external-confirm-identity strong {
-  overflow-wrap: anywhere;
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.desktop__external-confirm-identity code {
-  overflow-wrap: anywhere;
-  color: var(--muted);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  line-height: 1.45;
-  word-break: break-word;
 }
 
 .desktop__rename-form label {

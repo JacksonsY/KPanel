@@ -130,8 +130,8 @@ describe('DesktopView start menu', () => {
     await mountDesktop()
     await openMenu()
     const keys = wrapper.findAll('#desktop-start-menu [role="option"]').map((option) => option.attributes('data-start-menu-key'))
-    expect(keys.slice(0, 18).every((key) => key?.startsWith('nav:'))).toBe(true)
-    expect(keys.slice(18)).toEqual(['app:nginx', 'app:kuma', 'site:blog'])
+    expect(keys.slice(0, 19).every((key) => key?.startsWith('nav:'))).toBe(true)
+    expect(keys.slice(19)).toEqual(['app:nginx', 'app:kuma', 'site:blog'])
     expect(wrapper.get('[data-start-menu-key="app:kuma"]').text()).toContain('桌面已隐藏')
     // The desktop itself still hides the app.
     expect(wrapper.find('.desktop__icons [aria-label="Uptime Kuma"]').exists()).toBe(false)
@@ -146,13 +146,13 @@ describe('DesktopView start menu', () => {
     expect(wrapper.find('#desktop-start-menu').exists()).toBe(false)
   })
 
-  it('opens a hidden app through the same external-link confirmation as the desktop', async () => {
+  it('opens a hidden app in the same built-in browser as the desktop', async () => {
     await mountDesktop()
     await openMenu()
     await wrapper.get('[data-start-menu-key="app:kuma"]').trigger('click')
     await flushPromises()
-    expect(document.body.textContent).toContain('确认跳转')
-    expect(document.body.textContent).toContain('Uptime Kuma')
+    expect(desktop.windows.value.map(item => item.path)).toEqual(['/browser'])
+    expect(document.body.querySelector('.desktop__external-confirm')).toBeNull()
   })
 
   it('runs searched desktop actions such as the wallpaper picker', async () => {

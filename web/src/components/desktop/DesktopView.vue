@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { isDesktopCommandShortcut } from '@/lib/desktopCommandShortcuts'
+import { browserLinksKey, browserInput, browserLaunchKey, type BrowserLaunch } from '@/lib/webBrowser'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import {
@@ -367,6 +368,9 @@ function applySiteNames(value?: DesktopEntries): DesktopEntries | undefined {
 }
 
 const entries = ref<DesktopEntries | undefined>(applySiteNames(getCachedDesktopEntries()))
+const browserLaunch = ref<BrowserLaunch>()
+provide(browserLaunchKey, browserLaunch)
+provide(browserLinksKey, computed(() => (entries.value?.visible || []).flatMap(entry => entry.url && browserInput(entry.url) ? [{ id: entry.key, name: entry.name, url: entry.url, iconURL: entry.iconURL }] : [])))
 const systemResources = ref<SystemResourceSnapshot>()
 const entriesLoading = ref(!entries.value)
 let entriesAbort: AbortController | undefined
@@ -1128,8 +1132,6 @@ const menuRemovableCount = computed(() => {
 })
 const menuWindowId = ref<number>()
 const detailEntry = ref<DesktopEntry>()
-const externalOpenEntry = ref<DesktopEntry>()
-const externalOpenImageFailed = ref(false)
 const renameEntry = ref<DesktopEntry>()
 const renameValue = ref('')
 let contextMenuOpener: HTMLElement | undefined
@@ -1353,7 +1355,7 @@ function openEntry(entry: DesktopEntry): void {
     return
   }
   if (entry.url) {
-    requestExternalOpen(entry)
+    openBrowserEntry(entry)
     return
   }
 }
@@ -1439,32 +1441,26 @@ function openFileShortcutDirectory(entry: DesktopEntry): void {
   if (route) openDesktopFilesRoute(route, 'directory')
 }
 
-function requestExternalOpen(entry: DesktopEntry): void {
-  if (!entry.url) return
-  externalOpenImageFailed.value = false
-  externalOpenEntry.value = entry
+function openExternal(entry: DesktopEntry): void {
+  const url = entry.url && browserInput(entry.url)
+  if (url) window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-function closeExternalOpen(): void {
-  externalOpenEntry.value = undefined
+function openBrowserEntry(entry: DesktopEntry): void {
+  const url = entry.url && browserInput(entry.url)
+  if (!url) return
+  // Launch intents stay in memory; website URLs never enter saved desktop layouts.
+  const path = '/browser'
+  browserLaunch.value = { url, request: crypto.randomUUID() }
+  const existing = openWindows.value.find(window => desktopRoutePath(window.path) === '/browser')
+  if (existing) {
+    desktop.updateWindowRoute(existing.id, path, 'route.browser')
+    desktop.restoreWindow(existing.id)
+    return
+  }
+  const id = desktop.openWindow(path, 'route.browser', false, true)
+  if (!id) toast.show(i18n.t('desktop.windowLimitTitle'), { message: i18n.t('desktop.windowLimitMessage') })
 }
-
-function confirmExternalOpen(): void {
-  const entry = externalOpenEntry.value
-  if (!entry?.url) return
-  window.open(entry.url, '_blank', 'noopener,noreferrer')
-  closeExternalOpen()
-}
-
-const externalOpenMonogram = computed(() =>
-  externalOpenEntry.value?.name.trim().slice(0, 1).toLocaleUpperCase() || 'K',
-)
-const externalOpenFallbackBackground = computed(() => {
-  const entry = externalOpenEntry.value
-  return entry && (!entry.iconURL || externalOpenImageFailed.value)
-    ? entryFallbackBackground(entry)
-    : undefined
-})
 
 function openAppScriptEntry(entry: DesktopEntry): void {
   const path = `/app-script/${encodeURIComponent(entry.id)}`
@@ -4954,7 +4950,7 @@ function onViewportResize(): void {
             {{ menuEntry.launch === 'script'
               ? i18n.t('desktop.entryScriptManage')
               : menuEntry.url
-                ? i18n.t('desktop.systemBrowserOpen')
+                ? i18n.t('desktop.internalBrowserOpen')
                 : i18n.t('desktop.entryOpen') }}
           </button>
           <button
@@ -5028,6 +5024,7 @@ function onViewportResize(): void {
               ? i18n.t('desktop.removeFromDesktop')
               : i18n.t('desktop.shortcutDelete') }}
           </button>
+          <button v-if="menuEntry.url" type="button" role="menuitem" @click="openExternal(menuEntry); closeContextMenu()"><ExternalLink :size="15" aria-hidden="true" />{{ i18n.t('desktop.systemBrowserOpen') }}</button>
         </template>
         <template v-else-if="menuNavPath">
           <button type="button" role="menuitem" @click="onNavMenuOpen">
@@ -5412,53 +5409,6 @@ function onViewportResize(): void {
         :visible="wallpaperDialogOpen"
         @select="selectDesktopWallpaper"
       />
-    </ModalDialog>
-
-    <ModalDialog
-      :open="Boolean(externalOpenEntry)"
-      :title="i18n.t('desktop.externalOpenConfirmTitle')"
-      size="compact"
-      @close="closeExternalOpen"
-    >
-      <div v-if="externalOpenEntry" class="desktop__external-confirm">
-        <div class="desktop__external-confirm-entry">
-          <span
-            class="desktop__external-confirm-icon"
-            :class="{ 'desktop__external-confirm-icon--web-fallback': externalOpenFallbackBackground }"
-            :style="{ background: externalOpenFallbackBackground ?? entryGradient(externalOpenEntry) }"
-            aria-hidden="true"
-          >
-            <img
-              v-if="externalOpenEntry.iconURL && !externalOpenImageFailed"
-              class="desktop__external-confirm-icon-image"
-              :src="externalOpenEntry.iconURL"
-              alt=""
-              decoding="async"
-              referrerpolicy="no-referrer"
-              width="64"
-              height="64"
-              @error="externalOpenImageFailed = true"
-            />
-            <span v-else-if="externalOpenEntry.kind === 'site'" class="desktop__site-fallback">
-              <span class="desktop__site-fallback-letter">{{ externalOpenMonogram }}</span>
-            </span>
-            <span v-else class="desktop__icon-monogram">{{ externalOpenMonogram }}</span>
-          </span>
-          <div class="desktop__external-confirm-identity">
-            <strong>{{ externalOpenEntry.name }}</strong>
-            <code>{{ externalOpenEntry.url }}</code>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <button class="button button--ghost" type="button" @click="closeExternalOpen">
-          {{ i18n.t('common.cancel') }}
-        </button>
-        <button class="button button--primary" type="button" @click="confirmExternalOpen">
-          <ExternalLink :size="15" aria-hidden="true" />
-          {{ i18n.t('desktop.systemBrowserOpen') }}
-        </button>
-      </template>
     </ModalDialog>
 
     <ModalDialog

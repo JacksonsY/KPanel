@@ -3,6 +3,7 @@ import type { DesktopShellStyle } from '@/stores/desktopShellStyle'
 
 /** Original, local artwork for the fixed system launchers only. */
 const windowsIconNames: Readonly<Record<string, string>> = {
+  '/browser': 'browser',
   '/virtual-machines': 'virtualmachines',
   '/overview': 'overview',
   '/monitoring': 'monitoring',
@@ -26,7 +27,8 @@ const windowsIconNames: Readonly<Record<string, string>> = {
 export function desktopAppIconURL(app: DesktopApp | undefined, style: DesktopShellStyle): string | undefined {
   if (!app) return undefined
   const name = windowsIconNames[app.path]
+  const version = app.path === '/browser' ? 'v2' : 'v1'
   return style !== 'modern' && name
-    ? `/desktop-icons/${style}/${name}-v1.svg`
+    ? `/desktop-icons/${style}/${name}-${version}.svg`
     : app.desktopIconURL
 }

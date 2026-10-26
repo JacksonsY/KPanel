@@ -51,6 +51,7 @@ export const router = createRouter({
       path: '/',
       component: AppShell,
       children: [
+        { path: 'browser', name: 'browser', component: () => loadNavigationRoute('/browser'), meta: { titleKey: 'route.browser' } },
  { path: 'virtual-machines', name: 'virtual-machines', component: () => loadNavigationRoute('/virtual-machines'), meta: { titleKey: 'route.virtualMachines' } },
         { path: '', redirect: '/overview' },
         {

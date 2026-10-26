@@ -33,6 +33,9 @@ export const desktopWindowLaunchKey = Symbol('desktop-window-launch') as Injecti
 /** Title supplied by the mounted page and its resolved session target. */
 export const desktopWindowTitleKey = Symbol('desktop-window-title') as InjectionKey<(title?: string) => void>
 
+/** Optional page controls integrated into the owning window's title bar. */
+export const desktopWindowTitlebarTargetKey = Symbol('desktop-window-titlebar-target') as InjectionKey<Readonly<Ref<HTMLElement | undefined>>>
+
 /** Request the owning desktop window to close through its registered guards. */
 export const desktopWindowCloseKey = Symbol('desktop-window-close') as InjectionKey<() => Promise<void>>
 

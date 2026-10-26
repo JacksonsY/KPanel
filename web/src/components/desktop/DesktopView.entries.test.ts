@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import type { VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import DesktopView from '@/components/desktop/DesktopView.vue'
 import DesktopShortcutDialog from '@/components/desktop/DesktopShortcutDialog.vue'
@@ -111,6 +112,15 @@ function internalFileDragEvent(type: string, dataTransfer: Record<string, unknow
   return event as DragEvent
 }
 
+async function openExternalMenu(wrapper: VueWrapper, selector: string) {
+  await wrapper.find(selector).trigger('contextmenu', { clientX: 120, clientY: 80 })
+  await nextTick()
+  const action = wrapper.findAll('.desktop__context-menu [role="menuitem"]').find(item => item.text().includes('系统浏览器'))
+  expect(action).toBeDefined()
+  await action!.trigger('click')
+  await nextTick()
+}
+
 describe('DesktopView dynamic entries', () => {
   beforeEach(() => {
     resetDesktopModeForTest()
@@ -206,7 +216,7 @@ describe('DesktopView dynamic entries', () => {
     expect(labels).toContain('blog.example.com')
     // Static nav icons still present.
     expect(labels).toContain('概览')
-    expect(labels).not.toContain('浏览器')
+    expect(labels).toContain('浏览器')
     wrapper.unmount()
   })
 
@@ -236,103 +246,34 @@ describe('DesktopView dynamic entries', () => {
     wrapper.unmount()
   })
 
-  it('confirms before opening a website in the system browser', async () => {
+  it("opens websites and applications in one browser window without persisting URLs", async () => {
     const desktop = useDesktopMode()
     const wrapper = mount(DesktopView, { attachTo: document.body })
+    await flushPromises()
+    await wrapper.find("button[title=\"blog.example.com\"]").trigger("dblclick")
     await nextTick()
+    expect(desktop.windows.value).toHaveLength(1)
+    expect(desktop.windows.value[0]?.path).toBe("/browser")
+    await wrapper.find("button[title=\"Nginx\"]").trigger("dblclick")
     await nextTick()
-
-    await wrapper.find('button[title="blog.example.com"]').trigger('dblclick')
-    await nextTick()
-
-    expect(desktop.windows.value).toHaveLength(0)
-    expect(document.body.querySelector('.modal-panel--compact')).not.toBeNull()
-    expect(document.body.querySelector('.desktop__external-confirm')?.textContent)
-      .toContain('blog.example.com')
-    expect(document.body.querySelector('.desktop__external-confirm')?.textContent)
-      .toContain('https://blog.example.com')
-    expect(document.body.querySelector('.desktop__external-confirm-identity strong')?.textContent)
-      .toBe('blog.example.com')
-    expect(document.body.querySelector('.desktop__external-confirm-identity code')?.textContent)
-      .toBe('https://blog.example.com')
-    expect(document.body.querySelector('.desktop__external-confirm dl')).toBeNull()
-    expect(document.body.querySelector('.desktop__external-confirm > small')).toBeNull()
-    const confirmIcon = document.body.querySelector<HTMLImageElement>(
-      '.desktop__external-confirm-icon-image',
-    )
-    expect(confirmIcon?.getAttribute('src')).toBe('/api/v1/sites/blog/icon')
-    confirmIcon?.dispatchEvent(new Event('load'))
-    await nextTick()
-    expect(document.body.querySelector('.desktop__external-confirm-icon--web-fallback')).toBeNull()
+    expect(desktop.windows.value).toHaveLength(1)
+    expect(desktop.windows.value[0]?.path).toBe("/browser")
     expect(window.open).not.toHaveBeenCalled()
+    expect(document.body.querySelector(".desktop__external-confirm")).toBeNull()
+    wrapper.unmount()
+  })
 
-    document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')?.click()
-    await nextTick()
-    expect(window.open).toHaveBeenCalledWith(
-      'https://blog.example.com',
-      '_blank',
-      'noopener,noreferrer',
-    )
+  it('opens the explicitly chosen system browser directly without a confirmation', async () => {
+    const wrapper = mount(DesktopView, { attachTo: document.body })
+    await flushPromises()
+    await openExternalMenu(wrapper, 'button[title="blog.example.com"]')
+    expect(window.open).toHaveBeenCalledWith('https://blog.example.com/', '_blank', 'noopener,noreferrer')
     expect(document.body.querySelector('.desktop__external-confirm')).toBeNull()
+    expect(useDesktopMode().windows.value).toHaveLength(0)
     wrapper.unmount()
   })
 
-  it('confirms before opening a URL-capable application in the system browser', async () => {
-    const desktop = useDesktopMode()
-    const wrapper = mount(DesktopView, { attachTo: document.body })
-    await nextTick()
-    await nextTick()
-
-    await wrapper.find('button[title="Nginx"]').trigger('dblclick')
-    await nextTick()
-
-    expect(desktop.windows.value).toHaveLength(0)
-    expect(document.body.querySelector('.desktop__external-confirm')?.textContent).toContain('Nginx')
-    expect(document.body.querySelector('.desktop__external-confirm')?.textContent)
-      .toContain('http://192.168.1.5:8080')
-    expect(document.body.querySelector('.desktop__external-confirm-identity strong')?.textContent)
-      .toBe('Nginx')
-    expect(document.body.querySelector('.desktop__external-confirm-identity code')?.textContent)
-      .toBe('http://192.168.1.5:8080')
-    expect(document.body.querySelector<HTMLImageElement>('.desktop__external-confirm-icon-image')
-      ?.getAttribute('src')).toBe('/api/v1/apps/nginx/icon')
-    expect(window.open).not.toHaveBeenCalled()
-
-    document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')?.click()
-    await nextTick()
-    expect(window.open).toHaveBeenCalledWith(
-      'http://192.168.1.5:8080',
-      '_blank',
-      'noopener,noreferrer',
-    )
-    wrapper.unmount()
-  })
-
-  it('shows a website monogram without a badge in the confirmation when the icon fails', async () => {
-    const wrapper = mount(DesktopView, { attachTo: document.body })
-    await nextTick()
-    await nextTick()
-
-    const desktopIcon = wrapper.find('button[title="blog.example.com"]')
-    await desktopIcon.find('.desktop__icon-img').trigger('error')
-    await desktopIcon.trigger('dblclick')
-    await nextTick()
-    document.body.querySelector<HTMLImageElement>('.desktop__external-confirm-icon-image')
-      ?.dispatchEvent(new Event('error'))
-    await nextTick()
-
-    expect(document.body.querySelector('.desktop__external-confirm .desktop__site-fallback-letter')
-      ?.textContent).toBe('B')
-    expect(document.body.querySelector('.desktop__external-confirm .desktop__site-fallback-badge'))
-      .toBeNull()
-    const confirmTile = document.body.querySelector<HTMLElement>('.desktop__external-confirm-icon')
-    expect(confirmTile?.classList.contains('desktop__external-confirm-icon--web-fallback')).toBe(true)
-    expect(confirmTile?.style.background).toBe((desktopIcon.get('.desktop__icon-glyph').element as HTMLElement).style.background)
-    expect(confirmTile?.style.background).toContain('color-mix')
-    wrapper.unmount()
-  })
-
-  it('routes the website context-menu action through the same confirmation', async () => {
+  it('routes the website context-menu action to the built-in browser', async () => {
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await nextTick()
     await nextTick()
@@ -340,14 +281,15 @@ describe('DesktopView dynamic entries', () => {
     await wrapper.find('button[title="blog.example.com"]').trigger('contextmenu', { clientX: 120, clientY: 80 })
     await nextTick()
     const siteItems = wrapper.findAll('.desktop__context-menu [role="menuitem"]')
-    expect(siteItems[0]?.text()).toContain('浏览器打开')
+    expect(siteItems[0]?.text()).toContain('内置浏览器')
     await siteItems[0]?.trigger('click')
     expect(window.open).not.toHaveBeenCalled()
-    expect(document.body.querySelector('.desktop__external-confirm')).not.toBeNull()
+    expect(useDesktopMode().windows.value[0]?.path).toBe('/browser')
+    expect(document.body.querySelector('.desktop__external-confirm')).toBeNull()
     wrapper.unmount()
   })
 
-  it('routes the website-detail action through the same confirmation', async () => {
+  it('routes the website-detail action to the built-in browser', async () => {
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await nextTick()
     await nextTick()
@@ -362,8 +304,7 @@ describe('DesktopView dynamic entries', () => {
     await nextTick()
 
     expect(document.body.querySelector('.desktop__detail')).toBeNull()
-    expect(document.body.querySelector('.desktop__external-confirm')?.textContent)
-      .toContain('https://blog.example.com')
+    expect(useDesktopMode().windows.value[0]?.path).toBe('/browser')
     expect(window.open).not.toHaveBeenCalled()
     wrapper.unmount()
   })
@@ -377,7 +318,7 @@ describe('DesktopView dynamic entries', () => {
     await wrapper.find('button[title="Nginx"]').trigger('contextmenu', { clientX: 80, clientY: 80 })
     await nextTick()
     const appItems = wrapper.findAll('.desktop__context-menu [role="menuitem"]')
-    expect(appItems).toHaveLength(4)
+    expect(appItems).toHaveLength(5)
     await appItems[1]?.trigger('click')
     expect(desktop.windows.value[0]?.path).toBe('/apps?app=nginx')
     wrapper.unmount()
@@ -406,12 +347,12 @@ describe('DesktopView dynamic entries', () => {
 
     await wrapper.find('button[title="Nginx"]').trigger('contextmenu', { clientX: 80, clientY: 80 })
     await nextTick()
-    expect(wrapper.findAll('.desktop__context-menu [role="menuitem"]')).toHaveLength(4)
+    expect(wrapper.findAll('.desktop__context-menu [role="menuitem"]')).toHaveLength(5)
 
     await wrapper.find('button[title="blog.example.com"]').trigger('contextmenu', { clientX: 120, clientY: 80 })
     await nextTick()
     const siteItems = wrapper.findAll('.desktop__context-menu [role="menuitem"]')
-    expect(siteItems).toHaveLength(5)
+    expect(siteItems).toHaveLength(6)
     await siteItems[2]?.trigger('click')
     await nextTick()
 
@@ -591,17 +532,14 @@ describe('DesktopView dynamic entries', () => {
     expect(shortcut.find('.desktop__icon-img').attributes('src')).toContain('/api/v1/desktop/shortcuts/')
     await shortcut.trigger('dblclick')
     await nextTick()
-    expect(document.body.querySelector('.desktop__external-confirm')?.textContent).toContain('内部文档')
+    expect(useDesktopMode().windows.value.map(window => window.path)).toEqual(['/browser'])
+    expect(window.open).not.toHaveBeenCalled()
+    expect(document.body.querySelector('.desktop__external-confirm')).toBeNull()
+    await wrapper.find('button[title="blog.example.com"]').trigger('dblclick')
+    await nextTick()
+    expect(useDesktopMode().windows.value.map(window => window.path)).toEqual(['/browser'])
     await shortcut.find('.desktop__icon-img').trigger('error')
-    document.body.querySelector<HTMLImageElement>('.desktop__external-confirm-icon-image')
-      ?.dispatchEvent(new Event('error'))
-    await nextTick()
-    const confirmTile = document.body.querySelector<HTMLElement>('.desktop__external-confirm-icon')
-    expect(confirmTile?.classList.contains('desktop__external-confirm-icon--web-fallback')).toBe(true)
-    expect(confirmTile?.style.background).toContain('color-mix')
-    expect(confirmTile?.style.background).toBe((shortcut.get('.desktop__icon-glyph').element as HTMLElement).style.background)
-    document.body.querySelector<HTMLButtonElement>('.modal-panel__close')?.click()
-    await nextTick()
+    expect(shortcut.find('.desktop__icon-monogram').text()).toBe('内')
 
     await shortcut.trigger('contextmenu', { clientX: 100, clientY: 100 })
     await nextTick()

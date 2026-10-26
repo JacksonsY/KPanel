@@ -2,6 +2,8 @@ import { passkeyZhCN } from '../passkeys'
 import { panelAccessZhCN } from '../panelAccess'
 
 export const zhCNMessages = {
+  'route.browser': '浏览器',
+  'desktop.internalBrowserOpen': '在内置浏览器中打开',
   'route.virtualMachines': '虚拟机',
   'ai.approval.fileDisclosure': "批准后，KPanel 会读取上方路径，并将本次文件内容交给当前 AI 模型处理。请核对路径与参数；此授权仅限本次调用。",
   'ai.approval.manualHint': "所有写操作和文件内容读取逐次确认",
@@ -986,7 +988,7 @@ export const zhCNMessages = {
   'desktop.splitResizeHint': '拖拽调整宽度；方向键微调，Enter 恢复均分',
   'desktop.splitResizeValue': '左侧 {left}%，右侧 {right}%',
   'desktop.back': '返回上一页',
-  'desktop.systemBrowserOpen': '浏览器打开',
+  'desktop.systemBrowserOpen': '用系统浏览器打开',
   'desktop.externalOpenConfirmTitle': '确认跳转',
   'desktop.windowLoadFailed': '窗口内容加载失败',
   'desktop.windowLimitTitle': '窗口数量已达上限',

@@ -45,6 +45,38 @@ KPanel 面向单管理员 Linux 服务器场景：从一台主机开始，在需
 在线体验在浏览器内模拟数据与操作，不连接真实主机。下方截图包含稳定版与预览版本；
 具体功能以安装版本、节点能力和授权为准，版本区别见[稳定版与预览版](docs/release-channels.md)。
 
+### 可选的内置浏览器组件
+
+桌面中的“浏览器”通过独立的 `kpanel-browser` 服务控制 Chromium，把画面传到工作台。
+网页由该服务所在服务器访问，使用服务器的网络和 IP；主 Panel 镜像不包含 Chromium，未配置组件时显示启用提示。
+它不依赖网站允许 iframe 嵌入，但目标网站的登录、验证码、地区限制和风控仍然有效。
+
+从同一份源码构建 `go build -o kpanel-browser ./cmd/kpanel-browser`，另行安装 Chromium。
+以独立的普通用户运行组件，保留 Chromium 沙箱；不要用 root 或 `--no-sandbox` 绕过启动失败。
+创建至少 32 字节的随机专用服务凭据文件，仅授予组件与 Panel 读取权限（Linux `0640`；Windows 使用文件 ACL）。
+
+```sh
+kpanel-browser -listen 127.0.0.1:8092 -browser /usr/bin/chromium -token-file /run/secrets/browser-token
+```
+
+在 Panel 中设置以下配置并重启 Panel；容器部署应使用私有容器网络上的组件地址，回环地址只适用于同一网络命名空间。
+组件端口仅允许 Panel 访问，不应公开；跨主机连接必须使用可信 HTTPS 隧道或 TLS 反向代理。
+
+```text
+KEJILION_PANEL_BROWSER_SERVICE_URL=http://127.0.0.1:8092
+KEJILION_PANEL_BROWSER_TOKEN_FILE=/run/secrets/browser-token
+```
+
+公网 HTTP/HTTPS 默认可访问；内网应用须由部署者明确传入 `-private-cidrs`，例如 `192.168.50.0/24`。
+每次实际连接都会重新检查 DNS 结果并绑定已检查的 IP；云元数据与保留地址始终拒绝。
+该代理提供访问策略，运行组件的容器/服务还应设置网络隔离、内存、进程和临时盘限额；建议起始预算为
+1 GiB 内存、128 个进程、256 MiB 临时盘，并根据实际网页负载调整。它不获得 Agent 权限或宿主目录挂载。
+
+当前支持 2 个浏览器工作区、每个最多 8 个标签页、鼠标键盘与中文输入、前进后退和页面提示。
+窗口隐藏时暂停画面传输；断线保留至多约 100 秒以便重连，关闭最后一个标签会释放 Chromium。
+登录状态只保存在临时浏览器配置中，组件停止后不保留。文件上传、下载和音频尚未接入；复杂媒体页面、
+剪贴板与辅助技术的体验仍有限，可随时使用“用系统浏览器打开”。
+
 <table>
   <tr>
     <td width="50%">
