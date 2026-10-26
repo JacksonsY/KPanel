@@ -40,6 +40,11 @@ func TestWindowsCommandNodeEnrollmentReportAndRestart(t *testing.T) {
 	if _, err := s.AcceptLightReport(auth, body, input); err != nil {
 		t.Fatal(err)
 	}
+	// Reports are buffered until the existing periodic/shutdown checkpoint.
+	// Reopening the store before that boundary tests an uncommitted snapshot.
+	if err := s.checkpoint(); err != nil {
+		t.Fatal(err)
+	}
 	reopened, err := openLightStore(s.light.path)
 	if err != nil {
 		t.Fatal(err)
