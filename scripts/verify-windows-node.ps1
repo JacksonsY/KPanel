@@ -16,7 +16,9 @@ try {
     }
     go test ./internal/windowsnode
     if ($LASTEXITCODE -ne 0) { throw 'Windows service storage and update tests failed.' }
-    go test ./cmd/kejilion-node ./internal/systeminfo ./internal/hostpty ./internal/terminal ./internal/filemanager ./internal/monitoring -run '^TestWindows' -count=1
+    # Real SCM lifecycle mutates this disposable host and invokes nested builds.
+    # Isolate it from first-start shell timing; retain every test and its timeout.
+    go test -p 1 -v ./cmd/kejilion-node ./internal/systeminfo ./internal/hostpty ./internal/terminal ./internal/filemanager ./internal/monitoring -run '^TestWindows' -count=1
     if ($LASTEXITCODE -ne 0) { throw 'Windows node runtime tests failed.' }
     go vet ./cmd/kejilion-node
     if ($LASTEXITCODE -ne 0) { throw 'Windows node vet failed.' }
