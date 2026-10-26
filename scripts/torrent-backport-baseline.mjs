@@ -28,7 +28,7 @@ const version = value => String(value ?? '').replace(/^v/, '');
 export const productionTargets = Object.freeze(['linux', 'darwin', 'windows'].flatMap(goos =>
   ['amd64', 'arm64'].map(goarch => ({ goos, goarch, targets: goos === 'linux'
     ? ['./cmd/paneld', './cmd/kejilion-agent', './cmd/kejilion-node', './cmd/kpctl', './cmd/kpanel-mcp']
-    : ['./cmd/kpanel-mcp'] }))));
+    : goos === 'windows' ? ['./cmd/kejilion-node', './cmd/kpanel-mcp'] : ['./cmd/kpanel-mcp'] }))));
 
 export function productionClosure(packages, target, selected) {
   if (!Array.isArray(packages) || !packages.length) throw new Error('Empty production package closure');

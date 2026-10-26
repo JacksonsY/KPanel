@@ -181,7 +181,7 @@ test('bounded scan scope expires, binds source and targets, and requires exact i
 test('release inventory matrix and build-file hashes cover every supported release environment', () => {
   assert.deepEqual(productionTargets.map(t => `${t.goos}/${t.goarch}`), ['linux/amd64', 'linux/arm64', 'darwin/amd64', 'darwin/arm64', 'windows/amd64', 'windows/arm64']);
   for (const target of productionTargets) assert.deepEqual(target.targets, target.goos === 'linux'
-    ? ['./cmd/paneld', './cmd/kejilion-agent', './cmd/kejilion-node', './cmd/kpctl', './cmd/kpanel-mcp'] : ['./cmd/kpanel-mcp']);
+    ? ['./cmd/paneld', './cmd/kejilion-agent', './cmd/kejilion-node', './cmd/kpctl', './cmd/kpanel-mcp'] : target.goos === 'windows' ? ['./cmd/kejilion-node', './cmd/kpanel-mcp'] : ['./cmd/kpanel-mcp']);
   const policy = scopePolicy();
   assert.equal(firstPartySources(repo).sha256, policy.firstPartySourceSha256, 'first-party source observation changed');
   assert.deepEqual(Object.keys(policy.buildTargetFilesSha256), ['Dockerfile', '.github/workflows/release.yml', 'scripts/build-mcp-clients.sh', 'Makefile']);
