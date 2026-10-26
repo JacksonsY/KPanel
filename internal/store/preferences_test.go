@@ -115,3 +115,22 @@ func TestPreferencesRejectInvalidAndUnboundedState(t *testing.T) {
 		})
 	}
 }
+
+// Desktop routes accepted by the shipped catalogue must round-trip as UI state.
+func TestPreferencesAcceptCatalogueWindowRoutes(t *testing.T) {
+	for _, path := range []string{"/virtual-machines", "/virtual-machines?tab=instances", "/sites/monitor"} {
+		p := Preferences{Desktop: sampleDesktop()}
+		p.Desktop.Windows[0].Path = path
+		p.Desktop.WindowSizes[0].Path = strings.SplitN(path, "?", 2)[0]
+		if err := ValidatePreferences(p); err != nil {
+			t.Errorf("catalogue route %q: %v", path, err)
+		}
+	}
+	for _, path := range []string{"/virtual-machines/../settings", "/virtual-machines-extra", "/sites/monitor/other", "//virtual-machines"} {
+		p := Preferences{Desktop: sampleDesktop()}
+		p.Desktop.Windows[0].Path = path
+		if ValidatePreferences(p) == nil {
+			t.Errorf("accepted non-catalogue route %q", path)
+		}
+	}
+}
