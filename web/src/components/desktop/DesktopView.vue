@@ -3961,14 +3961,16 @@ function closeRename(): void {
 
 async function saveSite(draft: DesktopShortcutDraft, icon: File | undefined, removeIcon: boolean): Promise<void> {
   const entry = renameEntry.value
-  const name = draft.name.trim().slice(0, MAX_SITE_NAME_LENGTH)
+  const requestedName = draft.name.trim()
+  const defaultName = entry ? defaultSiteName(entry) : ''
+  const name = requestedName === defaultName ? defaultName : requestedName.slice(0, MAX_SITE_NAME_LENGTH)
   if (entry?.kind !== 'site' || !name || siteSaving.value) return
   siteSaving.value = true
   siteError.value = ''
   let nameSaved = false
   try {
     await desktopIcons.mutate((workspaceDraft) => {
-      if (name === defaultSiteName(entry)) delete workspaceDraft.labels[entry.key]
+      if (requestedName === defaultName) delete workspaceDraft.labels[entry.key]
       else workspaceDraft.labels[entry.key] = name
     })
     nameSaved = true

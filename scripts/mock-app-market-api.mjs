@@ -2267,7 +2267,7 @@ createServer(async (request, response) => {
       send(response, 409, { title: 'Desktop workspace changed', code: 'desktop_workspace_changed' })
       return
     }
-    send(response, 200, commitDesktopWorkspace(input))
+    send(response, 200, { ...commitDesktopWorkspace(input), siteIcons: Object.fromEntries([...desktopSiteIcons].map(([id, icon]) => [id, icon.version])) })
     return
   }
   if (request.method === 'GET' && url.pathname === '/api/v1/agent/health') {

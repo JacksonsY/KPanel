@@ -131,7 +131,7 @@ function reset(): void {
   iconFailed.value = false
 }
 
-watch(() => [props.open, props.shortcut?.id, props.site?.id] as const, ([open]) => {
+watch([() => props.open, () => props.shortcut?.id, () => props.site?.id], ([open]) => {
   if (open) reset()
   else clearPreview()
 }, { immediate: true })
@@ -193,7 +193,7 @@ function selectIcon(event: Event): void {
 function clearIcon(): void {
   clearPreview()
   icon.value = undefined
-  removeIcon.value = Boolean(props.site?.customIcon || props.shortcut?.iconVersion || props.shortcut?.iconURL)
+  removeIcon.value = Boolean(props.site || props.shortcut?.iconVersion || props.shortcut?.iconURL)
 }
 
 function normalizedURL(value: string): string | undefined {
