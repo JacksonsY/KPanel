@@ -87,6 +87,30 @@ func TestWindowsBatchRetryCannotChangePlatform(t *testing.T) {
 	}
 }
 
+func TestLegacyLinuxBatchRetryRetainsPlatformlessCompatibility(t *testing.T) {
+	s := newLightServiceForTest(t, &serviceTestClock{now: time.Now().UTC()})
+	batch, err := s.CreateLightBatchEnrollment(CreateLightBatchEnrollmentInput{MaxUses: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := LightEnrollRequest{Token: lightBatchTokenForTest(t, batch), AttemptID: strings.Repeat("d", 32)}
+	first, _, err := s.EnrollLightNodeBatch("198.51.100.1", s.publicURL, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.light.mu.Lock()
+	for i := range s.light.state.Hosts {
+		if s.light.state.Hosts[i].ID == first.NodeID {
+			s.light.state.Hosts[i].Platform = ""
+		}
+	}
+	s.light.mu.Unlock()
+	retry, _, err := s.EnrollLightNodeBatch("198.51.100.1", s.publicURL, input)
+	if err != nil || retry.NodeID != first.NodeID {
+		t.Fatalf("legacy Linux retry=%#v %v", retry, err)
+	}
+}
+
 func TestWindowsCommandQuotesArbitraryDisplayTextAndPinsBootstrap(t *testing.T) {
 	s := newLightServiceForTest(t, &serviceTestClock{now: time.Now().UTC()})
 	name := "Windows ‘测试’ $(Write-Output injected)"

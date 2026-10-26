@@ -185,7 +185,7 @@ func (s *Service) EnrollLightNodeBatch(
 	switch {
 	case err == nil:
 		storedTerminalKey, keyErr := s.light.ReadTerminalPublicKey(record)
-		if keyErr != nil || record.Platform != platform || record.Name != attempt.Name || !bytes.Equal(storedTerminalKey, terminalPublicKey) {
+		if keyErr != nil || normalizedLightPlatform(record.Platform) != platform || record.Name != attempt.Name || !bytes.Equal(storedTerminalKey, terminalPublicKey) {
 			return LightEnrollResponse{}, "", ErrIdentityMismatch
 		}
 	case errors.Is(err, ErrNotFound):
