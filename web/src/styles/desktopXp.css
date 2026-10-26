@@ -53,7 +53,7 @@ html[data-desktop-shell-style='xp'] {
   z-index: 1;
 }
 
-.desktop[data-shell-style='xp'] .desktop__icon-glyph--framed :is(.desktop__icon-img, .desktop__icon-monogram, .desktop__site-fallback-letter) {
+.desktop[data-shell-style='xp'] .desktop__icon-glyph--framed :is(.desktop__icon-img, .desktop__icon-monogram, .desktop__site-fallback-letter, .desktop__shortcut-artwork) {
   width: calc(100% - 16px);
   height: calc(100% - 16px);
   font-size: 20px;
@@ -63,6 +63,14 @@ html[data-desktop-shell-style='xp'] {
   border-radius: 0;
   box-shadow: none;
   text-shadow: none;
+}
+
+.desktop[data-shell-style='xp'] .desktop__icon-glyph--framed :is(.desktop__shortcut-artwork > svg, .desktop__shortcut-directory-image) {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 0;
+  filter: none;
 }
 
 html.desktop-mode-open[data-desktop-shell-style='xp'] body {

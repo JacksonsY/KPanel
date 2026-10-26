@@ -124,9 +124,51 @@ describe('DesktopEntryIcon touch interaction', () => {
       expect(glyph().classes()).not.toContain('desktop__icon-glyph--framed')
       shell.setStyle(style)
       await wrapper.setProps({ entry: { ...wrapper.props('entry')!, kind: 'shortcut', launch: 'directory' } })
-      expect(glyph().classes()).not.toContain('desktop__icon-glyph--framed')
+      expect(glyph().classes()).toContain('desktop__icon-glyph--framed')
       wrapper.unmount()
     }
+  })
+
+  it.each(['win98', 'xp'] as const)('frames every file type and follows live directory theme changes in %s', async (style) => {
+    const shell = useDesktopShellStyle()
+    shell.setStyle(style)
+    const samples = {
+      'photo.png': 'image', 'movie.mp4': 'media', 'backup.zip': 'archive',
+      'report.xlsx': 'spreadsheet', 'data.sqlite': 'database', 'slides.pptx': 'presentation',
+      'installer.deb': 'package', 'certificate.pem': 'secret', 'config.yaml': 'code',
+      'README.md': 'document', 'unknown.bin': 'generic',
+    }
+    for (const [name, kind] of Object.entries(samples)) {
+      const wrapper = mount(DesktopEntryIcon, { props: {
+        label: name, gradient: 'linear-gradient(#0aa, #066)', entry: {
+          key: `shortcut:${name}`, id: name, kind: 'shortcut', name, launch: 'file',
+        },
+      } })
+      expect(wrapper.get('.desktop__icon-glyph').classes()).toContain('desktop__icon-glyph--framed')
+      expect(wrapper.get('[data-file-icon-kind]').attributes('data-file-icon-kind')).toBe(kind)
+      await wrapper.trigger('keydown', { key: 'Enter' })
+      expect(wrapper.emitted('open')).toHaveLength(1)
+      await wrapper.setProps({ entry: { ...wrapper.props('entry')!, iconURL: '/custom-file.webp' } })
+      await wrapper.get('.desktop__icon-img').trigger('load')
+      expect(wrapper.find('.desktop__shortcut-artwork').exists()).toBe(false)
+      await wrapper.get('.desktop__icon-img').trigger('error')
+      expect(wrapper.get('[data-file-icon-kind]').attributes('data-file-icon-kind')).toBe(kind)
+      wrapper.unmount()
+    }
+    const wrapper = mount(DesktopEntryIcon, { props: {
+      label: 'backups', gradient: 'linear-gradient(#facc15, #ca8a04)', entry: {
+        key: 'shortcut:backups', id: 'backups', kind: 'shortcut', name: 'backups', launch: 'directory',
+      },
+    } })
+    expect(wrapper.get('.desktop__shortcut-directory-image').attributes('src')).toBe(`/desktop-icons/${style}/files-v1.svg`)
+    shell.setStyle(style === 'win98' ? 'xp' : 'win98')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('.desktop__shortcut-directory-image').attributes('src')).toBe(`/desktop-icons/${shell.preference.value}/files-v1.svg`)
+    shell.setStyle('modern')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('.desktop__shortcut-directory-image').attributes('src')).toContain('folder-open-shortcut-kpanel-flat')
+    expect(wrapper.get('.desktop__icon-glyph').classes()).not.toContain('desktop__icon-glyph--framed')
+    wrapper.unmount()
   })
 
   it.each(['site', 'shortcut'] as const)('uses the solid %s fallback only until its image loads', async (kind) => {
