@@ -20,25 +20,25 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go test -p 2 -c -o /out/browser-tests ./internal/webbrowser'
 
-FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS browser-base
-ARG DEBIAN_MIRROR=https://deb.debian.org/debian
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS browser-base
+ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 RUN --mount=type=secret,id=https_proxy,required=false \
     --mount=type=secret,id=proxy_ca,required=false,mode=0444 \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/cache/apk,sharing=locked \
     sh -eu -c 'if [ -f /run/secrets/https_proxy ]; then \
       export http_proxy="$(cat /run/secrets/https_proxy)" https_proxy="$(cat /run/secrets/https_proxy)"; fi; \
-    case "$DEBIAN_MIRROR" in https://deb.debian.org/debian|https://mirrors.ustc.edu.cn/debian|https://mirrors.tuna.tsinghua.edu.cn/debian) ;; *) exit 2;; esac; \
-    sed -i "s|http://deb.debian.org/debian-security|https://security.debian.org/debian-security|; s|http://deb.debian.org/debian$|$DEBIAN_MIRROR|" /etc/apt/sources.list.d/debian.sources; \
-    rm -f /etc/apt/apt.conf.d/docker-clean; \
-    if [ -f /run/secrets/proxy_ca ]; then export SSL_CERT_FILE=/run/secrets/proxy_ca; fi; \
-    apt-get -o Acquire::https::CaInfo="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}" update -o APT::Update::Error-Mode=any \
-    && apt-get -o Acquire::https::CaInfo="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}" install -y --no-install-recommends \
-       ca-certificates chromium chromium-sandbox fonts-noto-cjk fonts-liberation tini \
-    && dpkg-query -W > /usr/share/kpanel-browser-packages.txt \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 65532 browser \
-    && useradd --uid 65532 --gid 65532 --home-dir /tmp/browser --no-create-home browser'
+    case "$ALPINE_MIRROR" in https://dl-cdn.alpinelinux.org/alpine|https://mirrors.ustc.edu.cn/alpine|https://mirrors.tuna.tsinghua.edu.cn/alpine) ;; *) exit 2;; esac; \
+    sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|" /etc/apk/repositories; \
+    cp /etc/ssl/certs/ca-certificates.crt /tmp/stock-ca; \
+    if [ -f /run/secrets/proxy_ca ]; then cp /run/secrets/proxy_ca /etc/ssl/certs/ca-certificates.crt; fi; \
+    apk --cache-dir /var/cache/apk --update-cache add ca-certificates chromium chromium-swiftshader font-noto-cjk font-liberation tini \
+    && cp /tmp/stock-ca /etc/ssl/certs/ca-certificates.crt \
+    && rm /tmp/stock-ca \
+    && apk info -vv | sort > /usr/share/kpanel-browser-packages.txt \
+    && addgroup -g 65532 browser \
+    && adduser -D -H -u 65532 -G browser -h /tmp/browser browser \
+    && if [ ! -x /usr/bin/tini ]; then ln -s /sbin/tini /usr/bin/tini; fi'
 ENV HOME=/tmp/browser LANG=C.UTF-8
 USER 65532:65532
 WORKDIR /tmp

@@ -1,6 +1,6 @@
 # KPanel Browser 镜像
 
-可选独立组件：Debian 13、官方仓库 Chromium、中文字体和 `kpanel-browser`。
+可选独立组件：Alpine 3.24、官方仓库 Chromium 及软件渲染组件、中文字体和 `kpanel-browser`。
 不包含桌面环境，不挂载 Docker Socket，不发布宿主机端口，不改变 KPanel 主镜像。
 `amd64` / `arm64` 分别原生构建、运行和扫描后，才允许发布对应版本。
 
@@ -19,9 +19,9 @@ docker build -f packaging/browser/Dockerfile --target test -t kpanel-browser:tes
 sudo bash packaging/browser/verify.sh kpanel-browser:check kpanel-browser:test /absolute/evidence/path
 ```
 
-本地下载慢时可添加 `--build-arg DEBIAN_MIRROR=https://mirrors.ustc.edu.cn/debian`
-或使用清华镜像。仅切换构建容器的软件包下载地址，安全更新仍使用 Debian 官方源；
-保留 HTTPS、Debian 签名校验和构建缓存。公开 Actions 构建默认使用官方源。
+本地下载慢时可添加 `--build-arg ALPINE_MIRROR=https://mirrors.ustc.edu.cn/alpine`
+或使用清华镜像。仅切换构建容器的软件包下载地址，保留 HTTPS、APK 签名校验和构建缓存。
+公开 Actions 构建默认使用 Alpine 官方源，减少镜像站同步延迟对安全更新的影响。
 构建代理使用 `--secret id=https_proxy,env=HTTPS_PROXY`；代理需要额外可信证书时，
 可通过 `--secret id=proxy_ca,src=<可信 CA bundle>` 提供，仅在构建期间读取，不写入镜像。
 
@@ -45,7 +45,7 @@ sudo bash packaging/browser/verify.sh kpanel-browser:check kpanel-browser:test /
 
 ## 更新与发布
 
-镜像通过固定 Debian 基础层与签名软件源构建；镜像内的
+镜像通过固定 Alpine 基础层与签名软件源构建；镜像内的
 `/usr/share/kpanel-browser-packages.txt` 记录实际包版本。更新 Chromium 时构建新的组件版本，
 重新验收后替换摘要并重建容器；宿主机系统升级不会更新镜像中的 Chromium。
 会话使用临时目录，替换容器将结束当前网页会话。
@@ -56,6 +56,7 @@ sudo bash packaging/browser/verify.sh kpanel-browser:check kpanel-browser:test /
 也不修改 KPanel 的 VERSION、Release 或默认更新通道。当前试验发布入口不恢复部分成功的发布：
 任一版本或架构标签已占用便拒绝重新推送；修复后使用新的 RC 版本。
 首次稳定组件前需补齐发布附件恢复与新 Dockerfile 的统一依赖检测覆盖，由组件维护者负责。
+候选分支的相关 push 只执行双架构构建、真实浏览器测试与扫描，不运行发布 job 或读取 Docker Hub 凭据。
 
 seccomp profile 基于 Microsoft Playwright `v1.64.1` 的
 [`utils/docker/seccomp_profile.json`](https://github.com/microsoft/playwright/blob/v1.64.1/utils/docker/seccomp_profile.json)，
