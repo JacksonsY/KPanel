@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { appendFileSync, lstatSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -412,6 +413,7 @@ async function inspect(env) {
   return { plan, snapshot: snapshotData.snapshot, notesPath: snapshotData.notesPath, releaseId: snapshotData.identity.releaseId };
 }
 
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 if (process.argv[2] === 'freeze-assets') {
   try {
     const manifest = await freezeReleaseAssets(process.env);
@@ -439,4 +441,5 @@ if (process.argv[2] === 'freeze-assets') {
 } else if (process.argv[2] !== undefined) {
   process.stderr.write('Usage: node scripts/stable-release-recovery.mjs freeze-assets|validate-inputs|inspect\n');
   process.exitCode = 2;
+}
 }

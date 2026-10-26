@@ -1,7 +1,7 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
-  ["{0} 核", "{0} cores"], 
+  ["{0} 核", "{0} cores"],
   ["服务异常通知", "Service alerts"],
   ["切换主机", "Switch host"],
   ["本机", "Local host"],

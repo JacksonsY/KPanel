@@ -67,7 +67,7 @@ func descriptor(access Access, directory bool) (*windows.SECURITY_DESCRIPTOR, er
 
 // ValidateDescriptor rejects unknown ACE forms rather than assuming they cannot
 // grant write access. Secret files allow no read access outside the narrow role.
-func validateDescriptor(sd *windows.SECURITY_DESCRIPTOR, access Access, ancestor bool) error {
+func validateDescriptor(sd *windows.SECURITY_DESCRIPTOR, access Access, ancestor bool, programDataMetadata ...bool) error {
 	owner, _, err := sd.Owner()
 	if err != nil || owner == nil {
 		return errors.New("file owner unavailable")
@@ -109,7 +109,11 @@ func validateDescriptor(sd *windows.SECURITY_DESCRIPTOR, access Access, ancestor
 		if ancestor {
 			// ProgramData permits Users to create a new child; it must not permit them
 			// to delete/replace an existing protected child or modify its security.
-			if mask&(mutation&^(windows.FILE_WRITE_DATA|windows.FILE_APPEND_DATA)) != 0 {
+			blocked := mutation &^ (windows.FILE_WRITE_DATA | windows.FILE_APPEND_DATA)
+			if len(programDataMetadata) == 1 && programDataMetadata[0] && sid.IsWellKnown(windows.WinBuiltinUsersSid) {
+				blocked &^= windows.FILE_WRITE_EA | windows.FILE_WRITE_ATTRIBUTES
+			}
+			if mask&blocked != 0 {
 				return errors.New("unsafe parent DACL")
 			}
 			continue
@@ -151,7 +155,9 @@ func openChecked(path string, access Access, ancestor bool, rights uint32) (wind
 	if err != nil {
 		return fail(err)
 	}
-	if err := validateDescriptor(sd, access, ancestor); err != nil {
+	programData, knownErr := windows.KnownFolderPath(windows.FOLDERID_ProgramData, 0)
+	standardProgramData := ancestor && knownErr == nil && strings.EqualFold(filepath.Clean(path), filepath.Clean(programData))
+	if err := validateDescriptor(sd, access, ancestor, standardProgramData); err != nil {
 		return fail(err)
 	}
 	return h, nil
