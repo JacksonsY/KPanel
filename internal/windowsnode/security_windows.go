@@ -278,7 +278,7 @@ func EnsureDirectory(path string, access Access) error {
 	return windows.SetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, owner, nil, acl, nil)
 }
 
-func WriteAtomic(path string, content []byte, access Access) error {
+func WriteAtomic(path string, content []byte, access Access) (resultErr error) {
 	handles, err := lockParents(path)
 	if err != nil {
 		return err
@@ -300,32 +300,68 @@ func WriteAtomic(path string, content []byte, access Access) error {
 	// broad read access exists, including for the enrollment and Noise private keys.
 	name := path + fmt.Sprintf(".tmp-%d-%d", os.Getpid(), time.Now().UnixNano())
 	p, _ := windows.UTF16PtrFromString(name)
-	h, err := windows.CreateFile(p, windows.GENERIC_WRITE, 0, &sa, windows.CREATE_NEW, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	h, err := windows.CreateFile(p, windows.GENERIC_WRITE|windows.DELETE, 0, &sa, windows.CREATE_NEW, windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_WRITE_THROUGH, 0)
 	if err != nil {
 		return err
 	}
 	f := os.NewFile(uintptr(h), name)
-	defer os.Remove(name)
+	committed := false
+	defer func() {
+		if !committed {
+			// The sealed temporary file cannot be reopened by its administrator
+			// creator. Retain its original handle for both commit and cleanup.
+			remove := byte(1)
+			resultErr = errors.Join(resultErr, windows.SetFileInformationByHandle(h, windows.FileDispositionInfo, &remove, 1))
+		}
+		resultErr = errors.Join(resultErr, f.Close())
+	}()
 	if _, err = f.Write(content); err == nil {
 		err = f.Sync()
 	}
-	closeErr := f.Close()
 	if err != nil {
 		return err
 	}
-	if closeErr != nil {
-		return closeErr
-	}
-	target, _ := windows.UTF16PtrFromString(path)
 	for i := 0; i < 5; i++ {
-		err = windows.MoveFileEx(p, target, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+		err = renameAtomicHandle(h, handles[len(handles)-1], filepath.Base(path))
 		if err == nil {
-			return nil
+			committed = true
+			return f.Sync()
 		}
 		if !errors.Is(err, windows.ERROR_SHARING_VIOLATION) && !errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
 			return err
 		}
 		time.Sleep(time.Duration(i+1) * 100 * time.Millisecond)
+	}
+	return err
+}
+
+// Keep the source handle and the validated destination parent pinned. This is
+// the same native rename layout used by filemanager; no path reopen or temporary
+// administrator read ACE is needed for the SYSTEM-only handoff.
+func renameAtomicHandle(file, parent windows.Handle, leaf string) error {
+	if leaf == "" || leaf == "." || leaf == ".." || strings.ContainsAny(leaf, `\/:`) {
+		return errors.New("invalid atomic destination leaf")
+	}
+	name, err := windows.UTF16FromString(leaf)
+	if err != nil {
+		return err
+	}
+	name = name[:len(name)-1]
+	type renameInfo struct {
+		Replace uint32
+		Root    windows.Handle
+		Length  uint32
+		Name    [1]uint16
+	}
+	var header renameInfo
+	buffer := make([]byte, int(unsafe.Offsetof(header.Name))+len(name)*2)
+	info := (*renameInfo)(unsafe.Pointer(&buffer[0]))
+	info.Replace, info.Root, info.Length = 1, parent, uint32(len(name)*2)
+	copy(unsafe.Slice(&info.Name[0], len(name)), name)
+	err = windows.NtSetInformationFile(file, &windows.IO_STATUS_BLOCK{}, &buffer[0], uint32(len(buffer)), windows.FileRenameInformation)
+	var status windows.NTStatus
+	if errors.As(err, &status) {
+		return status.Errno()
 	}
 	return err
 }

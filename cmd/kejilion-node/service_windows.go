@@ -128,20 +128,20 @@ func installWindowsNode(arguments []string) (resultErr error) {
 	defer manager.Disconnect()
 	service, err := manager.CreateService(windowsnode.BootstrapService, executable, mgr.Config{StartType: mgr.StartManual, DisplayName: windowsnode.BootstrapService}, "service", "bootstrap")
 	if err != nil {
-		return err
+		return fmt.Errorf("create SYSTEM enrollment service: %w", err)
 	}
 	defer service.Close()
 	defer service.Delete()
 	requestPath := filepath.Join(windowsnode.DataDir(), "enrollment-request.json")
 	if err := windowsnode.WriteAtomic(requestPath, data, windowsnode.SystemOnly); err != nil {
-		return err
+		return fmt.Errorf("write SYSTEM enrollment handoff: %w", err)
 	}
 	if err := release(); err != nil {
 		return err
 	}
 	release = nil
 	if err := service.Start(); err != nil {
-		return err
+		return fmt.Errorf("start SYSTEM enrollment service: %w", err)
 	}
 	deadline := time.Now().Add(2 * time.Minute)
 	for time.Now().Before(deadline) {
