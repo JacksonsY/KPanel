@@ -25,6 +25,7 @@ type browserTab struct {
 	ctx              context.Context
 	cancel           context.CancelFunc
 	streaming        bool
+	width, height    int64
 	navigationCancel context.CancelFunc
 	navigationID     uint64
 	navigating       bool
@@ -58,6 +59,15 @@ func send[P any](ctx context.Context, command cdp.Command[P, cdp.Empty], params 
 	}
 	return err
 }
+
+// Chromium requires both wheel deltas, including a zero on the unused axis.
+// The generated optional fields omit zero values, so override their JSON tags.
+type wheelEventParams struct {
+	input.DispatchMouseEventParams
+	DeltaX float64 `json:"deltaX"`
+	DeltaY float64 `json:"deltaY"`
+}
+
 func browserCall[P, R any](ctx context.Context, command cdp.Command[P, R], params P) (R, error) {
 	return cdp.Call(ctx, chromedp.FromContext(ctx).Browser, command, params)
 }
@@ -290,6 +300,15 @@ func (s *browserSession) listen(tab *browserTab) {
 func (s *browserSession) stream() error {
 	for _, tab := range s.tabs {
 		want := s.visible && tab.ID == s.active
+		if want && (tab.width != s.width || tab.height != s.height) {
+			ctx, cancel := context.WithTimeout(tab.ctx, 5*time.Second)
+			err := send(ctx, emulation.SetDeviceMetricsOverride, emulation.SetDeviceMetricsOverrideParams{Width: s.width, Height: s.height, DeviceScaleFactor: 1})
+			cancel()
+			if err != nil {
+				return errors.New("browser_disconnected")
+			}
+			tab.width, tab.height = s.width, s.height
+		}
 		if tab.streaming == want {
 			continue
 		}
@@ -299,7 +318,9 @@ func (s *browserSession) stream() error {
 			quality := int64(70)
 			err = send(ctx, page.BringToFront, cdp.Empty{})
 			if err == nil {
-				err = send(ctx, page.StartScreencast, page.StartScreencastParams{Format: page.StartScreencastFormatJpeg, Quality: &quality, MaxWidth: s.width, MaxHeight: s.height, MaxFramesInFlight: 2})
+				// Keep the capture ceiling stable across viewport changes. Restarting
+				// during navigation can fail while Chromium swaps its active page.
+				err = send(ctx, page.StartScreencast, page.StartScreencastParams{Format: page.StartScreencastFormatJpeg, Quality: &quality, MaxWidth: 1600, MaxHeight: 1000, MaxFramesInFlight: 2})
 			}
 		} else {
 			err = send(ctx, page.StopScreencast, cdp.Empty{})
@@ -357,6 +378,7 @@ func (s *browserSession) Execute(c Command, executable string, private []netip.P
 			cancel()
 			return errors.New("browser_start_failed")
 		}
+		tab.width, tab.height = s.width, s.height
 		s.tabs = append(s.tabs, tab)
 		s.active = tab.ID
 		if c.URL != "" {
@@ -452,11 +474,7 @@ func (s *browserSession) Execute(c Command, executable string, private []netip.P
 		err = send(ctx, page.StopLoading, cdp.Empty{})
 		tab.Loading = false
 	case "resize":
-		err = send(ctx, emulation.SetDeviceMetricsOverride, emulation.SetDeviceMetricsOverrideParams{Width: c.Width, Height: c.Height, DeviceScaleFactor: 1})
-		if tab.streaming {
-			_ = send(ctx, page.StopScreencast, cdp.Empty{})
-			tab.streaming = false
-		}
+		// stream synchronizes the active target without restarting capture.
 	case "text":
 		err = send(ctx, input.InsertText, input.InsertTextParams{Text: c.Text})
 	case "key":
@@ -473,7 +491,11 @@ func (s *browserSession) Execute(c Command, executable string, private []netip.P
 		if c.Action == "mousePressed" || c.Action == "mouseReleased" {
 			p.ClickCount = 1
 		}
-		err = send(ctx, input.DispatchMouseEvent, p)
+		if c.Action == "mouseWheel" {
+			err = send(ctx, cdp.Command[wheelEventParams, cdp.Empty]{Method: input.CommandDispatchMouseEvent}, wheelEventParams{DispatchMouseEventParams: p, DeltaX: c.DeltaX, DeltaY: c.DeltaY})
+		} else {
+			err = send(ctx, input.DispatchMouseEvent, p)
+		}
 	case "dialog":
 		err = send(ctx, page.HandleJavaScriptDialog, page.HandleJavaScriptDialogParams{Accept: c.Accept, PromptText: c.Text})
 	default:

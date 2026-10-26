@@ -157,8 +157,10 @@ function external(): void { const url = browserInput(address.value || activeTab.
 function resize(): void {
   if (!screen.value || !visible.value) return
   const box = screen.value.getBoundingClientRect()
+  if (box.width <= 0 || box.height <= 0) return
+  const scale = Math.max(1, box.width / 1600, box.height / 1000)
   clearTimeout(resizeTimer)
-  resizeTimer = setTimeout(() => send({ type: 'resize', width: Math.max(320, Math.min(1600, Math.round(box.width))), height: Math.max(240, Math.min(1000, Math.round(box.height))) }), 140)
+  resizeTimer = setTimeout(() => send({ type: 'resize', width: Math.max(320, Math.round(box.width / scale)), height: Math.max(240, Math.round(box.height / scale)) }), 140)
 }
 function pointer(event: PointerEvent, action: string): void {
   if (!imageReady.value || !frame.value || startPage.value) return
@@ -171,8 +173,10 @@ function pointer(event: PointerEvent, action: string): void {
 }
 function wheel(event: WheelEvent): void {
   if (!frame.value || !imageReady.value) return
-  const point = browserCoordinates(event.clientX, event.clientY, frame.value.getBoundingClientRect(), width.value, height.value)
-  if (point) send({ type: 'mouse', action: 'mouseWheel', ...point, deltaX: Math.max(-3000, Math.min(3000, event.deltaX)), deltaY: Math.max(-3000, Math.min(3000, event.deltaY)), button: 'none' })
+  const box = frame.value.getBoundingClientRect()
+  const point = browserCoordinates(event.clientX, event.clientY, box, width.value, height.value)
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? box.height : 1
+  if (point) send({ type: 'mouse', action: 'mouseWheel', ...point, deltaX: Math.max(-3000, Math.min(3000, event.deltaX * unit * width.value / box.width)), deltaY: Math.max(-3000, Math.min(3000, event.deltaY * unit * height.value / box.height)), button: 'none', modifiers: modifiers(event) })
 }
 function modifiers(event: { altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }): number { return Number(event.altKey) + Number(event.ctrlKey) * 2 + Number(event.metaKey) * 4 + Number(event.shiftKey) * 8 }
 function key(event: KeyboardEvent, action: string): void {
@@ -186,7 +190,7 @@ function textInput(event: Event): void { if (composing.value || (event as InputE
 function insert(): void { if (text.value) { insertText(text.value); text.value = '' } }
 function answer(accept: boolean): void { if (dialog.value) send({ type: 'dialog', tab: dialog.value.tab, accept }); dialog.value = undefined }
 function documentVisibility(): void { documentVisible.value = !document.hidden }
-watch(visible, value => send({ type: 'visible', visible: value }))
+watch(visible, value => { send({ type: 'visible', visible: value }); if (value) void nextTick(resize) })
 watch([activeID, startPage, newTabPending], () => void nextTick(() => tabStrip.value?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })))
 watch(launch, value => { if (!value) return; const url = browserInput(value.url); if (!url) return; const tab = tabs.value.find(tab => tab.url === url); if (tab) select(tab); else { newTabPending.value = true; openURL(url) } }, { immediate: true })
 watch(() => route.query.url, raw => { const value = Array.isArray(raw) ? raw[0] : raw; if (value) { const url = browserInput(value); if (url) openURL(url) } }, { immediate: true })
@@ -259,7 +263,7 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); clearTimeout(r
 .web-browser__emblem{display:grid;place-items:center;width:5rem;height:5rem;border-radius:var(--radius-lg);background:var(--brand-soft);color:var(--brand);margin-bottom:1rem}.web-browser__start h1{font-size:clamp(1.25rem,2vw,1.65rem);line-height:1.4;font-weight:600;margin:0 0 .6rem}
 .web-browser__search{display:flex;align-items:center;gap:.75rem;width:min(100%,36rem);padding:.55rem .6rem .55rem 1rem;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface-raised);box-shadow:var(--shadow-sm)}.web-browser__search>svg{flex-shrink:0;color:var(--muted)}.web-browser__search input{min-width:0;flex:1;border:0;background:none;color:var(--text);font:inherit;outline:none}.web-browser__search:focus-within{border-color:var(--brand)}.web-browser__search .button{display:flex;align-items:center;gap:.4rem;white-space:nowrap;font-size:.875rem}
 .web-browser__quick{width:min(100%,36rem);margin-top:2rem;text-align:left}.web-browser__quick h2{font-size:.8125rem;font-weight:500;color:var(--muted);margin:0 0 .75rem}.web-browser__quick>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(5rem,1fr));gap:.5rem}.web-browser__quick button{display:flex;flex-direction:column;align-items:center;gap:.6rem;min-width:0;padding:.8rem .4rem;border:0;border-radius:var(--radius-sm);background:none;color:var(--text);font:inherit;cursor:pointer}.web-browser__quick button:hover{background:var(--surface-subtle)}.web-browser__quick img{width:2rem;height:2rem;object-fit:contain}.web-browser__quick span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.web-browser__viewport{position:relative;min-height:100%;display:flex;align-items:flex-start;justify-content:center;background:var(--surface-subtle)}.web-browser__viewport canvas{display:block;max-width:100%;height:auto;visibility:hidden;touch-action:none}.web-browser__viewport canvas.is-ready{visibility:visible}.web-browser__loading{position:absolute;inset:0;display:flex;gap:.75rem;align-items:center;justify-content:center;color:var(--muted)}.web-browser__keyboard{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;resize:none;padding:0;border:0}
+.web-browser__viewport{position:absolute;inset:0;overflow:hidden;display:flex;align-items:flex-start;justify-content:center;background:var(--surface-subtle)}.web-browser__viewport canvas{display:block;width:100%;height:100%;visibility:hidden;touch-action:none}.web-browser__viewport canvas.is-ready{visibility:visible}.web-browser__loading{position:absolute;inset:0;display:flex;gap:.75rem;align-items:center;justify-content:center;color:var(--muted)}.web-browser__keyboard{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;resize:none;padding:0;border:0}
 .web-browser__footer{display:flex;align-items:center;flex-wrap:wrap;gap:.75rem;border-top:1px solid var(--border);padding:.5rem .85rem;color:var(--muted);font-size:.8125rem}.web-browser__footer>span:first-child{display:flex;gap:.4rem;align-items:center;white-space:nowrap}.web-browser__dot{width:.4rem;height:.4rem;border-radius:50%;background:var(--muted)}.web-browser__dot.is-connected{background:var(--brand)}.web-browser__session-hint{flex:1;min-width:10rem;font-size:.8125rem;line-height:1.5}.web-browser__footer form{display:flex;gap:.4rem;flex:1;min-width:10rem}.web-browser__footer input{min-width:0;width:100%;padding:.35rem .5rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font:inherit;font-size:.875rem}.web-browser__footer button{border:0;background:none;color:var(--brand);font-size:.875rem;white-space:nowrap;cursor:pointer}.web-browser__notice{display:flex;gap:.75rem;align-items:center;justify-content:space-between;padding:.4rem .85rem;border-bottom:1px solid var(--border);background:var(--brand-soft);font-size:.875rem;line-height:1.5}.web-browser__dialog{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.875rem;line-height:1.6}
 .web-browser button:focus-visible,.web-browser__tabs button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}.is-spinning{animation:browser-spin calc(var(--motion-duration-ambient) * 2) linear infinite}@keyframes browser-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.is-spinning{animation:none}}@media(max-width:600px){.web-browser__toolbar{flex-wrap:wrap}.web-browser__address{order:-1;flex-basis:100%}.web-browser__network{font-size:.8125rem}.web-browser__start,.web-browser__state{padding:1.5rem 1rem}.web-browser__session-hint{display:none}}
 </style>

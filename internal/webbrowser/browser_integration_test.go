@@ -14,8 +14,99 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/chromedp"
 	"github.com/coder/websocket"
 )
+
+func TestRealBrowserWheelAndViewport(t *testing.T) {
+	executable := os.Getenv("KPANEL_TEST_CHROME")
+	if executable == "" {
+		t.Skip("set KPANEL_TEST_CHROME")
+	}
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<title>Scroll</title><style>body{margin:0;width:3000px;height:4000px;background:linear-gradient(red,blue)}</style>`))
+	}))
+	defer app.Close()
+	s := newBrowserSession(context.Background())
+	defer s.Close()
+	ranges := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	execute := func(c Command) {
+		t.Helper()
+		if err := s.Execute(c, executable, ranges); err != nil {
+			t.Fatal(err)
+		}
+	}
+	execute(Command{Type: "resize", Width: 1088, Height: 560})
+	execute(Command{Type: "new", URL: app.URL})
+	deadline := time.Now().Add(8 * time.Second)
+	for s.Snapshot().Tabs[0].Loading && time.Now().Before(deadline) {
+		time.Sleep(30 * time.Millisecond)
+	}
+	first := s.active
+	tab := s.selected(first)
+	for _, delta := range [][2]float64{{0, 400}, {300, 0}, {0, -200}, {-150, 0}} {
+		before, err := chromedp.Run(tab.ctx, chromedp.Evaluate[[2]float64](`[scrollX,scrollY]`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var after [2]float64
+
+		execute(Command{Type: "mouse", Action: "mouseWheel", Button: "none", X: 200, Y: 200, DeltaX: delta[0], DeltaY: delta[1]})
+		deadline = time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			after, err = chromedp.Run(tab.ctx, chromedp.Evaluate[[2]float64](`[scrollX,scrollY]`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after != before {
+				break
+			}
+			time.Sleep(30 * time.Millisecond)
+		}
+		if after == before {
+			t.Fatalf("wheel %v did not move page: %v", delta, after)
+		}
+	}
+	execute(Command{Type: "new", URL: app.URL})
+	execute(Command{Type: "resize", Width: 1200, Height: 700})
+	deadline = time.Now().Add(8 * time.Second)
+	for s.Snapshot().Tabs[1].Loading && time.Now().Before(deadline) {
+		time.Sleep(30 * time.Millisecond)
+	}
+	execute(Command{Type: "resize", Width: 1400, Height: 800})
+	execute(Command{Type: "select", Tab: first})
+	size, err := chromedp.Run(tab.ctx, chromedp.Evaluate[[2]int](`[innerWidth,innerHeight]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size != [2]int{1400, 800} {
+		t.Fatalf("selected tab kept stale viewport: %v", size)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("resized tab did not produce a full viewport frame")
+		case frame := <-s.frames:
+			if frame.Tab != first || frame.Width != 1400 || frame.Height != 800 {
+				continue
+			}
+			data, err := base64.StdEncoding.DecodeString(frame.Image)
+			if err != nil {
+				t.Fatal(err)
+			}
+			image, err := jpeg.DecodeConfig(bytes.NewReader(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if image.Width != 1400 || image.Height != 800 {
+				t.Fatalf("capture scaled inside viewport: %dx%d", image.Width, image.Height)
+			}
+			return
+		}
+	}
+}
 
 func TestRealBrowserNavigationCanStopAndPopupSelfClose(t *testing.T) {
 	executable := os.Getenv("KPANEL_TEST_CHROME")
