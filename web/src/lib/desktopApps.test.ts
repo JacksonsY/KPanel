@@ -34,6 +34,7 @@ describe('desktop app catalogue', () => {
     expect(paths).toEqual(
       expect.arrayContaining([
         '/overview',
+        '/browser',
         '/monitoring',
         '/processes',
         '/system',
@@ -53,7 +54,7 @@ describe('desktop app catalogue', () => {
         '/offers',
       ]),
     )
-    expect(desktopApps).toHaveLength(18)
+    expect(desktopApps).toHaveLength(19)
   })
 
   it('lets every fixed system entry be hidden from the desktop', () => {

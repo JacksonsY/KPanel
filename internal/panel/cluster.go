@@ -85,6 +85,9 @@ func (s *Server) StartBackground(ctx context.Context) {
 func (s *Server) Close() error {
 	s.requestsMu.Lock()
 	s.requestsClosed = true
+	for _, cancel := range s.browserCancels {
+		cancel()
+	}
 	s.requestsMu.Unlock()
 	if s.shareThemes != nil {
 		s.shareThemes.Close()

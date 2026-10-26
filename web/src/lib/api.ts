@@ -1296,6 +1296,10 @@ async function resizeAppTerminal(id: string, rows: number, columns: number): Pro
 }
 
 export const api = {
+  browser: {
+    status: (signal?: AbortSignal) => request<{ ready: boolean; reason?: string; maxTabs: number }>('/browser/status', { signal }),
+    csrf: () => csrfToken,
+  },
   virtualMachines: {
     list: (signal?: AbortSignal) => request<VMSnapshot>('/virtual-machines', { signal }),
     action: (input: VMRequest) => request<VMJob>('/virtual-machines/actions', { method: 'POST', body: input }),

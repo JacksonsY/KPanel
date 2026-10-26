@@ -42,6 +42,8 @@ type Config struct {
 	MaxAgentBytes       int64         `json:"maxAgentBytes"`
 	TrustedProxyCIDRs   []string      `json:"trustedProxyCidrs"`
 	ClusterPrivateCIDRs []string      `json:"clusterPrivateCidrs"`
+	BrowserServiceURL   string        `json:"browserServiceUrl,omitempty"`
+	BrowserTokenFile    string        `json:"browserTokenFile,omitempty"`
 }
 
 func DefaultConfig() Config {
@@ -103,6 +105,8 @@ func LoadConfig(path string) (Config, error) {
 	applyStringEnv("KEJILION_PANEL_UPDATE_FREEZE_FILE", &config.UpdateFreezeFile)
 	applyStringEnv("KEJILION_PANEL_WEB_ROOT", &config.WebRoot)
 	applyStringEnv("KEJILION_PANEL_PUBLIC_URL", &config.PublicURL)
+	applyStringEnv("KEJILION_PANEL_BROWSER_SERVICE_URL", &config.BrowserServiceURL)
+	applyStringEnv("KEJILION_PANEL_BROWSER_TOKEN_FILE", &config.BrowserTokenFile)
 	applyStringEnv("KEJILION_PANEL_PASSKEY_ORIGIN", &config.PasskeyOrigin)
 	applyStringEnv("KEJILION_PANEL_COOKIE_NAME", &config.CookieName)
 	applyStringEnv("KEJILION_PANEL_SESSION_TTL", &config.SessionTTLText)
@@ -171,6 +175,14 @@ func LoadConfig(path string) (Config, error) {
 }
 
 func (c Config) Validate() error {
+	if c.BrowserServiceURL != "" {
+		u, err := url.Parse(c.BrowserServiceURL)
+		if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || (u.Scheme != "http" && u.Scheme != "https") || !filepath.IsAbs(c.BrowserTokenFile) || pathsOverlap(c.WebRoot, c.BrowserTokenFile) {
+			return errors.New("invalid browser service URL or private token path")
+		}
+	} else if c.BrowserTokenFile != "" {
+		return errors.New("browser token requires a browser service URL")
+	}
 	switch {
 	case strings.TrimSpace(c.Listen) == "":
 		return errors.New("listen address is required")
@@ -212,6 +224,14 @@ func (c Config) Validate() error {
 	}
 	if c.TOTPKeyPath != "" {
 		protectedPaths["totpKeyPath"] = c.TOTPKeyPath
+	}
+	if c.BrowserTokenFile != "" {
+		for label, path := range protectedPaths {
+			if label != "dataDir" && samePath(c.BrowserTokenFile, path) {
+				return errors.New("browser service token path must be distinct")
+			}
+		}
+		protectedPaths["browserTokenFile"] = c.BrowserTokenFile
 	}
 	for label, protectedPath := range protectedPaths {
 		if pathsOverlap(c.WebRoot, protectedPath) {

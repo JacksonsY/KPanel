@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { isDesktopCommandShortcut } from '@/lib/desktopCommandShortcuts'
+import { browserLinksKey, browserInput, browserLaunchKey, type BrowserLaunch } from '@/lib/webBrowser'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import {
@@ -367,6 +368,9 @@ function applySiteNames(value?: DesktopEntries): DesktopEntries | undefined {
 }
 
 const entries = ref<DesktopEntries | undefined>(applySiteNames(getCachedDesktopEntries()))
+const browserLaunch = ref<BrowserLaunch>()
+provide(browserLaunchKey, browserLaunch)
+provide(browserLinksKey, computed(() => (entries.value?.visible || []).flatMap(entry => entry.url && browserInput(entry.url) ? [{ id: entry.key, name: entry.name, url: entry.url, iconURL: entry.iconURL }] : [])))
 const systemResources = ref<SystemResourceSnapshot>()
 const entriesLoading = ref(!entries.value)
 let entriesAbort: AbortController | undefined
@@ -1353,7 +1357,7 @@ function openEntry(entry: DesktopEntry): void {
     return
   }
   if (entry.url) {
-    requestExternalOpen(entry)
+    openBrowserEntry(entry)
     return
   }
 }
@@ -1443,6 +1447,22 @@ function requestExternalOpen(entry: DesktopEntry): void {
   if (!entry.url) return
   externalOpenImageFailed.value = false
   externalOpenEntry.value = entry
+}
+
+function openBrowserEntry(entry: DesktopEntry): void {
+  const url = entry.url && browserInput(entry.url)
+  if (!url) return
+  // Launch intents stay in memory; website URLs never enter saved desktop layouts.
+  const path = '/browser'
+  browserLaunch.value = { url, request: crypto.randomUUID() }
+  const existing = openWindows.value.find(window => desktopRoutePath(window.path) === '/browser')
+  if (existing) {
+    desktop.updateWindowRoute(existing.id, path, 'route.browser')
+    desktop.restoreWindow(existing.id)
+    return
+  }
+  const id = desktop.openWindow(path, 'route.browser', false, true)
+  if (!id) toast.show(i18n.t('desktop.windowLimitTitle'), { message: i18n.t('desktop.windowLimitMessage') })
 }
 
 function closeExternalOpen(): void {
@@ -4954,7 +4974,7 @@ function onViewportResize(): void {
             {{ menuEntry.launch === 'script'
               ? i18n.t('desktop.entryScriptManage')
               : menuEntry.url
-                ? i18n.t('desktop.systemBrowserOpen')
+                ? i18n.t('desktop.internalBrowserOpen')
                 : i18n.t('desktop.entryOpen') }}
           </button>
           <button
@@ -5028,6 +5048,7 @@ function onViewportResize(): void {
               ? i18n.t('desktop.removeFromDesktop')
               : i18n.t('desktop.shortcutDelete') }}
           </button>
+          <button v-if="menuEntry.url" type="button" role="menuitem" @click="requestExternalOpen(menuEntry); closeContextMenu()"><ExternalLink :size="15" aria-hidden="true" />{{ i18n.t('desktop.systemBrowserOpen') }}</button>
         </template>
         <template v-else-if="menuNavPath">
           <button type="button" role="menuitem" @click="onNavMenuOpen">

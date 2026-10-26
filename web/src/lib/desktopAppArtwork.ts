@@ -3,6 +3,7 @@ import type { DesktopShellStyle } from '@/stores/desktopShellStyle'
 
 /** Original, local artwork for the fixed system launchers only. */
 const windowsIconNames: Readonly<Record<string, string>> = {
+  '/browser': 'browser',
   '/virtual-machines': 'virtualmachines',
   '/overview': 'overview',
   '/monitoring': 'monitoring',

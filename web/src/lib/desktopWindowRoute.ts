@@ -131,6 +131,7 @@ export function resolveWindowComponent(path: string): Promise<Component> {
 /** Build the complete route table used by every desktop window. */
 export function windowRouteRecords(): RouteRecordRaw[] {
   return [
+    { path: '/browser', name: 'browser', component: WINDOW_ROUTE_PLACEHOLDER },
     { path: '/command-shortcut/:shortcutId([a-f0-9]{32})', name: 'command-shortcut', component: WINDOW_ROUTE_PLACEHOLDER },
     { path: '/', redirect: '/overview' },
     {
