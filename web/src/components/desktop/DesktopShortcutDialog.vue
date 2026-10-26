@@ -378,6 +378,8 @@ onBeforeUnmount(() => { clearPreview(); importController?.abort() })
 .desktop-shortcut-form__field-heading { font-size: 14px; }
 select.desktop-shortcut-form__control { width: 100%; min-width: 0; color: var(--text); font-size: 14px; }
 .desktop-site-domain { overflow-wrap: anywhere; }
+.desktop-shortcut-form__icon-actions small { font-size: 13px; }
+.desktop-shortcut-form__error { font-size: 14px; }
 .desktop-shortcut-form__field > small { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .desktop-shortcut-form__field > p { margin: 0; color: var(--danger); font-size: 14px; }
 </style>
