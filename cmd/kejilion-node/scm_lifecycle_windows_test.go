@@ -136,6 +136,17 @@ func TestWindowsHostedSCMLifecycle(t *testing.T) {
 			t.Errorf("SCM cleanup/uninstall failed: %v: %.1500s", err, output)
 		}
 	})
+	// Identify protected-file versus SCM failures without changing the installer.
+	releaseLifecycle, err := windowsnode.AcquireLifecycle()
+	if err != nil {
+		t.Fatalf("lifecycle preflight: %v", err)
+	}
+	if err := releaseLifecycle(); err != nil {
+		t.Fatalf("lifecycle release preflight: %v", err)
+	}
+	if err := windowsnode.WriteAtomic(filepath.Join(windowsnode.DataDir(), "acceptance-sealed-preflight.json"), []byte("fixture-only"), windowsnode.SystemOnly); err != nil {
+		t.Fatalf("sealed atomic handoff preflight: %v", err)
+	}
 	pin := sha256.Sum256(center.Certificate().RawSubjectPublicKeyInfo)
 	wire, _ := json.Marshal(tokenWire{Version: 1, Origin: center.URL, ID: strings.Repeat("c", 32), Secret: base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32)), ExpiresAt: time.Now().Add(5 * time.Minute).Unix(), TLSPublicKeyPin: base64.RawURLEncoding.EncodeToString(pin[:])})
 	request, _ := json.Marshal(windowsInstallRequest{Token: lightTokenPrefix + base64.RawURLEncoding.EncodeToString(wire), Name: "isolated-hosted-scm", Capabilities: "monitoring,terminal,files", SHA256: hex.EncodeToString(digest[:])})
