@@ -233,7 +233,8 @@ onBeforeUnmount(pause)
 .vm-search input { width: 100%; }
 .vm-page input,.vm-page select,.vm-form input,.vm-form select,.vm-form textarea { min-width: 0; padding: .65rem .75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-size: .875rem; }
 .vm-list { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
-.vm-row { display: grid; grid-template-columns: minmax(10rem,1.3fr) minmax(10rem,1fr) auto; gap: 1rem; align-items: center; padding: 1.125rem 1.25rem; }
+.vm-row { display: grid; grid-template-columns: minmax(10rem,1.3fr) minmax(10rem,1fr) minmax(0,1fr); gap: 1rem; align-items: center; padding: 1.125rem 1.25rem; }
+.vm-row>.vm-actions { min-width: 0; justify-content: flex-end; }
 .vm-row+.vm-row { border-top: 1px solid var(--border); }
 .vm-machine>div,.vm-resource { display: grid; gap: .45rem; min-width: 0; }
 .vm-machine :deep(.vm-system-icon) { color: var(--brand); }
