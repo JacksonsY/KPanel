@@ -155,7 +155,8 @@ func TestWindowsHostedSCMLifecycle(t *testing.T) {
 	if output, err := install.CombinedOutput(); err != nil {
 		message := strings.ReplaceAll(string(output), lightTokenPrefix+base64.RawURLEncoding.EncodeToString(wire), "<redacted-enrollment>")
 		message = strings.ReplaceAll(message, base64.RawURLEncoding.EncodeToString(secret), "<redacted-reporting-key>")
-		t.Fatalf("real SYSTEM bootstrap failed: %v: %.1500s", err, message)
+		diagnostic := diagnoseHostedBootstrap(ctx, manager, request)
+		t.Fatalf("real SYSTEM bootstrap failed: %v: %.1500s; diagnostic: %.1500s", err, message, diagnostic)
 	}
 	clear(request)
 	assertRunning := func() {
@@ -304,6 +305,49 @@ func TestWindowsHostedSCMLifecycle(t *testing.T) {
 	t.Log("real SYSTEM uninstall removed product services; reboot-pending files remain allowed")
 }
 
+// The normal product install must still pass. On failure, a protected test-only
+// SYSTEM service calls the same bootstrap once to expose its returned error.
+// It never converts that failed installation into an acceptance success.
+func diagnoseHostedBootstrap(ctx context.Context, manager *mgr.Mgr, request []byte) string {
+	data, err := os.ReadFile(os.Args[0])
+	if err != nil {
+		return "cannot read diagnostic helper"
+	}
+	path := filepath.Join(windowsnode.InstallDir(), acceptanceHelper)
+	if err := windowsnode.WriteAtomic(path, data, windowsnode.ProgramRead); err != nil {
+		return "cannot stage diagnostic helper: " + err.Error()
+	}
+	s, err := manager.CreateService(acceptanceService, path, mgr.Config{StartType: mgr.StartManual}, "-test.run=^TestWindowsHostedSCMUpdaterHelper$")
+	if err != nil {
+		return "cannot register diagnostic helper: " + err.Error()
+	}
+	defer s.Close()
+	defer s.Delete()
+	defer s.Control(svc.Stop)
+	if err := windowsnode.WriteAtomic(filepath.Join(windowsnode.DataDir(), "enrollment-request.json"), request, windowsnode.SystemOnly); err != nil {
+		return "cannot restore diagnostic handoff: " + err.Error()
+	}
+	if err := windowsnode.WriteAtomic(filepath.Join(windowsnode.DataDir(), "acceptance-plan.json"), []byte(`{"mode":"bootstrap-diagnostic"}`), windowsnode.SystemOnly); err != nil {
+		return "cannot write diagnostic plan: " + err.Error()
+	}
+	if err := s.Start(); err != nil {
+		return "cannot start diagnostic helper: " + err.Error()
+	}
+	result := filepath.Join(windowsnode.InstallDir(), "acceptance-result.json")
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(result); err == nil {
+			return string(data)
+		}
+		select {
+		case <-ctx.Done():
+			return "diagnostic cancelled"
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return "diagnostic timed out"
+}
+
 // Only the protected test executable registered above can run this SYSTEM helper.
 func TestWindowsHostedSCMUpdaterHelper(t *testing.T) {
 	if !windowsnode.IsSystem() {
@@ -323,8 +367,29 @@ func TestWindowsHostedSCMUpdaterHelper(t *testing.T) {
 				Mode   string `json:"mode"`
 				Digest string `json:"digest"`
 			}
-			if json.Unmarshal(data, &plan) != nil || (plan.Mode != "apply" && plan.Mode != "rollback") {
+			if json.Unmarshal(data, &plan) != nil || (plan.Mode != "apply" && plan.Mode != "rollback" && plan.Mode != "bootstrap-diagnostic") {
 				return errors.New("invalid acceptance plan")
+			}
+			if plan.Mode == "bootstrap-diagnostic" {
+				data, err := windowsnode.ReadFile(filepath.Join(windowsnode.DataDir(), "enrollment-request.json"), 8192, windowsnode.SystemOnly)
+				if err != nil {
+					return errors.New("diagnostic handoff unavailable")
+				}
+				var request windowsInstallRequest
+				if json.Unmarshal(data, &request) != nil {
+					return errors.New("diagnostic handoff invalid")
+				}
+				err = bootstrapWindowsNode()
+				message := "bootstrap returned success on diagnostic replay; original install remains failed"
+				if err != nil {
+					message = err.Error()
+				}
+				message = strings.ReplaceAll(message, request.Token, "<redacted-enrollment>")
+				message = strings.ReplaceAll(message, base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)), "<redacted-reporting-key>")
+				if len(message) > 1500 {
+					message = message[:1500]
+				}
+				return errors.New(message)
 			}
 			live := filepath.Join(windowsnode.InstallDir(), "kejilion-node.exe")
 			before, err := os.ReadFile(live)
