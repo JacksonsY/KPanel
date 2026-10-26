@@ -322,6 +322,26 @@ test('stable recovery accepts only the exact image-promoted and GitHub-publish-f
   ] }] }, expected, identity }));
 });
 
+test('frozen legacy 15-asset receipts retain their exact original inventory', () => {
+  const version='1.27.0';
+  const assets=expectedReleaseAssetNames(version,{windowsCommandNode:false}).map((name,i)=>({name,size:100+i,digest:'sha256:'+String(i+1).padStart(64,'0')}));
+  assert.equal(assets.length,15);
+  const manifest={version,releaseId:42,assets};
+  const release={id:42,tag_name:'v'+version,draft:true,prerelease:false,assets:assets.map(item=>({...item,state:'uploaded'}))};
+  assert.doesNotThrow(()=>validateReleaseAssetInventory(release,manifest));
+  assert.throws(()=>validateReleaseAssetInventory(release,{...manifest,assetSet:'windows-command-v1'}));
+  assert.throws(()=>validateReleaseAssetInventory(release,{...manifest,assetSet:'unrecognized'}));
+  assert.throws(()=>validateReleaseAssetInventory({...release,assets:release.assets.slice(1)},manifest));
+});
+
+test('importing the release inventory never dispatches CLI operations', () => {
+  const url=new URL('../stable-release-recovery.mjs',import.meta.url).href;
+  const source='process.argv[2]="unused"; await import('+JSON.stringify(url)+');';
+  const result=spawnSync(process.execPath,['--input-type=module','-e',source],{encoding:'utf8',timeout:10_000});
+  assert.equal(result.status,0,result.stderr);
+  assert.equal(result.stdout,'');
+});
+
 test('original release asset inventory binds every uploaded name, byte digest and size', () => {
   const root = mkdtempSync(join(tmpdir(), 'kpanel-release-assets-'));
   const releaseDirectory = join(root, 'release');

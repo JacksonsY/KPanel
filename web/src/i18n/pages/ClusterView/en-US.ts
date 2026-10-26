@@ -339,7 +339,6 @@ export default [
   ['7 天', '7 days'],
   ['当前主机列表还可接入 {0} 台。', 'The current host list has room for {0} more nodes.'],
   ['批量命令已生成', 'Batch command generated'],
-  ['命令只在本次生成后展示；复制后可在每台目标机以 root 执行。', 'The command is shown only after this creation; copy it and run it as root on each target host.'],
   ['最多 {0} 台 · {1} 前有效。', 'Up to {0} hosts · valid until {1}.'],
   ['有效的批量授权', 'Active batch authorizations'],
   ['撤销只阻止新节点接入，已经接入的节点不受影响。', 'Revocation only blocks new enrollments; existing nodes are unaffected.'],

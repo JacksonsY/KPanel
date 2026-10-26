@@ -7,6 +7,8 @@ if (-not $IsWindows) { throw 'Native Windows verification requires Windows.' }
 if (-not [IO.Path]::IsPathFullyQualified($OutputDirectory) -or (Test-Path -LiteralPath $OutputDirectory)) { throw 'Use a new absolute output directory.' }
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
+    $candidate=(& git rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or (& git status --porcelain)) { throw 'Use a clean candidate checkpoint.' }
     foreach ($path in @('deploy/windows/install.ps1','internal/cluster/bootstrap-windows.ps1','scripts/windows-node-release.ps1')) {
         $tokens=$null; $parseErrors=$null
         $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-Location) $path),[ref]$tokens,[ref]$parseErrors)
@@ -22,4 +24,6 @@ try {
     $version='v'+(Get-Content VERSION -Raw).Trim()
     & ./scripts/windows-node-release.ps1 -Mode Build -OutputDirectory $OutputDirectory -Version $version
     & ./scripts/windows-node-release.ps1 -Mode Verify -OutputDirectory $OutputDirectory -Version $version
+    if ((& git rev-parse HEAD).Trim() -cne $candidate -or (& git status --porcelain)) { throw 'Candidate source changed during native verification.' }
+    Write-Output "windows_node_verification=pass candidate=$candidate"
 } finally { Pop-Location }
