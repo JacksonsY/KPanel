@@ -354,13 +354,16 @@ func (s *browserSession) stream() error {
 			return errors.New("browser_disconnected")
 		}
 		tab.streaming = want
+		if want {
+			s.viewportFrame(tab)
+		}
 	}
 	return s.ctx.Err()
 }
 
-// Resizing a static page may not emit a fresh screencast frame after Chromium
-// discards an old compositor surface. Seed the new viewport without restarting
-// the stream or changing the webpage. Capture and delivery remain bounded.
+// Resizing or resuming a static page may not emit a fresh screencast frame.
+// Seed the active viewport without changing the webpage. Capture and delivery
+// remain bounded, including when selecting an already-loaded background tab.
 func (s *browserSession) viewportFrame(tab *browserTab) {
 	ctx, cancel := context.WithTimeout(tab.ctx, 3*time.Second)
 	defer cancel()

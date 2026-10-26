@@ -12,7 +12,7 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "5a636c09f9808000c0309b6eca6e80d65730ad68bba3a3877f3ebd18949573a7",
-  "firstPartySourceSha256": "2f647a81d01106ab27f4dd5ac8267bfd882b469323714cd78f943a94d19ab484",
+  "firstPartySourceSha256": "78f9d8d2894016be5b4f62a6ba5053b54efe889465e8856025e79b33dbb572fc",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -105,7 +105,7 @@
     "rc7IntegrationSummary": "RC7 integrates exact VMf354f0de, offline-countryd647d5e0 and transfer14512f3a. Release owner independently reviewed source and retained original native/test-driver evidence boundaries. Re-observed tracked first-party Go files and all six actual/original production closures using Go1.27.3 after RC7 version metadata. Go modules, existing37 dispositions and 2026-10-25..2026-11-08 observation window unchanged. Exact frozen CI/L3 and public acceptance still required; identity qualification is not scanner or release success.",
     "preferencesRouteReviewSha256": "9782bb2ab0cfeb207cb8ead19e4726d7c8ab65a5ef6a482a7c33b4719c0fcd69",
     "preferencesRouteSummary": "Desktop preference route validation: the two existing store files were independently blind-reviewed with no credible security findings. Only two already-shipped route alternatives and their regression tests change; no imports, production GoFiles, dependencies, build targets or closure membership change. Canonical firstPartySources rebinds the source identity; existing findings, dispositions, observation and expiry remain unchanged. Exact-candidate Linux CI must recompute actual/original six-target closures and all scanners; this refresh does not claim scanner success.",
-    "browserContainerViewportSummary": "Follow-up reserves a bounded headless compositor, seeds one bounded JPEG on a completed resize without restarting capture, and filters stale viewport frames on both queues. Regression uses actual authenticated WebSocket delivery. Production GoFiles/imports, selected graph, build targets, findings and expiry remain unchanged; separate component native CI/scanning remains mandatory."
+    "browserContainerViewportSummary": "Follow-up reserves a bounded headless compositor, seeds a bounded JPEG after resize or resuming an already-loaded tab, and filters stale viewport frames across all queues. Latest-only seed delivery preserves notifications. Regressions cover real authenticated WebSocket delivery and replacement of the previous tab's seed. Production GoFiles/imports, selected graph, build targets, findings and expiry remain unchanged; separate component native CI/scanning remains mandatory."
   },
   "findings": [
     {

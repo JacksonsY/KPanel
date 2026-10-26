@@ -132,6 +132,14 @@ func TestRealBrowserWheelAndViewport(t *testing.T) {
 	if size != [2]int{1400, 800} {
 		t.Fatalf("selected tab kept stale viewport: %v", size)
 	}
+	select {
+	case seed := <-s.keyframes:
+		if seed.Tab != first || seed.Width != 1400 || seed.Height != 800 {
+			t.Fatal("resumed static tab did not replace the previous tab's seed")
+		}
+	default:
+		t.Fatal("resumed static tab has no seed frame")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for {
