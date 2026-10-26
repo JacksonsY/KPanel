@@ -4,15 +4,15 @@
   "expiresAt": "2026-11-08",
   "owner": "KPanel release maintainers",
   "sourceManifestSha256": "3165b3c3e3fcdefe8dc52fba19a0a872eb26238692d6fedff4db2fc48ecf2580",
-  "selectedGraphSha256": "145130563ab26d84307387f7fd8e71f2d41d7a1152a808c5fd6e8759faa9f818",
+  "selectedGraphSha256": "b28b6ce7c6d851577e77a9abf33319be3a0e3ae727fb3ef3640d72663813d75b",
   "buildTargetFilesSha256": {
     "Dockerfile": "2dcc56a68487566a9a7273b2269cf371b5dc0d9b6d5c08ed7cca304afba8eb38",
     ".github/workflows/release.yml": "f2179cdc8358290e826f92c27316b265dade18275d1e9b89f83b0917f9d73bdc",
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "46c9ebed26aa054875aa2e15b9d492d5ef40bb25c7816d6b5e9cf0df92ea805e",
-  "firstPartySourceSha256": "e2a866cdd731e377ac4dd2486c472fd146e221922f02341b4477f0a9711fde8b",
+  "closureSha256": "13f49225edf8cef0095f7fead0af97c16e45755b075d839ea8fabe51f5e06750",
+  "firstPartySourceSha256": "dc46d3d9c9795e23bba9b0a022f2e4e567cfce6e4653a598e47f8df9f922f26a",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -110,7 +110,8 @@
     "browserContainerSummary": "Independent read-only Go 1.27.3 qualification re-observed 1174 first-party sources, 469 selected modules and all six actual/original production closures (111 modules). Bind the observed source, selected graph and closure identities; retain all 37 findings, dispositions, original dates and expiry. Canonical production targets do not include cmd/kpanel-browser: its image, build targets and reachable modules require separate native sandbox qualification and vulnerability scans. This record is source/inventory evidence, not scanner or publication success.",
     "browserContainerViewportSummary": "Follow-up reserves a bounded headless compositor, seeds a bounded JPEG after resize or resuming an already-loaded tab, and filters stale viewport frames across all queues. Latest-only seed delivery preserves notifications, and every frame queue sends active-tab state before a newly selected tab's image. Regressions cover real authenticated WebSocket ordering and complete resumed JPEG geometry. Production GoFiles/imports, selected graph, build targets, findings and expiry remain unchanged; separate component native CI/scanning remains mandatory.",
     "browserPreferencesRouteSummary": "Candidate integration accepts the already-visible /browser catalogue route for persisted desktop windows and canonical window sizes, retaining exact route boundaries and existing query rules. No authentication, CSRF, schema, production GoFiles/imports, selected graph, build targets, findings or expiry change. The independently published browser worker remains pinned to its qualified immutable rc.2 digest; this source change is in Panel preferences only.",
-    "rc128RC8IntegrationState": "Identity pending actual combined source observation; all inherited dispositions and original observation/expiry retained. This intermediate merge checkpoint is not qualified for CI, release or publication."
+    "rc128RC8IntegrationObservationSha256": "f2db8752c6c514c593991134e95285019a25f553983810f10123c4cf7b88bb60",
+    "rc128RC8IntegrationSummary": "RC8 release takeover integrates exact eight handed-off sources from the frozen contract and preserves their original review/test boundaries. Release owner re-observed all tracked first-party Go files and six actual/original production closures using Go1.27.3, including Windows node entry points. Browser selected dependencies are observed, not copied from RC7. All37 dispositions and original 2026-10-25..2026-11-08 observation window remain unchanged. Exact candidate CI/L3/scanners/public acceptance are separate required evidence; identity qualification does not claim scanner or lifecycle success."
   },
   "findings": [
     {
