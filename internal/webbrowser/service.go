@@ -222,12 +222,6 @@ func (s *Service) writeEvents(ctx context.Context, ws *websocket.Conn, browser *
 		case event = <-browser.keyframes:
 		}
 		if event.Type == "frame" {
-			browser.mu.Lock()
-			current := browser.visible && event.Tab == browser.active && event.Width == browser.width && event.Height == browser.height
-			browser.mu.Unlock()
-			if !current {
-				continue
-			}
 			if lastActive != event.Tab {
 				state := browser.Snapshot()
 				if state.Active != event.Tab {
@@ -237,6 +231,14 @@ func (s *Service) writeEvents(ctx context.Context, ws *websocket.Conn, browser *
 					return
 				}
 				lastActive = state.Active
+			}
+			// Sending state can wait on the client. Recheck after that write so
+			// a concurrent hide, resize or selection cannot release a stale frame.
+			browser.mu.Lock()
+			current := browser.visible && event.Tab == browser.active && event.Width == browser.width && event.Height == browser.height
+			browser.mu.Unlock()
+			if !current {
+				continue
 			}
 		}
 		if event.Type == "state" {
