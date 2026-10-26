@@ -125,7 +125,7 @@ onBeforeUnmount(() => { disposed = true; sequence++; controller?.abort(); iconCo
 </script>
 
 <template>
- <section class="monitor-page" :class="{ 'is-security': view === 'security' }">
+ <section class="page monitor-page" :class="{ 'is-security': view === 'security' }">
   <SitesSectionTabs />
   <div class="monitor-heading">
    <div class="heading-title"><span class="heading-emblem" aria-hidden="true"><Activity :size="25" /></span><div><p class="eyebrow">网站监控</p><h2>流量与安全，一目了然</h2><p class="heading-description">从访问来源到防御事件，持续了解您的网站。</p></div></div>

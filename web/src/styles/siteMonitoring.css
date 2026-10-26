@@ -1,4 +1,4 @@
-.monitor-page{--monitor-accent:var(--brand);display:grid;gap:20px;min-width:0;padding-bottom:12px}
+.monitor-page{--monitor-accent:var(--brand);display:grid;align-content:start;gap:20px;min-width:0;padding-bottom:12px}
 .monitor-page.is-security{--monitor-accent:var(--danger)}
 .heading-title{display:flex;align-items:center;gap:16px;min-width:0}.heading-emblem{display:grid;place-items:center;flex:0 0 52px;min-height:52px;border:1px solid var(--border);border-radius:var(--radius);background:var(--brand-soft);color:var(--brand)}
 .monitor-scope{display:flex;align-items:center;gap:12px;padding:14px 18px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}.scope-icon{display:grid;place-items:center;flex:0 0 40px;min-height:40px;border-radius:var(--radius-sm);background:var(--surface-subtle);color:var(--brand)}.monitor-scope>div{display:grid;gap:4px;min-width:0}.monitor-scope strong{font-size:14px;font-weight:600;overflow-wrap:anywhere}.monitor-scope>div>span{color:var(--muted);font-size:13px}.scope-summary{display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:auto;color:var(--muted);font-size:13px}
