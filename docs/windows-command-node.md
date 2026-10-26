@@ -48,7 +48,7 @@ Job Object 保证关闭时收回整棵进程树。批量执行复用现有 Power
 
 新增字段是 light-v1 可选元数据，不变更 Linux 安装命令、脚本协议或内置脚本。
 `scriptLinkageState=not-required`（无需发布脚本（不适用））；脚本仍固定
-`614d58cee228007012a2ec602cbdc8baeb7950d`，SHA-256
+`614d58cee228007012a2ec602cbdc8dbaeb7950d`，SHA-256
 `ec6d52da028ad6c6145fbb9c6796cd1548104b288f9234551c3b3d800b43eec9`。
 
 中心与 Windows Node 成对升级。旧中心不认识新能力时节点拒绝管理，不猜测支持；回退前保存
