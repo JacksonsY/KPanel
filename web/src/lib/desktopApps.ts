@@ -183,7 +183,7 @@ export const desktopApps: DesktopApp[] = [
     path: '/virtual-machines',
     labelKey: 'route.virtualMachines',
     icon: Monitor,
-    desktopIconURL: '/desktop-icons/virtualmachines-kpanel-flat-v1.webp',
+    desktopIconURL: '/desktop-icons/virtualmachines-kpanel-flat-v2.webp',
     allowMultiple: false,
     gradient: ['#6765d9', '#35316f'],
     windowSize: { width: 1080, height: 760 },
