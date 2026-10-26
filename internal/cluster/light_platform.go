@@ -16,7 +16,7 @@ type LightCapabilitiesResponse struct {
 }
 
 func LightCenterCapabilities() []string {
-	return []string{SSHLoginCapability, LightHealthCapability, ServiceChecksCapability}
+	return []string{SSHLoginCapability, LightHealthCapability, ServiceChecksCapability, "windows-command-v1"}
 }
 
 // ProbeLightCapabilities is read-only. It must never provision a privileged
@@ -45,6 +45,12 @@ func validateLightPlatform(input LightReportRequest) error {
 	if err := validateLightPlatformChoice(input.Platform); err != nil {
 		return err
 	}
+	if input.Platform == "windows" {
+		if !telemetryIdentifiesWindows(input.Telemetry) {
+			return ErrLightPlatformUnsupported
+		}
+		return nil
+	}
 	if !telemetryIdentifiesLinux(input.Telemetry) {
 		return ErrLightPlatformUnsupported
 	}
@@ -52,7 +58,7 @@ func validateLightPlatform(input LightReportRequest) error {
 }
 
 func validateLightPlatformChoice(platform string) error {
-	if platform != "" && platform != "linux" {
+	if platform != "" && platform != "linux" && platform != "windows" {
 		return ErrLightPlatformUnsupported
 	}
 	return nil
@@ -63,6 +69,9 @@ func validateLightPlatformChoice(platform string) error {
 // compatibility, but are absent from the product surface and cannot regain
 // file, terminal, or history access.
 func lightNodePlatformSupported(record lightHostRecord) bool {
+	if record.Platform == "windows" {
+		return record.WindowsCommand
+	}
 	if record.Platform != "" {
 		return record.Platform == "linux"
 	}
@@ -84,7 +93,7 @@ func supportedLightHostCount(records []lightHostRecord) int {
 
 func retiredWindowsLightHost(record lightHostRecord) bool {
 	if record.Platform == "windows" {
-		return true
+		return !record.WindowsCommand
 	}
 	return record.Platform == "" && record.LastSnapshot != nil && telemetryIdentifiesWindows(record.LastSnapshot.Telemetry)
 }
@@ -138,6 +147,10 @@ func applyLightPlatform(host *Host, record lightHostRecord) {
 	if lightNodePlatformSupported(record) {
 		host.Platform = "linux"
 		host.TerminalShell = "posix"
+		if record.Platform == "windows" {
+			host.Platform = "windows"
+			host.TerminalShell = "powershell"
+		}
 		return
 	}
 	host.Platform = "unknown"
@@ -148,4 +161,11 @@ func applyLightPlatform(host *Host, record lightHostRecord) {
 	host.LastSnapshot = nil
 	host.State = HostOffline
 	host.Scope = SummaryScope
+}
+
+func normalizedLightPlatform(value string) string {
+	if value == "" {
+		return "linux"
+	}
+	return value
 }

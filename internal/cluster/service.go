@@ -1653,6 +1653,7 @@ func cloneTelemetry(value contract.HostTelemetry) contract.HostTelemetry {
 		value.ServiceChecks = nil
 	}
 	value.OSLike = append([]string(nil), value.OSLike...)
+	value.UnavailableMetrics = append([]string(nil), value.UnavailableMetrics...)
 	if value.SSHLogin != nil {
 		copy := *value.SSHLogin
 		value.SSHLogin = &copy

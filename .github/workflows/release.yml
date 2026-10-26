@@ -27,8 +27,28 @@ jobs:
     uses: ./.github/workflows/release-l3.yml
     with:
       candidate: ${{ github.sha }}
+  windows-node:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate || github.sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: true
+      - name: Verify native Windows node boundaries
+        shell: pwsh
+        run: ./scripts/verify-windows-node.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP 'windows-node-assets')
+
   release:
-    needs: l3
+    needs: [l3, windows-node]
     if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -204,6 +224,14 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
             go build -trimpath -ldflags "$ldflags" \
             -o release/kejilion-node-linux-arm64 ./cmd/kejilion-node
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath -ldflags "$ldflags" \
+            -o release/kejilion-node-windows-amd64.exe ./cmd/kejilion-node
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 \
+            go build -trimpath -ldflags "$ldflags" \
+            -o release/kejilion-node-windows-arm64.exe ./cmd/kejilion-node
+          cp internal/cluster/bootstrap-windows.ps1 release/bootstrap-windows.ps1
+          cp deploy/windows/install.ps1 release/install-windows.ps1
           git archive --format=tar HEAD \
             deploy docs README.md CHANGELOG.md VERSION \
             LICENSE NOTICE LICENSES THIRD_PARTY_NOTICES.md TRADEMARKS.md |
@@ -215,6 +243,10 @@ jobs:
               kejilion-agent-linux-arm64 \
               kejilion-node-linux-amd64 \
               kejilion-node-linux-arm64 \
+              kejilion-node-windows-amd64.exe \
+              kejilion-node-windows-arm64.exe \
+              bootstrap-windows.ps1 \
+              install-windows.ps1 \
               kpanel-mcp-* \
               "kejilion-panel-meta-$VERSION.tar.gz" > SHA256SUMS
           )
@@ -338,6 +370,10 @@ jobs:
               release/kejilion-agent-linux-arm64 \
               release/kejilion-node-linux-amd64 \
               release/kejilion-node-linux-arm64 \
+              release/kejilion-node-windows-amd64.exe \
+              release/kejilion-node-windows-arm64.exe \
+              release/bootstrap-windows.ps1 \
+              release/install-windows.ps1 \
               "release/kejilion-panel-meta-$VERSION.tar.gz" \
               release/SHA256SUMS \
               LICENSE \
@@ -354,6 +390,10 @@ jobs:
               release/kejilion-agent-linux-arm64 \
               release/kejilion-node-linux-amd64 \
               release/kejilion-node-linux-arm64 \
+              release/kejilion-node-windows-amd64.exe \
+              release/kejilion-node-windows-arm64.exe \
+              release/bootstrap-windows.ps1 \
+              release/install-windows.ps1 \
               "release/kejilion-panel-meta-$VERSION.tar.gz" \
               release/SHA256SUMS \
               LICENSE \

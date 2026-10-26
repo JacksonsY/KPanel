@@ -1,3 +1,5 @@
+//go:build !windows
+
 package main
 
 import (
@@ -39,3 +41,8 @@ func nodeSignalContext() (context.Context, context.CancelFunc) {
 func latestPlatformLogin(ctx context.Context, reader *sshlogin.Reader) (*contract.SSHLoginEvent, error) {
 	return reader.CachedLatestSSHLogin(ctx)
 }
+
+func enrollmentCapabilities(string) ([]string, error)                    { return nil, nil }
+func requireWindowsCapability(context.Context, nodeConfig, string) error { return nil }
+
+func startPlatformHealthPublisher(context.Context) func() { return func() {} }

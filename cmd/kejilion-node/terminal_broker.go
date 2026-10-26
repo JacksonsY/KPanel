@@ -45,6 +45,9 @@ func runTerminalBroker(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWindowsCapability(context.Background(), config, "terminal"); err != nil {
+		return err
+	}
 	if config.TargetNodeID == "" {
 		return errors.New("terminal relay is not enrolled")
 	}
@@ -78,6 +81,12 @@ func runTerminalBroker(arguments []string) error {
 func runLightTerminalStream(ctx context.Context, config nodeConfig, identity terminalIdentity, relay *cluster.TerminalRelayClient, manager *terminal.Manager) {
 	backoff := time.Minute
 	for ctx.Err() == nil {
+		if err := requireWindowsCapability(ctx, config, "terminal"); err != nil {
+			if !waitContext(ctx, time.Minute) {
+				return
+			}
+			continue
+		}
 		connected := false
 		err := relay.RunTerminalStream(ctx, config.Origin, config.NodeID, config.TargetNodeID, identity.Key, identity.Peer,
 			manager, lightTerminalOwner(config.NodeID), func() { connected = true })

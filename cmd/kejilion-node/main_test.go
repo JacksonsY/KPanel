@@ -68,7 +68,7 @@ func TestOriginFromTokenRequiresStrictHTTPSOriginAndFutureExpiry(t *testing.T) {
 }
 
 func TestNodeCommandsRequireLinuxRuntime(t *testing.T) {
-	for _, goos := range []string{"windows", "darwin", "freebsd"} {
+	for _, goos := range []string{"darwin", "freebsd"} {
 		if err := validateNodeRuntime(goos); err == nil {
 			t.Errorf("validateNodeRuntime(%q) unexpectedly succeeded", goos)
 		}

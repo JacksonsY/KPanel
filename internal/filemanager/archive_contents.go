@@ -28,12 +28,16 @@ type archiveOperation struct {
 	budget     *copyBudget
 	progress   func(*copyBudget)
 	tempSuffix string
-	tempReady  func(os.FileInfo, string, os.FileInfo, os.FileInfo) error
+	tempReady  func(archiveTempIdentity) error
 }
 
-func recordArchiveTemp(ctx context.Context, parent os.FileInfo, directory string, workspace, stage os.FileInfo) error {
+func recordArchiveTemp(ctx context.Context, parent *fileRoot, parentInfo os.FileInfo, directory string, workspace *fileRoot, workspaceInfo os.FileInfo, stage *fileRoot, stageInfo os.FileInfo) error {
 	if value := archiveOptions(ctx); value != nil && value.tempReady != nil {
-		return value.tempReady(parent, directory, workspace, stage)
+		identity := archiveTempIdentity{Parent: stableRootReceiveIdentity(parent, ".", parentInfo), Object: stableRootReceiveIdentity(stage, ".", stageInfo), Directory: directory, Workspace: stableRootReceiveIdentity(workspace, ".", workspaceInfo)}
+		if identity.Parent == "" || identity.Object == "" || identity.Workspace == "" {
+			return ErrConflict
+		}
+		return value.tempReady(identity)
 	}
 	return nil
 }

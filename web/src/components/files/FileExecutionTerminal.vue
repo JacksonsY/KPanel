@@ -9,7 +9,7 @@ import { fileExecutionCommand, fileExecutionDisplayCommand } from '@/lib/fileExe
 import { phraseCatalogVersion, translatePhrase } from '@/i18n/phrase'
 import type { FileEntry, TerminalSession } from '@/types/api'
 
-const props = defineProps<{ entry: FileEntry; hostId: string; hostName: string }>()
+const props = defineProps<{ entry: FileEntry; hostId: string; hostName: string; shell?: 'posix' | 'powershell' }>()
 const emit = defineEmits<{ close: [] }>()
 const terminal = ref<InstanceType<typeof HostTerminal>>()
 const session = ref<TerminalSession>()
@@ -48,8 +48,8 @@ async function open(): Promise<void> {
       permission: phrase('文件没有执行权限，请先在文件管理中修改权限。'),
       interpreter: (name) => phrase('缺少解释器：{0}，请安装后重新执行。').replace('{0}', name),
       tool: (name) => phrase('缺少工具：{0}，请安装后重新执行。').replace('{0}', name),
-    })
-    displayCommand = fileExecutionDisplayCommand(fresh)
+    }, props.shell)
+    displayCommand = fileExecutionDisplayCommand(fresh, props.shell)
     if (!command || !displayCommand) {
       error.value = phrase('当前文件不支持在终端中执行。')
       return

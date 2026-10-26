@@ -113,7 +113,8 @@ func (s *Service) CreateLightEnrollmentForOriginAndNameWithTLSPin(origin, reques
 	if err != nil {
 		return LightEnrollment{}, err
 	}
-	return LightEnrollment{ID: id, Command: command, ExpiresAt: expiresAt}, nil
+	windowsCommand, _ := s.windowsEnrollmentCommand(token, name)
+	return LightEnrollment{ID: id, Command: command, WindowsCommand: windowsCommand, ExpiresAt: expiresAt}, nil
 }
 
 func shellSingleQuote(value string) string {
@@ -168,8 +169,8 @@ func (s *Service) EnrollLightNodeAtOrigin(
 	}
 	hash := sha256.Sum256(secret)
 	if err := s.light.EnrollHost(wire.ID, hex.EncodeToString(hash[:]), lightHostRecord{
-		Platform: platform,
-		ID:       nodeID, Name: name, NodeVersion: cleanDisplayText(input.NodeVersion, 64),
+		Platform: platform, WindowsCommand: platform == "windows",
+		ID: nodeID, Name: name, NodeVersion: cleanDisplayText(input.NodeVersion, 64),
 		CreatedAt: now, UpdatedAt: now,
 	}, reportingKey, terminalPublicKey, now); err != nil {
 		return LightEnrollResponse{}, err
@@ -218,11 +219,25 @@ func (s *Service) AcceptLightReport(auth LightReportAuth, rawBody []byte, input 
 	if err := validateTelemetry(input.Telemetry, now); err != nil {
 		return LightReportResponse{}, err
 	}
+	if len(input.Telemetry.UnavailableMetrics) > 4 {
+		return LightReportResponse{}, ErrProtocolMismatch
+	}
+	for _, metric := range input.Telemetry.UnavailableMetrics {
+		switch metric {
+		case "load", "swap", "diskIO", "networkConnections":
+		default:
+			return LightReportResponse{}, ErrProtocolMismatch
+		}
+	}
 	if err := validateLightPlatform(input); err != nil {
 		return LightReportResponse{}, err
 	}
 	if err := validateLightPlatformChoice(record.Platform); err != nil {
 		return LightReportResponse{}, err
+	}
+	// Platform is fixed by enrollment, never by the low-privilege reporter.
+	if (record.Platform == "windows") != (input.Platform == "windows") {
+		return LightReportResponse{}, ErrLightPlatformUnsupported
 	}
 	latencyMilliseconds := parseLightReportLatency(auth.ReportLatencyMilliseconds)
 	if latencyMilliseconds == 0 && record.LastSnapshot != nil {

@@ -202,6 +202,10 @@ const zoomWindowLabel = computed(() => activeWindow.value
   ? `${formatWindowTime(activeWindow.value.start)} – ${formatWindowTime(activeWindow.value.end)}`
   : '')
 
+watch(() => history.value?.unavailableMetrics, (metrics) => {
+ if (metrics?.includes('diskIO')) diskChartMode.value = 'capacity'
+ if (metrics?.includes('networkConnections')) networkChartMode.value = 'traffic'
+})
 const hostCPU = computed<TrendSeries[]>(() => {
   const points = history.value?.host || []
   const hasAverage = points.some((point) => (point.cpuSampleCount || 0) > 0)
@@ -219,7 +223,7 @@ const hostCPU = computed<TrendSeries[]>(() => {
         : []),
     })
   }
-  series.push({
+  if (!history.value?.unavailableMetrics?.includes('load')) series.push({
     label: '1 分钟负载占核',
     color: 'var(--violet)',
     points: points.map((point) => ({
@@ -964,7 +968,7 @@ onBeforeUnmount(() => {
         <article class="summary-card">
           <span class="summary-card__icon"><Cpu :size="19" /></span>
           <div><span>CPU</span><strong>{{ formatPercent(latestHost?.cpuPercent) }}</strong></div>
-          <small>{{ phrase(`${latestHost?.cpuCores || 0} 核 · 负载 ${latestHost?.loadOne.toFixed(2) || '0.00'}`) }}</small>
+          <small>{{ phrase(history.unavailableMetrics?.includes('load') ? `${latestHost?.cpuCores || 0} 核` : `${latestHost?.cpuCores || 0} 核 · 负载 ${latestHost?.loadOne.toFixed(2) || '0.00'}`) }}</small>
         </article>
         <article class="summary-card">
           <span class="summary-card__icon is-blue"><MemoryStick :size="19" /></span>
@@ -1000,7 +1004,7 @@ onBeforeUnmount(() => {
           class="chart-card"
           :class="{ 'chart-card--selected': chartIsSelected('cpu', 'load') }"
         >
-          <header><div><Cpu :size="18" /><strong>CPU 与负载</strong></div><span>{{ phrase(`${history.host.length} 个点`) }}</span></header>
+          <header><div><Cpu :size="18" /><strong>{{ phrase(history.unavailableMetrics?.includes('load') ? 'CPU' : 'CPU 与负载') }}</strong></div><span>{{ phrase(`${history.host.length} 个点`) }}</span></header>
           <TrendChart :series="withHostGaps(hostCPU)" :formatter="formatPercent" :max-value="100" :selectable="!updating" @select-range="zoomToRange" />
         </article>
         <article
@@ -1020,7 +1024,7 @@ onBeforeUnmount(() => {
             <div><HardDrive :size="18" /><strong>磁盘</strong></div>
             <div class="chart-switch" aria-label="磁盘指标">
               <button type="button" :class="{ 'is-active': diskChartMode === 'capacity' }" @click="diskChartMode = 'capacity'">容量</button>
-              <button type="button" :class="{ 'is-active': diskChartMode === 'io' }" @click="diskChartMode = 'io'">读写 I/O</button>
+              <button type="button" :class="{ 'is-active': diskChartMode === 'io' }" v-if="!history.unavailableMetrics?.includes('diskIO')" @click="diskChartMode = 'io'">读写 I/O</button>
             </div>
           </header>
           <TrendChart
@@ -1040,7 +1044,7 @@ onBeforeUnmount(() => {
             <div><Network :size="18" /><strong>网络与连接</strong></div>
             <div class="chart-switch" aria-label="网络指标">
               <button type="button" :class="{ 'is-active': networkChartMode === 'traffic' }" @click="networkChartMode = 'traffic'">流量</button>
-              <button type="button" :class="{ 'is-active': networkChartMode === 'connections' }" @click="networkChartMode = 'connections'">连接数</button>
+              <button type="button" :class="{ 'is-active': networkChartMode === 'connections' }" v-if="!history.unavailableMetrics?.includes('networkConnections')" @click="networkChartMode = 'connections'">连接数</button>
             </div>
           </header>
           <TrendChart :series="withHostGaps(activeHostNetwork)" :formatter="networkChartMode === 'traffic' ? formatRate : (value) => value.toFixed(0)" :selectable="!updating" @select-range="zoomToRange" />

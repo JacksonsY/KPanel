@@ -172,6 +172,7 @@ export type ClusterTransportSecurity = 'tls' | 'e2e_http'
 export type ClusterHostKind = 'panel' | 'light_node'
 
 export interface ClusterTelemetry {
+ unavailableMetrics?: string[]
   agentVersion: string
   agentProtocolVersion: string
   hostname: string
@@ -238,8 +239,8 @@ export interface ClusterRemoteAccess {
 }
 
 export interface ClusterHost {
-	platform?: 'linux' | 'unknown'
-	terminalShell?: 'posix'
+	platform?: 'linux' | 'windows' | 'unknown'
+	terminalShell?: 'posix' | 'powershell'
 	trafficPeriod?: ClusterTrafficPeriod
 	lightHealth?: LightNodeHealth
   id: string
@@ -525,12 +526,14 @@ export interface TerminalHistoryAppend {
 }
 
 export interface ClusterLightEnrollment {
+ windowsCommand?: string
   id: string
   command: string
   expiresAt: string
 }
 
 export interface ClusterLightBatchEnrollment {
+ windowsCommand?: string
   id: string
   command?: string
   namePrefix?: string
@@ -2024,6 +2027,7 @@ export interface MonitoringStorageStatus {
 }
 
 export interface MonitoringHistory {
+ unavailableMetrics?: string[]
   range: MonitoringRange
   startedAt: string
   endedAt: string

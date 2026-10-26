@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"runtime"
 	"sort"
 	"strconv"
 	"syscall"
@@ -305,7 +306,7 @@ func (m *Manager) removeReceiveTemp(record *receiveRecord) error {
 	if !info.Mode().IsRegular() {
 		return ErrConflict
 	}
-	if !sameReceiveObject(info, record.identity, record.TempIdentity) {
+	if !sameReceiveObject(info, record.identity, record.TempIdentity, parent, name) {
 		return ErrConflict
 	}
 	return parent.Remove(name)
@@ -341,7 +342,7 @@ func (m *Manager) pinReceiveExtractParent(record *receiveRecord) (*fileRoot, err
 	if err != nil {
 		return nil, err
 	}
-	if record.ExtractDirectory != record.Input.Directory && !isWithin(record.Input.Directory, record.ExtractDirectory) || !archiveWorkspaceProtected(info) || !archiveSameFilesystem(targetInfo, info) || record.ExtractParentIdentity != stableReceiveIdentity(info) {
+	if record.ExtractDirectory != record.Input.Directory && !isWithin(record.Input.Directory, record.ExtractDirectory) || !archiveWorkspaceProtected(info, workspace) || !archiveSameFilesystem(targetInfo, info) || record.ExtractParentIdentity != stableRootReceiveIdentity(workspace, ".", info) {
 		_ = workspace.Close()
 		return nil, ErrConflict
 	}
@@ -353,7 +354,7 @@ func (m *Manager) prepareReceiveExtract(record *receiveRecord) (*fileRoot, error
 	if err != nil {
 		return nil, err
 	}
-	record.ExtractDirectory, record.ExtractParentIdentity = directory, stableReceiveIdentity(info)
+	record.ExtractDirectory, record.ExtractParentIdentity = directory, stableRootReceiveIdentity(workspace, ".", info)
 	if err := m.persistReceivesLocked(); err != nil {
 		_ = workspace.Close()
 		return nil, err
@@ -361,17 +362,31 @@ func (m *Manager) prepareReceiveExtract(record *receiveRecord) (*fileRoot, error
 	return workspace, nil
 }
 
-func sameReceiveObject(info, expected os.FileInfo, identity string) bool {
+// Resolve only relative to an already pinned root. Never reopen FileInfo.Name(),
+// which may name an unrelated object after a rename or a restart.
+func stableRootReceiveIdentity(root *fileRoot, name string, info os.FileInfo) string {
+	if identity := stableReceiveIdentity(info); identity != "" {
+		return identity
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	return stableReceiveIdentity(info, file)
+}
+
+func sameReceiveObject(info, expected os.FileInfo, identity string, root *fileRoot, name string) bool {
 	if expected != nil {
 		return os.SameFile(info, expected)
 	}
-	return identity != "" && stableReceiveIdentity(info) == identity
+	return identity != "" && stableRootReceiveIdentity(root, name, info) == identity
 }
 
 // Clean through the opened owned object. A replacement sibling directory must
 // never be recursively deleted, including after a crash or a failed publish.
 func removeOwnedReceiveDirectory(parent *fileRoot, name string, visible, expected os.FileInfo, identity string) error {
-	if !visible.IsDir() || visible.Mode()&os.ModeSymlink != 0 || !sameReceiveObject(visible, expected, identity) {
+	if !visible.IsDir() || visible.Mode()&os.ModeSymlink != 0 || !sameReceiveObject(visible, expected, identity, parent, name) {
 		return ErrConflict
 	}
 	stage, err := parent.OpenRoot(name)
@@ -421,7 +436,7 @@ func (m *Manager) pinReceiveParent(record *receiveRecord) (*fileRoot, os.FileInf
 		return nil, nil, err
 	}
 	if record.parentInfo != nil && !os.SameFile(record.parentInfo, opened) ||
-		record.ParentIdentity != "" && stableReceiveIdentity(opened) != record.ParentIdentity {
+		record.ParentIdentity != "" && stableRootReceiveIdentity(parent, ".", opened) != record.ParentIdentity {
 		_ = parent.Close()
 		return nil, nil, ErrConflict
 	}
@@ -497,7 +512,7 @@ func (m *Manager) BeginReceive(ctx context.Context, input contract.FileReceiveIn
 	hasher := sha256.New()
 	record := &receiveRecord{
 		Input: input, OriginalVersion: original, hasher: hasher,
-		ParentIdentity: stableReceiveIdentity(info), parentInfo: info,
+		ParentIdentity: stableRootReceiveIdentity(parent, ".", info), parentInfo: info,
 		Session: contract.FileReceiveSession{ID: hex.EncodeToString(random[:]), State: "receiving", SizeBytes: input.SizeBytes,
 			PrefixSHA256: hex.EncodeToString(hasher.Sum(nil)), ChunkBytes: contract.FileTransferChunkBytes, ExpiresAt: m.now().UTC().Add(receiveLifetime)},
 	}
@@ -526,7 +541,10 @@ func (m *Manager) BeginReceive(ctx context.Context, input contract.FileReceiveIn
 	if err != nil {
 		return contract.FileReceiveSession{}, err
 	}
-	record.TempIdentity = stableReceiveIdentity(record.identity)
+	record.TempIdentity = stableReceiveIdentity(record.identity, temp)
+	if runtime.GOOS == "windows" && (record.ParentIdentity == "" || record.TempIdentity == "") {
+		return contract.FileReceiveSession{}, ErrConflict
+	}
 	m.receives.records[record.Session.ID] = record
 	if err := m.persistReceivesLocked(); err != nil {
 		delete(m.receives.records, record.Session.ID)
@@ -607,7 +625,7 @@ func (m *Manager) openReceiveFile(ctx context.Context, record *receiveRecord) (*
 		}
 	}()
 	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) || record.identity != nil && !os.SameFile(record.identity, opened) || record.TempIdentity != "" && stableReceiveIdentity(opened) != record.TempIdentity {
+	if err != nil || !os.SameFile(info, opened) || record.identity != nil && !os.SameFile(record.identity, opened) || record.TempIdentity != "" && stableReceiveIdentity(opened, file) != record.TempIdentity {
 		return nil, ErrConflict
 	}
 	if record.hasher == nil || record.identity == nil || resourceVersion(receiveTemp(record), record.identity) != resourceVersion(receiveTemp(record), opened) {
@@ -806,7 +824,7 @@ func (m *Manager) reconcileReceiveCommit(ctx context.Context, record *receiveRec
 			defer workspace.Close()
 			stagingRoot = workspace
 			if stageInfo, err := workspace.Lstat(path.Base(receiveExtract(record))); err == nil {
-				if !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 || !sameReceiveObject(stageInfo, record.extractInfo, record.ExtractIdentity) {
+				if !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 || !sameReceiveObject(stageInfo, record.extractInfo, record.ExtractIdentity, workspace, path.Base(receiveExtract(record))) {
 					return ErrConflict
 				}
 				publication, err := workspace.OpenRoot(path.Base(receiveExtract(record)))
@@ -882,7 +900,7 @@ func (m *Manager) receivePublishedFileDigest(ctx context.Context, root *fileRoot
 }
 
 func (m *Manager) receivePublishIdentity(ctx context.Context, root *fileRoot, virtual string, info os.FileInfo) (string, error) {
-	if identity := stableReceiveIdentity(info); identity != "" {
+	if identity := stableRootReceiveIdentity(root, rootName(virtual), info); identity != "" {
 		return identity, nil
 	}
 	// Linux uses a rename-stable device/inode identity. Local tooling on other
@@ -956,7 +974,7 @@ func (m *Manager) CommitReceive(ctx context.Context, id, sourceKey string, size 
 			return contract.FileReceiveSession{}, err
 		}
 		entry, err := m.importDirectory(ctx, record.Input, file, parent, workspace, receiveExtract(record), func(info os.FileInfo) error {
-			record.extractInfo, record.ExtractIdentity = info, stableReceiveIdentity(info)
+			record.extractInfo, record.ExtractIdentity = info, stableRootReceiveIdentity(workspace, path.Base(receiveExtract(record)), info)
 			return m.persistReceivesLocked()
 		}, func(stage *fileRoot, info os.FileInfo) error {
 			record.PublishVersion = resourceVersion(target, info)
@@ -1049,10 +1067,10 @@ func (m *Manager) CommitReceive(ctx context.Context, id, sourceKey string, size 
 		}
 		defer stage.Close()
 		openedStage, err := stage.Stat(".")
-		if err != nil || !os.SameFile(stageInfo, openedStage) || !archiveStagePrivate(openedStage) {
+		if err != nil || !os.SameFile(stageInfo, openedStage) || !archiveStagePrivate(openedStage, stage) {
 			return contract.FileReceiveSession{}, ErrConflict
 		}
-		record.extractInfo, record.ExtractIdentity = openedStage, stableReceiveIdentity(openedStage)
+		record.extractInfo, record.ExtractIdentity = openedStage, stableRootReceiveIdentity(stage, ".", openedStage)
 		defer func() {
 			if current, err := workspace.Lstat(stageName); err == nil {
 				_ = removeOwnedReceiveDirectory(workspace, stageName, current, openedStage, "")

@@ -22,7 +22,7 @@ type fileRoot struct{ root *os.Root }
 func rawFileRoot(root *fileRoot) *os.Root  { return root.root }
 func wrapFileRoot(root *os.Root) *fileRoot { return &fileRoot{root: root} }
 
-func openFileRoot(name string) (*fileRoot, error) {
+func openFileRoot(name string, _ map[string]string) (*fileRoot, error) {
 	root, err := os.OpenRoot(name)
 	if err != nil {
 		return nil, err

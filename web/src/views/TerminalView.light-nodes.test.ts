@@ -27,7 +27,7 @@ function button(text: string): HTMLButtonElement {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
-  mocks.hosts.mockResolvedValue({ items: [unsupported, { id: 'linux', name: 'Linux 测试机', platform: 'linux', kind: 'light_node', terminalAvailable: true }] })
+  mocks.hosts.mockResolvedValue({ items: [unsupported, { id: 'linux', name: 'Linux 测试机', platform: 'linux', kind: 'light_node', terminalAvailable: true }, { id: 'windows', name: 'Windows 测试机', platform: 'windows', terminalShell: 'powershell', kind: 'light_node', terminalAvailable: true }] })
   mocks.open.mockResolvedValue({ sessionId: 'shell', offset: 0 })
 })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = '' })
@@ -43,5 +43,8 @@ describe('supported light-node access', () => {
     button('Linux 测试机').click()
     await flushPromises()
     expect(mocks.open).toHaveBeenCalledExactlyOnceWith('linux', 30, 120, { retained: true })
+    button('Windows 测试机').click(); await flushPromises()
+    expect(mocks.open).toHaveBeenLastCalledWith('windows',30,120,{retained:true})
+    expect(document.body.textContent).not.toContain('RDP')
   })
 })

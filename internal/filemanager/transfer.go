@@ -177,7 +177,7 @@ func (m *Manager) importDirectory(ctx context.Context, input contract.FileReceiv
 
 	tempName := path.Base(tempVirtual)
 	workspaceInfo, err := workspace.Stat(".")
-	if err != nil || !archiveWorkspaceProtected(workspaceInfo) || !archiveSameFilesystem(targetInfo, workspaceInfo) {
+	if err != nil || !archiveWorkspaceProtected(workspaceInfo, workspace) || !archiveSameFilesystem(targetInfo, workspaceInfo) {
 		return contract.FileEntry{}, ErrConflict
 	}
 	if err := workspace.Mkdir(tempName, 0700); err != nil {
@@ -201,7 +201,7 @@ func (m *Manager) importDirectory(ctx context.Context, input contract.FileReceiv
 	}
 	defer publication.Close()
 	opened, err := publication.Stat(".")
-	if err != nil || !os.SameFile(stageInfo, opened) || !archiveStagePrivate(opened) {
+	if err != nil || !os.SameFile(stageInfo, opened) || !archiveStagePrivate(opened, publication) {
 		return contract.FileEntry{}, ErrConflict
 	}
 	ownedStage = opened

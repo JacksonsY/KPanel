@@ -3369,6 +3369,7 @@ createServer(async (request, response) => {
     send(response, 201, {
       id: '8'.repeat(32),
       command: "printf '%s\\n' 'KPanel mock preview only: generate an installation command from your real panel.'",
+      windowsCommand: "Write-Output 'KPanel mock preview only: generate a verified Windows installation command from your real panel.'",
       expiresAt: new Date(Date.now() + 300_000).toISOString(),
     })
     return
@@ -3396,6 +3397,7 @@ createServer(async (request, response) => {
     const enrollment = {
       id,
       command: `bash <(curl -fsSL https://kejilion.sh) kpanel node join 'kpb1.preview-${mockLightBatchEnrollmentCounter}'`,
+      windowsCommand: "Write-Output 'KPanel mock preview only: Windows batch enrollment is simulated.'",
       ...(String(input.namePrefix || '').trim() ? { namePrefix: String(input.namePrefix).trim() } : {}),
       maxUses,
       usedCount: 0,
@@ -3403,7 +3405,7 @@ createServer(async (request, response) => {
       createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
     }
-    const { command: _command, ...storedEnrollment } = enrollment
+    const { command: _command, windowsCommand: _windowsCommand, ...storedEnrollment } = enrollment
     mockLightBatchEnrollments = [storedEnrollment, ...mockLightBatchEnrollments]
     send(response, 201, enrollment)
     return

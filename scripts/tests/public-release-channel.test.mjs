@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { expectedReleaseAssetNames } from '../stable-release-recovery.mjs';
 
 const repoRoot = new URL('../../', import.meta.url);
 const moduleUrl = new URL('../verify-github-public-release.mjs', import.meta.url).href;
@@ -150,12 +151,15 @@ function fixture(version, options = {}) {
   addJson('https://auth.docker.io/token?service=registry.docker.io&scope=repository:kjlion/kejilion-panel:pull', { token: 'fixture' });
   addJson(`${releaseApi}/latest`, { tag_name: options.latestTag ?? (mode === 'snapshot' || isPreview ? 'v1.26.0' : `v${version}`) });
 
-  const binaryNames = Array.from({ length: 11 }, (_, index) => `artifact-${index + 1}.tar.gz`);
+  // Invalid-version cases must still reach the verifier's own input rejection.
+  let inventory;
+  try { inventory=expectedReleaseAssetNames(version); } catch { inventory=expectedReleaseAssetNames('1.0.0'); }
+  const binaryNames = inventory.filter(name => !['SHA256SUMS','LICENSE','THIRD_PARTY_NOTICES.md','KPANEL_MODIFIED_COMPONENTS.json'].includes(name));
   const assetBytes = new Map(binaryNames.map(name => [name, Buffer.from(`fixture:${name}\n`)]));
   const sums = binaryNames.map(name => `${sha256(assetBytes.get(name))}  ${name}`).join('\n') + '\n';
   assetBytes.set('SHA256SUMS', Buffer.from(sums));
   assetBytes.set('LICENSE', Buffer.from('fixture license\n'));
-  assetBytes.set('THIRD_PARTY_NOTICES', Buffer.from('fixture notices\n'));
+  assetBytes.set('THIRD_PARTY_NOTICES.md', Buffer.from('fixture notices\n'));
   assetBytes.set('KPANEL_MODIFIED_COMPONENTS.json', Buffer.from('{}\n'));
   const assets = [...assetBytes].map(([name, bytes]) => {
     addRaw(`https://github.com/kejilion/KPanel/releases/download/v${version}/${name}`, bytes);

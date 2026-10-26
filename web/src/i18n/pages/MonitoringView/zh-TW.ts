@@ -1,6 +1,7 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ["{0} 核", "{0} 核"],
   ["服务异常通知", "服務異常通知"],
   ["切换主机", "切換主機"],
   ["本机", "本機"],

@@ -119,3 +119,23 @@ jobs:
             -v "$PWD:/src:ro" \
             alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b \
             sh -ec 'apk add --no-cache bash >/dev/null && bash /src/packaging/tests/app-conf-openrc-lifecycle.sh /src'
+
+  windows-node:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate || github.sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: true
+      - name: Verify native Windows node boundaries
+        shell: pwsh
+        run: ./scripts/verify-windows-node.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP 'windows-node-assets')

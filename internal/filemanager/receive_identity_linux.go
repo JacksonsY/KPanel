@@ -14,19 +14,19 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func stableReceiveIdentity(info os.FileInfo) string {
+func stableReceiveIdentity(info os.FileInfo, _ ...*os.File) string {
 	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
 		return fmt.Sprintf("inode:%d:%d", stat.Dev, stat.Ino)
 	}
 	return ""
 }
 
-func archiveStagePrivate(info os.FileInfo) bool {
+func archiveStagePrivate(info os.FileInfo, _ ...*fileRoot) bool {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	return ok && stat.Uid == uint32(os.Geteuid()) && info.IsDir() && info.Mode().Perm()&0077 == 0
 }
 
-func archiveWorkspaceProtected(info os.FileInfo) bool {
+func archiveWorkspaceProtected(info os.FileInfo, _ ...*fileRoot) bool {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	return ok && stat.Uid == uint32(os.Geteuid()) && info.IsDir() && info.Mode().Perm()&0022 == 0
 }

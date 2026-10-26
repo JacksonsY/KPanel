@@ -155,6 +155,9 @@ const shareSaving = ref(false)
 const shareResetting = ref(false)
 const pairingCode = ref<ClusterPairingCode>()
 const lightEnrollment = ref<ClusterLightEnrollment>()
+const lightPlatform = ref<'linux' | 'windows'>('linux')
+const lightCommand = computed(() => lightPlatform.value === 'windows' ? lightEnrollment.value?.windowsCommand : lightEnrollment.value?.command)
+const lightBatchCommand = computed(() => lightPlatform.value === 'windows' ? lightBatchEnrollment.value?.windowsCommand : lightBatchEnrollment.value?.command)
 const lightEnrollmentConnected = ref(false)
 const lightEnrollmentState = ref<'waiting' | 'registered' | 'connected' | 'expired'>('waiting')
 type AddMode = 'single' | 'batch'
@@ -221,7 +224,7 @@ const remainingHostCapacity = computed(() => Math.max(
   (inventory.value?.maxHosts || 100) - (inventory.value?.remoteTotal || 0),
 ))
 const addModalDescription = computed(() => addMode.value === 'batch'
-  ? phrase('为多台 Linux 轻量节点生成一条可重复使用的接入命令。')
+  ? phrase('为多台 Linux / Windows 轻量节点生成一条可重复使用的接入命令。')
   : phrase('在目标 KPanel 的“集群 → 接入授权”复制接入凭据，然后在此整段粘贴。'))
 const lightEnrollmentPrimaryLabel = computed(() => {
   if (addForm.accessCredential.trim() || !lightEnrollment.value) {
@@ -655,9 +658,9 @@ async function createLightBatchEnrollment(): Promise<void> {
 }
 
 async function copyLightBatchEnrollment(): Promise<void> {
-  if (!lightBatchEnrollment.value?.command) return
+  if (!lightBatchCommand.value) return
   lightBatchCommandCopied.value = await copyToClipboard(
-    lightBatchEnrollment.value.command,
+    lightBatchCommand.value,
     '批量接入命令已复制',
     '请手动选择完整批量命令复制。',
   )
@@ -702,9 +705,9 @@ async function createLightEnrollment(): Promise<void> {
 }
 
 async function copyLightEnrollment(): Promise<void> {
-  if (!lightEnrollment.value?.command) return
+  if (!lightCommand.value) return
   await copyToClipboard(
-    lightEnrollment.value.command,
+    lightCommand.value,
     '轻量节点接入命令已复制',
     '请手动选择完整命令复制。',
   )
@@ -1960,8 +1963,8 @@ onBeforeUnmount(() => {
           <div>
             <Server :size="17" />
             <span>
-              <strong>{{ phrase('非面板 Linux 主机') }}</strong>
-              <small>{{ phrase('无需 Docker；在目标机以 root 执行命令后，将加入摘要监控，并启用远程终端和文件管理（含写入与删除）。') }}</small>
+              <strong>{{ phrase('非面板 Linux / Windows 主机') }}</strong>
+              <small>{{ phrase('无需 Docker；Linux 以 root、Windows 以管理员 PowerShell 执行命令，接入实时与历史监控、文件管理（含写入与删除）和命令行终端。') }}</small>
             </span>
             <button
               v-if="!lightEnrollment"
@@ -1974,9 +1977,14 @@ onBeforeUnmount(() => {
               <Plus v-else :size="14" /> {{ phrase('生成接入命令') }}
             </button>
           </div>
+          <label class="field">
+            {{ phrase('节点系统') }}
+            <select v-model="lightPlatform" :aria-label="phrase('节点系统')"><option value="linux">Linux</option><option value="windows">Windows / PowerShell</option></select>
+          </label>
           <div v-if="lightEnrollment" class="cluster-light-enrollment__command">
-            <pre>{{ lightEnrollment.command }}</pre>
-            <button class="button button--secondary button--small" type="button" @click="copyLightEnrollment">
+            <pre v-if="lightCommand">{{ lightCommand }}</pre>
+            <p v-else role="status">{{ phrase('当前版本未提供 Windows 安装器，请升级中心。') }}</p>
+            <button class="button button--secondary button--small" type="button" :disabled="!lightCommand" @click="copyLightEnrollment">
               <Copy :size="14" /> {{ phrase('复制命令') }}
             </button>
             <button
@@ -1997,7 +2005,7 @@ onBeforeUnmount(() => {
                     ? '节点身份已创建，正在等待首次状态上报…'
                     : lightEnrollmentState === 'expired'
                       ? '命令已过期，请重新生成。'
-                      : '复制命令并在轻量节点以 root 执行，连接成功后这里会自动更新。'
+                      : '复制命令并在目标节点以管理员身份执行，连接成功后这里会自动更新。'
               ) }}
             </small>
           </div>
@@ -2047,15 +2055,20 @@ onBeforeUnmount(() => {
           </label>
         </div>
 
+        <label class="field">
+            {{ phrase('节点系统') }}
+            <select v-model="lightPlatform" :aria-label="phrase('节点系统')"><option value="linux">Linux</option><option value="windows">Windows / PowerShell</option></select>
+          </label>
         <section v-if="lightBatchEnrollment" class="cluster-light-batch__command" aria-live="polite">
           <div>
             <ShieldCheck :size="18" />
             <span>
               <strong>{{ phrase('批量命令已生成') }}</strong>
-              <small>{{ phrase('命令只在本次生成后展示；复制后可在每台目标机以 root 执行。') }}</small>
+              <small>{{ phrase('命令只在本次生成后展示；复制后可在每台目标机以管理员身份执行。') }}</small>
             </span>
           </div>
-          <pre>{{ lightBatchEnrollment.command }}</pre>
+          <pre v-if="lightBatchCommand">{{ lightBatchCommand }}</pre>
+          <p v-else role="status">{{ phrase('当前版本未提供 Windows 安装器，请升级中心。') }}</p>
           <small>
             {{ phrase(`最多 ${lightBatchEnrollment.maxUses} 台 · ${formatDateTime(lightBatchEnrollment.expiresAt)} 前有效。`) }}
           </small>

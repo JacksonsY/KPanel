@@ -397,10 +397,14 @@ describe('ClusterView capability disclosures', () => {
   it('states the full grant in the access and enrollment copy for every locale', () => {
     const source = readFileSync(new URL('./ClusterView.vue', import.meta.url), 'utf8')
     const fullGrant = '权限包含摘要读取、远程终端和文件管理（含写入与删除）。'
-    const enrollment = '将加入摘要监控，并启用远程终端和文件管理（含写入与删除）。'
+    const enrollment = '无需 Docker；Linux 以 root、Windows 以管理员 PowerShell 执行命令，接入实时与历史监控、文件管理（含写入与删除）和命令行终端。'
 
     expect(source).toContain(fullGrant)
     expect(source).toContain(enrollment)
+    expect(new Map(english).get(enrollment)).toContain('writes and deletion')
+    expect(new Map(english).get(enrollment)).toContain('administrator PowerShell')
+    expect(new Map(traditionalChinese).get(enrollment)).toContain('寫入與刪除')
+    expect(new Map(traditionalChinese).get(enrollment)).toContain('系統管理員 PowerShell')
     expect(source).not.toContain('文件只读访问')
     expect(source).not.toContain('不包含任何远程管理权限')
     expect(new Map(english).get(

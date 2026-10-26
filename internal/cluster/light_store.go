@@ -36,6 +36,7 @@ type lightEnrollmentRecord struct {
 }
 
 type lightHostRecord struct {
+	WindowsCommand      bool          `json:"windowsCommand,omitempty"`
 	Platform            string        `json:"platform,omitempty"`
 	ID                  string        `json:"id"`
 	Name                string        `json:"name"`

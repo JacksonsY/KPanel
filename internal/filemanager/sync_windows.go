@@ -2,8 +2,6 @@
 
 package filemanager
 
-import "os"
-
-func syncRootDirectory(*os.Root, string) error {
+func syncRootDirectory(*fileRoot, string) error {
 	return nil
 }
