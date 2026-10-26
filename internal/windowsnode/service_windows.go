@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -305,6 +306,17 @@ func RemoveServices() error {
 			return err
 		}
 	}
+	directory, err := windows.GetSystemDirectory()
+	if err != nil {
+		return err
+	}
+	// A failed bootstrap can precede task registration. Only a known absent
+	// definition is benign; permission/inspection errors still fail closed.
+	if _, err := os.Lstat(filepath.Join(directory, "Tasks", "KPanel", "KejilionNodeUpdate")); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
 	return runSystemTool("schtasks.exe", "/Delete", "/TN", UpdateTask, "/F")
 }
 
@@ -396,9 +408,17 @@ func (output *systemToolDiagnostics) Write(data []byte) (int, error) {
 func registerUpdateTask() error {
 	executable := filepath.Join(InstallDir(), "kejilion-node-bootstrap.exe")
 	escape := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&quot;")
-	xml := `<?xml version="1.0" encoding="UTF-8"?><Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task"><Triggers><BootTrigger><Enabled>true</Enabled><Delay>PT20M</Delay></BootTrigger><TimeTrigger><StartBoundary>` + time.Now().UTC().Add(20*time.Minute).Format(time.RFC3339) + `</StartBoundary><Enabled>true</Enabled><Repetition><Interval>PT1H</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition></TimeTrigger></Triggers><Principals><Principal id="System"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals><Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><StartWhenAvailable>true</StartWhenAvailable><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT10M</ExecutionTimeLimit></Settings><Actions Context="System"><Exec><Command>` + escape.Replace(executable) + `</Command><Arguments>update</Arguments></Exec></Actions></Task>`
+	xml := `<?xml version="1.0" encoding="UTF-16"?><Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task"><Triggers><BootTrigger><Enabled>true</Enabled><Delay>PT20M</Delay></BootTrigger><TimeTrigger><StartBoundary>` + time.Now().UTC().Add(20*time.Minute).Format(time.RFC3339) + `</StartBoundary><Enabled>true</Enabled><Repetition><Interval>PT1H</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition></TimeTrigger></Triggers><Principals><Principal id="System"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals><Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><StartWhenAvailable>true</StartWhenAvailable><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT10M</ExecutionTimeLimit></Settings><Actions Context="System"><Exec><Command>` + escape.Replace(executable) + `</Command><Arguments>update</Arguments></Exec></Actions></Task>`
+	// schtasks supplies Unicode XML to Task Scheduler. Keep the file's BOM,
+	// actual bytes and XML declaration consistent, including non-ASCII paths.
+	units := utf16.Encode([]rune(xml))
+	content := make([]byte, 2+2*len(units))
+	content[0], content[1] = 0xff, 0xfe
+	for i, unit := range units {
+		content[2+2*i], content[3+2*i] = byte(unit), byte(unit>>8)
+	}
 	path := filepath.Join(DataDir(), "update-task.xml")
-	if err := WriteAtomic(path, []byte(xml), SystemOnly); err != nil {
+	if err := WriteAtomic(path, content, SystemOnly); err != nil {
 		return err
 	}
 	defer os.Remove(path)

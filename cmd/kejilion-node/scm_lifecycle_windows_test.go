@@ -301,6 +301,13 @@ func TestWindowsHostedSCMLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	systemDirectory, err := windows.GetSystemDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(systemDirectory, "Tasks", "KPanel", "KejilionNodeUpdate")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("scheduled update definition survived uninstall or could not be inspected")
+	}
 	live = "" // Checked uninstall completed; cleanup has nothing further to do.
 	t.Log("real SYSTEM uninstall removed product services; reboot-pending files remain allowed")
 }
