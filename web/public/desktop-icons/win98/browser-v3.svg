@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <title>KPanel browser — original Win98 inspired multicolor globe</title>
+  <defs><clipPath id="rim"><path d="M11 2H21V4H25V7H28V11H30V21H28V25H25V28H21V29H11V28H7V25H4V21H2V11H4V7H7V4H11Z"/></clipPath></defs>
+  <path d="M10 1H22V3H26V6H29V10H31V22H29V26H26V29H22V30H10V29H6V26H3V22H1V10H3V6H6V3H10Z" fill="#000"/>
+  <g clip-path="url(#rim)">
+    <path d="M1 1H17V16H1Z" fill="#ff0000"/>
+    <path d="M17 1H31V17H17Z" fill="#ffff00"/>
+    <path d="M1 16H16V31H1Z" fill="#008000"/>
+    <path d="M16 17H31V31H16Z" fill="#0000ff"/>
+    <path d="M10 3H17V4H10V5H7V4H10Z" fill="#ff8080"/>
+  </g>
+  <path d="M12 5H20V6H24V9H26V13H27V19H25V23H22V25H13V24H9V21H6V17H6V12H8V8H12Z" fill="#fff"/>
+  <path d="M13 24H22V23H25V19H27V20H26V24H23V26H13Z" fill="#c0c0c0"/>
+  <g fill="#000080">
+    <path d="M8 11H10V9H14V10H16V12H14V14H12V16H10V14H8Z"/>
+    <path d="M12 17H15V18H17V21H15V24H13V21H12Z"/>
+    <path d="M16 6H19V8H17V9H16Z"/>
+    <path d="M19 9H22V10H24V13H22V14H20V13H17V11H19Z"/>
+    <path d="M18 15H22V17H23V20H21V23H19V20H18Z"/>
+  </g>
+</svg>

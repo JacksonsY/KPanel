@@ -27,7 +27,7 @@ const windowsIconNames: Readonly<Record<string, string>> = {
 export function desktopAppIconURL(app: DesktopApp | undefined, style: DesktopShellStyle): string | undefined {
   if (!app) return undefined
   const name = windowsIconNames[app.path]
-  const version = app.path === '/browser' ? 'v2' : 'v1'
+  const version = app.path === '/browser' ? 'v3' : 'v1'
   return style !== 'modern' && name
     ? `/desktop-icons/${style}/${name}-${version}.svg`
     : app.desktopIconURL
