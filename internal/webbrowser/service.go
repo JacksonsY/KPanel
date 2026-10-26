@@ -218,16 +218,6 @@ func (s *Service) writeEvents(ctx context.Context, ws *websocket.Conn, browser *
 			}
 			event = browser.Snapshot()
 		case event = <-browser.frames:
-			if lastActive != event.Tab {
-				state := browser.Snapshot()
-				if state.Active != event.Tab {
-					continue
-				}
-				if writeEvent(state) != nil {
-					return
-				}
-				lastActive = state.Active
-			}
 		case event = <-browser.notices:
 		case event = <-browser.keyframes:
 		}
@@ -237,6 +227,16 @@ func (s *Service) writeEvents(ctx context.Context, ws *websocket.Conn, browser *
 			browser.mu.Unlock()
 			if !current {
 				continue
+			}
+			if lastActive != event.Tab {
+				state := browser.Snapshot()
+				if state.Active != event.Tab {
+					continue
+				}
+				if writeEvent(state) != nil {
+					return
+				}
+				lastActive = state.Active
 			}
 		}
 		if event.Type == "state" {

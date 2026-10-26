@@ -104,6 +104,18 @@ func TestServiceDiscardsStaleViewportFramesFromBothQueues(t *testing.T) {
 			break
 		}
 	}
+	// A resumed static tab may send only its seed, so that queue must publish
+	// the new active-tab state before the frame, just like ordinary capture.
+	session.mu.Lock()
+	session.active = "tab-2"
+	session.seedFrame(Event{Type: "frame", Tab: "tab-2", Width: 640, Height: 480, Image: "resumed"})
+	session.mu.Unlock()
+	if state := read(); state.Type != "state" || state.Active != "tab-2" {
+		t.Fatal("resume seed arrived before its active-tab state")
+	}
+	if event := read(); event.Type != "frame" || event.Tab != "tab-2" || event.Image != "resumed" {
+		t.Fatal("missing resumed tab frame after state")
+	}
 }
 
 func TestServiceAuthenticationCapacityAndExpiry(t *testing.T) {
