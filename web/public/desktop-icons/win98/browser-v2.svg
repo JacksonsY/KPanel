@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <title>KPanel browser — original Win98 inspired orbital globe</title>
+  <path d="M10 2H21V4H25V7H28V12H29V19H27V24H23V27H10V25H6V22H3V16H2V10H4V6H7V4H10Z" fill="#000080"/>
+  <path d="M11 3H20V5H24V8H27V12H28V18H26V23H22V26H11V24H7V21H4V16H3V11H5V7H8V5H11Z" fill="#008080"/>
+  <path d="M11 3H20V5H23V8H25V13H24V18H20V22H11V21H7V18H4V11H5V7H8V5H11Z" fill="#00ffff"/>
+  <path d="M14 3H17V6H19V11H20V18H18V23H16V26M13 4V7H11V13H12V20H14V25" fill="none" stroke="#008080"/>
+  <path d="M4 11H26M4 17H26M8 22H22" fill="none" stroke="#c0ffff"/>
+  <path d="M3 20V23H6V25H11V24H16V22H20V19H24V16H27V12H29V8H27" fill="none" stroke="#000" stroke-width="3" stroke-linejoin="miter"/>
+  <path d="M3 20V23H6V25H11V24H16V22H20V19H24V16H27V12H29V8H27" fill="none" stroke="#ffff00" stroke-width="1" stroke-linejoin="miter"/>
+  <path d="M27 5H31V9H27Z" fill="#000"/><path d="M28 6H30V8H28Z" fill="#ffff00"/>
+</svg>
