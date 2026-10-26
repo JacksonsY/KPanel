@@ -12,6 +12,7 @@ import (
 )
 
 const desktopShortcutIconPrefix = "/api/v1/desktop/shortcuts/"
+const desktopSiteIconPrefix = "/api/v1/desktop/sites/"
 
 func (s *Server) handleDesktopWorkspace(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodPut {
@@ -135,6 +136,7 @@ func (s *Server) serveDesktopShortcutIcon(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) putDesktopShortcutIcon(w http.ResponseWriter, r *http.Request, actorID, id string) {
+	action, kind, target := desktopIconAuditTarget(id, "update")
 	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || (contentType != "image/png" && contentType != "image/jpeg" && contentType != "image/webp") {
 		s.writeProblem(w, r, http.StatusUnsupportedMediaType, "desktop_shortcut_icon_type_invalid", "PNG, JPEG, or WebP icon required", "")
@@ -156,17 +158,17 @@ func (s *Server) putDesktopShortcutIcon(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	change := map[string]any{"bytes": len(data), "contentType": contentType}
-	if err := s.audit(r, actorID, "desktop.shortcut.icon.update", "desktop-shortcut", id, "intent", change); err != nil {
+	if err := s.audit(r, actorID, action, kind, target, "intent", change); err != nil {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "audit_unavailable", "Audit storage unavailable", "")
 		return
 	}
 	icon, err := s.desktopWorkspace.PutIcon(id, contentType, data)
 	if err != nil {
-		_ = s.audit(r, actorID, "desktop.shortcut.icon.update", "desktop-shortcut", id, "failure", change)
+		_ = s.audit(r, actorID, action, kind, target, "failure", change)
 		s.writeDesktopWorkspaceError(w, r, err)
 		return
 	}
-	_ = s.audit(r, actorID, "desktop.shortcut.icon.update", "desktop-shortcut", id, "success", change)
+	_ = s.audit(r, actorID, action, kind, target, "success", change)
 	s.writeJSON(w, http.StatusOK, map[string]string{
 		"iconVersion": icon.Version,
 		"iconURL":     desktopShortcutIconURL(id, icon.Version),
@@ -174,16 +176,17 @@ func (s *Server) putDesktopShortcutIcon(w http.ResponseWriter, r *http.Request, 
 }
 
 func (s *Server) deleteDesktopShortcutIcon(w http.ResponseWriter, r *http.Request, actorID, id string) {
-	if err := s.audit(r, actorID, "desktop.shortcut.icon.delete", "desktop-shortcut", id, "intent", nil); err != nil {
+	action, kind, target := desktopIconAuditTarget(id, "delete")
+	if err := s.audit(r, actorID, action, kind, target, "intent", nil); err != nil {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "audit_unavailable", "Audit storage unavailable", "")
 		return
 	}
 	if err := s.desktopWorkspace.DeleteIcon(id); err != nil {
-		_ = s.audit(r, actorID, "desktop.shortcut.icon.delete", "desktop-shortcut", id, "failure", nil)
+		_ = s.audit(r, actorID, action, kind, target, "failure", nil)
 		s.writeDesktopWorkspaceError(w, r, err)
 		return
 	}
-	_ = s.audit(r, actorID, "desktop.shortcut.icon.delete", "desktop-shortcut", id, "success", nil)
+	_ = s.audit(r, actorID, action, kind, target, "success", nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -219,11 +222,25 @@ func desktopWorkspaceResponse(workspace desktopworkspace.Workspace) desktopworks
 	return workspace
 }
 
+func desktopIconAuditTarget(id, operation string) (string, string, string) {
+	if desktopworkspace.ValidSiteIconID(id) {
+		return "desktop.site.icon." + operation, "desktop-site", strings.TrimPrefix(id, "site-")
+	}
+	return "desktop.shortcut.icon." + operation, "desktop-shortcut", id
+}
+
 func desktopShortcutIconURL(id, version string) string {
+	if desktopworkspace.ValidSiteIconID(id) {
+		return desktopSiteIconPrefix + strings.TrimPrefix(id, "site-") + "/icon?v=" + version
+	}
 	return desktopShortcutIconPrefix + id + "/icon?v=" + version
 }
 
 func desktopShortcutIconID(path string) (string, bool) {
+	if strings.HasPrefix(path, desktopSiteIconPrefix) && strings.HasSuffix(path, "/icon") {
+		id := "site-" + strings.TrimSuffix(strings.TrimPrefix(path, desktopSiteIconPrefix), "/icon")
+		return id, desktopworkspace.ValidSiteIconID(id)
+	}
 	if !strings.HasPrefix(path, desktopShortcutIconPrefix) || !strings.HasSuffix(path, "/icon") {
 		return "", false
 	}

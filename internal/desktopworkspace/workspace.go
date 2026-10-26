@@ -37,6 +37,7 @@ const (
 	MaxIconBytes         = 256 << 10
 	MaxIconTotalBytes    = 16 << 20
 	MaxShortcuts         = 64
+	MaxSiteIcons         = 512
 	MaxPositions         = 512
 	MaxHiddenEntryKeys   = 512
 	MaxHiddenWidgetKeys  = 512
@@ -119,6 +120,7 @@ type Workspace struct {
 	Positions        map[string]Position `json:"positions"`
 	WidgetPositions  map[string]Position `json:"widgetPositions"`
 	Labels           map[string]string   `json:"labels"`
+	SiteIcons        map[string]string   `json:"siteIcons,omitempty"`
 	Shortcuts        []Shortcut          `json:"shortcuts"`
 }
 
@@ -242,6 +244,15 @@ func ValidShortcutID(id string) bool {
 	return shortcutIDPattern.MatchString(id)
 }
 
+// Site icons are desktop preferences, independent of shortcut and host resources.
+func ValidSiteIconID(id string) bool {
+	return strings.HasPrefix(id, "site-") && siteIDPattern.MatchString(strings.TrimPrefix(id, "site-"))
+}
+
+func (s *Store) iconTargetExistsLocked(id string) bool {
+	return ValidSiteIconID(id) || (ValidShortcutID(id) && s.shortcutExistsLocked(id))
+}
+
 func ValidResourceVersion(value string) bool {
 	return resourcePattern.MatchString(value)
 }
@@ -287,7 +298,7 @@ func (s *Store) Icon(id string) (Icon, error) {
 	if !s.available {
 		return Icon{}, ErrUnavailable
 	}
-	if !ValidShortcutID(id) || !s.shortcutExistsLocked(id) {
+	if !s.iconTargetExistsLocked(id) {
 		return Icon{}, ErrNotFound
 	}
 	return readIcon(s.iconPath(id))
@@ -299,8 +310,19 @@ func (s *Store) PutIcon(id, contentType string, data []byte) (Icon, error) {
 	if !s.available {
 		return Icon{}, ErrUnavailable
 	}
-	if !ValidShortcutID(id) || !s.shortcutExistsLocked(id) {
+	if !s.iconTargetExistsLocked(id) {
 		return Icon{}, ErrNotFound
+	}
+	if ValidSiteIconID(id) && s.iconVersions[id] == "" {
+		count := 0
+		for key := range s.iconVersions {
+			if ValidSiteIconID(key) {
+				count++
+			}
+		}
+		if count >= MaxSiteIcons {
+			return Icon{}, ErrIconQuota
+		}
 	}
 	icon, err := validateIcon(contentType, data)
 	if err != nil {
@@ -326,7 +348,7 @@ func (s *Store) DeleteIcon(id string) error {
 	if !s.available {
 		return ErrUnavailable
 	}
-	if !ValidShortcutID(id) || !s.shortcutExistsLocked(id) {
+	if !s.iconTargetExistsLocked(id) {
 		return ErrNotFound
 	}
 	path := s.iconPath(id)
@@ -368,6 +390,14 @@ func (s *Store) workspaceLocked() Workspace {
 		Positions:        clonePositions(state.Positions), Labels: cloneLabels(state.Labels),
 		WidgetPositions: clonePositions(state.WidgetPositions),
 		Shortcuts:       shortcuts,
+	}
+	if s.available {
+		result.SiteIcons = make(map[string]string)
+		for id, version := range s.iconVersions {
+			if ValidSiteIconID(id) {
+				result.SiteIcons[strings.TrimPrefix(id, "site-")] = version
+			}
+		}
 	}
 	if !s.available {
 		result.Warning = unavailableWarning
@@ -412,7 +442,7 @@ func (s *Store) iconBytesLocked(replacingID string) (total, replaced int64, err 
 			continue
 		}
 		id := strings.TrimSuffix(name, ".icon")
-		if !ValidShortcutID(id) {
+		if !ValidShortcutID(id) && !ValidSiteIconID(id) {
 			continue
 		}
 		info, infoErr := entry.Info()
@@ -453,7 +483,7 @@ func (s *Store) gcIconsLocked() error {
 			continue
 		}
 		id := strings.TrimSuffix(name, ".icon")
-		if !ValidShortcutID(id) || !referenced[id] {
+		if !ValidSiteIconID(id) && (!ValidShortcutID(id) || !referenced[id]) {
 			if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
 				_ = os.Remove(path)
 			}

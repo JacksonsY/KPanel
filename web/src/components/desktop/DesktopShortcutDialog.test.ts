@@ -227,3 +227,23 @@ it('saves an explicitly selected remote host and sends local when switched back'
   expect(w.emitted('save')?.[1]?.[0]).toMatchObject({ targetType: 'command', hostId: 'local' })
   w.unmount(); hostSpy.mockRestore(); commandSpy.mockRestore()
 })
+
+ it('uses the shortcut form for site identity without editable destinations or commands', async () => {
+   const wrapper = mount(DesktopShortcutDialog, { attachTo: document.body, props: { open: true, site: {
+     id: 'a'.repeat(32), name: '自定义站点', defaultName: '默认站点', url: 'https://example.com', domain: 'example.com',
+     iconURL: '/custom', defaultIconURL: '/favicon', customIcon: true,
+   } } })
+   await nextTick()
+   expect(document.body.textContent).toContain('编辑站点')
+   expect(document.body.textContent).toContain('example.com')
+   expect(document.body.querySelector('input[type="url"], select, textarea')).toBeNull()
+   const restore = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.includes('恢复默认图标'))!
+   restore.click(); await nextTick()
+   expect(document.body.querySelector('img')?.getAttribute('src')).toBe('/favicon')
+   const reset = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.includes('恢复默认名称'))!
+   reset.click(); await nextTick()
+   document.body.querySelector<HTMLButtonElement>('.modal-panel__footer .button--primary')!.click()
+   await nextTick()
+   expect(wrapper.emitted('save')?.[0]).toEqual([expect.objectContaining({ name: '默认站点', url: 'https://example.com/' }), undefined, true])
+   wrapper.unmount()
+ })

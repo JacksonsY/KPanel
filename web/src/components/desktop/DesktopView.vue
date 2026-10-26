@@ -55,6 +55,7 @@ import DesktopIconManagerDialog from '@/components/desktop/DesktopIconManagerDia
 import DesktopStartMenu from '@/components/desktop/DesktopStartMenu.vue'
 import DesktopShortcutDialog, {
   type DesktopShortcutDraft,
+  type DesktopSiteDraft,
 } from '@/components/desktop/DesktopShortcutDialog.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import DesktopWallpaperPicker from '@/components/desktop/DesktopWallpaperPicker.vue'
@@ -357,7 +358,9 @@ function applySiteNames(value?: DesktopEntries): DesktopEntries | undefined {
   if (!value) return undefined
   const apply = (entry: DesktopEntry): DesktopEntry => {
     if (entry.kind !== 'site') return entry
-    return { ...entry, name: siteNames.value[entry.id] || defaultSiteName(entry) }
+    const version = desktopIcons.workspace.value.siteIcons?.[entry.id]
+    return { ...entry, name: siteNames.value[entry.id] || defaultSiteName(entry),
+      iconURL: version ? api.desktop.siteIconURL(entry.id, version) : api.sites.iconURL(entry.id) }
   }
   return {
     ...value,
@@ -1095,7 +1098,7 @@ watch(() => [workspace.value.positions, workspace.value.widgetPositions], ([posi
   )
 }, { deep: true, immediate: true })
 
-watch([() => workspace.value.labels, () => desktopIcons.loaded.value], ([labels, isLoaded]) => {
+watch([() => workspace.value.labels, () => desktopIcons.loaded.value, () => workspace.value.siteIcons], ([labels, isLoaded]) => {
   if (!isLoaded) return
   siteNames.value = Object.fromEntries(
     Object.entries(labels)
@@ -1131,7 +1134,15 @@ const detailEntry = ref<DesktopEntry>()
 const externalOpenEntry = ref<DesktopEntry>()
 const externalOpenImageFailed = ref(false)
 const renameEntry = ref<DesktopEntry>()
-const renameValue = ref('')
+const siteSaving = ref(false)
+const siteError = ref('')
+const editingSite = computed<DesktopSiteDraft | undefined>(() => {
+  const entry = renameEntry.value
+  if (!entry) return undefined
+  return { id: entry.id, name: entry.name, defaultName: defaultSiteName(entry),
+    domain: siteDomainName(entry), url: entry.url || '', iconURL: entry.iconURL || api.sites.iconURL(entry.id),
+    defaultIconURL: api.sites.iconURL(entry.id), customIcon: Boolean(workspace.value.siteIcons?.[entry.id]) }
+})
 let contextMenuOpener: HTMLElement | undefined
 
 interface DesktopWindowHandle {
@@ -3938,52 +3949,40 @@ function onEntryMenuRename(): void {
   const entry = menuEntry.value
   closeContextMenu()
   if (entry?.kind !== 'site') return
+  siteError.value = ''
   renameEntry.value = entry
-  renameValue.value = entry.name
 }
 
 function closeRename(): void {
+  if (siteSaving.value) return
   renameEntry.value = undefined
-  renameValue.value = ''
+  siteError.value = ''
 }
 
-async function saveRename(): Promise<void> {
+async function saveSite(draft: DesktopShortcutDraft, icon: File | undefined, removeIcon: boolean): Promise<void> {
   const entry = renameEntry.value
-  const name = renameValue.value.trim().slice(0, MAX_SITE_NAME_LENGTH)
-  if (entry?.kind !== 'site' || !name) return
-  const defaultName = defaultSiteName(entry)
+  const name = draft.name.trim().slice(0, MAX_SITE_NAME_LENGTH)
+  if (entry?.kind !== 'site' || !name || siteSaving.value) return
+  siteSaving.value = true
+  siteError.value = ''
+  let nameSaved = false
   try {
-    await desktopIcons.mutate((draft) => {
-      if (name === defaultName) delete draft.labels[entry.key]
-      else draft.labels[entry.key] = name
+    await desktopIcons.mutate((workspaceDraft) => {
+      if (name === defaultSiteName(entry)) delete workspaceDraft.labels[entry.key]
+      else workspaceDraft.labels[entry.key] = name
     })
-    const next = { ...siteNames.value }
-    if (name === defaultName) delete next[entry.id]
-    else next[entry.id] = name
-    siteNames.value = next
+    nameSaved = true
     window.localStorage.removeItem(SITE_RENAMES_KEY)
+    if (icon) await api.desktop.uploadSiteIcon(entry.id, icon)
+    else if (removeIcon) await api.desktop.removeSiteIcon(entry.id)
+    if (icon || removeIcon) await desktopIcons.load()
     entries.value = applySiteNames(entries.value)
-    closeRename()
+    renameEntry.value = undefined
+    toast.success(i18n.t('desktop.siteUpdated'), name)
   } catch (error) {
-    toast.danger(i18n.t('desktop.workspaceSaveErrorTitle'), workspaceErrorMessage(error))
-  }
-}
-
-async function resetRename(): Promise<void> {
-  const entry = renameEntry.value
-  if (entry?.kind !== 'site') return
-  try {
-    await desktopIcons.mutate((draft) => {
-      delete draft.labels[entry.key]
-    })
-    const next = { ...siteNames.value }
-    delete next[entry.id]
-    siteNames.value = next
-    window.localStorage.removeItem(SITE_RENAMES_KEY)
-    entries.value = applySiteNames(entries.value)
-    closeRename()
-  } catch (error) {
-    toast.danger(i18n.t('desktop.workspaceSaveErrorTitle'), workspaceErrorMessage(error))
+    siteError.value = (nameSaved ? i18n.t('desktop.sitePartialSave') + ' ' : '') + workspaceErrorMessage(error)
+  } finally {
+    siteSaving.value = false
   }
 }
 
@@ -4992,7 +4991,7 @@ function onViewportResize(): void {
             @click="onEntryMenuRename"
           >
             <Pencil :size="15" aria-hidden="true" />
-            {{ i18n.t('desktop.entryRename') }}
+            {{ i18n.t('desktop.siteEdit') }}
           </button>
           <button
             v-if="menuEntry.kind === 'shortcut' && (menuEntry.shortcut?.targetType === 'url' || isDesktopCommandShortcut(menuEntry.shortcut))"
@@ -5551,41 +5550,15 @@ function onViewportResize(): void {
       </template>
     </ModalDialog>
 
-    <ModalDialog
+    <DesktopShortcutDialog
+      v-if="renameEntry"
       :open="Boolean(renameEntry)"
-      :title="i18n.t('desktop.renameTitle')"
-      size="small"
+      :site="editingSite"
+      :saving="siteSaving"
+      :error-message="siteError"
       @close="closeRename"
-    >
-      <form class="desktop__rename-form" @submit.prevent="saveRename">
-        <label>
-          <span>{{ i18n.t('desktop.renameLabel') }}</span>
-          <input
-            v-model="renameValue"
-            :maxlength="MAX_SITE_NAME_LENGTH"
-            :placeholder="renameEntry ? defaultSiteName(renameEntry) : ''"
-            autocomplete="off"
-          />
-        </label>
-        <small>{{ renameEntry?.site?.primaryDomain }}</small>
-      </form>
-      <template #footer>
-        <button
-          v-if="renameEntry && siteNames[renameEntry.id]"
-          class="button button--ghost"
-          type="button"
-          @click="resetRename"
-        >
-          {{ i18n.t('desktop.renameReset') }}
-        </button>
-        <button class="button button--ghost" type="button" @click="closeRename">
-          {{ i18n.t('common.cancel') }}
-        </button>
-        <button class="button button--primary" type="button" :disabled="!renameValue.trim()" @click="saveRename">
-          {{ i18n.t('desktop.renameSave') }}
-        </button>
-      </template>
-    </ModalDialog>
+      @save="saveSite"
+    />
 
     <DesktopIconManagerDialog
       :open="iconManagerOpen"

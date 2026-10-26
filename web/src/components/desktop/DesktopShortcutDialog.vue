@@ -18,9 +18,21 @@ export interface DesktopShortcutDraft {
   hostId?: string
 }
 
+export interface DesktopSiteDraft {
+  id: string
+  name: string
+  defaultName: string
+  url: string
+  domain: string
+  iconURL: string
+  defaultIconURL: string
+  customIcon: boolean
+}
+
 const props = defineProps<{
   open: boolean
   shortcut?: DesktopShortcut
+  site?: DesktopSiteDraft
   saving?: boolean
   errorMessage?: string
 }>()
@@ -68,18 +80,26 @@ watch(() => [props.open, targetType.value] as const, ([open, type]) => {
   else { importController?.abort(); importing.value = false }
 }, { immediate: true })
 const icon = ref<File>()
+const iconInput = ref<HTMLInputElement>()
 const iconPreviewURL = ref('')
 const removeIcon = ref(false)
 const validationMessage = ref('')
 let previewSequence = 0
 let previewReader: FileReader | undefined
 
-const title = computed(() => props.shortcut
+const title = computed(() => props.site ? i18n.t('desktop.siteEditTitle') : props.shortcut
   ? i18n.t('desktop.shortcutEditTitle')
   : i18n.t('desktop.shortcutAddTitle'))
 
 const visibleIconURL = computed(() => iconPreviewURL.value
-  || (!removeIcon.value ? props.shortcut?.iconURL : undefined))
+  || (props.site
+    ? (removeIcon.value ? props.site.defaultIconURL : props.site.iconURL)
+    : (!removeIcon.value ? props.shortcut?.iconURL : undefined)))
+const canRemoveIcon = computed(() => props.site
+  ? Boolean(icon.value || (props.site.customIcon && !removeIcon.value))
+  : Boolean(visibleIconURL.value))
+const iconFailed = ref(false)
+watch(visibleIconURL, () => { iconFailed.value = false })
 
 function clearPreview(): void {
   previewSequence += 1
@@ -97,20 +117,21 @@ function clearPreview(): void {
 
 function reset(): void {
   clearPreview()
-  name.value = props.shortcut?.name || ''
+  name.value = props.site?.name || props.shortcut?.name || ''
   description.value = props.shortcut?.description || ''
   targetType.value = isDesktopCommandShortcut(props.shortcut) ? 'command' : 'url'
   command.value = props.shortcut?.command || ''
   hostId.value = props.shortcut?.hostId || 'local'
   hostValid.value = hostId.value === 'local'
   importError.value = ''
-  url.value = props.shortcut?.targetType === 'url' ? props.shortcut.url || '' : ''
+  url.value = props.site?.url || (props.shortcut?.targetType === 'url' ? props.shortcut.url || '' : '')
   icon.value = undefined
   removeIcon.value = false
   validationMessage.value = ''
+  iconFailed.value = false
 }
 
-watch(() => [props.open, props.shortcut?.id] as const, ([open]) => {
+watch(() => [props.open, props.shortcut?.id, props.site?.id] as const, ([open]) => {
   if (open) reset()
   else clearPreview()
 }, { immediate: true })
@@ -172,7 +193,7 @@ function selectIcon(event: Event): void {
 function clearIcon(): void {
   clearPreview()
   icon.value = undefined
-  removeIcon.value = Boolean(props.shortcut?.iconVersion || props.shortcut?.iconURL)
+  removeIcon.value = Boolean(props.site?.customIcon || props.shortcut?.iconVersion || props.shortcut?.iconURL)
 }
 
 function normalizedURL(value: string): string | undefined {
@@ -187,6 +208,7 @@ function normalizedURL(value: string): string | undefined {
 }
 
 function submit(): void {
+  if (props.saving) return
   validationMessage.value = ''
   const trimmedName = name.value.trim()
   const trimmedDescription = description.value.replace(/[\s\p{Cc}]+/gu, ' ').trim()
@@ -208,7 +230,7 @@ function submit(): void {
     return
   }
   emit('save', {
-    id: props.shortcut?.id || '',
+    id: props.site?.id || props.shortcut?.id || '',
     name: trimmedName,
     description: trimmedDescription,
     targetType: targetType.value === 'command' && hostId.value !== 'local' ? 'remote-command' : targetType.value,
@@ -220,19 +242,21 @@ onBeforeUnmount(() => { clearPreview(); importController?.abort() })
 </script>
 
 <template>
-  <ModalDialog :open="open" :title="title" size="small" @close="emit('close')">
+  <ModalDialog :open="open" :title="title" size="small" @close="!saving && emit('close')">
     <form class="desktop-shortcut-form" @submit.prevent="submit">
       <div class="desktop-shortcut-form__identity">
         <span class="desktop-shortcut-form__preview" aria-hidden="true">
-          <img v-if="visibleIconURL" :src="visibleIconURL" alt="" />
+          <img v-if="visibleIconURL && !iconFailed" :src="visibleIconURL" alt="" @error="iconFailed = true" />
           <Terminal v-else-if="targetType === 'command'" :size="28" :stroke-width="1.8" />
           <Link2 v-else :size="28" :stroke-width="1.8" />
         </span>
         <div class="desktop-shortcut-form__icon-actions">
-          <label class="button button--ghost">
+          <label class="button button--ghost" role="button" :tabindex="saving ? -1 : 0"
+            @keydown.enter.prevent="!saving && iconInput?.click()" @keydown.space.prevent="!saving && iconInput?.click()">
             <ImagePlus :size="15" aria-hidden="true" />
             {{ i18n.t('desktop.shortcutChooseIcon') }}
             <input
+              ref="iconInput"
               type="file"
               accept="image/png,image/jpeg,image/webp"
               :disabled="saving"
@@ -240,20 +264,20 @@ onBeforeUnmount(() => { clearPreview(); importController?.abort() })
             />
           </label>
           <button
-            v-if="visibleIconURL"
+            v-if="canRemoveIcon"
             class="button button--ghost"
             type="button"
             :disabled="saving"
             @click="clearIcon"
           >
             <Trash2 :size="14" aria-hidden="true" />
-            {{ i18n.t('desktop.shortcutRemoveIcon') }}
+            {{ i18n.t(site ? 'desktop.siteResetIcon' : 'desktop.shortcutRemoveIcon') }}
           </button>
           <small>{{ i18n.t('desktop.shortcutIconHint') }}</small>
         </div>
       </div>
 
-      <label class="desktop-shortcut-form__field">
+      <label v-if="!site" class="desktop-shortcut-form__field">
         <span class="desktop-shortcut-form__field-heading">{{ i18n.t('desktop.shortcutType') }}</span>
         <select v-model="targetType" class="desktop-shortcut-form__control" :disabled="saving" data-testid="shortcut-type">
           <option value="url">{{ i18n.t('desktop.shortcutTypeURL') }}</option>
@@ -272,7 +296,7 @@ onBeforeUnmount(() => { clearPreview(); importController?.abort() })
       </div>
       <label class="desktop-shortcut-form__field">
         <span class="desktop-shortcut-form__field-heading">
-          <span>{{ i18n.t('desktop.shortcutName') }}</span>
+          <span>{{ i18n.t(site ? 'desktop.siteName' : 'desktop.shortcutName') }}</span>
         </span>
         <span class="desktop-shortcut-form__control">
           <Type :size="16" :stroke-width="1.9" aria-hidden="true" />
@@ -280,13 +304,20 @@ onBeforeUnmount(() => { clearPreview(); importController?.abort() })
             v-model="name"
             maxlength="48"
             autocomplete="off"
-            :placeholder="i18n.t('desktop.shortcutNamePlaceholder')"
+            :placeholder="site?.defaultName || i18n.t('desktop.shortcutNamePlaceholder')"
             :disabled="saving"
             required
           />
         </span>
       </label>
-      <label v-if="targetType === 'url'" class="desktop-shortcut-form__field">
+      <button v-if="site && name !== site.defaultName" type="button" class="button button--ghost" :disabled="saving" @click="name = site.defaultName">
+        {{ i18n.t('desktop.renameReset') }}
+      </button>
+      <div v-if="site" class="desktop-shortcut-form__field">
+        <span class="desktop-shortcut-form__field-heading">{{ i18n.t('desktop.siteDomain') }}</span>
+        <small class="desktop-site-domain">{{ site.domain }}</small>
+      </div>
+      <label v-if="!site && targetType === 'url'" class="desktop-shortcut-form__field">
         <span class="desktop-shortcut-form__field-heading">
           <span>{{ i18n.t('desktop.shortcutURL') }}</span>
         </span>
@@ -312,7 +343,7 @@ onBeforeUnmount(() => { clearPreview(); importController?.abort() })
         </span>
         <small>{{ i18n.t('desktop.shortcutCommandHint') }}</small>
       </label>
-      <label class="desktop-shortcut-form__field">
+      <label v-if="!site" class="desktop-shortcut-form__field">
         <span class="desktop-shortcut-form__field-heading">
           <span>{{ i18n.t('desktop.shortcutDescription') }}</span>
           <small>{{ description.length }}/160</small>
@@ -346,6 +377,7 @@ onBeforeUnmount(() => { clearPreview(); importController?.abort() })
 <style scoped>
 .desktop-shortcut-form__field-heading { font-size: 14px; }
 select.desktop-shortcut-form__control { width: 100%; min-width: 0; color: var(--text); font-size: 14px; }
+.desktop-site-domain { overflow-wrap: anywhere; }
 .desktop-shortcut-form__field > small { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .desktop-shortcut-form__field > p { margin: 0; color: var(--danger); font-size: 14px; }
 </style>
