@@ -14,6 +14,7 @@ import {
   desktopWindowCloseKey,
   desktopWindowLaunchKey,
   desktopWindowTitleKey,
+  desktopWindowTitlebarTargetKey,
   desktopCloseGuardCoordinatorKey,
   desktopWindowCloseGuardKey,
   desktopWindowVisibleKey,
@@ -96,6 +97,8 @@ provide(desktopWindowVisibleKey, isVisible)
 provide(desktopWindowLaunchKey, () => desktop.consumeWindowLaunch(props.windowState.id))
 const closeGuards = new Set<() => boolean | Promise<boolean>>()
 const windowElement = ref<HTMLElement>()
+const titlebarTarget = ref<HTMLElement>()
+provide(desktopWindowTitlebarTargetKey, titlebarTarget)
 const focusReturnTarget = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
 const closeGuardCoordinator = inject(desktopCloseGuardCoordinatorKey, undefined)
 provide(desktopWindowCloseGuardKey, {
@@ -553,6 +556,7 @@ const handleEdges = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
           <component v-else :is="icon" :size="13" :stroke-width="2.2" aria-hidden="true" />
         </span>
         <span class="desktop-window__title-label">{{ title }}</span>
+        <div ref="titlebarTarget" class="desktop-window__title-extension" />
       </div>
     </header>
 

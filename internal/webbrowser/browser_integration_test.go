@@ -205,5 +205,14 @@ func TestRealBrowserRoundTrip(t *testing.T) {
 	if running {
 		t.Fatal("last tab retained browser process")
 	}
+	for i := 0; i < 8; i++ {
+		sendCommand(Command{Type: "new", URL: app.URL})
+	}
+	state = readUntil(func(e Event) bool { return e.Type == "state" && len(e.Tabs) == 8 })
+	if err := entry.browser.Execute(Command{Type: "new", URL: app.URL}, executable, nil); err == nil || err.Error() != "tab_limit" {
+		t.Fatal("ninth tab did not respect the eight-tab limit", err)
+	}
+	sendCommand(Command{Type: "select", Tab: state.Tabs[0].ID})
+	readUntil(func(e Event) bool { return e.Type == "frame" && e.Tab == state.Tabs[0].ID })
 	sendCommand(Command{Type: "end"})
 }

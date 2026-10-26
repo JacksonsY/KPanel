@@ -92,7 +92,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/healthz" {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ready":true,"maxTabs":4}`))
+		_ = json.NewEncoder(w).Encode(map[string]any{"ready": true, "maxTabs": MaxTabs})
 		return
 	}
 	id := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")

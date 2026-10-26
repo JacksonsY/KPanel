@@ -2357,6 +2357,17 @@ body.desktop-mode-open::-webkit-scrollbar {
   white-space: nowrap;
 }
 
+.desktop-window__title-extension {
+  min-width: 0;
+  height: 100%;
+  flex: 1 1 auto;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+.desktop-window__title-extension:empty { display: none; }
+.desktop-window__title:has(.desktop-window__title-extension:not(:empty)) .desktop-window__title-label { display: none; }
+
 .desktop-window__app-glyph {
   display: grid;
   width: 20px;

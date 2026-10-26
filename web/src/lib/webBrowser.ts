@@ -1,5 +1,7 @@
 import type { InjectionKey, Ref } from 'vue'
 
+export const BROWSER_MAX_TABS = 8
+
 export interface BrowserTab { id: string; url: string; title: string; loading: boolean; back: boolean; forward: boolean }
 export interface BrowserEvent { type: string; tab?: string; active?: string; tabs?: BrowserTab[]; image?: string; width?: number; height?: number; code?: string; text?: string }
 export interface BrowserLink { id: string; name: string; url: string; iconURL?: string }
@@ -50,7 +52,7 @@ export function browserEvent(raw: unknown): BrowserEvent | undefined {
   try {
     const event: BrowserEvent = JSON.parse(raw)
     if (!event || typeof event !== 'object') return undefined
-    if (event.type === 'state' && Array.isArray(event.tabs) && event.tabs.length <= 4 && typeof event.active === 'string'
+    if (event.type === 'state' && Array.isArray(event.tabs) && event.tabs.length <= BROWSER_MAX_TABS && typeof event.active === 'string'
       && event.tabs.every(tab => typeof tab.id === 'string' && tab.id.length <= 64 && typeof tab.url === 'string' && tab.url.length <= 4096 && typeof tab.title === 'string' && tab.title.length <= 160)) return event
     if (event.type === 'frame' && typeof event.tab === 'string' && typeof event.image === 'string' && /^[A-Za-z0-9+/=]+$/.test(event.image)
       && Number.isInteger(event.width) && Number.isInteger(event.height) && event.width! >= 1 && event.width! <= 1600 && event.height! >= 1 && event.height! <= 1000) return event

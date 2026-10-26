@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const MaxTabs = 4
+const MaxTabs = 8
 const MaxCommandBytes = 16 << 10
 const MaxEventBytes = 2 << 20
 

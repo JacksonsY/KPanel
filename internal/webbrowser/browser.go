@@ -257,7 +257,9 @@ func (s *browserSession) listen(tab *browserTab) {
 			}
 			err = send(ctx, page.ScreencastFrameAck, page.ScreencastFrameAckParams{SessionID: event.SessionID})
 			cancel()
-			if err != nil {
+			// Stop/restart may invalidate an in-flight ACK; keep the target's
+			// subscription alive so selecting this tab can deliver frames again.
+			if err != nil && tab.ctx.Err() != nil {
 				return
 			}
 		}

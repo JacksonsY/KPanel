@@ -6,7 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import WebBrowserView from './WebBrowserView.vue'
 import { api } from '@/lib/api'
 import { browserLinksKey, browserLaunchKey } from '@/lib/webBrowser'
-import { desktopWindowVisibleKey } from '@/lib/desktopRouteKeys'
+import { desktopWindowTitlebarTargetKey, desktopWindowVisibleKey } from '@/lib/desktopRouteKeys'
 
 vi.mock('@/lib/api', () => ({ api: { browser: { status: vi.fn(), csrf: () => 'test-csrf' } } }))
 class Socket {
@@ -29,18 +29,18 @@ describe('desktop remote browser', () => {
     Socket.instances = []
     vi.stubGlobal('WebSocket', Socket)
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
-    vi.mocked(api.browser.status).mockResolvedValue({ ready: true, maxTabs: 4 })
+    vi.mocked(api.browser.status).mockResolvedValue({ ready: true, maxTabs: 8 })
   })
   afterEach(() => { vi.unstubAllGlobals() })
-  async function render(visible = ref(true), url?: string) {
+  async function render(visible = ref(true), url?: string, titlebar?: HTMLElement) {
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/browser', component: { template: '<div />' } }] })
     await router.push('/browser')
-    const wrapper = mount(WebBrowserView, { global: { plugins: [router], provide: { [desktopWindowVisibleKey as symbol]: visible, [browserLaunchKey as symbol]: ref(url ? { url, request: 'test' } : undefined), [browserLinksKey as symbol]: ref([{ id: 'app', name: 'App', url: 'https://example.com' }]) } } })
+    const wrapper = mount(WebBrowserView, { global: { plugins: [router], provide: { [desktopWindowTitlebarTargetKey as symbol]: ref(titlebar), [desktopWindowVisibleKey as symbol]: visible, [browserLaunchKey as symbol]: ref(url ? { url, request: 'test' } : undefined), [browserLinksKey as symbol]: ref([{ id: 'app', name: 'App', url: 'https://example.com' }]) } } })
     await flushPromises()
     return wrapper
   }
   it('explains a missing optional component and keeps external opening available', async () => {
-    vi.mocked(api.browser.status).mockResolvedValue({ ready: false, reason: 'browser_unconfigured', maxTabs: 4 })
+    vi.mocked(api.browser.status).mockResolvedValue({ ready: false, reason: 'browser_unconfigured', maxTabs: 8 })
     const wrapper = await render(ref(true), 'https://example.com/')
     expect(wrapper.text()).toContain('浏览器组件尚未启用')
     expect(wrapper.find('iframe').exists()).toBe(false)
@@ -60,6 +60,22 @@ describe('desktop remote browser', () => {
     expect(wrapper.text()).toContain('通过服务器访问')
     wrapper.unmount()
     expect(socket.sent).toContainEqual({ type: 'end' })
+  })
+  it('integrates the eight-tab strip into the window titlebar', async () => {
+    const target = document.createElement('div'); document.body.append(target)
+    const wrapper = await render(ref(true), undefined, target)
+    const socket = Socket.instances[0]!
+    socket.state(Array.from({ length: 8 }, (_, index) => ({ id: `tab-${index}`, url: 'https://example.com/', title: `Page ${index}`, loading: false, back: false, forward: false })), 'tab-0')
+    await nextTick()
+    expect(target.querySelectorAll('[role="tab"]')).toHaveLength(8)
+    expect(target.textContent).toContain('8/8')
+    expect(wrapper.find('.web-browser__tabs').exists()).toBe(false)
+    expect(target.querySelector<HTMLButtonElement>('button[title="新建标签页"]')?.disabled).toBe(true)
+    await wrapper.get('button[title="起始页"]').trigger('click')
+    await wrapper.get('.web-browser__address input').setValue('example.org')
+    await wrapper.get('.web-browser__toolbar').trigger('submit')
+    expect(socket.sent).toContainEqual({ type: 'navigate', tab: 'tab-0', url: 'https://example.org/' })
+    wrapper.unmount(); expect(target.children).toHaveLength(0); target.remove()
   })
   it('keeps page titles as text and pauses transmission when the desktop window is hidden', async () => {
     const visible = ref(true), wrapper = await render(visible), socket = Socket.instances[0]!

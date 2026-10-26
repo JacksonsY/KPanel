@@ -27,7 +27,8 @@ describe('remote browser boundary', () => {
     expect(browserCoordinates(0, 0, { left: 100, top: 50, width: 0, height: 300 }, 1000, 600)).toBeUndefined()
   })
   it('rejects malformed and oversized worker events before rendering', () => {
-    for (const value of ['{', '{}', JSON.stringify({ type: 'state', active: '', tabs: Array(5).fill({ id: 'x', title: '', url: '' }) }), JSON.stringify({ type: 'frame', tab: 'x', image: '<svg>', width: 640, height: 480 })]) expect(browserEvent(value)).toBeUndefined()
+    for (const value of ['{', '{}', JSON.stringify({ type: 'state', active: '', tabs: Array(9).fill({ id: 'x', title: '', url: '' }) }), JSON.stringify({ type: 'frame', tab: 'x', image: '<svg>', width: 640, height: 480 })]) expect(browserEvent(value)).toBeUndefined()
     expect(browserEvent(JSON.stringify({ type: 'state', active: '', tabs: [] }))?.tabs).toEqual([])
+    expect(browserEvent(JSON.stringify({ type: 'state', active: '0', tabs: Array.from({ length: 8 }, (_, i) => ({ id: String(i), title: '', url: '' })) }))?.tabs).toHaveLength(8)
   })
 })
