@@ -51,6 +51,7 @@ let connectTimer: ReturnType<typeof setTimeout> | undefined
 let lastPointer = 0
 const composing = ref(false)
 let pendingURL: string | undefined
+const closingTabIDs = new Set<string>()
 
 function send(command: Record<string, unknown>): boolean {
   if (socket?.readyState !== WebSocket.OPEN || status.value !== 'connected') return false
@@ -93,8 +94,12 @@ function receive(raw: unknown): void {
   if (event.type === 'error') { notice.value = errorMessage(event.code); return }
   if (event.type === 'dialog') { dialog.value = event; return }
   if (event.type !== 'state') return
-  const changed = activeID.value !== event.active
-  tabs.value = event.tabs!; activeID.value = event.active!
+  const reported = event.tabs!
+  for (const id of closingTabIDs) { if (!reported.some(tab => tab.id === id)) closingTabIDs.delete(id) }
+  const remaining = reported.filter(tab => !closingTabIDs.has(tab.id))
+  const nextActive = remaining.some(tab => tab.id === event.active) ? event.active! : remaining[remaining.length - 1]?.id || ''
+  const changed = activeID.value !== nextActive
+  tabs.value = remaining; activeID.value = nextActive
   if (tabs.value.length >= BROWSER_MAX_TABS && newTabPending.value) { newTabPending.value = false; startPage.value = false }
   if (changed) { imageReady.value = false; bitmapSequence++ }
   if (!editingAddress.value) address.value = activeTab.value?.url === 'about:blank' ? '' : activeTab.value?.url || ''
@@ -107,6 +112,7 @@ function disconnect(end = false): void {
 }
 async function connect(): Promise<void> {
   disconnect(); const current = epoch; status.value = 'connecting'; notice.value = ''; controller = new AbortController()
+  closingTabIDs.clear()
   try {
     const health = await api.browser.status(controller.signal)
     if (current !== epoch) return
@@ -137,7 +143,13 @@ function openURL(url: string): void {
 }
 function submit(): void { const url = browserInput(address.value); if (!url) { notice.value = t('invalid'); return }; openURL(url) }
 function select(tab: BrowserTab): void { startPage.value = false; newTabPending.value = false; imageReady.value = false; send({ type: 'select', tab: tab.id }); void nextTick(resize) }
-function close(tab: BrowserTab): void { send({ type: 'close', tab: tab.id }); if (tabs.value.length === 1) { startPage.value = true; newTabPending.value = true } }
+function close(tab: BrowserTab): void {
+  if (!send({ type: 'close', tab: tab.id })) return
+  closingTabIDs.add(tab.id)
+  tabs.value = tabs.value.filter(item => item.id !== tab.id)
+  if (activeID.value === tab.id) activeID.value = tabs.value[tabs.value.length - 1]?.id || ''
+  if (!tabs.value.length) { startPage.value = true; newTabPending.value = true }
+}
 function home(): void { startPage.value = true; newTabPending.value = !activeTab.value; address.value = ''; void nextTick(() => addressInput.value?.focus()) }
 function closeStartTab(): void { const previous = tabs.value[tabs.value.length - 1]; if (previous) select(previous); else { pendingURL = undefined; notice.value = ''; home() } }
 function newTab(): void { if (tabs.value.length >= BROWSER_MAX_TABS) { notice.value = t('limit'); return }; home(); newTabPending.value = true }
