@@ -31,6 +31,7 @@ pages.push({ path: '/ai', file: 'AiView.vue' })
 const workspaces: Record<string, string> = {
   '/files': 'files-page', '/gallery': 'gallery-page', '/terminal': 'terminal-page',
   '/diagnostics': 'diagnostics-page', '/monitoring': 'monitoring-page', '/ai': 'ai-workspace',
+  '/browser': 'web-browser',
 }
 
 function rootClasses(file: string, seen = new Set<string>()): string[] {

@@ -282,7 +282,7 @@ Vue 组件内使用材质滤镜同样受 `ALLOWED_COMPONENT_BLUR_SELECTORS` 约�
 | --- | --- | --- |
 | 经典普通内容页 | `AppShell` 的 `.page-content` 负责外边距、最大宽度和文档滚动；宽屏 `clamp(24px, 3vw, 38px)`，窄屏及横屏规则以 `main.css` 为准 | 页面可见内容根节点使用 `.page`，专用页面类与它并列；窄内容可追加 `.page--narrow` |
 | 桌面普通内容页 | `.desktop-window__body` 负责窗口正文滚动；`desktop.css` 为内容根节点提供 `clamp(14px, 2.3cqw, 22px)` 内边距，窗口宽度 ≤580px 时为 12px | 同一 `.page` 根节点直接接入，不依赖视口宽度猜测窗口宽度；整页网格内容需要保持顶端排列时设 `align-content: start` |
-| 专用工作区 | 文件、图库、终端、体检、历史监控、AI 等沿用各自已登记的容器和滚动规则；终端/图库允许有意铺满 | 保留 `.files-page`、`.gallery-page`、`.terminal-page`、`.diagnostics-page`、`.monitoring-page`、`.ai-workspace`；新增类型须同时补集中适配、测试与浏览器证据 |
+| 专用工作区 | 文件、图库、终端、体检、历史监控、AI、内置浏览器沿用各自已登记的容器和滚动规则；终端/图库/浏览器允许有意铺满 | 保留 `.files-page`、`.gallery-page`、`.terminal-page`、`.diagnostics-page`、`.monitoring-page`、`.ai-workspace`、`.web-browser`；浏览器的纵向弹性容器、工具栏与画布视口由 `WebBrowserView.vue` 管理，桌面窗口提供外层高度；新增类型须同时补集中适配、测试与浏览器证据 |
 
 表中数值是现有共享 CSS 的验收契约，不是在业务组件中复制数值的授权；修改集中取值时同步更新本表和回归。
 包装组件（如系统中心复用概览）必须把这份契约传递到实际渲染根节点；登录、初始化和公开分享页是独立布局，
