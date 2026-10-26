@@ -230,6 +230,14 @@ func (s *Service) writeEvents(ctx context.Context, ws *websocket.Conn, browser *
 			}
 		case event = <-browser.notices:
 		}
+		if event.Type == "frame" {
+			browser.mu.Lock()
+			current := browser.visible && event.Tab == browser.active && event.Width == browser.width && event.Height == browser.height
+			browser.mu.Unlock()
+			if !current {
+				continue
+			}
+		}
 		if event.Type == "state" {
 			lastActive = event.Active
 		}

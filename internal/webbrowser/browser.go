@@ -318,6 +318,9 @@ func (s *browserSession) stream() error {
 				return errors.New("browser_disconnected")
 			}
 			tab.width, tab.height = s.width, s.height
+			if tab.streaming && !tab.navigating {
+				s.viewportFrame(tab)
+			}
 		}
 		if tab.streaming == want {
 			continue
@@ -343,6 +346,24 @@ func (s *browserSession) stream() error {
 	}
 	return s.ctx.Err()
 }
+
+// Resizing a static page may not emit a fresh screencast frame after Chromium
+// discards an old compositor surface. Seed the new viewport without restarting
+// the stream or changing the webpage. Capture and delivery remain bounded.
+func (s *browserSession) viewportFrame(tab *browserTab) {
+	ctx, cancel := context.WithTimeout(tab.ctx, 3*time.Second)
+	defer cancel()
+	quality := int64(70)
+	shot, err := call(ctx, page.CaptureScreenshot, page.CaptureScreenshotParams{Format: page.CaptureScreenshotFormatJpeg, Quality: &quality})
+	if err != nil || len(shot.Data) >= MaxEventBytes/2 {
+		return // A navigation can replace the surface while a resize is pending.
+	}
+	size, err := jpeg.DecodeConfig(bytes.NewReader(shot.Data))
+	if err == nil && size.Width == int(tab.width) && size.Height == int(tab.height) {
+		s.notice(Event{Type: "frame", Tab: tab.ID, Image: base64.StdEncoding.EncodeToString(shot.Data), Width: tab.width, Height: tab.height})
+	}
+}
+
 func (s *browserSession) Execute(c Command, executable string, private []netip.Prefix) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
