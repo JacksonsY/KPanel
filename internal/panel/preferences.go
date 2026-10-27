@@ -46,12 +46,12 @@ func (s *Server) handlePreferences(w http.ResponseWriter, r *http.Request) {
 			s.writeValidationProblem(w, r, "expectedResourceVersion", "a valid resourceVersion is required")
 			return
 		}
-		if (input.Locale == "" && input.Desktop == nil) || store.ValidatePreferences(input.Preferences) != nil {
+		if (input.Locale == "" && input.Desktop == nil && input.Browser == nil) || store.ValidatePreferences(input.Preferences) != nil {
 			s.writeProblem(w, r, 422, "preferences_invalid", "Preferences are invalid", "")
 			return
 		}
 		// Audit only section names, never window URLs or file paths.
-		change := map[string]any{"locale": input.Locale != "", "desktop": input.Desktop != nil}
+		change := map[string]any{"locale": input.Locale != "", "desktop": input.Desktop != nil, "browser": input.Browser != nil}
 		if s.audit(r, session.User.ID, "settings.preferences.update", "panel", "preferences", "intent", change) != nil {
 			s.writeProblem(w, r, 503, "audit_unavailable", "Audit storage unavailable", "")
 			return

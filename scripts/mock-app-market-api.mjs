@@ -1,4 +1,5 @@
 import { handleMockVirtualMachines } from './mock-virtual-machines.mjs'
+import { mockBrowserComponent } from './mock-browser-component.mjs'
 import { createServer } from 'node:http'
 import { createHash, randomBytes } from 'node:crypto'
 import { mockSiteMonitoring } from './mock-site-monitoring.mjs'
@@ -1981,6 +1982,7 @@ async function mockAIApproval(request, response, url) {
 
 createServer(async (request, response) => {
   const url = new URL(request.url, 'http://127.0.0.1:8080')
+  if (await mockBrowserComponent(request, response, url, send, readJSON)) return
   if (await mockAIApproval(request, response, url)) return
   if (await mockSiteMonitoring(request, response, url, send, readJSON)) return
   if (mockTutorials(request, response, url, send)) return
@@ -2001,6 +2003,7 @@ createServer(async (request, response) => {
       return
     }
     const changes = {}
+    if (input.browser && typeof input.browser.startURL === 'string') changes.browser = input.browser
     if (['zh-CN', 'zh-TW', 'en-US'].includes(input.locale)) changes.locale = input.locale
     if (input.desktop && Array.isArray(input.desktop.windows) && input.desktop.windows.length <= 8
       && Array.isArray(input.desktop.windowSizes) && input.desktop.windowSizes.length <= 32) changes.desktop = input.desktop

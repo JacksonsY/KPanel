@@ -267,6 +267,21 @@ describe('DesktopView dynamic entries', () => {
     wrapper.unmount()
   })
 
+  it('opens browser settings from the browser icon context menu and reuses its window', async () => {
+    const wrapper = mount(DesktopView, { attachTo: document.body }); await flushPromises()
+    const icon = wrapper.find('button[title="浏览器"]')
+    await icon.trigger('contextmenu', { clientX: 120, clientY: 100 }); await nextTick()
+    const edit = wrapper.findAll('[role="menuitem"]').find(item => item.text() === '浏览器设置')
+    expect(edit).toBeDefined(); await edit!.trigger('click'); await nextTick()
+    const desktop = useDesktopMode()
+    expect(desktop.windows.value).toHaveLength(1)
+    expect(desktop.windows.value[0]?.path).toContain('/browser?settings=1&request=')
+    await icon.trigger('contextmenu', { clientX: 120, clientY: 100 }); await nextTick()
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === '浏览器设置')!.trigger('click'); await nextTick()
+    expect(desktop.windows.value).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('opens the explicitly chosen system browser directly without a confirmation', async () => {
     const wrapper = mount(DesktopView, { attachTo: document.body })
     await flushPromises()

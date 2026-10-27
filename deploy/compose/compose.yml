@@ -28,6 +28,8 @@ services:
       KEJILION_PANEL_SECURE_COOKIE: ${KEJILION_PANEL_SECURE_COOKIE:-true}
       KEJILION_PANEL_TRUSTED_PROXY_CIDRS: ${KEJILION_PANEL_TRUSTED_PROXY_CIDRS:-127.0.0.0/8,::1/128,172.29.255.240/28}
       KEJILION_PANEL_CLUSTER_PRIVATE_CIDRS: ${KEJILION_PANEL_CLUSTER_PRIVATE_CIDRS:-}
+      KEJILION_PANEL_BROWSER_SERVICE_URL: ${KEJILION_PANEL_BROWSER_SERVICE_URL:-http://browser:8092}
+      KEJILION_PANEL_BROWSER_TOKEN_FILE: /run/kejilion-panel/browser/browser-token
     volumes:
       - ${KEJILION_PANEL_DATA_DIR_HOST:-/var/lib/kejilion-panel/panel}:/var/lib/kejilion-panel
       - /run/kejilion-panel:/run/kejilion-panel:ro
@@ -36,6 +38,7 @@ services:
       panel-internal:
         ipv4_address: ${KEJILION_PANEL_IPV4:?Set KEJILION_PANEL_IPV4 to the reserved private address}
       panel-egress: {}
+      browser-control: {}
     healthcheck:
       test: ["CMD", "/paneld", "healthcheck"]
       interval: 30s
@@ -58,3 +61,6 @@ networks:
           gateway: ${KEJILION_PANEL_GATEWAY:-172.29.255.241}
   panel-egress:
     name: kejilion-panel-egress
+  browser-control:
+    name: kejilion-panel-browser-control
+    internal: true

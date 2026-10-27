@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/appmarket"
+	"github.com/kejilion/kejilion-panel/internal/browsercomponent"
 	"github.com/kejilion/kejilion-panel/internal/cluster"
 	"github.com/kejilion/kejilion-panel/internal/cluster/sshlogin"
 	"github.com/kejilion/kejilion-panel/internal/contract"
@@ -46,6 +47,7 @@ const (
 )
 
 type Config struct {
+	BrowserComponent     *browsercomponent.Service
 	VirtualMachines      *virtualmachine.Service
 	Token                []byte
 	Version              string
@@ -97,6 +99,7 @@ type monitoringChecksProvider interface {
 }
 
 type Server struct {
+	browserComponent  *browsercomponent.Service
 	tokenHash         [32]byte
 	version           string
 	protocolVersion   string
@@ -254,6 +257,7 @@ func NewServer(config Config) (*Server, error) {
 		config.VirtualMachines = virtualmachine.New(virtualmachine.Config{})
 	}
 	server := &Server{
+		browserComponent:      config.BrowserComponent,
 		virtualMachineService: config.VirtualMachines,
 		vmConsoleGate:         make(chan struct{}, 4),
 		backups:               config.Backups,
@@ -387,6 +391,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.backups.ServeHTTP(w, r)
 	case r.URL.Path == "/v1/notification-resources":
 		s.requireMethod(w, r, requestID, http.MethodGet, s.notificationResources)
+	case r.URL.Path == "/v1/browser/component" || r.URL.Path == "/v1/browser/component/actions":
+		s.browserComponentRequest(w, r)
 	case r.URL.Path == "/v1/virtual-machines" || strings.HasPrefix(r.URL.Path, "/v1/virtual-machines/"):
 		s.virtualMachines(w, r)
 	case r.URL.Path == "/v1/health":
