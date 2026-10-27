@@ -112,7 +112,14 @@ func acquireLifecycleMutex(mutexName string) (func() error, error) {
 		defer runtime.UnlockOSThread()
 		h, err := windows.CreateMutex(&sa, false, name)
 		if err != nil && !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
-			ready <- err
+			ready <- fmt.Errorf("open lifecycle mutex; stop other lifecycle operations and retry (do not bypass the legacy lock): %w", err)
+			return
+		}
+		// CreateMutex ignores sa for an existing object. Validate the actual
+		// handle before waiting; an untrusted owner can retain a modify handle
+		// even after replacing its DACL with an administrator-only ACL.
+		if err := validateLifecycleMutex(h); err != nil {
+			ready <- errors.Join(fmt.Errorf("untrusted lifecycle mutex; close the process holding the preexisting object and retry: %w", err), windows.CloseHandle(h))
 			return
 		}
 		result, err := windows.WaitForSingleObject(h, 0)
