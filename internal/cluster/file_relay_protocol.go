@@ -2,10 +2,30 @@ package cluster
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 )
+
+// The capability uses an existing, valid ready event so an older center can
+// ignore the probe and an older node can ignore the response. No JSON fields
+// or authentication boundaries change. Real request IDs are random 128-bit IDs.
+const fileRelayFlowRequestID = "00000000000000000000000000000000"
+const fileRelayFlowCommandID = "ffffffffffffffffffffffffffffffff"
+
+func FileRelayFlowMarker() FileRelayEvent {
+	return FileRelayEvent{RequestID: fileRelayFlowRequestID, CommandID: fileRelayFlowCommandID, Kind: "ready"}
+}
+
+func IsFileRelayFlowMarker(event FileRelayEvent) bool {
+	return event.Kind == "ready" && event.RequestID == fileRelayFlowRequestID && event.CommandID == fileRelayFlowCommandID &&
+		event.Status == 0 && event.Offset == 0 && len(event.Data) == 0 && len(event.Headers) == 0 && event.Error == ""
+}
+
+func FileRelayFlowReceipt(index int, requestID string) FileRelayEvent {
+	return FileRelayEvent{RequestID: requestID, CommandID: fmt.Sprintf("%032x", index+1), Kind: "ready"}
+}
 
 const (
 	lightFilePollWait       = 25 * time.Second
