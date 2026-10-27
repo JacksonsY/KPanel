@@ -181,6 +181,8 @@ func (control *lightFileControl) acceptRelayResponse(response cluster.FileRelayP
 	}
 	pending := control.pendingEvents
 	control.pendingEvents = nil
+	blocked := make(map[string]bool)
+	var unacknowledged []cluster.FileRelayEvent
 	for index, event := range pending {
 		acknowledged := control.flowMode == flowLegacy
 		if !acknowledged {
@@ -193,17 +195,28 @@ func (control *lightFileControl) acceptRelayResponse(response cluster.FileRelayP
 				}
 			}
 		}
+		if blocked[event.RequestID] {
+			acknowledged = false
+		}
 		session := control.sessions[event.RequestID]
 		if acknowledged {
 			if event.Kind == "end" && session != nil {
 				delete(control.sessions, event.RequestID)
 				session.close()
 			}
-		} else if session != nil {
-			// Reinsert at the front; the producer cannot overtake this event.
+		} else {
+			blocked[event.RequestID] = true
+			unacknowledged = append(unacknowledged, event)
+		}
+	}
+	// Prepend in reverse order so several retried chunks keep their original
+	// order ahead of newly produced output.
+	for i := len(unacknowledged) - 1; i >= 0; i-- {
+		event := unacknowledged[i]
+		if session := control.sessions[event.RequestID]; session != nil {
 			session.pending = append([]cluster.FileRelayEvent{event}, session.pending...)
 		} else {
-			control.pendingEvents = append(control.pendingEvents, event)
+			control.pendingEvents = append([]cluster.FileRelayEvent{event}, control.pendingEvents...)
 		}
 	}
 	if response.Epoch != "" {
@@ -263,12 +276,18 @@ func (control *lightFileControl) collectEvents() ([]cluster.FileRelayEvent, erro
 	if start < len(ids) && ids[start] == control.lastCollected {
 		start++
 	}
-	used := make(map[string]bool)
+	used := make(map[string]int)
 	for len(control.pendingEvents) < control.eventLimit() {
 		progressed := false
 		for index := 0; index < len(ids) && len(control.pendingEvents) < control.eventLimit(); index++ {
 			requestID := ids[(start+index)%len(ids)]
-			if control.flowMode != flowLegacy && used[requestID] {
+			// Preserve the existing two-chunk single-stream throughput while
+			// giving separate active streams one event each before another pass.
+			perSessionLimit := 1
+			if len(ids) == 1 {
+				perSessionLimit = 2
+			}
+			if control.flowMode != flowLegacy && used[requestID] >= perSessionLimit {
 				continue
 			}
 			session := control.sessions[requestID]
@@ -288,7 +307,7 @@ func (control *lightFileControl) collectEvents() ([]cluster.FileRelayEvent, erro
 			session.pending[0] = cluster.FileRelayEvent{}
 			session.pending = session.pending[1:]
 			control.lastCollected = requestID
-			used[requestID] = true
+			used[requestID]++
 			progressed = true
 			if candidate.Kind == "end" && control.flowMode == flowLegacy {
 				delete(control.sessions, requestID)

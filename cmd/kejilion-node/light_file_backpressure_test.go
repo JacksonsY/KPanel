@@ -282,3 +282,27 @@ func TestLightFileFlowNegotiationFallsBackToOldCenter(t *testing.T) {
 		t.Fatal("old center remains under unnecessary probe polling")
 	}
 }
+
+func TestLightFileSelectiveRetriesMultipleChunksInOrder(t *testing.T) {
+	control := backpressureControl(context.Background(), nil)
+	control.flowMode = flowSelective
+	defer control.resetSessions()
+	id := strings.Repeat("a", 32)
+	ctx, cancel := context.WithCancel(context.Background())
+	s := &lightNodeFileSession{requestID: id, ctx: ctx, cancel: cancel, events: make(chan cluster.FileRelayEvent, 3)}
+	for i := 0; i < 3; i++ {
+		s.events <- cluster.FileRelayEvent{RequestID: id, Kind: "data", Offset: int64(i), Data: []byte{byte('a' + i)}}
+	}
+	control.sessions[id] = s
+	events, _ := control.collectEvents()
+	if len(events) != 2 {
+		t.Fatalf("single stream lost batching: %v", events)
+	}
+	// Even a malformed receipt for the later event cannot overtake a missing
+	// receipt for the first event.
+	control.acceptRelayResponse(cluster.FileRelayPollResponse{Events: []cluster.FileRelayEvent{cluster.FileRelayFlowMarker(), cluster.FileRelayFlowReceipt(1, id)}})
+	events, _ = control.collectEvents()
+	if len(events) != 2 || events[0].Offset != 0 || events[1].Offset != 1 {
+		t.Fatalf("retry reordered data: %v", events)
+	}
+}
