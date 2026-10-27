@@ -22,7 +22,6 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/contract"
 	"github.com/kejilion/kejilion-panel/internal/jobcontrol"
 	"github.com/kejilion/kejilion-panel/internal/redact"
-	assets "github.com/kejilion/kejilion-panel/packaging/browser"
 )
 
 var (
@@ -102,7 +101,7 @@ func (s *Service) Snapshot(ctx context.Context) (contract.BrowserComponent, erro
 }
 
 func (s *Service) snapshot(ctx context.Context) (contract.BrowserComponent, error) {
-	v := contract.BrowserComponent{Image: assets.Image}
+	v := contract.BrowserComponent{Image: componentImage}
 	if runtime.GOOS != "linux" {
 		v.Reason = "linux_required"
 		return v, nil
@@ -210,6 +209,12 @@ func (s *Service) Start(ctx context.Context, r contract.BrowserComponentRequest)
 	if err != nil {
 		return contract.BrowserComponentJob{}, err
 	}
+	if v.Job != nil {
+		if err = jobcontrol.Cleanup(s.spec(v.Job.ID)); err != nil {
+			workerUnlock()
+			return contract.BrowserComponentJob{}, err
+		}
+	}
 	b := make([]byte, 16)
 	if _, err = rand.Read(b); err != nil {
 		workerUnlock()
@@ -269,11 +274,23 @@ func (s *Service) PrepareRuntime() error {
 	if err != nil || !i.IsDir() || i.Mode()&os.ModeSymlink != 0 || i.Mode().Perm()&0022 != 0 || !rootOwned(i) {
 		return errors.New("invalid browser runtime directory")
 	}
+	// Agent and worker use umask 0077. Explicitly grant traversal of this
+	// credential-only directory to the unprivileged browser container.
+	if err = os.Chmod(s.config.RuntimeDir, 0755); err != nil {
+		return err
+	}
 	target := filepath.Join(s.config.RuntimeDir, "browser-token")
 	if _, err = (atomicfile.Writer{}).WritePrivate(s.config.RuntimeDir, target, ".token-*", data); err != nil {
 		return err
 	}
-	return os.Chmod(target, 0444)
+	// The component rejects world-readable tokens. Its fixed GID is also the
+	// Panel's primary GID; the containing host runtime remains group-restricted.
+	if runtime.GOOS == "linux" {
+		if err = os.Chown(target, 0, 65532); err != nil {
+			return err
+		}
+	}
+	return os.Chmod(target, 0440)
 }
 
 func (s *Service) RunJob(ctx context.Context, id string) error {
@@ -331,8 +348,8 @@ func (s *Service) execute(ctx context.Context, j *contract.BrowserComponentJob) 
 			return err
 		}
 		runtimePath, _ := json.Marshal(s.config.RuntimeDir)
-		compose := []byte(strings.ReplaceAll(string(assets.Compose), "__BROWSER_RUNTIME_DIRECTORY__", string(runtimePath)))
-		for name, data := range map[string][]byte{"compose.yml": compose, "browser-seccomp.json": assets.Seccomp} {
+		compose := []byte(strings.ReplaceAll(string(composeTemplate), "__BROWSER_RUNTIME_DIRECTORY__", string(runtimePath)))
+		for name, data := range map[string][]byte{"compose.yml": compose, "browser-seccomp.json": seccompProfile} {
 			if _, err := (atomicfile.Writer{}).WritePrivate(s.config.StateDir, filepath.Join(s.config.StateDir, name), ".config-*", data); err != nil {
 				return err
 			}

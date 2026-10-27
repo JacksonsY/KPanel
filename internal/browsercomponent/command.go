@@ -34,7 +34,7 @@ func (commandRunner) Run(ctx context.Context, name string, args ...string) ([]by
 	c.Stdout = out
 	c.Stderr = out
 	if err := c.Run(); err != nil {
-		return nil, errors.New("browser component command failed: " + out.b.String())
+		return out.b.Bytes(), errors.New("browser component command failed: " + out.b.String())
 	}
 	return out.b.Bytes(), nil
 }

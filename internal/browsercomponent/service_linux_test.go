@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/contract"
-	assets "github.com/kejilion/kejilion-panel/packaging/browser"
 )
 
 type fakeRunner struct {
@@ -113,7 +113,7 @@ func TestLifecyclePersistsAndRecoversAcrossServiceInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), assets.Image) || !strings.Contains(string(data), s.config.RuntimeDir) || strings.Contains(string(data), "ports:") {
+	if !strings.Contains(string(data), componentImage) || !strings.Contains(string(data), s.config.RuntimeDir) || strings.Contains(string(data), "ports:") {
 		t.Fatal("incorrect or exposed component bundle")
 	}
 	if len(f.calls) == 0 {
@@ -152,6 +152,8 @@ func TestRejectsStaleTargetAndRetainsInstallFailure(t *testing.T) {
 }
 func TestCredentialRepublicationAndUnsafeFiles(t *testing.T) {
 	s, _ := fixture(t)
+	previousMask := syscall.Umask(0077)
+	defer syscall.Umask(previousMask)
 	if err := s.PrepareRuntime(); err != nil {
 		t.Fatal(err)
 	}
@@ -166,11 +168,48 @@ func TestCredentialRepublicationAndUnsafeFiles(t *testing.T) {
 	if string(copy) != string(token) {
 		t.Fatal("credential rotated")
 	}
+	directory, _ := os.Stat(s.config.RuntimeDir)
+	runtimeToken, _ := os.Stat(filepath.Join(s.config.RuntimeDir, "browser-token"))
+	if directory.Mode().Perm() != 0755 || runtimeToken.Mode().Perm() != 0440 || runtimeToken.Sys().(*syscall.Stat_t).Gid != 65532 {
+		t.Fatal("unprivileged runtime credential permissions are incorrect")
+	}
 	if err := os.Chmod(filepath.Join(s.config.StateDir, "token"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.PrepareRuntime(); err == nil {
 		t.Fatal("unsafe private token accepted")
+	}
+}
+
+func TestControlFileRetentionAndFailedCommandInspection(t *testing.T) {
+	s, _ := fixture(t)
+	ctx := context.Background()
+	v, _ := s.Snapshot(ctx)
+	j, err := s.Start(ctx, contract.BrowserComponentRequest{Action: "install", ExpectedResourceVersion: v.ResourceVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.RunJob(ctx, j.ID); err != nil {
+		t.Fatal(err)
+	}
+	controlDir := filepath.Join(s.config.StateDir, ".job-control")
+	if err = os.MkdirAll(controlDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	pid := filepath.Join(controlDir, s.spec(j.ID).Unit+".pid")
+	if err = os.WriteFile(pid, []byte("12345"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	v, _ = s.Snapshot(ctx)
+	if _, err = s.Start(ctx, contract.BrowserComponentRequest{Action: "stop", ExpectedResourceVersion: v.ResourceVersion}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(pid); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("old OpenRC control file retained", err)
+	}
+	output, err := (commandRunner{}).Run(ctx, "sh", "-c", "printf 'LoadState=not-found\\nActiveState=inactive\\n'; exit 4")
+	if err == nil || !strings.Contains(string(output), "LoadState=not-found") {
+		t.Fatal("failed systemctl-style output discarded", err)
 	}
 }
 func TestInterruptedWorkerCanBeRetriedButLiveWorkerStaysBusy(t *testing.T) {

@@ -30,7 +30,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     sh -eu -c 'if [ -f /run/secrets/https_proxy ]; then export HTTPS_PROXY="$(cat /run/secrets/https_proxy)"; fi; go mod download'
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
-COPY packaging/browser/ ./packaging/browser/
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     --mount=type=secret,id=https_proxy,required=false \
