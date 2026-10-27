@@ -126,10 +126,10 @@ func TestServiceV2SinglePairEnablesFilesInBothDirections(t *testing.T) {
 	}
 	content := []byte("bidirectional-content")
 	metadata.SizeBytes = int64(len(content))
-	centerRemote.streamClient = &http.Client{Transport: &serviceV2FileFixtureTransport{
+	centerRemote.exportClient = &http.Client{Transport: &serviceV2FileFixtureTransport{
 		target: target, metadata: metadata, content: content,
 	}}
-	targetRemote.streamClient = &http.Client{Transport: &serviceV2FileFixtureTransport{
+	targetRemote.exportClient = &http.Client{Transport: &serviceV2FileFixtureTransport{
 		target: center, metadata: metadata, content: content,
 	}}
 

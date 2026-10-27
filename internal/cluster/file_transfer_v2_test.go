@@ -112,7 +112,7 @@ func TestOpenLinkedFileV2UsesReverseStaticKeysAndDedicatedPath(t *testing.T) {
 	metadata.SizeBytes = int64(len(content))
 
 	client := &RemoteClient{}
-	client.streamClient = &http.Client{Transport: fileV2RoundTripper(func(request *http.Request) (*http.Response, error) {
+	client.exportClient = &http.Client{Transport: fileV2RoundTripper(func(request *http.Request) (*http.Response, error) {
 		if request.Method != http.MethodPost || request.URL.Path != v2FileLinkedOpenPath {
 			t.Fatalf("linked request = %s %s", request.Method, request.URL.Path)
 		}
@@ -479,7 +479,7 @@ func TestOpenRemoteFileV2UsesLinkedRouteOnlyWithoutAnyDirectHost(t *testing.T) {
 		Name: "status.txt", Kind: "file", SizeBytes: int64(len(content)),
 		ResourceVersion: "sha256:route-source",
 	}
-	client.streamClient = &http.Client{Transport: fileV2RoundTripper(func(request *http.Request) (*http.Response, error) {
+	client.exportClient = &http.Client{Transport: fileV2RoundTripper(func(request *http.Request) (*http.Response, error) {
 		requestCount++
 		if request.URL.Path != v2FileLinkedOpenPath {
 			t.Fatalf("route request path = %q", request.URL.Path)

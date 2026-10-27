@@ -489,7 +489,7 @@ func (c *RemoteClient) openFileV2(
 		return nil, contract.FileTransferMetadata{}, err
 	}
 	request.Header.Set("Accept", fileStreamContentType)
-	response, err := c.streamClient.Do(request)
+	response, err := c.exportClient.Do(request)
 	if err != nil {
 		return nil, contract.FileTransferMetadata{}, classifyRemoteTransportError(err)
 	}

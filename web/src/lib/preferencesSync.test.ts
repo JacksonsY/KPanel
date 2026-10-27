@@ -157,6 +157,33 @@ it('failed initial loading never writes cached state; retry does not remount liv
   expect(mocks.update.mock.calls[0]![0].desktop.windows[0].id).toBe(id)
 })
 
+it('restores the untouched saved desktop when the first preferences request fails', async () => {
+  const saved = structuredClone(desktop)
+  saved.windows = [{ id: 7, path: '/files', geometry: { left: 100, top: 100, width: 900, height: 600 }, minimized: false, maximized: false, snap: '', z: 100 }]
+  saved.focusedId = 7
+  mocks.get.mockRejectedValueOnce(new Error('initial request interrupted'))
+    .mockResolvedValueOnce({ ...remote(), desktop: saved })
+  await startPreferencesSync('admin')
+  expect(useDesktopMode().mode.value).toBe('classic')
+  window.dispatchEvent(new Event('online'))
+  await flush()
+  expect(useDesktopMode().mode.value).toBe('desktop')
+  expect(useDesktopMode().windows.value.map((window) => window.path)).toEqual(['/files'])
+  expect(useDesktopMode().consumeWindowLaunch(7)).toBe(false)
+  expect(mocks.update).not.toHaveBeenCalled()
+})
+
+it('does not remount windows edited while the initial preferences request is pending', async () => {
+  let finish!: (value: UserPreferences) => void
+  mocks.get.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  const loading = startPreferencesSync('admin')
+  const id = useDesktopMode().openWindow('/files', 'route.files', true)
+  finish(remote())
+  await loading
+  expect(useDesktopMode().windows.value.map((window) => window.id)).toEqual([id])
+  expect(useDesktopMode().consumeWindowLaunch(id)).toBe(true)
+})
+
 it('retains failed explicit edits across refresh and isolates them from other accounts', async () => {
   await startPreferencesSync('admin')
   mocks.update.mockRejectedValueOnce(new Error('offline'))
