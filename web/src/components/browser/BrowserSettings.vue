@@ -17,6 +17,12 @@ let storedStartURL = ''
 const confirmAction = ref<BrowserComponentAction>()
 const busy = computed(() => submitting.value || ['queued', 'running'].includes(component.value?.job?.state || ''))
 const state = computed(() => !component.value?.installed ? 'notInstalled' : component.value.running ? component.value.healthy ? 'serviceReady' : 'serviceStarting' : 'serviceStopped')
+const jobMessage = computed(() => {
+  const message = component.value?.job?.message || ''
+  if (message === 'browser_task_interrupted') return t('taskInterrupted')
+  if (message.startsWith('browser_network_') || message.startsWith('browser_panel_')) return t('networkSetupFailed')
+  return message
+})
 let timer: ReturnType<typeof setTimeout> | undefined
 let controller: AbortController | undefined
 let epoch = 0, completedJob = ''
@@ -112,6 +118,7 @@ onBeforeUnmount(() => { epoch++; controller?.abort(); clearTimeout(timer) })
           <div v-else class="browser-settings__actions">
             <button v-if="!component.installed" class="button button--primary" :disabled="busy" @click="run('install')">{{ t('installEnable') }}</button>
             <template v-else>
+              <button class="button button--secondary" :disabled="busy" @click="run('install')">{{ t('repairService') }}</button>
               <button v-if="!component.running" class="button button--primary" :disabled="busy" @click="run('start')">{{ t('enableService') }}</button>
               <button v-if="component.running" class="button button--secondary" :disabled="busy" @click="run('stop')">{{ t('stopService') }}</button>
               <button class="button button--secondary" :disabled="busy" @click="run('restart')">{{ t('restartService') }}</button>
@@ -125,7 +132,7 @@ onBeforeUnmount(() => { epoch++; controller?.abort(); clearTimeout(timer) })
           <div v-if="component.job" role="status" class="browser-settings__job">
             <strong>{{ t(busy ? 'serviceWorking' : component.job.state === 'succeeded' ? 'serviceSucceeded' : 'serviceFailed') }}</strong>
             <p v-if="busy">{{ t('backgroundHint') }}</p>
-            <p v-if="component.job.message">{{ component.job.message === 'browser_task_interrupted' ? t('taskInterrupted') : component.job.message }}</p>
+            <p v-if="jobMessage">{{ jobMessage }}</p>
           </div>
         </template>
       </section>

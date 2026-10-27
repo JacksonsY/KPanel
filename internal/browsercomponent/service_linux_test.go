@@ -15,6 +15,9 @@ import (
 
 type fakeRunner struct {
 	installed, running, failInstall, workerRunning bool
+	networkMissing                                 bool
+	unsafeNetwork                                  bool
+	runtimeParent                                  string
 	calls                                          []string
 }
 
@@ -39,6 +42,21 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 			return []byte("abcdef012345"), nil
 		}
 		return nil, nil
+	}
+	if strings.Contains(a, "container inspect kejilion-panel") {
+		return []byte(`[{"Id":"panel-id","Config":{"Labels":{"com.docker.compose.project":"kejilion-panel","com.docker.compose.service":"panel"}},"State":{"Running":true},"Mounts":[{"Source":"` + f.runtimeParent + `","Destination":"/run/kejilion-panel","RW":false}],"NetworkSettings":{"Networks":{}}}]`), nil
+	}
+	if strings.Contains(a, "network inspect") {
+		if f.networkMissing {
+			return nil, errors.New("network missing")
+		}
+		if f.unsafeNetwork {
+			return []byte(`[{"Internal":false,"Driver":"bridge"}]`), nil
+		}
+		return []byte(`[{"Internal":true,"Driver":"bridge","Labels":{"com.docker.compose.project":"kejilion-panel","com.docker.compose.network":"browser-control"},"Containers":{}}]`), nil
+	}
+	if strings.Contains(a, "network create") {
+		f.networkMissing = false
 	}
 	if strings.Contains(a, "inspect --format") {
 		return []byte(`{"Running":true,"Health":{"Status":"healthy"}}`), nil
@@ -79,8 +97,49 @@ func fixture(t *testing.T) (*Service, *fakeRunner) {
 		t.Skip("private Agent state requires root")
 	}
 	dir := t.TempDir()
-	f := &fakeRunner{}
+	f := &fakeRunner{runtimeParent: dir}
 	return New(Config{StateDir: filepath.Join(dir, "state"), RuntimeDir: filepath.Join(dir, "runtime"), Executable: "/usr/bin/kejilion-agent", Runner: f}), f
+}
+
+func TestInstallCreatesMissingControlNetwork(t *testing.T) {
+	s, f := fixture(t)
+	f.networkMissing = true
+	ctx := context.Background()
+	v, err := s.Snapshot(ctx)
+	if err != nil || !v.Supported {
+		t.Fatal(v, err)
+	}
+	j, err := s.Start(ctx, contract.BrowserComponentRequest{Action: "install", ExpectedResourceVersion: v.ResourceVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.RunJob(ctx, j.ID); err != nil {
+		t.Fatal(err)
+	}
+	calls := strings.Join(f.calls, "\n")
+	if !strings.Contains(calls, "network create --internal") || !strings.Contains(calls, "network connect "+controlNetwork+" panel-id") {
+		t.Fatal(calls)
+	}
+}
+
+func TestInstallRejectsUnsafeControlNetwork(t *testing.T) {
+	s, f := fixture(t)
+	f.unsafeNetwork = true
+	ctx := context.Background()
+	v, err := s.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := s.Start(ctx, contract.BrowserComponentRequest{Action: "install", ExpectedResourceVersion: v.ResourceVersion})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.RunJob(ctx, j.ID); err == nil || err.Error() != "browser_network_invalid" {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(f.calls, "\n"), "network connect") {
+		t.Fatal("connected to unsafe network")
+	}
 }
 func TestLifecyclePersistsAndRecoversAcrossServiceInstances(t *testing.T) {
 	s, f := fixture(t)
@@ -107,6 +166,26 @@ func TestLifecyclePersistsAndRecoversAcrossServiceInstances(t *testing.T) {
 		}
 		if action == "uninstall" && v.Installed {
 			t.Fatal("container remains installed")
+		}
+		marker := filepath.Join(s.config.RuntimeDir, "browser-enabled")
+		if action == "install" {
+			if data, err := os.ReadFile(marker); err != nil || string(data) != "enabled" {
+				t.Fatal("missing enabled marker", err)
+			}
+			if err := os.Remove(marker); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.PrepareRuntime(); err != nil {
+				t.Fatal(err)
+			}
+			if data, err := os.ReadFile(marker); err != nil || string(data) != "enabled" {
+				t.Fatal("marker not restored", err)
+			}
+		}
+		if action == "uninstall" {
+			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("marker remains after uninstall", err)
+			}
 		}
 	}
 	data, err := os.ReadFile(filepath.Join(s.config.StateDir, "compose.yml"))

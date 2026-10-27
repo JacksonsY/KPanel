@@ -45,6 +45,14 @@ describe('browser settings lifecycle', () => {
     expect(api.browser.component).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
+  it('repairs an installed component through the same version-bound install task', async () => {
+    vi.mocked(api.browser.component).mockResolvedValue(snapshot({ installed: true, running: true, healthy: true }))
+    vi.mocked(api.browser.componentAction).mockResolvedValue({ id: 'repair', action: 'install', state: 'queued', stage: 'network' })
+    const wrapper = render(); await flushPromises()
+    await button(wrapper, '修复连接').trigger('click'); await flushPromises()
+    expect(api.browser.componentAction).toHaveBeenCalledWith('install', version)
+    wrapper.unmount()
+  })
   it('saves only the browser preference and rejects credential-bearing URLs', async () => {
     const wrapper = render(); await flushPromises()
     await wrapper.get('input').setValue('https://user:secret@example.com')
