@@ -180,7 +180,7 @@ CF-Server-Monitor 取桶内样本、monitor 存中位数加上下界，四个同
 检测配置由 Agent 私有目录中的 `checks.json` 持久化，最多 16 项，支持 Ping IPv4、TCP `host:port`
 和无凭据的绝对 HTTP/HTTPS URL。每轮最多 3 个并发，每项目最长 1.5 秒；Ping 同时执行非特权 ICMP
 ping socket、TCP/53 与 UDP DNS 探测，以最先收到的有效结果记录往返时间；TCP 记录连接建立时间；
-HTTP 接受 2xx/3xx 状态并记录首个响应耗时。全部超时、拒绝或返回失败状态时记录为缺测值，不伪装成 `0 ms`。该实现不增加
+HTTP 接受 2xx/3xx 状态并记录首个响应耗时，不跟随重定向；管理员直接配置的内网 HTTP/HTTPS 目标仍可探测。全部超时、拒绝或返回失败状态时记录为缺测值，不伪装成 `0 ms`。该实现不增加
 `CAP_NET_RAW`，也不依赖宿主机 `ping` 命令。运营商归属以
 [`gaoyifan/china-operator-ip`](https://github.com/gaoyifan/china-operator-ip) `master@4593b6c4d577b61e3c2189bcd06f1e4c24750b7d`
 的公开 CIDR 数据于 2026-08-03 离线复核；运行时不下载该仓库或任何地址列表。
