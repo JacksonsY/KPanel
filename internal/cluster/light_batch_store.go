@@ -27,6 +27,7 @@ const (
 
 type lightBatchAttemptRecord struct {
 	Platform          string    `json:"platform,omitempty"`
+	Revoked           bool      `json:"revoked,omitempty"`
 	ID                string    `json:"id"`
 	NodeID            string    `json:"nodeId"`
 	Name              string    `json:"name"`
@@ -249,6 +250,9 @@ func (s *lightBatchStore) Reserve(
 			if attempt.ID != attemptID {
 				continue
 			}
+			if attempt.Revoked {
+				return lightBatchAttemptRecord{}, false, ErrPairingCode
+			}
 			expectedName := lightBatchNodeName(policy.NamePrefix, requestedName, attempt.NodeID)
 			if expectedName != attempt.Name || attempt.TerminalPublicKey != terminalPublicKey || normalizedLightPlatform(attempt.Platform) != platform {
 				return lightBatchAttemptRecord{}, false, ErrIdentityMismatch
@@ -286,6 +290,36 @@ func (s *lightBatchStore) Reserve(
 		return attempt, true, nil
 	}
 	return lightBatchAttemptRecord{}, false, ErrPairingCode
+}
+
+// RevokeNode retains the consumed slot and persists before the host is removed.
+// The service mutation lock serializes this with enrollment and host deletion.
+func (s *lightBatchStore) RevokeNode(nodeID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for policyIndex := range s.state.Enrollments {
+		for attemptIndex := range s.state.Enrollments[policyIndex].Attempts {
+			attempt := &s.state.Enrollments[policyIndex].Attempts[attemptIndex]
+			if attempt.NodeID != nodeID {
+				continue
+			}
+			if !attempt.Revoked {
+				previous := cloneLightBatchState(s.state)
+				attempt.Revoked = true
+				if err := s.persistLocked(); err != nil {
+					s.state = previous
+					return err
+				}
+			}
+			// A prior backup must not be resurrected by an older reader. The
+			// generic atomic writer treats backup cleanup as best effort.
+			if err := discardAtomicBackupV2(s.path, s.ops); err != nil {
+				return err
+			}
+			return s.ops.syncDir(filepath.Dir(s.path))
+		}
+	}
+	return nil
 }
 
 func (s *lightBatchStore) Delete(id string, now time.Time) error {
