@@ -4,7 +4,8 @@ set -Eeuo pipefail
 repo=$(git rev-parse --show-toplevel)
 evidence="$repo/internal/browsercomponent/testdata"
 network=kejilion-panel-browser-control
-if docker container inspect kpanel-browser >/dev/null 2>&1 || docker network inspect "$network" >/dev/null 2>&1; then
+egress=kpanel-browser_browser-egress
+if docker container inspect kpanel-browser >/dev/null 2>&1 || docker network inspect "$network" >/dev/null 2>&1 || docker network inspect "$egress" >/dev/null 2>&1; then
   echo 'preflight failed: fixed browser resources already exist' >&2; exit 1
 fi
 runtime=$(mktemp -d "$RUNNER_TEMP/kpanel-component-test.XXXXXXXX")
@@ -22,6 +23,10 @@ cleanup() {
       if [[ "$attached" == "$owned" ]]; then docker rm -f kpanel-browser >/dev/null || status=1; else status=1; fi
     fi
     docker network rm "$network" >/dev/null || status=1
+  fi
+  if docker network inspect "$egress" >/dev/null 2>&1; then
+    project=$(docker network inspect --format '{{index .Labels "com.docker.compose.project"}}' "$egress")
+    if [[ "$project" == kpanel-browser ]]; then docker network rm "$egress" >/dev/null || status=1; else status=1; fi
   fi
   case "$runtime" in "$RUNNER_TEMP"/kpanel-component-test.*) rm -rf -- "$runtime" ;; *) status=1 ;; esac
   exit "$status"
