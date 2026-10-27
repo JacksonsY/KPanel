@@ -12,6 +12,7 @@ func TestBrowserComponentRequiresSessionOriginCSRFTypedVersionedAction(t *testin
 	session, csrf := bootstrapCookies(t, s, path)
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
 		r := httptest.NewRequest(method, "/api/v1/browser/component", nil)
+		r.Host = "panel.test"
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, r)
 		if w.Code != 401 {

@@ -34,6 +34,7 @@ var (
 type Config struct {
 	StateDir, RuntimeDir, Executable, DockerSocket string
 	Runner                                         jobcontrol.Runner
+	DockerProbe                                    func(context.Context) error
 }
 type Service struct {
 	mu     sync.Mutex
@@ -109,6 +110,14 @@ func (s *Service) snapshot(ctx context.Context) (contract.BrowserComponent, erro
 	if _, err := s.config.Runner.LookPath("docker"); err != nil {
 		v.Reason = "docker_required"
 		return v, nil
+	}
+	// Reuse the Agent's daemon/PID policy for observations. In particular, a
+	// status GET must not activate a stopped Docker daemon through its socket.
+	if s.config.DockerProbe != nil {
+		if err := s.config.DockerProbe(ctx); err != nil {
+			v.Reason = "docker_unavailable"
+			return v, nil
+		}
 	}
 	if _, err := s.docker(ctx, "compose", "version", "--short"); err != nil {
 		v.Reason = "compose_required"

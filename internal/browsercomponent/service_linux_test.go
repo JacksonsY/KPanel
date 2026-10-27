@@ -120,6 +120,18 @@ func TestLifecyclePersistsAndRecoversAcrossServiceInstances(t *testing.T) {
 		t.Fatal("no lifecycle commands")
 	}
 }
+
+func TestStatusUsesExistingDaemonPolicyBeforeAnyDockerCommand(t *testing.T) {
+	s, f := fixture(t)
+	s.config.DockerProbe = func(context.Context) error { return errors.New("Docker daemon is stopped") }
+	v, err := s.Snapshot(context.Background())
+	if err != nil || v.Supported || v.Reason != "docker_unavailable" {
+		t.Fatal(v, err)
+	}
+	if len(f.calls) != 0 {
+		t.Fatal("status probe attempted to activate Docker", f.calls)
+	}
+}
 func TestRejectsStaleTargetAndRetainsInstallFailure(t *testing.T) {
 	s, f := fixture(t)
 	ctx := context.Background()

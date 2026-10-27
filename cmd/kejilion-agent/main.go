@@ -214,7 +214,7 @@ func run(arguments []string) error {
 			selfUpdateStarter = selfupdate.NewSystemdStarter()
 		}
 	}
-	browserService := browsercomponent.New(browsercomponent.Config{StateDir: filepath.Join(*stateDir, "browser-component"), RuntimeDir: filepath.Join(filepath.Dir(*socketPath), "browser"), Executable: executable, DockerSocket: *dockerSocket})
+	browserService := browsercomponent.New(browsercomponent.Config{StateDir: filepath.Join(*stateDir, "browser-component"), RuntimeDir: filepath.Join(filepath.Dir(*socketPath), "browser"), Executable: executable, DockerSocket: *dockerSocket, DockerProbe: dockerClient.Ping})
 	handler, err := agent.NewServer(agent.Config{
 		BrowserComponent:   browserService,
 		VirtualMachines:    virtualmachine.New(virtualmachine.Config{StateDir: filepath.Join(*stateDir, "virtual-machines"), Executable: executable, Enabled: *enableSystemWrites}),
