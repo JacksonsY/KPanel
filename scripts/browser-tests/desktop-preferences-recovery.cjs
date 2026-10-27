@@ -20,6 +20,7 @@ const desktop = { mode: 'desktop', windows: [{ id: 41, path: '/settings', geomet
   try {
     for (const journey of ['timer', 'online', 'focus', 'user-edit', 'in-flight-edit']) {
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+      await context.tracing.start({ screenshots: true, snapshots: true })
       try {
         await context.addInitScript(() => {
           localStorage.setItem('kejilion-panel-desktop-mode', 'classic')
@@ -50,7 +51,9 @@ const desktop = { mode: 'desktop', windows: [{ id: 41, path: '/settings', geomet
         await page.getByText('无法读取服务端界面状态', { exact: true }).waitFor()
         assert.equal(await page.locator('.desktop-window').count(), 0)
         if (journey === 'user-edit') {
-          await page.locator('.desktop-entry-button').click()
+          await page.locator('.desktop-entry-button').focus()
+          assert.equal(await page.locator('.desktop-entry-button').evaluate(e => e === document.activeElement), true)
+          await page.keyboard.press('Enter')
           await page.locator('.desktop__icons').waitFor()
         }
         if (journey === 'online' || journey === 'focus') {
@@ -81,12 +84,15 @@ const desktop = { mode: 'desktop', windows: [{ id: 41, path: '/settings', geomet
           assert(writes.some(patch => patch.desktop?.windows.length === 0))
         } else {
           await page.locator('.desktop-window').waitFor()
-          assert.equal(await page.locator('.desktop-entry-button').count(), 0)
+          await page.locator('.desktop-entry-button').waitFor({ state: 'hidden' })
           assert.equal(writes.length, 0, 'restoring configured preferences must not write back')
         }
         await page.screenshot({ path: `${out}/${journey}.png` })
         report.cases.push({ journey, gets, writes: writes.length, restoredWindows: await page.locator('.desktop-window').count(), passed: true })
-      } finally { await context.close() }
+      } finally {
+        await context.tracing.stop({ path: `${out}/${journey}-trace.zip` })
+        await context.close()
+      }
     }
     assert.deepEqual(report.errors, [])
   } catch (error) { report.failure = error.stack; throw error }
