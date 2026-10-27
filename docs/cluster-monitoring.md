@@ -292,7 +292,8 @@ bash <(curl -fsSL https://kejilion.sh) kpanel node join '<kpl1-local-reference>'
 - `kpb1` 授权按策略保存 secret 哈希、有效期、最多使用次数和已分配身份。每台目标机先在
   root-only 暂存文件中生成独立 `attemptId` 与 Noise 密钥；网络响应丢失时复用同一身份重试，
   中心返回同一节点 ID 与 reporting key，不重复占用名额。成功落盘后删除暂存；换 token、换名称
-  或密钥不一致时拒绝续接；
+  或密钥不一致时拒绝续接。管理员删除已接入的主机时，该主机原 attempt 永久失效，已使用名额不返还；
+  使用仍有效且有剩余名额的批量授权和新 attempt，或使用新的授权，可以重新接入；
 - 通过可信 `k fd` 反向代理访问时，中心直接使用当前浏览器正在访问的 HTTPS 根地址，不要求
   用户修改安装时保存的 IP + 端口地址，也不额外填写或回传凭据；
 - 目标机要求 Linux、root、正在运行的 systemd、OpenRC 或原生 procd、`bash`、`curl`、`sha256sum`、`install`、
@@ -372,7 +373,7 @@ bash <(curl -fsSL https://kejilion.sh) kpanel node join '<kpl1-local-reference>'
   GitHub 与镜像都长期不可达时，发布中心端不能远程恢复，须读取该节点服务/更新日志定位并恢复更新入口；
 - `k kpanel node status|update|uninstall` 分别用于状态、手动更新和本机卸载；`status` 同时显示
   遥测服务和 SSH 登录采集服务。中心删除记录不远程执行卸载；节点被移除后上报凭据立即失效，
-  目标机由用户自行卸载或重新接入。
+  目标机由用户自行卸载或使用新的接入尝试重新接入。
 
 中心将轻量节点状态和凭据分别保存在 `cluster-light-state.json` 与
 `cluster-light-secrets/`，批量授权策略独立保存在 `cluster-light-batch-state.json`。策略文件只含
@@ -382,7 +383,9 @@ secret 哈希，不含原始命令，并限制为 2 MiB、最多 16 条有效策
 无意义的 `resourceVersion` 冲突。reporting key 不进入状态、审计、
 浏览器响应或日志。单次接入的消费、凭据写入和主机落盘属于同一事务，落盘失败会恢复授权并清理
 孤立凭据；批量接入先持久化 attempt 分配，再原子写入节点凭据与主机状态，中途失败时同一 attempt 可续接且
-不重复占用名额。
+不重复占用名额。删除已接入的主机前先持久化该 attempt 的撤销状态，再移除主机及凭据；撤销写入失败时
+不删除主机。若撤销已持久化而主机删除失败或进程中断，主机可能仍存在，但原 attempt 已不能续接；
+管理员可重试删除。撤销记录一直保留到批量策略到期或被删除，不返还已分配名额。
 
 ## 4. 网络与 SSRF
 
@@ -669,6 +672,10 @@ cron 成员关系，写入 `0640 root:kejilion-node /run/kejilion-node-monitorin
   `cluster-light-batch-state.json`，旧 Panel 会忽略它，回滚后尚未执行的 `kpb1` 命令不可接入；
   旧 Panel 不读取轻量节点状态与凭据，
   目标机上的 `kejilion-node` 只会变为离线重试，不影响宿主机业务；
+- 已支持批量接入但尚不支持 attempt 撤销字段的旧版本，会拒绝读取包含撤销记录的策略文件。回退到这类版本前，
+  必须保留当前状态备份，并等待涉及撤销记录的批量策略到期且经 checkpoint 持久清理，或由管理员明确撤销这些策略；
+  回退前须确认状态文件中已无撤销字段。撤销整条策略会同时终止其余未使用的接入授权。
+  不得仅删除撤销标记，否则旧 attempt 可能重新接入；
 - 旧版本继续读取 v1 文件并忽略 v2 文件，因此原有 v1 主机仍可回滚使用；
 - 旧 Panel 会忽略 `panel-state.json` 中新增的 `clusterHostOrder` 可选字段；若旧版本随后重写
   `panel-state.json`，该显示偏好可能丢失，但不会改变主机、凭据或公开分享状态。旧版本恢复工具

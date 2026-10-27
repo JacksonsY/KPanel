@@ -330,6 +330,16 @@ func (s *Service) authenticateLightRequest(
 }
 
 func (s *Service) deleteLightHostLocked(id string, input DeleteHostInput) (DeleteHostResult, error) {
+	record, err := s.light.Host(id)
+	if err != nil {
+		return DeleteHostResult{}, err
+	}
+	if record.ResourceVersion != input.ExpectedResourceVersion {
+		return DeleteHostResult{}, ErrConflict
+	}
+	if err := s.lightBatches.RevokeNode(id); err != nil {
+		return DeleteHostResult{}, err
+	}
 	_, credentialRemoved, err := s.light.DeleteHost(id, input.ExpectedResourceVersion)
 	if err != nil {
 		return DeleteHostResult{}, err
