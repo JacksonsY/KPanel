@@ -11,8 +11,8 @@
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "960f864876438adfe89deed243802eefcfeb8291427c43f09a4e87d38a0e915b",
-  "firstPartySourceSha256": "8b8fa05859dad69c842bcf515c3bd74d0a6f4df3df4b6a4e64f409f75cfa2e4a",
+  "closureSha256": "2dafcb21081005c23b4fda0a2f4d804e06cc634b05841ba229650159f018cd81",
+  "firstPartySourceSha256": "045941bfa51909965ed5e547909503ea5264d5ed3648fed4b57a06262bd22e7b",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -128,7 +128,9 @@
     "rc128RC8PlanConsumeQualificationSha256": "7ed8a166373043a8b458109b811fdade28155844c41d7b31cfc5e65283175c7c",
     "rc128RC8PlanConsumeSummary": "Existing hosted-only Windows lifecycle test consumes its bounded validated plan as SYSTEM before each actual update/rollback step. Original administrator-denied replacement retained; production ACLs and runtime bytes unchanged. Every runtime Go path/hash, production file list, module/actual-original closure/build identity,37 dispositions and original dates remains equal to the six-target independently reviewed atomic repair. Native local compilation skips service installation. Hosted lifecycle acceptance is still required.",
     "rc128RC9ObservationSha256": "3595cca9d76eea1dd1e3570cc8442445ead717f7f062662f5966f1e37645879f",
-    "rc128RC9Summary": "RC9 source qualification observes the candidate Go files and six actual/original production closures; original scanner findings and observation dates are unchanged. This is not a scanner or release result."
+    "rc128RC9Summary": "RC9 source qualification observes the candidate Go files and six actual/original production closures; original scanner findings and observation dates are unchanged. This is not a scanner or release result.",
+    "rc128RC10ObservationSha256": "c6503fbc1b17be235a22d95fad6966f647d003b837ae4eedde0f171ba949304a",
+    "rc128RC10Summary": "RC10 source qualification observes the candidate Go files and six actual/original production closures; original scanner findings and observation dates are unchanged. This is not a scanner or release result."
   },
   "findings": [
     {
