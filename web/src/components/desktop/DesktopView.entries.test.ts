@@ -18,6 +18,10 @@ import {
 import { api } from '@/lib/api'
 import type { DesktopWorkspace, DesktopWorkspaceUpdate, Site } from '@/types/api'
 
+// These cases cover entry routing and window ownership. The remote browser's
+// canvas/socket/settings lifecycle is exercised by its dedicated view tests.
+vi.mock('@/views/WebBrowserView.vue', () => ({ default: { template: '<div data-testid="entry-browser-view" />' } }))
+
 vi.mock('@/lib/desktopEntries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/desktopEntries')>()
   return {
