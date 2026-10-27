@@ -5,6 +5,7 @@ package systeminfo
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -35,6 +36,21 @@ func TestCollectStorageRootRanksImmediateChildren(t *testing.T) {
 	}
 	if len(result.Items) != 2 || result.Items[0].Path != large || result.Items[0].SizeBytes <= result.Items[1].SizeBytes || result.Scanned < 4 {
 		t.Fatalf("storage usage=%#v", result)
+	}
+}
+
+type failedStorageEntry struct{}
+
+func (failedStorageEntry) Name() string               { return "unreadable" }
+func (failedStorageEntry) IsDir() bool                { return false }
+func (failedStorageEntry) Type() fs.FileMode          { return 0 }
+func (failedStorageEntry) Info() (fs.FileInfo, error) { return nil, os.ErrPermission }
+
+func TestStorageUnreadableEntriesConsumeBudget(t *testing.T) {
+	var scanned atomic.Int64
+	item := scanStorageChild(context.Background(), t.TempDir(), failedStorageEntry{}, 0, 1, &scanned)
+	if !item.Truncated || item.Scanned != 1 || scanned.Load() != 1 {
+		t.Fatalf("unreadable entry escaped scan budget: item=%#v total=%d", item, scanned.Load())
 	}
 }
 

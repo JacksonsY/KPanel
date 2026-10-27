@@ -135,6 +135,13 @@ func scanStorageChild(ctx context.Context, root string, entry fs.DirEntry, rootD
 			item.Truncated = true
 			return
 		}
+		// Even unreadable or cross-device entries consume the traversal budget.
+		if scanned.Add(1) > maxStorageEntries {
+			scanned.Add(-1)
+			item.Truncated = true
+			return
+		}
+		item.Scanned++
 		info, infoErr := value.Info()
 		if infoErr != nil {
 			item.Truncated = true
@@ -144,12 +151,6 @@ func scanStorageChild(ctx context.Context, root string, entry fs.DirEntry, rootD
 		if !statOK || uint64(stat.Dev) != rootDevice {
 			return
 		}
-		if scanned.Add(1) > maxStorageEntries {
-			scanned.Add(-1)
-			item.Truncated = true
-			return
-		}
-		item.Scanned++
 		if info.Mode()&os.ModeSymlink != 0 {
 			return
 		}
