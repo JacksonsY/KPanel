@@ -17,6 +17,7 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/auth"
 	"github.com/kejilion/kejilion-panel/internal/cluster"
 	"github.com/kejilion/kejilion-panel/internal/contract"
+	"github.com/kejilion/kejilion-panel/internal/httpstream"
 )
 
 const (
@@ -856,6 +857,11 @@ func (s *Server) handleFederationFileOpenV2(
 		return
 	}
 	defer authorization.Close()
+	transferContext, cancel := context.WithTimeout(r.Context(), panelFileTransferMaxDuration)
+	defer cancel()
+	// Export metadata may require a bounded file fingerprint before headers
+	// are available. Afterwards refresh the write deadline on each stream write.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(contract.FileShareFingerprintTimeout + panelFileTransferIdleTimeout))
 	streamer, ok := s.agent.(agentStreamAPI)
 	if !ok {
 		s.writeProblem(w, r, http.StatusServiceUnavailable, "agent_stream_unavailable", "Agent 文件流不可用", "")
@@ -863,7 +869,7 @@ func (s *Server) handleFederationFileOpenV2(
 	}
 	query := cluster.FileTransferQuery(input)
 	response, err := streamer.OpenStream(
-		r.Context(), http.MethodGet, "/v1/files/transfer/export", query.Encode(),
+		transferContext, http.MethodGet, "/v1/files/transfer/export", query.Encode(),
 		requestID(r), http.NoBody, nil, 0,
 	)
 	if err != nil {
@@ -898,16 +904,20 @@ func (s *Server) handleFederationFileOpenV2(
 	}
 	w.Header().Set("Content-Type", "application/x-kpanel-noise-stream")
 	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusOK)
-	if err := cluster.WriteFederationFileHeader(w, sealed); err != nil {
+	output := httpstream.NewIdleResponseWriter(transferContext, w, panelFileTransferIdleTimeout)
+	output.WriteHeader(http.StatusOK)
+	if err := cluster.WriteFederationFileHeader(output, sealed); err != nil {
 		return
 	}
-	writer := cluster.NewFederationFileWriter(w, cipher)
+	if err := http.NewResponseController(output).Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return
+	}
+	writer := cluster.NewFederationFileWriter(output, cipher)
 	_, copyErr := io.CopyBuffer(writer, response.Body, make([]byte, 60<<10))
 	if copyErr == nil && response.Trailer.Get("X-KPanel-Transfer-Result") != "ok" {
 		copyErr = errors.New("Agent transfer failed")
 	}
-	_ = writer.Finish(copyErr)
+	copyErr = errors.Join(copyErr, writer.Finish(copyErr))
 	result := "success"
 	if copyErr != nil {
 		result = "failure"

@@ -16,7 +16,7 @@ interface Sync {
   timer?: number
   retries: number
   notified: boolean
-  hydrating: boolean
+  restoreDesktop: boolean
 }
 let current: Sync | undefined
 const pendingKey = 'kpanel:preferences-pending:v1'
@@ -89,7 +89,10 @@ async function load(sync: Sync): Promise<void> {
       if (locale) await applySyncedLocale(locale)
       if (current !== sync) return
       const desktop = sync.pending.desktop ?? sync.server?.desktop ?? migration.desktop
-      if (sync.hydrating && desktop) applyDesktopPreferences(desktop)
+      // A failed first read may leave the shell in its cached mode. Restore on
+      // a later successful read only until the user has edited that desktop.
+      if (sync.restoreDesktop && desktop) applyDesktopPreferences(desktop)
+      sync.restoreDesktop = false
       if (!Object.keys(migration).length && !Object.keys(sync.pending).length) {
         sync.retries = 0
         sync.notified = false
@@ -149,7 +152,9 @@ function save(sync: Sync, migration: UserPreferencesPatch = {}): Promise<void> {
 function changed(event: Event): void {
   const sync = current
   if (!sync) return
-  Object.assign(sync.pending, (event as CustomEvent<UserPreferencesPatch>).detail)
+  const patch = (event as CustomEvent<UserPreferencesPatch>).detail
+  if (patch.desktop) sync.restoreDesktop = false
+  Object.assign(sync.pending, patch)
   // Do not erase an undo while an older write is in flight: its response may
   // soon change the server away from the value the user just restored.
   if (!sync.saving && sync.server) {
@@ -180,13 +185,13 @@ export function startPreferencesSync(owner: string): Promise<void> {
   const sync: Sync = {
     owner, controller: new AbortController(), initial: { locale: getLocale(), desktop: desktopPreferencesSnapshot() },
     pending: readPending(owner), loaded: false, retries: 0, notified: false,
-    hydrating: true,
+    restoreDesktop: true,
   }
   current = sync
   window.addEventListener('kpanel:preferences-changed', changed)
   window.addEventListener('online', retry)
   window.addEventListener('focus', retry)
-  return load(sync).finally(() => { sync.hydrating = false })
+  return load(sync)
 }
 
 export function stopPreferencesSync(): void {

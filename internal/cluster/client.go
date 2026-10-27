@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kejilion/kejilion-panel/internal/contract"
 	"github.com/kejilion/kejilion-panel/internal/netpolicy"
 	"github.com/kejilion/kejilion-panel/internal/tlsfallback"
 )
@@ -59,6 +60,7 @@ type RemoteClient struct {
 	client         *http.Client
 	summaryClient  *http.Client
 	streamClient   *http.Client
+	exportClient   *http.Client
 	historyClient  *http.Client
 	wsClient       *http.Client
 }
@@ -150,6 +152,16 @@ func NewRemoteClient(config RemoteClientConfig) (*RemoteClient, error) {
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return errors.New("cluster redirect rejected")
 		},
+	}
+	// Source exports can spend the bounded fingerprint budget preparing their
+	// authenticated metadata. Keep their pool separate from interactive relays.
+	exportTransport := streamTransport.Clone()
+	exportTransport.MaxConnsPerHost = 2
+	exportTransport.MaxIdleConnsPerHost = 2
+	exportTransport.ResponseHeaderTimeout = contract.FileShareFingerprintTimeout + fileStreamIdleTimeout
+	remote.exportClient = &http.Client{
+		Transport:     tlsfallback.New(exportTransport, curveCache),
+		CheckRedirect: remote.streamClient.CheckRedirect,
 	}
 	// WebSocket upgrades require HTTP/1.1 and are hijacked after 101, so the
 	// per-host connection cap does not apply; stream limits bound them instead.
