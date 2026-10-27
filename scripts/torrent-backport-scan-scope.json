@@ -12,7 +12,7 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "13f49225edf8cef0095f7fead0af97c16e45755b075d839ea8fabe51f5e06750",
-  "firstPartySourceSha256": "960d7d44b20271f4ae964d3acb397cd83e15001f22fc57fda4fdd87602434b1d",
+  "firstPartySourceSha256": "8a92e4bb887c0c9b8dc5414c82407707362ef1e1d2c51ff85428dc10960f7021",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -126,7 +126,9 @@
     "rc128RC8TaskEncodingIndependentSha256": "4e092487190274d3a1d0f8a19ec5f61116eeafb3c24bad1c67b355830bca016b",
     "rc128RC8TaskEncodingSummary": "Repair observed native Task Scheduler encoding rejection using consistent UTF16LE BOM/declaration; only known-absent task removal is idempotent. Native compilation/vet and fresh implementation-free Windows package review passed with the same pre-existing local mutex medium issue; prior file-relay lead remains unvalidated, not closed by narrower coverage. All six actual/original production closures,1220 first-party files and module/build identities re-observed;37 prior dispositions and original dates retained. Hosted full installation/update/rollback/uninstall remains required.",
     "rc128RC8PlanConsumeQualificationSha256": "7ed8a166373043a8b458109b811fdade28155844c41d7b31cfc5e65283175c7c",
-    "rc128RC8PlanConsumeSummary": "Existing hosted-only Windows lifecycle test consumes its bounded validated plan as SYSTEM before each actual update/rollback step. Original administrator-denied replacement retained; production ACLs and runtime bytes unchanged. Every runtime Go path/hash, production file list, module/actual-original closure/build identity,37 dispositions and original dates remains equal to the six-target independently reviewed atomic repair. Native local compilation skips service installation. Hosted lifecycle acceptance is still required."
+    "rc128RC8PlanConsumeSummary": "Existing hosted-only Windows lifecycle test consumes its bounded validated plan as SYSTEM before each actual update/rollback step. Original administrator-denied replacement retained; production ACLs and runtime bytes unchanged. Every runtime Go path/hash, production file list, module/actual-original closure/build identity,37 dispositions and original dates remains equal to the six-target independently reviewed atomic repair. Native local compilation skips service installation. Hosted lifecycle acceptance is still required.",
+    "rc128RC9ObservationSha256": "e575064814f494f45e22021264a72bb3c43e21746688b1e18d1c24db096cc02b",
+    "rc128RC9Summary": "RC9 source qualification observes the candidate Go files and six actual/original production closures; original scanner findings and observation dates are unchanged. This is not a scanner or release result."
   },
   "findings": [
     {
