@@ -123,10 +123,6 @@ func (s *Service) snapshot(ctx context.Context) (contract.BrowserComponent, erro
 		v.Reason = "compose_required"
 		return v, nil
 	}
-	if _, err := s.docker(ctx, "network", "inspect", "kejilion-panel-browser-control"); err != nil {
-		v.Reason = "panel_compose_upgrade_required"
-		return v, nil
-	}
 	ids, err := s.docker(ctx, "container", "ls", "-aq", "--filter", "name=^/kpanel-browser$")
 	if err != nil {
 		v.Reason = "docker_unavailable"
@@ -299,7 +295,35 @@ func (s *Service) PrepareRuntime() error {
 			return err
 		}
 	}
-	return os.Chmod(target, 0440)
+	if err = os.Chmod(target, 0440); err != nil {
+		return err
+	}
+	marker, err := s.readPrivate("enabled", 16)
+	if errors.Is(err, os.ErrNotExist) {
+		if e := os.Remove(filepath.Join(s.config.RuntimeDir, "browser-enabled")); e != nil && !errors.Is(e, os.ErrNotExist) {
+			return e
+		}
+		return nil
+	}
+	if err != nil || string(marker) != "enabled" {
+		return errors.New("invalid browser enabled state")
+	}
+	return s.publishEnabled()
+}
+
+func (s *Service) publishEnabled() error {
+	target := filepath.Join(s.config.RuntimeDir, "browser-enabled")
+	if _, err := (atomicfile.Writer{}).WritePrivate(s.config.RuntimeDir, target, ".enabled-*", []byte("enabled")); err != nil {
+		return err
+	}
+	return os.Chmod(target, 0444)
+}
+
+func (s *Service) enableDefaultConnection() error {
+	if _, err := (atomicfile.Writer{}).WritePrivate(s.config.StateDir, filepath.Join(s.config.StateDir, "enabled"), ".enabled-*", []byte("enabled")); err != nil {
+		return err
+	}
+	return s.publishEnabled()
 }
 
 func (s *Service) RunJob(ctx context.Context, id string) error {
@@ -356,6 +380,13 @@ func (s *Service) execute(ctx context.Context, j *contract.BrowserComponentJob) 
 		if err := s.PrepareRuntime(); err != nil {
 			return err
 		}
+		j.Stage = "network"
+		if err := s.save(j); err != nil {
+			return err
+		}
+		if err := s.prepareNetwork(ctx); err != nil {
+			return err
+		}
 		runtimePath, _ := json.Marshal(s.config.RuntimeDir)
 		compose := []byte(strings.ReplaceAll(string(composeTemplate), "__BROWSER_RUNTIME_DIRECTORY__", string(runtimePath)))
 		for name, data := range map[string][]byte{"compose.yml": compose, "browser-seccomp.json": seccompProfile} {
@@ -368,7 +399,10 @@ func (s *Service) execute(ctx context.Context, j *contract.BrowserComponentJob) 
 			return err
 		}
 		_, err := s.docker(ctx, "compose", "--ansi", "never", "--progress", "quiet", "--project-name", "kpanel-browser", "--project-directory", s.config.StateDir, "--file", filepath.Join(s.config.StateDir, "compose.yml"), "up", "--detach", "--wait", "--wait-timeout", "90", "browser")
-		return err
+		if err != nil {
+			return err
+		}
+		return s.enableDefaultConnection()
 	}
 	j.Stage = j.Action
 	if err := s.save(j); err != nil {
@@ -379,6 +413,13 @@ func (s *Service) execute(ctx context.Context, j *contract.BrowserComponentJob) 
 		args = []string{"rm", "--force", v.ContainerID}
 	}
 	_, err = s.docker(ctx, args...)
+	if err == nil && j.Action == "uninstall" {
+		for _, path := range []string{filepath.Join(s.config.StateDir, "enabled"), filepath.Join(s.config.RuntimeDir, "browser-enabled")} {
+			if e := os.Remove(path); e != nil && !errors.Is(e, os.ErrNotExist) {
+				return e
+			}
+		}
+	}
 	if err == nil && (j.Action == "start" || j.Action == "restart") {
 		j.Stage = "checking"
 		if err = s.save(j); err != nil {

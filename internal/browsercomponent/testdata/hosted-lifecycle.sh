@@ -5,25 +5,28 @@ repo=$(cd "$(dirname "$0")/../../.." && pwd -P)
 evidence="$repo/internal/browsercomponent/testdata"
 network=kejilion-panel-browser-control
 egress=kpanel-browser_browser-egress
-if docker container inspect kpanel-browser >/dev/null 2>&1 || docker network inspect "$network" >/dev/null 2>&1 || docker network inspect "$egress" >/dev/null 2>&1; then
+if docker container inspect kpanel-browser >/dev/null 2>&1 || docker container inspect kejilion-panel >/dev/null 2>&1 || docker network inspect "$network" >/dev/null 2>&1 || docker network inspect "$egress" >/dev/null 2>&1; then
   echo 'preflight failed: fixed browser resources already exist' >&2; exit 1
 fi
 runtime=$(mktemp -d "$RUNNER_TEMP/kpanel-component-test.XXXXXXXX")
 mkdir -m 0700 "$runtime/state"
 umask 0077
 label="hosted-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+panel_id=''
 cleanup() {
   status=$?
   trap - EXIT
-  actual=$(docker network inspect --format '{{index .Labels "kpanel.test"}}' "$network" 2>/dev/null || true)
-  if [[ "$actual" == "$label" ]]; then
+  actual=$(docker network inspect --format '{{index .Labels "com.docker.compose.project"}}' "$network" 2>/dev/null || true)
+  if [[ "$actual" == kejilion-panel && -n "$panel_id" ]]; then
     if docker container inspect kpanel-browser >/dev/null 2>&1; then
       attached=$(docker inspect --format '{{with index .NetworkSettings.Networks "kejilion-panel-browser-control"}}{{.NetworkID}}{{end}}' kpanel-browser)
       owned=$(docker network inspect --format '{{.Id}}' "$network")
       if [[ "$attached" == "$owned" ]]; then docker rm -f kpanel-browser >/dev/null || status=1; else status=1; fi
     fi
+    docker network disconnect "$network" "$panel_id" >/dev/null || status=1
     docker network rm "$network" >/dev/null || status=1
   fi
+  if [[ -n "$panel_id" ]]; then docker rm -f "$panel_id" >/dev/null || status=1; fi
   if docker network inspect "$egress" >/dev/null 2>&1; then
     project=$(docker network inspect --format '{{index .Labels "com.docker.compose.project"}}' "$egress")
     if [[ "$project" == kpanel-browser ]]; then docker network rm "$egress" >/dev/null || status=1; else status=1; fi
@@ -32,14 +35,22 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
-docker network create --internal --label "kpanel.test=$label" "$network" >/dev/null
+mkdir -m 0755 "$runtime/runtime-parent"
 cd "$repo"
 go build -buildvcs=false -o "$runtime/agent" ./cmd/kejilion-agent
+go build -buildvcs=false -o "$runtime/reconcile" "$evidence/reconcile.go"
 CGO_ENABLED=0 go build -buildvcs=false -o "$runtime/probe" "$evidence/live-browser-probe.go"
 chmod 0555 "$runtime/probe"
+docker pull docker.io/kjlion/kpanel-browser@sha256:fbc00e5b7e5bb39c117507b1995cc0e4f85976eb6818db23322d46968f7d5697 >/dev/null
+start_panel() { docker run -d --name kejilion-panel --label com.docker.compose.project=kejilion-panel \
+  --label com.docker.compose.service=panel --label "kpanel.test=$label" \
+  --mount "type=bind,src=$runtime/runtime-parent,dst=/run/kejilion-panel,readonly" \
+  --mount "type=bind,src=$runtime/probe,dst=/test/probe,readonly" \
+  --entrypoint /bin/sleep docker.io/kjlion/kpanel-browser@sha256:fbc00e5b7e5bb39c117507b1995cc0e4f85976eb6818db23322d46968f7d5697 3600; }
+panel_id=$(start_panel)
 for action in install stop start restart uninstall install uninstall; do
   id=$(node "$evidence/live-component-task.mjs" "$action" "$runtime/state")
-  "$runtime/agent" browser-component-run --state-dir "$runtime/state" --runtime-dir "$runtime/runtime" --docker-socket /var/run/docker.sock --job "$id"
+  "$runtime/agent" browser-component-run --state-dir "$runtime/state" --runtime-dir "$runtime/runtime-parent/browser" --docker-socket /var/run/docker.sock --job "$id"
   node "$evidence/live-component-task.mjs" result "$runtime/state"
   if [[ "$action" == install ]]; then
     docker inspect --format 'limits memory={{.HostConfig.Memory}} pids={{.HostConfig.PidsLimit}} readonly={{.HostConfig.ReadonlyRootfs}} ports={{json .HostConfig.PortBindings}}' kpanel-browser
@@ -47,10 +58,14 @@ for action in install stop start restart uninstall install uninstall; do
     [[ $(docker inspect --format '{{.HostConfig.PidsLimit}}' kpanel-browser) == 512 ]]
     [[ $(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' kpanel-browser) == true ]]
     [[ $(docker inspect --format '{{json .HostConfig.PortBindings}}' kpanel-browser) == '{}' ]]
-    docker run --rm --network "$network" --user 65532:65532 --read-only --cap-drop ALL --security-opt no-new-privileges \
-      --mount "type=bind,src=$runtime/probe,dst=/test/probe,readonly" \
-      --mount "type=bind,src=$runtime/runtime,dst=/run/secrets,readonly" \
-      --entrypoint /test/probe docker.io/kjlion/kpanel-browser@sha256:fbc00e5b7e5bb39c117507b1995cc0e4f85976eb6818db23322d46968f7d5697 browser /run/secrets/browser-token
+    docker exec --user 65532:65532 "$panel_id" /test/probe browser /run/kejilion-panel/browser/browser-token
+    if [[ "$action" == install && -z ${recreated:-} ]]; then
+      docker rm -f "$panel_id" >/dev/null
+      panel_id=$(start_panel)
+      "$runtime/reconcile" "$runtime/state" "$runtime/runtime-parent/browser"
+      docker exec --user 65532:65532 "$panel_id" /test/probe browser /run/kejilion-panel/browser/browser-token
+      recreated=1
+    fi
   fi
 done
 echo 'component_lifecycle=pass actions=7 navigation=pass cleanup=pending'

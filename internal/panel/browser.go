@@ -21,11 +21,25 @@ import (
 var browserWorkspacePattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 func (s *Server) browserServiceRequest(ctx context.Context, path string) (*http.Request, error) {
-	if s.config.BrowserServiceURL == "" {
-		return nil, errors.New("browser_unconfigured")
+	serviceURL, tokenFile := s.config.BrowserServiceURL, s.config.BrowserTokenFile
+	implicit := serviceURL == "" && tokenFile == ""
+	if implicit {
+		markerFile, err := os.Open("/run/kejilion-panel/browser/browser-enabled")
+		if err != nil {
+			return nil, errors.New("browser_unconfigured")
+		}
+		marker, err := io.ReadAll(io.LimitReader(markerFile, 8))
+		_ = markerFile.Close()
+		if err != nil || string(marker) != "enabled" {
+			return nil, errors.New("browser_unconfigured")
+		}
+		serviceURL, tokenFile = "http://browser:8092", "/run/kejilion-panel/browser/browser-token"
 	}
-	file, err := os.Open(s.config.BrowserTokenFile)
+	file, err := os.Open(tokenFile)
 	if err != nil {
+		if implicit && errors.Is(err, os.ErrNotExist) {
+			return nil, errors.New("browser_unconfigured")
+		}
 		return nil, errors.New("browser_unavailable")
 	}
 	defer file.Close()
@@ -41,7 +55,7 @@ func (s *Server) browserServiceRequest(ctx context.Context, path string) (*http.
 	if len(token) < 32 || len(token) > 256 || strings.ContainsAny(token, "\r\n\x00") {
 		return nil, errors.New("browser_unavailable")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(s.config.BrowserServiceURL, "/")+path, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(serviceURL, "/")+path, nil)
 	if err != nil {
 		return nil, err
 	}
