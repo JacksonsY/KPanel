@@ -76,10 +76,15 @@ func (m *Manager) initializeArchiveJobsLocked() error {
 	current := "/"
 	for _, part := range strings.Split(strings.TrimPrefix(path.Dir(m.archiveStatePath()), "/"), "/") {
 		current = joinVirtual(current, part)
-		if err := m.rootFS.Mkdir(rootName(current), 0700); err != nil && !errors.Is(err, os.ErrExist) {
-			return ErrArchiveJobsUnavailable
-		}
 		info, err := m.rootFS.Lstat(rootName(current))
+		// A Windows volume root already exists, but attempting to create it can
+		// return access denied rather than ErrExist. Only create missing parts.
+		if errors.Is(err, os.ErrNotExist) {
+			if err := m.rootFS.Mkdir(rootName(current), 0700); err != nil && !errors.Is(err, os.ErrExist) {
+				return ErrArchiveJobsUnavailable
+			}
+			info, err = m.rootFS.Lstat(rootName(current))
+		}
 		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return ErrArchiveJobsUnavailable
 		}
