@@ -288,7 +288,10 @@ PANEL_START_ATTEMPT_LINE=$(grep -n '^PANEL_START_ATTEMPTED=true$' \
 	exit 1
 }
 grep -F 'internal: true' "$PROJECT_DIR/deploy/compose/compose.yml" >/dev/null
-test "$(grep -c 'internal: true' "$PROJECT_DIR/deploy/compose/compose.yml")" = 1
+# Panel management and browser control are isolated; egress remains separate.
+test "$(grep -c 'internal: true' "$PROJECT_DIR/deploy/compose/compose.yml")" = 2
+grep -F 'name: kejilion-panel-browser-control' "$PROJECT_DIR/deploy/compose/compose.yml" >/dev/null
+grep -F 'KEJILION_PANEL_BROWSER_TOKEN_FILE: /run/kejilion-panel/browser/browser-token' "$PROJECT_DIR/deploy/compose/compose.yml" >/dev/null
 grep -F 'panel-egress:' "$PROJECT_DIR/deploy/compose/compose.yml" >/dev/null
 grep -F 'name: kejilion-panel-egress' "$PROJECT_DIR/deploy/compose/compose.yml" >/dev/null
 grep -F 'ipv4_address: ${KEJILION_PANEL_IPV4:' \

@@ -8,7 +8,7 @@ import { api } from '@/lib/api'
 import { browserLinksKey, browserLaunchKey } from '@/lib/webBrowser'
 import { desktopWindowTitlebarTargetKey, desktopWindowVisibleKey } from '@/lib/desktopRouteKeys'
 
-vi.mock('@/lib/api', () => ({ api: { browser: { status: vi.fn(), csrf: () => 'test-csrf' } } }))
+vi.mock('@/lib/api', () => ({ api: { browser: { status: vi.fn(), csrf: () => 'test-csrf' }, preferences: { get: vi.fn() } } }))
 class Socket {
   static OPEN = 1
   static instances: Socket[] = []
@@ -26,6 +26,7 @@ class Socket {
 }
 describe('desktop remote browser', () => {
   beforeEach(() => {
+    vi.mocked(api.preferences.get).mockResolvedValue({ resourceVersion: 'test-version' })
     Socket.instances = []
     vi.stubGlobal('WebSocket', Socket)
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
@@ -60,6 +61,23 @@ describe('desktop remote browser', () => {
     expect(wrapper.text()).toContain('通过服务器访问')
     wrapper.unmount()
     expect(socket.sent).toContainEqual({ type: 'end' })
+  })
+  it('uses the saved start page for startup, Home and new tabs while preserving external launch intents', async () => {
+    vi.mocked(api.preferences.get).mockResolvedValue({ resourceVersion: 'test-version', browser: { startURL: 'https://start.example/' } })
+    const wrapper = await render(), socket = Socket.instances[0]!
+    socket.state(); await nextTick()
+    expect(socket.sent).toContainEqual({ type: 'new', url: 'https://start.example/' })
+    socket.state([{ id: 'tab-1', url: 'https://start.example/', title: 'Start', loading: false, back: false, forward: false }], 'tab-1'); await nextTick()
+    await wrapper.get('button[aria-label="起始页"]').trigger('click')
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'navigate', tab: 'tab-1', url: 'https://start.example/' })
+    await wrapper.get('button[aria-label="新建标签页"]').trigger('click')
+    expect(socket.sent).toContainEqual({ type: 'new', url: 'https://start.example/' })
+    wrapper.unmount()
+    const launched = await render(ref(true), 'https://app.example/')
+    const other = Socket.instances.at(-1)!; other.state(); await nextTick()
+    expect(other.sent).toContainEqual({ type: 'new', url: 'https://app.example/' })
+    expect(other.sent.some(command => command.url === 'https://start.example/')).toBe(false)
+    launched.unmount()
   })
   it('integrates the eight-tab strip into the window titlebar', async () => {
     const target = document.createElement('div'); document.body.append(target)

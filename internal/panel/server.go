@@ -653,6 +653,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleSystemResourceAction(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/system/service-actions":
 		s.handleSystemServiceAction(w, r)
+	case r.URL.Path == "/api/v1/browser/component" || r.URL.Path == "/api/v1/browser/component/actions":
+		s.handleBrowserComponent(w, r)
 	case r.URL.Path == "/api/v1/browser/status" || strings.HasPrefix(r.URL.Path, "/api/v1/browser/stream/"):
 		s.handleBrowser(w, r)
 	case r.URL.Path == "/api/v1/virtual-machines" || strings.HasPrefix(r.URL.Path, "/api/v1/virtual-machines/"):

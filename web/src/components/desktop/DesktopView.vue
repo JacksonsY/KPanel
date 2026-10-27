@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { isDesktopCommandShortcut } from '@/lib/desktopCommandShortcuts'
 import { browserLinksKey, browserInput, browserLaunchKey, type BrowserLaunch } from '@/lib/webBrowser'
+import { useBrowserText } from '@/i18n/webBrowser'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import {
@@ -213,6 +214,7 @@ const desktopFileDropStyle = computed(() => {
 })
 const toast = useToast()
 const i18n = useI18n()
+const browserText = useBrowserText()
 const taskbarNow = ref(new Date())
 const taskbarLocalTime = computed(() => new Intl.DateTimeFormat(i18n.locale.value, {
   hour: 'numeric',
@@ -3870,6 +3872,15 @@ function onNavMenuOpen(): void {
   if (path) openNavIcon(path)
 }
 
+function openBrowserSettings(): void {
+  closeContextMenu()
+  const path = `/browser?settings=1&request=${crypto.randomUUID()}`
+  const existing = openWindows.value.find(window => desktopRoutePath(window.path) === '/browser')
+  if (existing) { desktop.updateWindowRoute(existing.id, path, 'route.browser'); desktop.restoreWindow(existing.id); return }
+  const id = desktop.openWindow(path, 'route.browser', false, true)
+  if (!id) toast.show(i18n.t('desktop.windowLimitTitle'), { message: i18n.t('desktop.windowLimitMessage') })
+}
+
 async function toggleDocumentFullscreen(): Promise<void> {
   if (await documentFullscreen.toggle()) return
   toast.show(i18n.t('desktop.fullscreenUnavailableTitle'), {
@@ -5028,6 +5039,7 @@ function onViewportResize(): void {
           <button v-if="menuEntry.url" type="button" role="menuitem" @click="openExternal(menuEntry); closeContextMenu()"><ExternalLink :size="15" aria-hidden="true" />{{ i18n.t('desktop.systemBrowserOpen') }}</button>
         </template>
         <template v-else-if="menuNavPath">
+          <button v-if="menuNavPath === '/browser'" type="button" role="menuitem" @click="openBrowserSettings"><Pencil :size="15" aria-hidden="true" />{{ browserText('settings') }}</button>
           <button type="button" role="menuitem" @click="onNavMenuOpen">
             <AppWindow :size="15" aria-hidden="true" />
             {{ i18n.t('desktop.entryOpen') }}

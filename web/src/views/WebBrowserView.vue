@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, ArrowRight, Ellipsis, ExternalLink, Globe2, Home, LoaderCircle, Network, Plus, RefreshCw, Search, X } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Ellipsis, ExternalLink, Globe2, Home, LoaderCircle, Network, Plus, RefreshCw, Search, Settings2, X } from '@lucide/vue'
 import { api } from '@/lib/api'
 import { BROWSER_MAX_TABS, browserCoordinates, browserEvent, browserInput, browserTextChunks, browserLinksKey, browserLaunchKey, type BrowserEvent, type BrowserTab } from '@/lib/webBrowser'
 import { desktopWindowTitleKey, desktopWindowTitlebarTargetKey, desktopWindowVisibleKey } from '@/lib/desktopRouteKeys'
 import { useBrowserText } from '@/i18n/webBrowser'
 import { usePhraseCatalog } from '@/i18n/phrase'
 import ModalDialog from '@/components/common/ModalDialog.vue'
+import BrowserSettings from '@/components/browser/BrowserSettings.vue'
 
 const t = useBrowserText()
 usePhraseCatalog(locale => locale === 'en-US' ? import('@/i18n/pages/WebBrowserView/en-US').then(m => m.default) : import('@/i18n/pages/WebBrowserView/zh-TW').then(m => m.default))
@@ -34,13 +35,16 @@ const dialog = ref<BrowserEvent>()
 const mobile = ref(false)
 const tabsOpen = ref(false)
 const moreOpen = ref(false)
+const settingsOpen = ref(false)
+const startURL = ref('')
+let preferencesController: AbortController | undefined
 const tabCount = computed(() => tabs.value.length + Number(startPage.value && newTabPending.value))
 const imageReady = ref(false)
 const width = ref(1280)
 const height = ref(720)
 const activeTab = computed(() => tabs.value.find(tab => tab.id === activeID.value))
 const workspace = Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, '0')).join('')
-const visible = computed(() => windowVisible.value && !startPage.value && documentVisible.value && !tabsOpen.value && !moreOpen.value)
+const visible = computed(() => windowVisible.value && !startPage.value && documentVisible.value && !tabsOpen.value && !moreOpen.value && !settingsOpen.value)
 const documentVisible = ref(!document.hidden)
 let socket: WebSocket | undefined
 let epoch = 0
@@ -156,9 +160,9 @@ function close(tab: BrowserTab): void {
   if (activeID.value === tab.id) activeID.value = tabs.value[tabs.value.length - 1]?.id || ''
   if (!tabs.value.length) { startPage.value = true; newTabPending.value = true }
 }
-function home(): void { startPage.value = true; newTabPending.value = !activeTab.value; address.value = ''; void nextTick(() => addressInput.value?.focus()) }
+function home(newPage = false): void { startPage.value = true; newTabPending.value = newPage || !activeTab.value; address.value = ''; if (startURL.value) openURL(startURL.value); else void nextTick(() => addressInput.value?.focus()) }
 function closeStartTab(): void { const previous = tabs.value[tabs.value.length - 1]; if (previous) select(previous); else { pendingURL = undefined; notice.value = ''; home() } }
-function newTab(): void { if (tabs.value.length >= BROWSER_MAX_TABS) { notice.value = t('limit'); return }; home(); newTabPending.value = true }
+function newTab(): void { if (tabs.value.length >= BROWSER_MAX_TABS) { notice.value = t('limit'); return }; home(true) }
 function external(): void { const url = browserInput(address.value || activeTab.value?.url || pendingURL || ''); if (url) window.open(url, '_blank', 'noopener,noreferrer') }
 function tabHost(url: string): string { try { return new URL(url).host } catch { return '' } }
 function chooseTab(tab: BrowserTab): void { select(tab); tabsOpen.value = false }
@@ -245,13 +249,22 @@ function beforeTextInput(event: InputEvent): void {
 }
 function answer(accept: boolean): void { if (dialog.value) send({ type: 'dialog', tab: dialog.value.tab, accept }); dialog.value = undefined }
 function documentVisibility(): void { documentVisible.value = !document.hidden }
+async function initialize(): Promise<void> {
+  preferencesController = new AbortController()
+  try { const preferences = await api.preferences.get(preferencesController.signal); startURL.value = preferences.browser?.startURL || '' } catch { /* Browsing remains available when preference storage is temporarily unavailable. */ }
+  if (preferencesController.signal.aborted) return
+  if (!pendingURL && !tabs.value.length && startURL.value) openURL(startURL.value)
+  await connect()
+}
+function serviceChanged(action: string): void { if (['install', 'start', 'restart'].includes(action)) void connect(); else { disconnect(); status.value = 'unavailable'; imageReady.value = false } }
+watch(() => [route.query.settings, route.query.request], () => { if (route.query.settings === '1') settingsOpen.value = true }, { immediate: true })
 watch(visible, value => { send({ type: 'visible', visible: value }); if (value) void nextTick(resize); else touchGesture = undefined })
 watch([activeID, startPage, newTabPending], () => void nextTick(() => tabStrip.value?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })))
 watch(launch, value => { if (!value) return; const url = browserInput(value.url); if (!url) return; const tab = tabs.value.find(tab => tab.url === url); if (tab) select(tab); else { newTabPending.value = true; openURL(url) } }, { immediate: true })
 watch(() => route.query.url, raw => { const value = Array.isArray(raw) ? raw[0] : raw; if (value) { const url = browserInput(value); if (url) openURL(url) } }, { immediate: true })
 watch(() => route.query.request, () => { const value = route.query.url; if (typeof value === 'string') { const url = browserInput(value); if (url) openURL(url) } })
-onMounted(() => { mobileQuery = window.matchMedia?.('(max-width: 600px), (max-height: 500px) and (pointer: coarse)'); mobileChanged(); mobileQuery?.addEventListener('change', mobileChanged); observer = new ResizeObserver(resize); if (screen.value) observer.observe(screen.value); document.addEventListener('visibilitychange', documentVisibility); void connect() })
-onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); mobileQuery?.removeEventListener('change', mobileChanged); clearTimeout(resizeTimer); document.removeEventListener('visibilitychange', documentVisibility) })
+onMounted(() => { mobileQuery = window.matchMedia?.('(max-width: 600px), (max-height: 500px) and (pointer: coarse)'); mobileChanged(); mobileQuery?.addEventListener('change', mobileChanged); observer = new ResizeObserver(resize); if (screen.value) observer.observe(screen.value); document.addEventListener('visibilitychange', documentVisibility); void initialize() })
+onBeforeUnmount(() => { preferencesController?.abort(); disconnect(true); observer?.disconnect(); mobileQuery?.removeEventListener('change', mobileChanged); clearTimeout(resizeTimer); document.removeEventListener('visibilitychange', documentVisibility) })
 </script>
 
 <template>
@@ -274,7 +287,8 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); mobileQuery?.r
       <button type="button" class="web-browser__icon web-browser__forward" :disabled="!activeTab?.forward || startPage || status !== 'connected'" :title="t('forward')" :aria-label="t('forward')" @click="send({ type: 'forward', tab: activeID })"><ArrowRight :size="18" /></button>
       <button type="button" class="web-browser__icon web-browser__reload" :disabled="!activeTab || startPage || status !== 'connected'" :title="t(activeTab?.loading ? 'stop' : 'reload')" :aria-label="t(activeTab?.loading ? 'stop' : 'reload')" @click="reload"><X v-if="activeTab?.loading" :size="18" /><RefreshCw v-else :size="17" /></button>
       <label class="web-browser__address"><Search :size="16" aria-hidden="true" /><input ref="addressInput" v-model="address" :aria-label="t('address')" :placeholder="t('address')" maxlength="4096" autocomplete="off" spellcheck="false" enterkeyhint="go" @focus="editingAddress = true" @blur="editingAddress = false" /><button type="submit" :aria-label="t('go')"><ArrowRight :size="17" /></button></label>
-      <button type="button" class="web-browser__icon web-browser__home" :title="t('home')" :aria-label="t('home')" @click="home"><Home :size="17" /></button>
+      <button type="button" class="web-browser__icon web-browser__home" :title="t('home')" :aria-label="t('home')" @click="home()"><Home :size="17" /></button>
+      <button v-if="!mobile" type="button" class="web-browser__icon" :title="t('settings')" :aria-label="t('settings')" @click="settingsOpen = true"><Settings2 :size="17" /></button>
       <button v-if="!mobile" type="button" class="web-browser__icon" :disabled="!address && !activeTab" :title="t('external')" :aria-label="t('external')" @click="external"><ExternalLink :size="17" /></button>
       <button v-if="mobile" type="button" class="web-browser__icon web-browser__tab-switch" :aria-label="`${t('tabs')} · ${tabCount}/${BROWSER_MAX_TABS}`" aria-haspopup="dialog" @click="tabsOpen = true"><span>{{ tabCount }}</span></button>
       <button v-if="mobile" type="button" class="web-browser__icon web-browser__more" :aria-label="t('more')" aria-haspopup="dialog" @click="moreOpen = true"><Ellipsis :size="22" /></button>
@@ -285,7 +299,7 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); mobileQuery?.r
         <LoaderCircle v-if="status === 'connecting'" :size="32" class="is-spinning" /><Globe2 v-else :size="40" />
         <h2>{{ t(status === 'connecting' ? 'connecting' : status === 'unconfigured' ? 'unconfigured' : status === 'disconnected' ? 'disconnected' : 'unavailable') }}</h2>
         <p v-if="status !== 'connecting'">{{ t(status === 'unconfigured' ? 'unconfiguredHint' : 'unavailableHint') }}</p>
-        <div v-if="status !== 'connecting'" class="web-browser__actions"><button class="button button--primary" @click="connect">{{ t('retry') }}</button><button v-if="address || activeTab" class="button button--secondary" @click="external">{{ t('external') }}</button></div>
+        <div v-if="status !== 'connecting'" class="web-browser__actions"><button class="button button--primary" @click="settingsOpen = true">{{ t('settings') }}</button><button class="button button--secondary" @click="connect">{{ t('retry') }}</button><button v-if="address || activeTab" class="button button--secondary" @click="external">{{ t('external') }}</button></div>
       </div>
       <div v-else-if="startPage || !activeTab" class="web-browser__start">
         <span class="web-browser__emblem"><Globe2 :size="40" :stroke-width="1.5" /></span>
@@ -300,6 +314,7 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); mobileQuery?.r
       </div>
     </main>
     <footer class="web-browser__footer"><span :title="t('sessionHint')"><span class="web-browser__dot" :class="{ 'is-connected': status === 'connected' }" />{{ t(status === 'connected' ? 'connected' : status === 'connecting' ? 'connecting' : 'disconnected') }}</span><span class="web-browser__network"><Network :size="13" />{{ t('server') }}</span></footer>
+    <BrowserSettings :open="settingsOpen" @close="settingsOpen = false" @saved="startURL = $event" @changed="serviceChanged" />
     <ModalDialog :open="tabsOpen" :title="`${t('tabs')} · ${tabCount}/${BROWSER_MAX_TABS}`" size="medium" @close="tabsOpen = false">
       <div class="web-browser__tab-grid">
         <div v-for="tab in tabs" :key="tab.id" class="web-browser__tab-card" :class="{ 'is-active': !startPage && tab.id === activeID }">
@@ -311,7 +326,7 @@ onBeforeUnmount(() => { disconnect(true); observer?.disconnect(); mobileQuery?.r
       <template #footer><button class="button button--secondary web-browser__sheet-action" :disabled="tabs.length >= BROWSER_MAX_TABS" @click="addTab"><Plus :size="18" />{{ t('newTab') }}</button><button class="button button--primary web-browser__sheet-action" @click="tabsOpen = false">{{ t('done') }}</button></template>
     </ModalDialog>
     <ModalDialog :open="moreOpen" :title="t('more')" size="compact" @close="moreOpen = false">
-      <div class="web-browser__menu-actions"><button :disabled="!activeTab || startPage || status !== 'connected'" @click="reload"><RefreshCw :size="19" />{{ t(activeTab?.loading ? 'stop' : 'reload') }}</button><button :disabled="!address && !activeTab" @click="external(); moreOpen = false"><ExternalLink :size="19" />{{ t('external') }}</button></div>
+      <div class="web-browser__menu-actions"><button @click="settingsOpen = true; moreOpen = false"><Settings2 :size="19" />{{ t('settings') }}</button><button :disabled="!activeTab || startPage || status !== 'connected'" @click="reload"><RefreshCw :size="19" />{{ t(activeTab?.loading ? 'stop' : 'reload') }}</button><button :disabled="!address && !activeTab" @click="external(); moreOpen = false"><ExternalLink :size="19" />{{ t('external') }}</button></div>
       <p class="web-browser__menu-info"><Network :size="15" />{{ t('server') }} · {{ t(status === 'connected' ? 'connected' : status === 'connecting' ? 'connecting' : 'disconnected') }}</p>
       <p class="web-browser__menu-hint">{{ t('sessionHint') }}</p>
     </ModalDialog>

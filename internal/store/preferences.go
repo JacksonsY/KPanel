@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -13,8 +14,13 @@ import (
 // Preferences is bounded Panel-owned UI state, shared by the single administrator.
 // Nil sections have not been configured and may be migrated once by a client.
 type Preferences struct {
+	Browser *BrowserPreferences `json:"browser,omitempty"`
 	Locale  string              `json:"locale,omitempty"`
 	Desktop *DesktopPreferences `json:"desktop,omitempty"`
+}
+
+type BrowserPreferences struct {
+	StartURL string `json:"startURL"`
 }
 
 type DesktopPreferences struct {
@@ -59,6 +65,12 @@ func validDimension(value float64) bool {
 }
 
 func ValidatePreferences(value Preferences) error {
+	if b := value.Browser; b != nil && b.StartURL != "" {
+		u, err := url.Parse(b.StartURL)
+		if len(b.StartURL) > 4096 || !utf8.ValidString(b.StartURL) || strings.IndexFunc(b.StartURL, func(r rune) bool { return r <= 32 || r == 127 }) >= 0 || err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
+			return ErrInvalidRecord
+		}
+	}
 	if value.Locale != "" && value.Locale != "zh-CN" && value.Locale != "zh-TW" && value.Locale != "en-US" {
 		return ErrInvalidRecord
 	}
@@ -92,6 +104,10 @@ func ValidatePreferences(value Preferences) error {
 }
 
 func clonePreferences(value Preferences) Preferences {
+	if value.Browser != nil {
+		b := *value.Browser
+		value.Browser = &b
+	}
 	if value.Desktop != nil {
 		d := *value.Desktop
 		d.Windows = append([]DesktopWindow{}, d.Windows...)
@@ -123,6 +139,9 @@ func (s *Store) PatchPreferences(expected string, patch Preferences) error {
 		return ErrConflict
 	}
 	previous := cloneDiskState(s.data)
+	if patch.Browser != nil {
+		s.data.Preferences.Browser = clonePreferences(patch).Browser
+	}
 	if patch.Locale != "" {
 		s.data.Preferences.Locale = patch.Locale
 	}

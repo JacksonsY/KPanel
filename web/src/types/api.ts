@@ -2399,12 +2399,13 @@ export interface DesktopSessionPreferences {
 }
 
 export interface UserPreferences {
+	 browser?: { startURL: string }
   resourceVersion: string
   locale?: 'zh-CN' | 'zh-TW' | 'en-US'
   desktop?: DesktopSessionPreferences
 }
 
-export type UserPreferencesPatch = Partial<Pick<UserPreferences, 'locale' | 'desktop'>>
+export type UserPreferencesPatch = Partial<Pick<UserPreferences, 'locale' | 'desktop' | 'browser'>>
 
 export interface AppearanceSettings {
   branding?: SiteBranding

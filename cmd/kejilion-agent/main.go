@@ -21,6 +21,7 @@ import (
 	"github.com/kejilion/kejilion-panel/internal/agentclient"
 	"github.com/kejilion/kejilion-panel/internal/appmarket"
 	"github.com/kejilion/kejilion-panel/internal/backup"
+	"github.com/kejilion/kejilion-panel/internal/browsercomponent"
 	"github.com/kejilion/kejilion-panel/internal/cluster/sshlogin"
 	"github.com/kejilion/kejilion-panel/internal/contract"
 	"github.com/kejilion/kejilion-panel/internal/diagnostics"
@@ -44,6 +45,9 @@ func main() {
 }
 
 func run(arguments []string) error {
+	if len(arguments) > 0 && arguments[0] == "browser-component-run" {
+		return runBrowserComponentJob(arguments[1:])
+	}
 	if len(arguments) > 0 && arguments[0] == "vm-run" {
 		return runVMJob(arguments[1:])
 	}
@@ -210,7 +214,9 @@ func run(arguments []string) error {
 			selfUpdateStarter = selfupdate.NewSystemdStarter()
 		}
 	}
+	browserService := browsercomponent.New(browsercomponent.Config{StateDir: filepath.Join(*stateDir, "browser-component"), RuntimeDir: filepath.Join(filepath.Dir(*socketPath), "browser"), Executable: executable, DockerSocket: *dockerSocket, DockerProbe: dockerClient.Ping})
 	handler, err := agent.NewServer(agent.Config{
+		BrowserComponent:   browserService,
 		VirtualMachines:    virtualmachine.New(virtualmachine.Config{StateDir: filepath.Join(*stateDir, "virtual-machines"), Executable: executable, Enabled: *enableSystemWrites}),
 		BackupDockerSocket: *dockerSocket,
 		Token:              token, Version: version.Version, ProtocolVersion: version.ProtocolVersion,
@@ -234,6 +240,9 @@ func run(arguments []string) error {
 	listener, cleanup, err := agent.ListenUnix(*socketPath, *socketGroup)
 	if err != nil {
 		return err
+	}
+	if err := browserService.PrepareRuntime(); err != nil {
+		slog.Warn("browser component credential unavailable", "error", err)
 	}
 	defer cleanup()
 

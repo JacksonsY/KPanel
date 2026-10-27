@@ -17,6 +17,42 @@ func sampleDesktop() *DesktopPreferences {
 	}
 }
 
+func TestBrowserPreferencesValidatePersistAndKeepOtherSections(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "panel.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, version := s.Preferences()
+	if err = s.PatchPreferences(version, Preferences{Locale: "zh-CN", Desktop: sampleDesktop()}); err != nil {
+		t.Fatal(err)
+	}
+	_, version = s.Preferences()
+	if err = s.PatchPreferences(version, Preferences{Browser: &BrowserPreferences{StartURL: "https://example.com/start"}}); err != nil {
+		t.Fatal(err)
+	}
+	v, version := s.Preferences()
+	if v.Locale != "zh-CN" || v.Desktop == nil || v.Browser.StartURL != "https://example.com/start" {
+		t.Fatal(v)
+	}
+	v.Browser.StartURL = "https://changed.test"
+	v, _ = s.Preferences()
+	if v.Browser.StartURL != "https://example.com/start" {
+		t.Fatal("preference aliases store")
+	}
+	for _, url := range []string{"javascript:alert(1)", "file:///etc/passwd", "https://user:secret@example.com", "//example.com", "https://example.com/\n", "https://"} {
+		if ValidatePreferences(Preferences{Browser: &BrowserPreferences{StartURL: url}}) == nil {
+			t.Fatal("invalid URL accepted", url)
+		}
+	}
+	if err = s.PatchPreferences(version, Preferences{Browser: &BrowserPreferences{}}); err != nil {
+		t.Fatal(err)
+	}
+	v, _ = s.Preferences()
+	if v.Browser.StartURL != "" || v.Desktop == nil {
+		t.Fatal("could not restore built-in page")
+	}
+}
+
 func TestPreferencesPersistenceConflictRollbackAndBackup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "panel.json")
 	s, err := Open(path)

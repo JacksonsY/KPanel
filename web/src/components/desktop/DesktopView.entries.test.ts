@@ -18,6 +18,10 @@ import {
 import { api } from '@/lib/api'
 import type { DesktopWorkspace, DesktopWorkspaceUpdate, Site } from '@/types/api'
 
+// These cases cover entry routing and window ownership. The remote browser's
+// canvas/socket/settings lifecycle is exercised by its dedicated view tests.
+vi.mock('@/views/WebBrowserView.vue', () => ({ default: { template: '<div data-testid="entry-browser-view" />' } }))
+
 vi.mock('@/lib/desktopEntries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/desktopEntries')>()
   return {
@@ -264,6 +268,21 @@ describe('DesktopView dynamic entries', () => {
     expect(desktop.windows.value[0]?.path).toBe("/browser")
     expect(window.open).not.toHaveBeenCalled()
     expect(document.body.querySelector(".desktop__external-confirm")).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('opens browser settings from the browser icon context menu and reuses its window', async () => {
+    const wrapper = mount(DesktopView, { attachTo: document.body }); await flushPromises()
+    const icon = wrapper.find('button[title="浏览器"]')
+    await icon.trigger('contextmenu', { clientX: 120, clientY: 100 }); await nextTick()
+    const edit = wrapper.findAll('[role="menuitem"]').find(item => item.text() === '浏览器设置')
+    expect(edit).toBeDefined(); await edit!.trigger('click'); await nextTick()
+    const desktop = useDesktopMode()
+    expect(desktop.windows.value).toHaveLength(1)
+    expect(desktop.windows.value[0]?.path).toContain('/browser?settings=1&request=')
+    await icon.trigger('contextmenu', { clientX: 120, clientY: 100 }); await nextTick()
+    await wrapper.findAll('[role="menuitem"]').find(item => item.text() === '浏览器设置')!.trigger('click'); await nextTick()
+    expect(desktop.windows.value).toHaveLength(1)
     wrapper.unmount()
   })
 
