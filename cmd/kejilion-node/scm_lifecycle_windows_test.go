@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -430,8 +431,11 @@ func TestWindowsHostedSCMUpdaterHelper(t *testing.T) {
 			if plan.Mode == "apply" && err != nil {
 				return err
 			}
-			if plan.Mode == "rollback" && (err == nil || !strings.Contains(err.Error(), "rolled back")) {
-				return errors.New("expected verified rollback")
+			if plan.Mode == "rollback" && err == nil {
+				return errors.New("expected verified rollback but update succeeded")
+			}
+			if plan.Mode == "rollback" && !strings.Contains(err.Error(), "rolled back") {
+				return fmt.Errorf("expected verified rollback: %w", err)
 			}
 			after, err := os.ReadFile(live)
 			if err != nil {
