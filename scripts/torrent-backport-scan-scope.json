@@ -12,7 +12,7 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "960f864876438adfe89deed243802eefcfeb8291427c43f09a4e87d38a0e915b",
-  "firstPartySourceSha256": "f256a39bfdbe301504c54c1bd643ffd5add493a005f682b30681d8a67cda4e8c",
+  "firstPartySourceSha256": "8b8fa05859dad69c842bcf515c3bd74d0a6f4df3df4b6a4e64f409f75cfa2e4a",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
@@ -127,7 +127,7 @@
     "rc128RC8TaskEncodingSummary": "Repair observed native Task Scheduler encoding rejection using consistent UTF16LE BOM/declaration; only known-absent task removal is idempotent. Native compilation/vet and fresh implementation-free Windows package review passed with the same pre-existing local mutex medium issue; prior file-relay lead remains unvalidated, not closed by narrower coverage. All six actual/original production closures,1220 first-party files and module/build identities re-observed;37 prior dispositions and original dates retained. Hosted full installation/update/rollback/uninstall remains required.",
     "rc128RC8PlanConsumeQualificationSha256": "7ed8a166373043a8b458109b811fdade28155844c41d7b31cfc5e65283175c7c",
     "rc128RC8PlanConsumeSummary": "Existing hosted-only Windows lifecycle test consumes its bounded validated plan as SYSTEM before each actual update/rollback step. Original administrator-denied replacement retained; production ACLs and runtime bytes unchanged. Every runtime Go path/hash, production file list, module/actual-original closure/build identity,37 dispositions and original dates remains equal to the six-target independently reviewed atomic repair. Native local compilation skips service installation. Hosted lifecycle acceptance is still required.",
-    "rc128RC9ObservationSha256": "0c90d5030bfa98ce022abac42bb04641de4ca3cc0c44bd81a37d8715d3c91a7b",
+    "rc128RC9ObservationSha256": "3595cca9d76eea1dd1e3570cc8442445ead717f7f062662f5966f1e37645879f",
     "rc128RC9Summary": "RC9 source qualification observes the candidate Go files and six actual/original production closures; original scanner findings and observation dates are unchanged. This is not a scanner or release result."
   },
   "findings": [
