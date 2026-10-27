@@ -26,15 +26,23 @@ const (
 )
 
 type lightNodeFileSession struct {
-	requestID  string
-	ctx        context.Context
-	cancel     context.CancelFunc
-	bodyWriter *io.PipeWriter
-	bodyOffset int64
-	head       bool
-	events     chan cluster.FileRelayEvent
-	pending    []cluster.FileRelayEvent
-	closeOnce  sync.Once
+	requestID   string
+	ctx         context.Context
+	cancel      context.CancelFunc
+	bodyWriter  *io.PipeWriter
+	bodyOffset  int64
+	bodyCommand *cluster.FileRelayCommand
+	bodyResult  chan lightFileBodyResult
+	handlerDone chan struct{}
+	head        bool
+	events      chan cluster.FileRelayEvent
+	pending     []cluster.FileRelayEvent
+	closeOnce   sync.Once
+}
+
+type lightFileBodyResult struct {
+	written int
+	err     error
 }
 
 type lightFileControl struct {
@@ -186,6 +194,7 @@ func (control *lightFileControl) collectEvents() ([]cluster.FileRelayEvent, erro
 				continue
 			}
 			session.drain()
+			control.collectBodyResult(session)
 			if len(session.pending) == 0 {
 				continue
 			}
@@ -247,6 +256,9 @@ func (control *lightFileControl) startRequest(command cluster.FileRelayCommand) 
 	if command.BodyLength != 0 {
 		reader, writer := io.Pipe()
 		body, bodyWriter = reader, writer
+		// io.Pipe does not observe the request context itself. Capture this
+		// immutable writer so parent cancellation releases both reads and writes.
+		context.AfterFunc(requestContext, func() { _ = writer.CloseWithError(requestContext.Err()) })
 	}
 	requestURL := &url.URL{Scheme: "http", Host: "light-node", Path: command.Path, RawQuery: command.Query}
 	request, err := http.NewRequestWithContext(requestContext, command.Method, requestURL.String(), body)
@@ -261,7 +273,8 @@ func (control *lightFileControl) startRequest(command cluster.FileRelayCommand) 
 	session := &lightNodeFileSession{
 		requestID: command.RequestID, ctx: requestContext, cancel: cancel,
 		bodyWriter: bodyWriter, head: command.Method == http.MethodHead,
-		events: make(chan cluster.FileRelayEvent, lightFileEventLimit),
+		events:     make(chan cluster.FileRelayEvent, lightFileEventLimit),
+		bodyResult: make(chan lightFileBodyResult, 1), handlerDone: make(chan struct{}),
 	}
 	control.sessions[command.RequestID] = session
 	go serveLightFileRequest(control.handler, request, session)
@@ -275,29 +288,64 @@ func (control *lightFileControl) startRequest(command cluster.FileRelayCommand) 
 
 func (control *lightFileControl) writeRequestBody(command cluster.FileRelayCommand) error {
 	session := control.sessions[command.RequestID]
+	if session != nil && session.bodyCommand != nil {
+		if session.bodyCommand.ID == command.ID {
+			return nil // Retry while the same bounded write is still pending.
+		}
+		return errors.New("file relay request body write is pending")
+	}
 	if session == nil || session.bodyWriter == nil || command.Offset != session.bodyOffset {
 		return errors.New("file relay request body is unavailable")
 	}
-	if len(command.Data) > 0 {
-		count, err := session.bodyWriter.Write(command.Data)
-		if err != nil || count != len(command.Data) {
-			if err != nil {
-				return err
-			}
-			return errors.New("file relay request body write was incomplete")
+	if err := session.ctx.Err(); err != nil {
+		return err
+	}
+	// Only the control loop owns offsets, replay receipts and session maps.
+	// One worker per session keeps a slow handler from blocking polls/cancel,
+	// without acknowledging bytes before consumption or buffering an upload.
+	command.Data = append([]byte(nil), command.Data...)
+	session.bodyCommand = &command
+	bodyWriter := session.bodyWriter
+	go func() {
+		count, err := bodyWriter.Write(command.Data)
+		if err == nil && command.Final {
+			err = bodyWriter.Close()
 		}
-		session.bodyOffset += int64(count)
-	}
-	if command.Final {
-		_ = session.bodyWriter.Close()
-		session.bodyWriter = nil
-	}
-	event := acceptedFileCommand(command)
-	control.rememberCommandResult(command.ID, event)
-	if !control.queueEvent(event) {
-		return errors.New("file relay event queue is full")
-	}
+		session.bodyResult <- lightFileBodyResult{written: count, err: err}
+	}()
 	return nil
+}
+
+func (control *lightFileControl) collectBodyResult(session *lightNodeFileSession) {
+	if session.bodyCommand == nil || len(session.pending) >= lightFileEventLimit {
+		return
+	}
+	select {
+	case result := <-session.bodyResult:
+		command := *session.bodyCommand
+		session.bodyCommand = nil
+		event := acceptedFileCommand(command)
+		// A handler may deliberately return 4xx without consuming the body.
+		// Preserve that response rather than replacing it with a pipe error.
+		finished := false
+		select {
+		case <-session.handlerDone:
+			finished = true
+		default:
+		}
+		if (result.err != nil || result.written != len(command.Data)) && !finished {
+			event.Kind, event.Error = "error", "file relay request body write failed"
+			session.close()
+		} else {
+			session.bodyOffset += int64(result.written)
+			if command.Final || finished {
+				session.bodyWriter = nil
+			}
+		}
+		control.rememberCommandResult(command.ID, event)
+		session.pending = append(session.pending, event)
+	default:
+	}
 }
 
 func (control *lightFileControl) cancelRequest(command cluster.FileRelayCommand) error {
@@ -320,6 +368,7 @@ func serveLightFileRequest(handler http.Handler, request *http.Request, session 
 	defer func() {
 		// Direct handler invocation does not provide net/http's usual request
 		// body cleanup. Unblock a pending body command if the handler exits early.
+		close(session.handlerDone)
 		_ = request.Body.Close()
 		if recover() != nil && writer.status == 0 {
 			writer.WriteHeader(http.StatusInternalServerError)
@@ -335,6 +384,7 @@ type lightFileResponseWriter struct {
 	status  int
 	offset  int64
 	ended   bool
+	err     error
 }
 
 func (writer *lightFileResponseWriter) Header() http.Header {
@@ -355,13 +405,16 @@ func (writer *lightFileResponseWriter) WriteHeader(status int) {
 			headers[key] = values[0]
 		}
 	}
-	writer.send(cluster.FileRelayEvent{RequestID: writer.session.requestID, Kind: "response", Status: status, Headers: headers})
+	writer.err = writer.send(cluster.FileRelayEvent{RequestID: writer.session.requestID, Kind: "response", Status: status, Headers: headers})
 }
 
 func (writer *lightFileResponseWriter) Write(data []byte) (int, error) {
-	written := len(data)
+	written := 0
 	if writer.status == 0 {
 		writer.WriteHeader(http.StatusOK)
+	}
+	if writer.err != nil {
+		return 0, writer.err
 	}
 	if writer.session.head {
 		return len(data), nil
@@ -369,8 +422,12 @@ func (writer *lightFileResponseWriter) Write(data []byte) (int, error) {
 	for len(data) > 0 {
 		size := min(len(data), lightFileEventChunkBytes)
 		chunk := append([]byte(nil), data[:size]...)
-		writer.send(cluster.FileRelayEvent{RequestID: writer.session.requestID, Kind: "data", Offset: writer.offset, Data: chunk})
+		if err := writer.send(cluster.FileRelayEvent{RequestID: writer.session.requestID, Kind: "data", Offset: writer.offset, Data: chunk}); err != nil {
+			writer.err = err
+			return written, err
+		}
 		writer.offset += int64(size)
+		written += size
 		data = data[size:]
 	}
 	return written, nil
@@ -387,10 +444,15 @@ func (writer *lightFileResponseWriter) finish() {
 	writer.send(cluster.FileRelayEvent{RequestID: writer.session.requestID, Kind: "end"})
 }
 
-func (writer *lightFileResponseWriter) send(event cluster.FileRelayEvent) {
+func (writer *lightFileResponseWriter) send(event cluster.FileRelayEvent) error {
+	if err := writer.session.ctx.Err(); err != nil {
+		return err
+	}
 	select {
 	case writer.session.events <- event:
+		return nil
 	case <-writer.session.ctx.Done():
+		return writer.session.ctx.Err()
 	}
 }
 
