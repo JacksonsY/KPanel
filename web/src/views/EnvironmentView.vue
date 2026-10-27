@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { phraseCatalogVersion, translatePhrase, usePhraseCatalog } from '@/i18n/phrase'
 
 usePhraseCatalog((locale) => locale === 'en-US'
@@ -87,6 +87,10 @@ const terminalJob = ref<WebEnvironmentJob>()
 const backupBeforeUninstall = ref(true)
 const updateVersions = reactive<Record<string, string>>({})
 const cloudflare = reactive({ account: '', token: '', zoneId: '' })
+const cloudflareEditing = ref(false)
+const cloudflareFormVisible = computed(() => !summary.value?.protection.cloudflare || cloudflareEditing.value)
+const cloudflareAccountInput = ref<HTMLInputElement>()
+const cloudflareReconfigureButton = ref<HTMLButtonElement>()
 const toast = useToast()
 let summaryController: AbortController | undefined
 let catalogController: AbortController | undefined
@@ -320,6 +324,14 @@ function protection(operation: string): void {
   void start({ action: 'protection.configure', operation })
 }
 
+async function editCloudflare(editing: boolean): Promise<void> {
+  cloudflareEditing.value = editing
+  if (!editing) cloudflare.token = ''
+  await nextTick()
+  const target = editing ? cloudflareAccountInput.value : cloudflareReconfigureButton.value
+  target?.focus()
+}
+
 function configureCloudflare(operation: 'cloudflare-fail2ban' | 'cloudflare-shield'): void {
   if (!cloudflare.account || !cloudflare.token || (operation === 'cloudflare-shield' && !cloudflare.zoneId)) {
     toast.danger('Cloudflare 参数不完整', '请填写账号、API Key/Token；自动五秒盾还需要 Zone ID。')
@@ -549,13 +561,21 @@ onBeforeUnmount(() => {
           </article>
           <article>
             <div><strong>Cloudflare</strong><StatusBadge :status="summary.protection.cloudflare ? 'healthy' : 'unknown'" :label="summary.protection.cloudflare ? '已配置' : '未配置'" /></div>
-            <p>凭据只通过任务专属 0600 文件传递，不写入任务、终端、审计或面板数据库。</p>
-            <label><span>账号</span><input v-model.trim="cloudflare.account" autocomplete="username" placeholder="name@example.com" /></label>
-            <label><span>API Key / Token</span><input v-model="cloudflare.token" type="password" autocomplete="new-password" placeholder="••••••••" /></label>
-            <label><span>Zone ID（五秒盾需要）</span><input v-model.trim="cloudflare.zoneId" autocomplete="off" /></label>
-            <div>
-              <button class="button button--secondary" :disabled="jobActive" @click="configureCloudflare('cloudflare-fail2ban')">Fail2Ban 模式</button>
-              <button class="button button--secondary" :disabled="jobActive" @click="configureCloudflare('cloudflare-shield')">高负载五秒盾</button>
+            <p v-if="summary.protection.cloudflare && !cloudflareFormVisible">已检测到主机上的 Cloudflare 配置。查看状态无需填写凭据；如需修改，请选择重新配置。</p>
+            <template v-if="cloudflareFormVisible">
+              <p>凭据只通过任务专属 0600 文件传递，不写入任务、终端、审计或面板数据库。</p>
+              <label><span>账号</span><input ref="cloudflareAccountInput" v-model.trim="cloudflare.account" autocomplete="username" placeholder="name@example.com" /></label>
+              <label><span>API Key / Token</span><input v-model="cloudflare.token" type="password" autocomplete="new-password" placeholder="••••••••" /></label>
+              <label><span>Zone ID（五秒盾需要）</span><input v-model.trim="cloudflare.zoneId" autocomplete="off" /></label>
+              <div>
+                <button v-if="summary.protection.cloudflare" class="button button--secondary" :disabled="jobActive" @click="editCloudflare(false)">取消重新配置</button>
+                <button class="button button--secondary" :disabled="jobActive" @click="configureCloudflare('cloudflare-fail2ban')">Fail2Ban 模式</button>
+                <button class="button button--secondary" :disabled="jobActive" @click="configureCloudflare('cloudflare-shield')">高负载五秒盾</button>
+              </div>
+            </template>
+            <div v-else>
+              <button class="button button--secondary" :disabled="refreshing" @click="load(true)">刷新状态</button>
+              <button ref="cloudflareReconfigureButton" class="button button--secondary" :disabled="jobActive" @click="editCloudflare(true)">重新配置</button>
             </div>
           </article>
         </div>
@@ -699,7 +719,7 @@ onBeforeUnmount(() => {
 .environment-action-grid article:last-child > div:first-child,
 .environment-action-grid article:last-child > p,
 .environment-action-grid article:last-child > div:last-child { grid-column: 1 / -1; }
-.environment-action-grid article:last-child > div:last-child { justify-content: flex-end; }
+.environment-action-grid article:last-child > div:last-child { justify-content: flex-end; flex-wrap: wrap; }
 .environment-action-grid article > div, .environment-action-grid article > div:last-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .environment-action-grid article p { flex: 1; }
 .environment-action-grid label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }

@@ -44,6 +44,12 @@ interface EnvironmentBindings {
   auxiliaryWarning: Readonly<Ref<string>>
   terminalOpen: Ref<boolean>
   terminalJob: Ref<WebEnvironmentJob | undefined>
+  cloudflare: { account: string; token: string; zoneId: string }
+  cloudflareFormVisible: Readonly<Ref<boolean>>
+  cloudflareAccountInput: Ref<HTMLInputElement | undefined>
+  cloudflareReconfigureButton: Ref<HTMLButtonElement | undefined>
+  editCloudflare: (editing: boolean) => Promise<void>
+  configureCloudflare: (operation: 'cloudflare-fail2ban' | 'cloudflare-shield') => void
   load: (silent?: boolean) => Promise<void>
   loadBackups: (force?: boolean) => Promise<void>
   start: (input: Record<string, unknown>) => Promise<void>
@@ -108,6 +114,87 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.useRealTimers()
+})
+
+describe('EnvironmentView Cloudflare configuration', () => {
+  it('refreshes an existing configuration without requesting credentials or starting a job', async () => {
+    const configured = summary()
+    configured.protection.cloudflare = true
+    vi.mocked(api.webEnvironment.summary).mockResolvedValue(configured)
+    vi.mocked(api.webEnvironment.jobs).mockResolvedValue({ items: [], total: 0 })
+    const view = setupView()
+    view.summary.value = configured
+
+    expect(view.cloudflareFormVisible.value).toBe(false)
+    await view.load(true)
+
+    expect(api.webEnvironment.summary).toHaveBeenCalledOnce()
+    expect(view.cloudflareFormVisible.value).toBe(false)
+    expect(view.cloudflare.token).toBe('')
+    expect(mocks.start).not.toHaveBeenCalled()
+    expect(mocks.toastDanger).not.toHaveBeenCalled()
+  })
+
+  it('opens explicit reconfiguration and clears the secret when returning to the status view', async () => {
+    const view = setupView()
+    view.summary.value = summary()
+    view.summary.value.protection.cloudflare = true
+    const focusAccount = vi.fn()
+    const focusButton = vi.fn()
+    view.cloudflareAccountInput.value = { focus: focusAccount } as unknown as HTMLInputElement
+    view.cloudflareReconfigureButton.value = { focus: focusButton } as unknown as HTMLButtonElement
+
+    await view.editCloudflare(true)
+    expect(view.cloudflareFormVisible.value).toBe(true)
+    expect(focusAccount).toHaveBeenCalledOnce()
+    view.cloudflare.token = 'unsent-test-secret'
+    await view.editCloudflare(false)
+
+    expect(view.cloudflareFormVisible.value).toBe(false)
+    expect(view.cloudflare.token).toBe('')
+    expect(focusButton).toHaveBeenCalledOnce()
+    expect(mocks.start).not.toHaveBeenCalled()
+  })
+
+  it('shows setup when no configuration is detected and still validates required credentials', () => {
+    const view = setupView()
+    view.summary.value = summary()
+    expect(view.cloudflareFormVisible.value).toBe(true)
+    view.configureCloudflare('cloudflare-fail2ban')
+    expect(mocks.toastDanger).toHaveBeenCalledWith('Cloudflare 参数不完整', expect.any(String))
+    expect(mocks.start).not.toHaveBeenCalled()
+  })
+
+  it('keeps reconfiguration available and preserves the existing write payload', async () => {
+    const view = setupView()
+    view.summary.value = summary()
+    view.summary.value.protection.cloudflare = true
+    await view.editCloudflare(true)
+    view.cloudflare.account = 'operator@example.com'
+    view.cloudflare.token = 'new-test-secret'
+    mocks.start.mockImplementationOnce(() => new Promise(() => undefined))
+
+    view.configureCloudflare('cloudflare-fail2ban')
+
+    expect(mocks.start).toHaveBeenCalledWith({
+      action: 'protection.configure', operation: 'cloudflare-fail2ban',
+      cloudflareAccount: 'operator@example.com', cloudflareToken: 'new-test-secret',
+      expectedResourceVersion: view.summary.value.resourceVersion,
+    })
+    expect(view.cloudflare.token).toBe('')
+  })
+
+  it('still requires a Zone ID when enabling the shield on a configured host', async () => {
+    const view = setupView()
+    view.summary.value = summary()
+    view.summary.value.protection.cloudflare = true
+    await view.editCloudflare(true)
+    view.cloudflare.account = 'operator@example.com'
+    view.cloudflare.token = 'test-secret'
+    view.configureCloudflare('cloudflare-shield')
+    expect(mocks.toastDanger).toHaveBeenCalledWith('Cloudflare 参数不完整', expect.any(String))
+    expect(mocks.start).not.toHaveBeenCalled()
+  })
 })
 
 describe('EnvironmentView background jobs', () => {

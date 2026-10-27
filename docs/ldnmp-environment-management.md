@@ -89,6 +89,10 @@ GET  /v1/web-environment/backups/{id}
 
 ## 敏感信息
 
+检测到主机已有 Cloudflare 配置时，防护页默认提供状态刷新与显式“重新配置”入口，不以空白凭据表单表示当前配置。
+展开重新配置表单后仍须填写账号、API Key/Token；高负载五秒盾仍须提供 Zone ID。取消重新配置会清空尚未提交的密钥。
+“已配置”沿用脚本的配置发现结果，不表示面板已执行 Cloudflare API 凭据校验。
+
 Cloudflare 账号、API Key/Token 与 Zone ID：
 
 - 不写入 Panel 数据库、任务 JSON、终端和审计 change；

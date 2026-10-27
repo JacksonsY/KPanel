@@ -1,6 +1,9 @@
 import type { PhraseCatalog } from '@/i18n/phrase'
 
 export default [
+  ["已检测到主机上的 Cloudflare 配置。查看状态无需填写凭据；如需修改，请选择重新配置。", "Cloudflare configuration was detected on this host. You can refresh its status without entering credentials. Choose Reconfigure to make changes."],
+  ["重新配置", "Reconfigure"],
+  ["取消重新配置", "Cancel reconfiguration"],
   ["拦截模式", "Blocking mode"],
   ["检测模式", "Detection mode"],
   ["按站点配置", "Per-site policy"],
