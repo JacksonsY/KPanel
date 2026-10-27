@@ -1966,21 +1966,21 @@ onBeforeUnmount(() => {
               <strong>{{ phrase('非面板 Linux / Windows 主机') }}</strong>
               <small>{{ phrase('无需 Docker；Linux 以 root、Windows 以管理员 PowerShell 执行命令，接入实时与历史监控、文件管理（含写入与删除）和命令行终端。') }}</small>
             </span>
-            <button
-              v-if="!lightEnrollment"
-              class="button button--secondary button--small"
-              type="button"
-              :disabled="generatingLightEnrollment"
-              @click="createLightEnrollment()"
-            >
-              <LoaderCircle v-if="generatingLightEnrollment" class="spin" :size="14" />
-              <Plus v-else :size="14" /> {{ phrase('生成接入命令') }}
-            </button>
           </div>
           <label class="field">
             {{ phrase('节点系统') }}
             <select v-model="lightPlatform" :aria-label="phrase('节点系统')"><option value="linux">Linux</option><option value="windows">Windows / PowerShell</option></select>
           </label>
+          <button
+            v-if="!lightEnrollment"
+            class="button button--secondary button--small"
+            type="button"
+            :disabled="generatingLightEnrollment"
+            @click="createLightEnrollment()"
+          >
+            <LoaderCircle v-if="generatingLightEnrollment" class="spin" :size="14" />
+            <Plus v-else :size="14" /> {{ phrase('生成接入命令') }}
+          </button>
           <div v-if="lightEnrollment" class="cluster-light-enrollment__command">
             <pre v-if="lightCommand">{{ lightCommand }}</pre>
             <p v-else role="status">{{ phrase('当前版本未提供 Windows 安装器，请升级中心。') }}</p>
