@@ -2,10 +2,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import BrowserSettings from './BrowserSettings.vue'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import type { BrowserComponent } from '@/lib/webBrowser'
 
-vi.mock('@/lib/api', () => ({ api: { browser: { component: vi.fn(), componentAction: vi.fn() }, preferences: { get: vi.fn(), update: vi.fn() } } }))
+vi.mock('@/lib/api', async importOriginal => ({ ...(await importOriginal<typeof import('@/lib/api')>()), api: { browser: { component: vi.fn(), componentAction: vi.fn() }, preferences: { get: vi.fn(), update: vi.fn() } } }))
 const version = `sha256:${'a'.repeat(64)}`
 const snapshot = (patch: Partial<BrowserComponent> = {}): BrowserComponent => ({ supported: true, installed: false, running: false, healthy: false, resourceVersion: version, image: 'fixed-image', ...patch })
 function render() { return mount(BrowserSettings, { props: { open: true }, global: { stubs: { ModalDialog: { props: ['open'], template: '<div v-if="open"><slot/><slot name="footer"/></div>' } } } }) }
@@ -62,6 +62,27 @@ describe('browser settings lifecycle', () => {
     const wrapper = render(); await flushPromises()
     expect(wrapper.text()).toContain('先使用此版本的 Compose 配置更新面板')
     expect(wrapper.findAll('button').some(b => b.text() === '安装并启用')).toBe(false)
+    wrapper.unmount()
+  })
+  it('retries unrelated desktop-version changes without losing the draft', async () => {
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('input').setValue('https://example.com/start')
+    vi.mocked(api.preferences.update).mockRejectedValueOnce(new ApiError('changed', 409)).mockResolvedValueOnce({ resourceVersion: 'saved', browser: { startURL: 'https://example.com/start' } })
+    vi.mocked(api.preferences.get).mockResolvedValue({ resourceVersion: 'desktop-changed' })
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(api.preferences.update).toHaveBeenLastCalledWith({ browser: { startURL: 'https://example.com/start' }, expectedResourceVersion: 'desktop-changed' }, expect.any(AbortSignal))
+    expect(wrapper.text()).toContain('设置已保存')
+    wrapper.unmount()
+  })
+  it('keeps a concurrent start-page edit intact and preserves the local draft', async () => {
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('input').setValue('https://mine.example/')
+    vi.mocked(api.preferences.update).mockRejectedValueOnce(new ApiError('changed', 409))
+    vi.mocked(api.preferences.get).mockResolvedValue({ resourceVersion: 'other-changed', browser: { startURL: 'https://other.example/' } })
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(api.preferences.update).toHaveBeenCalledTimes(1)
+    expect((wrapper.get('input').element as HTMLInputElement).value).toBe('https://mine.example/')
+    expect(wrapper.text()).toContain('保存失败或设置已被其他窗口更新')
     wrapper.unmount()
   })
   it('reads existing completed jobs without replaying their action', async () => {

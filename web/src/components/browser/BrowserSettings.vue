@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { LoaderCircle, RefreshCw } from '@lucide/vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
+import type { UserPreferences } from '@/types/api'
 import type { BrowserComponent, BrowserComponentAction } from '@/lib/webBrowser'
 import { useBrowserText } from '@/i18n/webBrowser'
 
@@ -12,6 +13,7 @@ const t = useBrowserText()
 const component = ref<BrowserComponent>()
 const loading = ref(false), submitting = ref(false), saving = ref(false)
 const startURL = ref(''), version = ref(''), error = ref(''), saved = ref(false)
+let storedStartURL = ''
 const confirmAction = ref<BrowserComponentAction>()
 const busy = computed(() => submitting.value || ['queued', 'running'].includes(component.value?.job?.state || ''))
 const state = computed(() => !component.value?.installed ? 'notInstalled' : component.value.running ? component.value.healthy ? 'serviceReady' : 'serviceStarting' : 'serviceStopped')
@@ -44,7 +46,7 @@ async function load(): Promise<void> {
   const preferences = async () => {
     try {
       const value = await api.preferences.get(controller?.signal)
-      if (current === epoch) { startURL.value = value.browser?.startURL || ''; version.value = value.resourceVersion }
+      if (current === epoch) { storedStartURL = value.browser?.startURL || ''; startURL.value = storedStartURL; version.value = value.resourceVersion }
     } catch { if (current === epoch) error.value = t('settingsLoadFailed') }
   }
   await Promise.all([refresh(true), preferences()])
@@ -58,9 +60,23 @@ async function save(): Promise<void> {
   saving.value = true; saved.value = false; error.value = ''
   const current = epoch
   try {
-    const result = await api.preferences.update({ browser: { startURL: value }, expectedResourceVersion: version.value }, controller?.signal)
+    let expected = version.value, result: UserPreferences | undefined
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { result = await api.preferences.update({ browser: { startURL: value }, expectedResourceVersion: expected }, controller?.signal); break }
+      catch (cause) {
+        if (current !== epoch) return
+        if (!(cause instanceof ApiError) || cause.status !== 409 || attempt === 2) throw cause
+        const latest = await api.preferences.get(controller?.signal)
+        if (current !== epoch) return
+        // Desktop layout and locale share the version, but this form owns only
+        // the browser section. Never overwrite a concurrent start-page edit.
+        if ((latest.browser?.startURL || '') !== storedStartURL) throw cause
+        expected = latest.resourceVersion
+      }
+    }
+    if (!result) return
     if (current !== epoch) return
-    version.value = result.resourceVersion; startURL.value = result.browser?.startURL || ''; saved.value = true; emit('saved', startURL.value)
+    version.value = result.resourceVersion; storedStartURL = result.browser?.startURL || ''; startURL.value = storedStartURL; saved.value = true; emit('saved', startURL.value)
   } catch { if (current === epoch) error.value = t('settingsSaveFailed') }
   finally { if (current === epoch) saving.value = false }
 }
