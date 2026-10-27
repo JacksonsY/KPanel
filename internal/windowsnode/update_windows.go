@@ -159,7 +159,7 @@ func (u *Updater) Recover(ctx context.Context) error {
 		return u.store().Remove(u.Journal)
 	}
 	if err := u.Stop(); err != nil {
-		return err
+		return fmt.Errorf("stop services for recovery: %w", err)
 	}
 	if liveHash != tx.PreviousSHA256 {
 		oldHash, err := u.store().Hash(old)
@@ -167,19 +167,22 @@ func (u *Updater) Recover(ctx context.Context) error {
 			return errors.New("verified rollback binary unavailable")
 		}
 		if err := u.store().Move(old, live); err != nil {
-			return err
+			return fmt.Errorf("restore previous binary: %w", err)
 		}
 	}
 	if err := u.Start(); err != nil {
-		return err
+		return fmt.Errorf("start services after recovery: %w", err)
 	}
 	if err := u.Healthy(ctx); err != nil {
-		return err
+		return fmt.Errorf("verify recovered services: %w", err)
 	}
 	if err := u.store().Remove(next); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+		return fmt.Errorf("remove staged binary after recovery: %w", err)
 	}
-	return u.store().Remove(u.Journal)
+	if err := u.store().Remove(u.Journal); err != nil {
+		return fmt.Errorf("remove recovery journal: %w", err)
+	}
+	return nil
 }
 func (u *Updater) Apply(ctx context.Context, expected string) error {
 	if !validSHA(expected) {
