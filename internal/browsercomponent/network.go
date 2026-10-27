@@ -4,10 +4,71 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"os"
 	"path/filepath"
+	"time"
 )
 
 const controlNetwork = "kejilion-panel-browser-control"
+
+// RunNetworkReconciler restores the panel connection after a container
+// replacement. It never starts Docker or recreates a browser container.
+func (s *Service) RunNetworkReconciler(ctx context.Context) {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	lastError := ""
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			probe, cancel := context.WithTimeout(ctx, 15*time.Second)
+			err := s.reconcileNetwork(probe)
+			cancel()
+			if err != nil && !errors.Is(err, ErrBusy) && ctx.Err() == nil {
+				if err.Error() != lastError {
+					slog.Warn("browser network reconciliation failed", "error", err)
+					lastError = err.Error()
+				}
+			} else if err == nil {
+				lastError = ""
+			}
+			timer.Reset(30 * time.Second)
+		}
+	}
+}
+
+func (s *Service) reconcileNetwork(ctx context.Context) error {
+	marker, err := s.readPrivate("enabled", 16)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil || string(marker) != "enabled" {
+		return errors.New("invalid browser enabled state")
+	}
+	unlock, err := lockDirectory(s.config.StateDir, "worker.lock")
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	// Re-read after taking the worker lock: uninstall may have removed it.
+	marker, err = s.readPrivate("enabled", 16)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil || string(marker) != "enabled" {
+		return errors.New("invalid browser enabled state")
+	}
+	v, err := s.snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	if !v.Supported || !v.Installed || (v.Job != nil && (v.Job.State == "queued" || v.Job.State == "running")) {
+		return nil
+	}
+	return s.prepareNetwork(ctx)
+}
 
 // prepareNetwork connects the existing panel without recreating it. A later
 // Compose update owns the same network by virtue of the standard labels.

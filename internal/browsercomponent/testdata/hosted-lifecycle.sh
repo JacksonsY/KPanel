@@ -38,14 +38,16 @@ trap cleanup EXIT
 mkdir -m 0755 "$runtime/runtime-parent"
 cd "$repo"
 go build -buildvcs=false -o "$runtime/agent" ./cmd/kejilion-agent
+go build -buildvcs=false -o "$runtime/reconcile" "$evidence/reconcile.go"
 CGO_ENABLED=0 go build -buildvcs=false -o "$runtime/probe" "$evidence/live-browser-probe.go"
 chmod 0555 "$runtime/probe"
 docker pull docker.io/kjlion/kpanel-browser@sha256:fbc00e5b7e5bb39c117507b1995cc0e4f85976eb6818db23322d46968f7d5697 >/dev/null
-panel_id=$(docker run -d --name kejilion-panel --label com.docker.compose.project=kejilion-panel \
+start_panel() { docker run -d --name kejilion-panel --label com.docker.compose.project=kejilion-panel \
   --label com.docker.compose.service=panel --label "kpanel.test=$label" \
   --mount "type=bind,src=$runtime/runtime-parent,dst=/run/kejilion-panel,readonly" \
   --mount "type=bind,src=$runtime/probe,dst=/test/probe,readonly" \
-  --entrypoint /bin/sleep docker.io/kjlion/kpanel-browser@sha256:fbc00e5b7e5bb39c117507b1995cc0e4f85976eb6818db23322d46968f7d5697 3600)
+  --entrypoint /bin/sleep docker.io/kjlion/kpanel-browser@sha256:fbc00e5b7e5bb39c117507b1995cc0e4f85976eb6818db23322d46968f7d5697 3600; }
+panel_id=$(start_panel)
 for action in install stop start restart uninstall install uninstall; do
   id=$(node "$evidence/live-component-task.mjs" "$action" "$runtime/state")
   "$runtime/agent" browser-component-run --state-dir "$runtime/state" --runtime-dir "$runtime/runtime-parent/browser" --docker-socket /var/run/docker.sock --job "$id"
@@ -57,6 +59,13 @@ for action in install stop start restart uninstall install uninstall; do
     [[ $(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' kpanel-browser) == true ]]
     [[ $(docker inspect --format '{{json .HostConfig.PortBindings}}' kpanel-browser) == '{}' ]]
     docker exec --user 65532:65532 "$panel_id" /test/probe browser /run/kejilion-panel/browser/browser-token
+    if [[ "$action" == install && -z ${recreated:-} ]]; then
+      docker rm -f "$panel_id" >/dev/null
+      panel_id=$(start_panel)
+      "$runtime/reconcile" "$runtime/state" "$runtime/runtime-parent/browser"
+      docker exec --user 65532:65532 "$panel_id" /test/probe browser /run/kejilion-panel/browser/browser-token
+      recreated=1
+    fi
   fi
 done
 echo 'component_lifecycle=pass actions=7 navigation=pass cleanup=pending'

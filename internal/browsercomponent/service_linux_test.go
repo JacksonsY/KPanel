@@ -141,6 +141,41 @@ func TestInstallRejectsUnsafeControlNetwork(t *testing.T) {
 		t.Fatal("connected to unsafe network")
 	}
 }
+
+func TestReconcileRestoresRecreatedPanelOnlyWhileEnabled(t *testing.T) {
+	s, f := fixture(t)
+	if err := s.PrepareRuntime(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.enableDefaultConnection(); err != nil {
+		t.Fatal(err)
+	}
+	f.installed = true
+	if err := s.reconcileNetwork(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(f.calls, "\n"), "network connect "+controlNetwork+" panel-id") {
+		t.Fatal(f.calls)
+	}
+	f.calls = nil
+	s.config.DockerProbe = func(context.Context) error { return errors.New("daemon stopped") }
+	if err := s.reconcileNetwork(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.calls) != 0 {
+		t.Fatal("reconciliation attempted to activate Docker", f.calls)
+	}
+	if err := os.Remove(filepath.Join(s.config.StateDir, "enabled")); err != nil {
+		t.Fatal(err)
+	}
+	s.config.DockerProbe = nil
+	if err := s.reconcileNetwork(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.calls) != 0 {
+		t.Fatal("reconciliation continued after uninstall", f.calls)
+	}
+}
 func TestLifecyclePersistsAndRecoversAcrossServiceInstances(t *testing.T) {
 	s, f := fixture(t)
 	ctx := context.Background()

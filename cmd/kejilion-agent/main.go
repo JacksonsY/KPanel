@@ -256,6 +256,7 @@ func run(arguments []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go browserService.RunNetworkReconciler(ctx)
 	if historyService != nil {
 		go historyService.Run(ctx)
 	}
