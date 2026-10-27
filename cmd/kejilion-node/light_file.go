@@ -34,6 +34,7 @@ type lightNodeFileSession struct {
 	cancel      context.CancelFunc
 	bodyWriter  *io.PipeWriter
 	bodyOffset  int64
+	bodyDiscard bool
 	bodyCommand *cluster.FileRelayCommand
 	bodyResult  chan lightFileBodyResult
 	handlerDone chan struct{}
@@ -62,7 +63,14 @@ type lightFileControl struct {
 	unsupported   uint8
 	failures      uint8
 	lastCollected string
+	flowMode      uint8
 }
+
+const (
+	flowLegacy uint8 = iota
+	flowProbe
+	flowSelective
+)
 
 func runLightFileControl(
 	ctx context.Context,
@@ -78,6 +86,7 @@ func runLightFileControl(
 		config: config, identity: identity, relay: relay, handler: handler, ctx: ctx,
 		sessions:  make(map[string]*lightNodeFileSession),
 		processed: make(map[string]cluster.FileRelayEvent),
+		flowMode:  flowProbe,
 	}
 	defer control.resetSessions()
 	for {
@@ -95,7 +104,7 @@ func runLightFileControl(
 		response, err := relay.PollV2(
 			ctx, config.Origin, config.NodeID, config.TargetNodeID,
 			identity.Key, identity.Peer, time.Now().UTC(),
-			cluster.FileRelayPollRequest{RequestIDs: control.requestIDs(), Events: events},
+			cluster.FileRelayPollRequest{RequestIDs: control.requestIDs(), Events: control.wireEvents(events)},
 		)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -144,16 +153,76 @@ func (control *lightFileControl) retryDelay(err error) time.Duration {
 }
 
 func (control *lightFileControl) acceptRelayResponse(response cluster.FileRelayPollResponse) {
-	control.pendingEvents = nil
 	control.unsupported = 0
 	control.failures = 0
-	if response.Epoch == "" {
+	if response.Epoch != "" && control.centerEpoch != "" && control.centerEpoch != response.Epoch {
+		control.resetSessions()
+		control.flowMode = flowProbe
+		control.centerEpoch = response.Epoch
 		return
 	}
-	if control.centerEpoch != "" && control.centerEpoch != response.Epoch {
-		control.resetSessions()
+	marker := false
+	for _, event := range response.Events {
+		if cluster.IsFileRelayFlowMarker(event) {
+			marker = true
+		}
 	}
-	control.centerEpoch = response.Epoch
+	if control.flowMode == flowProbe && !marker {
+		control.flowMode = flowLegacy
+	} else if control.flowMode != flowLegacy && marker {
+		control.flowMode = flowSelective
+	} else if control.flowMode == flowSelective && !marker {
+		// Do not silently acknowledge data if a capable peer stops returning
+		// receipts. End the old sessions and probe the next poll instead.
+		control.resetSessions()
+		control.flowMode = flowProbe
+		control.centerEpoch = response.Epoch
+		return
+	}
+	pending := control.pendingEvents
+	control.pendingEvents = nil
+	for index, event := range pending {
+		acknowledged := control.flowMode == flowLegacy
+		if !acknowledged {
+			want := cluster.FileRelayFlowReceipt(index, event.RequestID)
+			for _, receipt := range response.Events {
+				if receipt.Kind == want.Kind && receipt.CommandID == want.CommandID && receipt.RequestID == want.RequestID &&
+					receipt.Status == 0 && receipt.Offset == 0 && len(receipt.Data) == 0 && len(receipt.Headers) == 0 && receipt.Error == "" {
+					acknowledged = true
+					break
+				}
+			}
+		}
+		session := control.sessions[event.RequestID]
+		if acknowledged {
+			if event.Kind == "end" && session != nil {
+				delete(control.sessions, event.RequestID)
+				session.close()
+			}
+		} else if session != nil {
+			// Reinsert at the front; the producer cannot overtake this event.
+			session.pending = append([]cluster.FileRelayEvent{event}, session.pending...)
+		} else {
+			control.pendingEvents = append(control.pendingEvents, event)
+		}
+	}
+	if response.Epoch != "" {
+		control.centerEpoch = response.Epoch
+	}
+}
+
+func (control *lightFileControl) wireEvents(events []cluster.FileRelayEvent) []cluster.FileRelayEvent {
+	if control.flowMode == flowLegacy {
+		return events
+	}
+	return append(append([]cluster.FileRelayEvent(nil), events...), cluster.FileRelayFlowMarker())
+}
+
+func (control *lightFileControl) eventLimit() int {
+	if control.flowMode == flowLegacy {
+		return lightFileEventLimit
+	}
+	return lightFileEventLimit - 1 // reserve space for negotiation
 }
 
 func (control *lightFileControl) resetSessions() {
@@ -183,7 +252,7 @@ func (control *lightFileControl) collectEvents() ([]cluster.FileRelayEvent, erro
 			delete(control.sessions, id)
 		}
 	}
-	if len(control.pendingEvents) >= lightFileEventLimit {
+	if (control.flowMode != flowLegacy && len(control.pendingEvents) > 0) || len(control.pendingEvents) >= control.eventLimit() {
 		return append([]cluster.FileRelayEvent(nil), control.pendingEvents...), nil
 	}
 	ids := control.requestIDs()
@@ -194,10 +263,14 @@ func (control *lightFileControl) collectEvents() ([]cluster.FileRelayEvent, erro
 	if start < len(ids) && ids[start] == control.lastCollected {
 		start++
 	}
-	for len(control.pendingEvents) < lightFileEventLimit {
+	used := make(map[string]bool)
+	for len(control.pendingEvents) < control.eventLimit() {
 		progressed := false
-		for index := 0; index < len(ids) && len(control.pendingEvents) < lightFileEventLimit; index++ {
+		for index := 0; index < len(ids) && len(control.pendingEvents) < control.eventLimit(); index++ {
 			requestID := ids[(start+index)%len(ids)]
+			if control.flowMode != flowLegacy && used[requestID] {
+				continue
+			}
 			session := control.sessions[requestID]
 			if session == nil {
 				continue
@@ -215,8 +288,9 @@ func (control *lightFileControl) collectEvents() ([]cluster.FileRelayEvent, erro
 			session.pending[0] = cluster.FileRelayEvent{}
 			session.pending = session.pending[1:]
 			control.lastCollected = requestID
+			used[requestID] = true
 			progressed = true
-			if candidate.Kind == "end" {
+			if candidate.Kind == "end" && control.flowMode == flowLegacy {
 				delete(control.sessions, requestID)
 				session.close()
 			}
@@ -303,11 +377,23 @@ func (control *lightFileControl) writeRequestBody(command cluster.FileRelayComma
 		}
 		return errors.New("file relay request body write is pending")
 	}
-	if session == nil || session.bodyWriter == nil || command.Offset != session.bodyOffset {
+	if session == nil || command.Offset != session.bodyOffset {
 		return errors.New("file relay request body is unavailable")
 	}
 	if err := session.ctx.Err(); err != nil {
 		return err
+	}
+	if session.bodyDiscard {
+		session.bodyOffset += int64(len(command.Data))
+		event := acceptedFileCommand(command)
+		control.rememberCommandResult(command.ID, event)
+		if !control.queueEvent(event) {
+			return errors.New("file relay event queue is full")
+		}
+		return nil
+	}
+	if session.bodyWriter == nil {
+		return errors.New("file relay request body is unavailable")
 	}
 	// Only the control loop owns offsets, replay receipts and session maps.
 	// One worker per session keeps a slow handler from blocking polls/cancel,
@@ -346,7 +432,14 @@ func (control *lightFileControl) collectBodyResult(session *lightNodeFileSession
 			event.Kind, event.Error = "error", "file relay request body write failed"
 			session.close()
 		} else {
-			session.bodyOffset += int64(result.written)
+			if finished {
+				// The remainder is discarded after an intentional early response.
+				// Acknowledged offsets must still match the sender's next block.
+				session.bodyOffset += int64(len(command.Data))
+				session.bodyDiscard = !command.Final
+			} else {
+				session.bodyOffset += int64(result.written)
+			}
 			if command.Final || finished {
 				session.bodyWriter = nil
 			}
@@ -514,7 +607,7 @@ func (control *lightFileControl) queueCommandError(command cluster.FileRelayComm
 }
 
 func (control *lightFileControl) queueEvent(event cluster.FileRelayEvent) bool {
-	if len(control.pendingEvents) >= lightFileEventLimit {
+	if len(control.pendingEvents) >= control.eventLimit() {
 		return false
 	}
 	candidate := append(append([]cluster.FileRelayEvent(nil), control.pendingEvents...), event)
@@ -526,7 +619,7 @@ func (control *lightFileControl) queueEvent(event cluster.FileRelayEvent) bool {
 }
 
 func (control *lightFileControl) pollPayloadFits(events []cluster.FileRelayEvent, requestIDs []string) bool {
-	input := cluster.FileRelayPollRequest{RequestIDs: requestIDs, Events: events}
+	input := cluster.FileRelayPollRequest{RequestIDs: requestIDs, Events: control.wireEvents(events)}
 	content, err := jsonMarshalFileRelayPoll(input)
 	return err == nil && len(content) <= cluster.MaxSummaryBytes
 }

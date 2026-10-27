@@ -262,6 +262,17 @@ func (r *lightFileRelay) pollEvents(
 ) (FileRelayPollResponse, error) {
 	item := r.node(nodeID, true)
 	applySnapshot := true
+	selective := false
+	for _, event := range events {
+		if IsFileRelayFlowMarker(event) {
+			selective = true
+			break
+		}
+	}
+	var receipts []FileRelayEvent
+	if selective {
+		receipts = append(receipts, FileRelayFlowMarker())
+	}
 	for {
 		now := r.now().UTC()
 		item.mu.Lock()
@@ -281,7 +292,13 @@ func (r *lightFileRelay) pollEvents(
 				observed = append(observed, event.RequestID)
 			}
 			item.reconcileSessions(observed, now)
-			if err := item.applyEvents(ctx, events, now); err != nil {
+			var err error
+			if selective {
+				receipts, err = item.applyEventsSelective(ctx, events, now, receipts)
+			} else {
+				err = item.applyEvents(ctx, events, now)
+			}
+			if err != nil {
 				item.mu.Unlock()
 				return FileRelayPollResponse{}, err
 			}
@@ -293,22 +310,22 @@ func (r *lightFileRelay) pollEvents(
 		}
 		if command := item.takeCommand(now); command != nil {
 			item.resetEpoch = r.epoch
-			response := FileRelayPollResponse{Epoch: r.epoch, Command: &command.command}
+			response := FileRelayPollResponse{Epoch: r.epoch, Command: &command.command, Events: receipts}
 			item.mu.Unlock()
 			return response, nil
 		}
 		if r.epoch != "" && item.resetEpoch != r.epoch && len(requestIDs) > 0 {
 			item.resetEpoch = r.epoch
-			response := FileRelayPollResponse{Epoch: r.epoch}
+			response := FileRelayPollResponse{Epoch: r.epoch, Events: receipts}
 			item.mu.Unlock()
 			return response, nil
 		}
 		// The producer may already have another bounded batch waiting. File
 		// acknowledgements are paced by poll; history keeps its existing policy.
-		if len(events) > 0 {
+		if len(events) > 0 && (!selective || len(events) > 1) {
 			item.resetEpoch = r.epoch
 			item.mu.Unlock()
-			return FileRelayPollResponse{Epoch: r.epoch}, nil
+			return FileRelayPollResponse{Epoch: r.epoch, Events: receipts}, nil
 		}
 		notify := item.wake
 		wait := lightFilePollWait
@@ -330,13 +347,58 @@ func (r *lightFileRelay) pollEvents(
 				item.resetEpoch = r.epoch
 			}
 			item.mu.Unlock()
-			return FileRelayPollResponse{Epoch: r.epoch}, nil
+			return FileRelayPollResponse{Epoch: r.epoch, Events: receipts}, nil
 		}
 		if ctx.Err() != nil {
 			return FileRelayPollResponse{}, ctx.Err()
 		}
 		events = nil
 	}
+}
+
+// A capable node retries individual events the center did not receive. Never
+// wait for a full browser buffer here: a slow stream must not prevent the
+// same outbound poll from carrying other streams or cancellation commands.
+// item.mu is held, just as in applyEvents.
+func (item *lightFileNode) applyEventsSelective(ctx context.Context, events []FileRelayEvent, now time.Time, receipts []FileRelayEvent) ([]FileRelayEvent, error) {
+	blocked := make(map[string]bool)
+	for index, event := range events {
+		if IsFileRelayFlowMarker(event) {
+			continue
+		}
+		if blocked[event.RequestID] {
+			continue
+		}
+		if event.Kind == "data" {
+			session := item.sessions[event.RequestID]
+			if session != nil {
+				// push first attempts an immediate enqueue, and only waits after
+				// the buffer fills. An already-canceled context makes that wait
+				// nonblocking while preserving duplicate and offset validation.
+				nonblocking, cancel := context.WithCancel(ctx)
+				cancel()
+				item.mu.Unlock()
+				err := session.push(nonblocking, event.Offset, event.Data)
+				item.mu.Lock()
+				if errors.Is(err, context.Canceled) {
+					if ctx.Err() != nil {
+						return nil, ctx.Err()
+					}
+					blocked[event.RequestID] = true
+					continue
+				}
+				if err != nil {
+					session.finish(err)
+				} else {
+					session.progress(now)
+				}
+			}
+		} else if err := item.applyEvents(ctx, []FileRelayEvent{event}, now); err != nil {
+			return nil, err
+		}
+		receipts = append(receipts, FileRelayFlowReceipt(index, event.RequestID))
+	}
+	return receipts, nil
 }
 
 func (item *lightFileNode) takeCommand(now time.Time) *lightFileCommand {

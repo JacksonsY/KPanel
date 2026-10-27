@@ -218,3 +218,67 @@ func TestLightFileAbandonedUploadExpiresAndReleasesSlot(t *testing.T) {
 		}
 	})
 }
+
+func TestLightFileSelectiveReceiptsPreserveBlockedStreamAndRetry(t *testing.T) {
+	control := backpressureControl(context.Background(), nil)
+	control.flowMode = flowProbe
+	defer control.resetSessions()
+	idA, idB := strings.Repeat("a", 32), strings.Repeat("b", 32)
+	for _, id := range []string{idA, idB} {
+		ctx, cancel := context.WithCancel(context.Background())
+		s := &lightNodeFileSession{requestID: id, ctx: ctx, cancel: cancel, events: make(chan cluster.FileRelayEvent, lightFileEventLimit)}
+		s.events <- cluster.FileRelayEvent{RequestID: id, Kind: "data", Data: []byte(id[:1])}
+		s.events <- cluster.FileRelayEvent{RequestID: id, Kind: "end"}
+		control.sessions[id] = s
+	}
+	events, _ := control.collectEvents()
+	if len(events) != 2 {
+		t.Fatalf("expected one event per stream: %v", events)
+	}
+	again, _ := control.collectEvents()
+	if !reflect.DeepEqual(events, again) {
+		t.Fatal("unacknowledged poll batch changed on retry")
+	}
+	// A is blocked, B is accepted. A must stay in front of its end event.
+	response := cluster.FileRelayPollResponse{Epoch: "epoch", Events: []cluster.FileRelayEvent{cluster.FileRelayFlowMarker(), cluster.FileRelayFlowReceipt(1, idB)}}
+	control.acceptRelayResponse(response)
+	if control.flowMode != flowSelective || len(control.sessions[idA].pending) == 0 || control.sessions[idA].pending[0].Kind != "data" {
+		t.Fatal("blocked data was lost or overtaken")
+	}
+	if len(control.sessions[idB].pending) != 1 || control.sessions[idB].pending[0].Kind != "end" {
+		t.Fatal("accepted stream did not advance")
+	}
+	events, _ = control.collectEvents()
+	if len(events) != 2 || events[0].RequestID != idA || events[0].Kind != "data" || events[1].RequestID != idB || events[1].Kind != "end" {
+		t.Fatalf("retry fairness/order: %v", events)
+	}
+	control.acceptRelayResponse(cluster.FileRelayPollResponse{Epoch: "epoch", Events: []cluster.FileRelayEvent{cluster.FileRelayFlowMarker(), cluster.FileRelayFlowReceipt(0, idA), cluster.FileRelayFlowReceipt(1, idB)}})
+	if control.sessions[idB] != nil || control.sessions[idA] == nil {
+		t.Fatal("end did not reclaim only the completed session")
+	}
+	events, _ = control.collectEvents()
+	if len(events) != 1 || events[0].Kind != "end" {
+		t.Fatalf("remaining stream end = %v", events)
+	}
+}
+
+func TestLightFileFlowNegotiationFallsBackToOldCenter(t *testing.T) {
+	control := backpressureControl(context.Background(), nil)
+	control.flowMode = flowProbe
+	id := strings.Repeat("a", 32)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	control.sessions[id] = &lightNodeFileSession{requestID: id, ctx: ctx, cancel: cancel, events: make(chan cluster.FileRelayEvent, 1)}
+	control.sessions[id].events <- cluster.FileRelayEvent{RequestID: id, Kind: "end"}
+	events, _ := control.collectEvents()
+	if len(control.wireEvents(events)) != 2 || control.sessions[id] == nil {
+		t.Fatal("capability probe did not preserve in-flight session")
+	}
+	control.acceptRelayResponse(cluster.FileRelayPollResponse{Epoch: "old-center"})
+	if control.flowMode != flowLegacy || len(control.sessions) != 0 || len(control.pendingEvents) != 0 {
+		t.Fatal("old center did not use legacy acknowledgement")
+	}
+	if len(control.wireEvents(nil)) != 0 {
+		t.Fatal("old center remains under unnecessary probe polling")
+	}
+}
