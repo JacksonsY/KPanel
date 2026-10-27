@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 [[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_ENVIRONMENT:-} == github-hosted && -n ${RUNNER_TEMP:-} ]]
-repo=$(git rev-parse --show-toplevel)
+repo=$(cd "$(dirname "$0")/../../.." && pwd -P)
 evidence="$repo/internal/browsercomponent/testdata"
 network=kejilion-panel-browser-control
 egress=kpanel-browser_browser-egress
@@ -34,8 +34,8 @@ cleanup() {
 trap cleanup EXIT
 docker network create --internal --label "kpanel.test=$label" "$network" >/dev/null
 cd "$repo"
-go build -o "$runtime/agent" ./cmd/kejilion-agent
-CGO_ENABLED=0 go build -o "$runtime/probe" "$evidence/live-browser-probe.go"
+go build -buildvcs=false -o "$runtime/agent" ./cmd/kejilion-agent
+CGO_ENABLED=0 go build -buildvcs=false -o "$runtime/probe" "$evidence/live-browser-probe.go"
 chmod 0555 "$runtime/probe"
 for action in install stop start restart uninstall install uninstall; do
   id=$(node "$evidence/live-component-task.mjs" "$action" "$runtime/state")
