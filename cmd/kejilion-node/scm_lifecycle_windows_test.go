@@ -255,15 +255,22 @@ func TestWindowsHostedSCMLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		deadline := time.Now().Add(2 * time.Minute)
+		var result []byte
+		var resultErr error
 		for time.Now().Before(deadline) {
-			if _, err := os.Stat(resultPath); err == nil {
+			result, resultErr = os.ReadFile(resultPath)
+			if resultErr == nil {
 				break
+			}
+			// WriteAtomic publishes the result before its no-sharing handle closes.
+			// Retry that brief interval without suppressing other access failures.
+			if !errors.Is(resultErr, os.ErrNotExist) && !errors.Is(resultErr, windows.ERROR_SHARING_VIOLATION) {
+				t.Fatalf("SYSTEM updater result read: %v", resultErr)
 			}
 			time.Sleep(200 * time.Millisecond)
 		}
-		result, err := os.ReadFile(resultPath)
-		if err != nil {
-			t.Fatal("SYSTEM updater acceptance did not finish")
+		if resultErr != nil {
+			t.Fatalf("SYSTEM updater acceptance did not finish: %v", resultErr)
 		}
 		if string(result) != "pass" {
 			t.Fatalf("SYSTEM updater %s acceptance: %s", mode, result)
