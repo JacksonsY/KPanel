@@ -12,11 +12,13 @@
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
   "closureSha256": "f7af90629dddd6b466b2251d7f286804adbc82ddbec1f54cc73b2d1bcd5aa634",
-  "firstPartySourceSha256": "88897ce86407b2ce33d030f9c89e90c309d378bb60abd6189ba498a6964ba01f",
+  "firstPartySourceSha256": "9a385db37160f2e5db2c2c4dc564d644cce5dbf55826a4d6368f1bf1c8685964",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
+    "browserProbeEvidenceSha256": "48e2427d518e150e2f5dc030669a830445ba1667ee76cddfbdbb8e1d037176d9",
+    "browserProbeSummary": "Independent incremental qualification of 962ee5411cb058029418a44b44efb8e9b3dd2e45 checked all 1232 Go source files against exact Git blobs. Four changed Go files preserve imports, packages, build constraints, embed patterns and GoFiles sets. Canonical normalization of the qualified six actual/original closure observations reproduces the unchanged closure and module identities. Only source identity is rebound; embedded assets, build inputs, vendor source, all findings/dispositions and original dates remain unchanged. Full candidate verification remains required.",
     "browserComponentEvidenceSha256": "26527b7e7a3a1f00ae24c2ab330784cbccde46f8cc3d37b4810d66e3643844fd",
     "browserComponentSummary": "Independent read-only qualification of 83e959b698b6967a3d0883b0807f2318d2d5138f reproduced the exact baseline and all six actual/original production closures, checked 1232 first-party Go files against Git blobs, and separately bound both embedded Compose/seccomp assets to their canonical packaging bytes. Linux/Windows add internal/browsercomponent; Darwin is unchanged. All 469 selected and 111 production module identities, build hashes, vendor source, 37 findings/dispositions and original observation/expiry remain unchanged. Rebind derived source/closure identities only. Evidence does not substitute for scanner, full L2, browser or lifecycle validation.",
     "transportFixtureEvidenceSha256": "6aa253aa313d8146a107598633bcc3642e3d5143da277b6909ad07564ee27687",
