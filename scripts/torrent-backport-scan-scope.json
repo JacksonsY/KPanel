@@ -11,12 +11,14 @@
     "scripts/build-mcp-clients.sh": "29b0e82668f585aa46d10432912e1050954430cfac6a0550dd408d728979e113",
     "Makefile": "f651d8ce2f10adc487118e1ccb476615347661922a8c8ef529f1b8013da5d53e"
   },
-  "closureSha256": "13f49225edf8cef0095f7fead0af97c16e45755b075d839ea8fabe51f5e06750",
-  "firstPartySourceSha256": "960d7d44b20271f4ae964d3acb397cd83e15001f22fc57fda4fdd87602434b1d",
+  "closureSha256": "f7af90629dddd6b466b2251d7f286804adbc82ddbec1f54cc73b2d1bcd5aa634",
+  "firstPartySourceSha256": "88897ce86407b2ce33d030f9c89e90c309d378bb60abd6189ba498a6964ba01f",
   "buildTargetHashEncoding": "UTF-8 with LF line endings",
   "closureEncoding": "SHA256 of JSON.stringify of ordered OS/architecture rows; packages sorted by import path; path, module and selected version; stdlib go1.27.3; main-module packages additionally bind relative sourceDirectory and sorted actual GoFiles.",
   "firstPartySourceEncoding": "SHA256 of JSON.stringify of all cmd/internal Go source path and SHA256 pairs sorted by relative path; contents normalized to UTF-8 LF. All actual main-module production GoFiles must be covered. Generated .pb.go and .proto files or symlinks require a new review.",
   "review": {
+    "browserComponentEvidenceSha256": "26527b7e7a3a1f00ae24c2ab330784cbccde46f8cc3d37b4810d66e3643844fd",
+    "browserComponentSummary": "Independent read-only qualification of 83e959b698b6967a3d0883b0807f2318d2d5138f reproduced the exact baseline and all six actual/original production closures, checked 1232 first-party Go files against Git blobs, and separately bound both embedded Compose/seccomp assets to their canonical packaging bytes. Linux/Windows add internal/browsercomponent; Darwin is unchanged. All 469 selected and 111 production module identities, build hashes, vendor source, 37 findings/dispositions and original observation/expiry remain unchanged. Rebind derived source/closure identities only. Evidence does not substitute for scanner, full L2, browser or lifecycle validation.",
     "transportFixtureEvidenceSha256": "6aa253aa313d8146a107598633bcc3642e3d5143da277b6909ad07564ee27687",
     "transportFixtureSummary": "Independent blind read-only review qualified the existing monitoring memory test fixture transport correction: browser center declares its actual local HTTP transport; remote TLS/Noise remains intact. Explicit 200 admission and unconditional failure cleanup preserve two-slot/429/cancellation/recovery assertions. Canonical firstPartySources changes only this existing test; all six saved production GoFiles and immutable module/build inputs are unchanged. Closure, findings and original dates remain unchanged. This is fixture/source binding qualification only; final full L2 remains required.",
     "architectureClosureEvidenceSha256": "75c1954d44e865fa228e65876b886dd5dcade292a4f8de2669a93d0e3e91a445",
