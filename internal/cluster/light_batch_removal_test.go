@@ -168,3 +168,46 @@ func TestBatchRemovalRequiresDurableBackupCleanup(t *testing.T) {
 		t.Fatalf("old backup remains: %v", err)
 	}
 }
+
+func TestBatchRemovalDirectorySyncFailureSurvivesRestart(t *testing.T) {
+	service := newLightServiceForTest(t, &serviceTestClock{now: time.Now().UTC()})
+	batch, err := service.CreateLightBatchEnrollment(CreateLightBatchEnrollmentInput{MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := LightEnrollRequest{Token: lightBatchTokenForTest(t, batch), AttemptID: strings.Repeat("1", 32)}
+	first, _, err := service.EnrollLightNodeBatch("198.51.100.10", service.publicURL, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := service.light.Host(first.NodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldOps := service.lightBatches.ops
+	var syncs int
+	service.lightBatches.ops.syncDir = func(path string) error {
+		syncs++
+		if syncs >= 3 {
+			return errors.New("injected final directory sync failure")
+		}
+		return oldOps.syncDir(path)
+	}
+	if _, err := service.DeleteHost(context.Background(), first.NodeID, DeleteHostInput{ExpectedResourceVersion: record.ResourceVersion}); err == nil {
+		t.Fatal("delete succeeded without durable cleanup")
+	}
+	if _, err := service.light.Host(first.NodeID); err != nil {
+		t.Fatalf("failed sync removed host: %v", err)
+	}
+	reopened, err := openLightBatchStore(service.lightBatches.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.lightBatches = reopened
+	if _, _, err := service.EnrollLightNodeBatch("198.51.100.10", service.publicURL, input); !errors.Is(err, ErrPairingCode) {
+		t.Fatalf("revocation lost after restart: %v", err)
+	}
+	if _, err := service.DeleteHost(context.Background(), first.NodeID, DeleteHostInput{ExpectedResourceVersion: record.ResourceVersion}); err != nil {
+		t.Fatalf("delete retry failed after restart: %v", err)
+	}
+}
