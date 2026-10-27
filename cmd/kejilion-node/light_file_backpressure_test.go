@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/kejilion/kejilion-panel/internal/cluster"
 )
@@ -186,6 +187,34 @@ func TestLightFileEpochResetReleasesBlockedBodyWorker(t *testing.T) {
 			}
 		default:
 			t.Fatal("epoch reset leaked blocked body worker")
+		}
+	})
+}
+
+func TestLightFileAbandonedUploadExpiresAndReleasesSlot(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		finished := make(chan struct{})
+		control := backpressureControl(context.Background(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer close(finished)
+			_, _ = io.Copy(io.Discard, r.Body)
+		}))
+		defer control.resetSessions()
+		if err := control.startRequest(cluster.FileRelayCommand{ID: "request", RequestID: "upload", Method: "POST", Path: "/v1/files/upload", BodyLength: -1}); err != nil {
+			t.Fatal(err)
+		}
+		control.acceptRelayResponse(cluster.FileRelayPollResponse{Epoch: "old"})
+		time.Sleep(2*time.Hour + time.Second)
+		synctest.Wait()
+		select {
+		case <-finished:
+		default:
+			control.resetSessions()
+			<-finished
+			t.Fatal("abandoned session retained a blocked handler past its lifetime")
+		}
+		control.collectEvents()
+		if len(control.sessions) != 0 {
+			t.Fatal("expired session retained its slot after polling resumed")
 		}
 	})
 }

@@ -21,6 +21,9 @@ const (
 	lightFileUnsupportedRetryMax = 5 * time.Minute
 	lightFileFailureRetry        = 5 * time.Second
 	lightFileEventLimit          = 16
+	// Match the full Panel relay's maximum session lifetime, including while
+	// the center is disconnected and cannot send a cancellation.
+	lightFileSessionTTL = 2 * time.Hour
 	// Two chunks plus event metadata fit in the existing 64 KiB JSON envelope.
 	lightFileEventChunkBytes = 23 << 10
 )
@@ -174,6 +177,12 @@ func (control *lightFileControl) requestIDs() []string {
 }
 
 func (control *lightFileControl) collectEvents() ([]cluster.FileRelayEvent, error) {
+	for id, session := range control.sessions {
+		if session.ctx != nil && session.ctx.Err() != nil {
+			session.close()
+			delete(control.sessions, id)
+		}
+	}
 	if len(control.pendingEvents) >= lightFileEventLimit {
 		return append([]cluster.FileRelayEvent(nil), control.pendingEvents...), nil
 	}
@@ -246,7 +255,7 @@ func (control *lightFileControl) startRequest(command cluster.FileRelayCommand) 
 	if len(control.sessions) >= cluster.MaxFileRelayRequests {
 		return errors.New("file relay request session limit reached")
 	}
-	requestContext, cancel := context.WithCancel(control.ctx)
+	requestContext, cancel := context.WithTimeout(control.ctx, lightFileSessionTTL)
 	if command.Path == cluster.HistoryPath {
 		cancel()
 		requestContext, cancel = context.WithTimeout(control.ctx, cluster.HistoryTimeout)
