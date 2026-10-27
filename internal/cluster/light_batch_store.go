@@ -303,16 +303,20 @@ func (s *lightBatchStore) RevokeNode(nodeID string) error {
 			if attempt.NodeID != nodeID {
 				continue
 			}
-			if attempt.Revoked {
-				return nil
+			if !attempt.Revoked {
+				previous := cloneLightBatchState(s.state)
+				attempt.Revoked = true
+				if err := s.persistLocked(); err != nil {
+					s.state = previous
+					return err
+				}
 			}
-			previous := cloneLightBatchState(s.state)
-			attempt.Revoked = true
-			if err := s.persistLocked(); err != nil {
-				s.state = previous
+			// A prior backup must not be resurrected by an older reader. The
+			// generic atomic writer treats backup cleanup as best effort.
+			if err := discardAtomicBackupV2(s.path, s.ops); err != nil {
 				return err
 			}
-			return nil
+			return s.ops.syncDir(filepath.Dir(s.path))
 		}
 	}
 	return nil

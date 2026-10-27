@@ -128,3 +128,43 @@ func TestBatchRemovalPersistenceFailuresFailClosed(t *testing.T) {
 		t.Fatalf("retry delete failed: %v", err)
 	}
 }
+
+func TestBatchRemovalRequiresDurableBackupCleanup(t *testing.T) {
+	service := newLightServiceForTest(t, &serviceTestClock{now: time.Now().UTC()})
+	batch, err := service.CreateLightBatchEnrollment(CreateLightBatchEnrollmentInput{MaxUses: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := LightEnrollRequest{Token: lightBatchTokenForTest(t, batch), AttemptID: strings.Repeat("f", 32)}
+	first, _, err := service.EnrollLightNodeBatch("198.51.100.10", service.publicURL, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := service.light.Host(first.NodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldOps := service.lightBatches.ops
+	service.lightBatches.ops.remove = func(path string) error {
+		if path == service.lightBatches.path+".previous" {
+			return errors.New("injected backup removal failure")
+		}
+		return oldOps.remove(path)
+	}
+	if _, err := service.DeleteHost(context.Background(), first.NodeID, DeleteHostInput{ExpectedResourceVersion: record.ResourceVersion}); err == nil {
+		t.Fatal("delete succeeded while old backup remained")
+	}
+	if _, err := service.light.Host(first.NodeID); err != nil {
+		t.Fatalf("host removed despite failed cleanup: %v", err)
+	}
+	if _, _, err := service.EnrollLightNodeBatch("198.51.100.10", service.publicURL, input); !errors.Is(err, ErrPairingCode) {
+		t.Fatalf("persisted revocation was undone: %v", err)
+	}
+	service.lightBatches.ops = oldOps
+	if _, err := service.DeleteHost(context.Background(), first.NodeID, DeleteHostInput{ExpectedResourceVersion: record.ResourceVersion}); err != nil {
+		t.Fatalf("delete retry failed: %v", err)
+	}
+	if _, err := os.Lstat(service.lightBatches.path + ".previous"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("old backup remains: %v", err)
+	}
+}
