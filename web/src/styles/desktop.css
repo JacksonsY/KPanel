@@ -2366,6 +2366,41 @@ body.desktop-mode-open::-webkit-scrollbar {
 .desktop-window__title-extension:empty { display: none; }
 .desktop-window__title:has(.desktop-window__title-extension:not(:empty)) .desktop-window__title-label { display: none; }
 
+/* The browser's tabs live in the titlebar; Windows shells need room for them. */
+.desktop:is([data-shell-style='xp'], [data-shell-style='win98']) .desktop-window__titlebar:has(.web-browser__tabs--titlebar) {
+  height: 42px;
+  min-height: 42px;
+}
+.desktop:is([data-shell-style='xp'], [data-shell-style='win98']) .web-browser__tabs--titlebar {
+  height: 100%;
+  min-height: 0;
+  color: #202020;
+  text-shadow: none;
+}
+.desktop:is([data-shell-style='xp'], [data-shell-style='win98']) .web-browser__tabs--titlebar .web-browser__tab {
+  background: #d6d6d6;
+  border: 1px solid #777;
+  border-radius: 3px;
+  box-shadow: inset 1px 1px #fff;
+}
+.desktop:is([data-shell-style='xp'], [data-shell-style='win98']) .web-browser__tabs--titlebar .web-browser__tab.is-active {
+  background: #fff;
+  border-color: #333;
+}
+.desktop:is([data-shell-style='xp'], [data-shell-style='win98']) .web-browser__tabs--titlebar .web-browser__tab button:hover {
+  background: #bfcfe2;
+}
+.desktop:is([data-shell-style='xp'], [data-shell-style='win98']) .web-browser__tabs--titlebar > .web-browser__icon,
+.desktop:is([data-shell-style='xp'], [data-shell-style='win98']) .web-browser__tabs--titlebar .web-browser__tab-count {
+  color: #202020;
+  background: #eee;
+  border-radius: 3px;
+}
+.desktop:is([data-shell-style='xp'], [data-shell-style='win98']) .web-browser__tabs--titlebar button:focus-visible {
+  outline: 2px solid #003c9e;
+  outline-offset: -2px;
+}
+
 .desktop-window__app-glyph {
   display: grid;
   width: 20px;
