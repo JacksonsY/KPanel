@@ -268,14 +268,10 @@ func probeCheck(ctx context.Context, ping OperatorLatencyProber, target Check) (
 		}
 		client := &http.Client{
 			Transport: transport,
-			CheckRedirect: func(request *http.Request, via []*http.Request) error {
-				if len(via) >= 3 {
-					return errors.New("too many redirects")
-				}
-				if request.URL.User != nil || (request.URL.Scheme != "http" && request.URL.Scheme != "https") {
-					return errors.New("unsafe HTTP redirect")
-				}
-				return nil
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				// Measure the selected endpoint's first response. A remote
+				// endpoint cannot authorize requests to another destination.
+				return http.ErrUseLastResponse
 			},
 		}
 		request, err := http.NewRequestWithContext(probeContext, http.MethodGet, target.Target, nil)

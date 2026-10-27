@@ -398,14 +398,15 @@ func (m *Manager) OpenShare(
 	}
 	fingerprintContext, cancel := context.WithTimeout(ctx, contract.FileShareFingerprintTimeout)
 	defer cancel()
-	version, err := contentShareVersion(fingerprintContext, entry.Path, entry.ResourceVersion, versionFile)
+	blocks := newShareBlockHasher(entry.SizeBytes)
+	version, err := contentShareVersion(fingerprintContext, entry.Path, entry.ResourceVersion, versionFile, blocks)
 	if err != nil {
 		_ = file.Close()
 		return nil, contract.FileEntry{}, err
 	}
 	entry.ShareVersion = version
 	releaseShare = false
-	return &gatedShareFile{ReadSeekCloser: file, gate: m.shareGate}, entry, nil
+	return &gatedShareFile{ReadSeekCloser: &verifiedShareFile{source: file, size: entry.SizeBytes, hashes: blocks.finish(), cachedBlock: -1}, gate: m.shareGate}, entry, nil
 }
 
 func (m *Manager) WriteText(
@@ -1497,6 +1498,7 @@ func contentShareVersion(
 	virtual string,
 	expectedResourceVersion string,
 	file shareVersionFile,
+	blocks *shareBlockHasher,
 ) (string, error) {
 	initial, err := file.Stat()
 	if err != nil {
@@ -1519,7 +1521,7 @@ func contentShareVersion(
 
 	contentDigest := sha256.New()
 	readBytes, err := io.CopyBuffer(
-		contentDigest,
+		io.MultiWriter(contentDigest, blocks),
 		&contextReader{ctx: ctx, reader: io.LimitReader(file, contract.MaxFileShareBytes+1)},
 		make([]byte, 64<<10),
 	)

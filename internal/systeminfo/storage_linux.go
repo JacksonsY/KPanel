@@ -5,6 +5,7 @@ package systeminfo
 import (
 	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -24,6 +25,10 @@ var storageRoots = map[string]bool{
 
 type inodeIdentity struct{ device, inode uint64 }
 
+const maxStorageRootEntries = 4096
+const storageReadBatch = 128
+const maxStorageDepth = 64
+
 func (c *Collector) collectStorageUsage(ctx context.Context, requested string) (StorageUsage, error) {
 	root := filepath.Clean(requested)
 	if !filepath.IsAbs(root) || !storageRoots[root] {
@@ -41,11 +46,11 @@ func collectStorageRoot(ctx context.Context, root string, collectedAt time.Time)
 	if !ok {
 		return StorageUsage{}, errors.New("storage metadata is unavailable")
 	}
-	entries, err := os.ReadDir(root)
+	entries, truncated, err := readStorageRootEntries(ctx, root)
 	if err != nil {
 		return StorageUsage{}, err
 	}
-	result := StorageUsage{Path: root, Items: make([]StorageUsageItem, 0, len(entries)), CollectedAt: collectedAt}
+	result := StorageUsage{Path: root, Items: make([]StorageUsageItem, 0, len(entries)), CollectedAt: collectedAt, Truncated: truncated}
 	jobs := make(chan fs.DirEntry)
 	items := make(chan StorageUsageItem, len(entries))
 	workers := min(4, max(1, runtime.NumCPU()), len(entries))
@@ -91,6 +96,32 @@ func collectStorageRoot(ctx context.Context, root string, collectedAt time.Time)
 	return result, nil
 }
 
+// Read only a bounded prefix before allocating worker queues and result storage.
+func readStorageRootEntries(ctx context.Context, root string) ([]fs.DirEntry, bool, error) {
+	directory, err := os.Open(root)
+	if err != nil {
+		return nil, false, err
+	}
+	defer directory.Close()
+	entries := make([]fs.DirEntry, 0, maxStorageRootEntries)
+	for {
+		if ctx.Err() != nil {
+			return entries, true, nil
+		}
+		batch, readErr := directory.ReadDir(min(storageReadBatch, maxStorageRootEntries+1-len(entries)))
+		entries = append(entries, batch...)
+		if len(entries) > maxStorageRootEntries {
+			return entries[:maxStorageRootEntries], true, nil
+		}
+		if errors.Is(readErr, io.EOF) {
+			return entries, false, nil
+		}
+		if readErr != nil {
+			return nil, false, readErr
+		}
+	}
+}
+
 func scanStorageChild(ctx context.Context, root string, entry fs.DirEntry, rootDevice uint64, entryLimit int, scanned *atomic.Int64) StorageUsageItem {
 	child := filepath.Join(root, entry.Name())
 	item := StorageUsageItem{Path: child, Kind: "file"}
@@ -98,52 +129,87 @@ func scanStorageChild(ctx context.Context, root string, entry fs.DirEntry, rootD
 		item.Kind = "directory"
 	}
 	seen := make(map[inodeIdentity]struct{}, min(entryLimit, 4096))
-	walkErr := filepath.WalkDir(child, func(_ string, value fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			item.Truncated = true
-			if value != nil && value.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+	var walk func(string, fs.DirEntry, int)
+	walk = func(current string, value fs.DirEntry, depth int) {
 		if ctx.Err() != nil || item.Scanned >= entryLimit || scanned.Load() >= maxStorageEntries {
 			item.Truncated = true
-			return fs.SkipAll
+			return
 		}
-		info, infoErr := value.Info()
-		if infoErr != nil {
-			item.Truncated = true
-			return nil
-		}
-		stat, statOK := info.Sys().(*syscall.Stat_t)
-		if !statOK || uint64(stat.Dev) != rootDevice {
-			if value.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+		// Even unreadable or cross-device entries consume the traversal budget.
 		if scanned.Add(1) > maxStorageEntries {
 			scanned.Add(-1)
 			item.Truncated = true
-			return fs.SkipAll
+			return
 		}
 		item.Scanned++
+		info, infoErr := value.Info()
+		if infoErr != nil {
+			item.Truncated = true
+			return
+		}
+		stat, statOK := info.Sys().(*syscall.Stat_t)
+		if !statOK || uint64(stat.Dev) != rootDevice {
+			return
+		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			return nil
+			return
 		}
 		identity := inodeIdentity{device: uint64(stat.Dev), inode: stat.Ino}
 		if _, duplicate := seen[identity]; duplicate {
-			return nil
+			return
 		}
 		seen[identity] = struct{}{}
 		if stat.Blocks > 0 {
 			item.SizeBytes += uint64(stat.Blocks) * 512
 		}
-		return nil
-	})
-	if walkErr != nil && !errors.Is(walkErr, context.Canceled) {
-		item.Truncated = true
+		if !info.IsDir() {
+			return
+		}
+		if depth >= maxStorageDepth {
+			item.Truncated = true
+			return
+		}
+		// WalkDir reads and sorts a whole directory before the next budget
+		// check. Stream bounded batches instead, including below the root.
+		if ctx.Err() != nil || item.Scanned >= entryLimit || scanned.Load() >= maxStorageEntries {
+			item.Truncated = true
+			return
+		}
+		fd, openErr := syscall.Open(current, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+		if openErr != nil {
+			item.Truncated = true
+			return
+		}
+		directory := os.NewFile(uintptr(fd), current)
+		defer directory.Close()
+		opened, statErr := directory.Stat()
+		if statErr != nil || !os.SameFile(info, opened) {
+			item.Truncated = true
+			return
+		}
+		for {
+			if ctx.Err() != nil || item.Scanned >= entryLimit || scanned.Load() >= maxStorageEntries {
+				item.Truncated = true
+				return
+			}
+			batch, readErr := directory.ReadDir(min(storageReadBatch, entryLimit-item.Scanned))
+			for _, next := range batch {
+				walk(filepath.Join(current, next.Name()), next, depth+1)
+				if ctx.Err() != nil || item.Scanned >= entryLimit || scanned.Load() >= maxStorageEntries {
+					item.Truncated = true
+					return
+				}
+			}
+			if errors.Is(readErr, io.EOF) {
+				return
+			}
+			if readErr != nil {
+				item.Truncated = true
+				return
+			}
+		}
 	}
+	walk(child, entry, 0)
 	if ctx.Err() != nil {
 		item.Truncated = true
 	}
