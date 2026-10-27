@@ -318,6 +318,9 @@ func acceptedFileCommand(command cluster.FileRelayCommand) cluster.FileRelayEven
 func serveLightFileRequest(handler http.Handler, request *http.Request, session *lightNodeFileSession) {
 	writer := &lightFileResponseWriter{session: session, headers: make(http.Header)}
 	defer func() {
+		// Direct handler invocation does not provide net/http's usual request
+		// body cleanup. Unblock a pending body command if the handler exits early.
+		_ = request.Body.Close()
 		if recover() != nil && writer.status == 0 {
 			writer.WriteHeader(http.StatusInternalServerError)
 		}
