@@ -42,7 +42,7 @@
 
 Panel 通过内部 `GET /v1/files/share-entry` 取得分享专用版本，并仅通过新的 `GET|HEAD /v1/files/share-content` 读取公开流，同时固定注入 `If-Match: "<resourceVersion>"` 和必填的 `X-KPanel-File-Share-Version: <shareVersion>`；客户端不能覆盖后者。普通 `/v1/files/content` 明确拒绝该分享 header。Agent 在 `filemanager` 安全打开文件并对打开的 fd 执行 `fstat` 后，先用 `If-Match` O(1) 拒绝普通元数据变化，再在写出任何文件响应头或正文前完成内容强校验。
 
-`resourceVersion` 继续保持 KPanel 既有并发语义，不影响现有文件编辑、预览和下载。分享专用的 `shareVersion v2` 从安全打开并完成 `fstat` / `SameFile` 复核的同一个 fd 全量计算 SHA-256，同时绑定 `resourceVersion` 及 Linux device、inode、ctime；普通 `Stat`、目录列表、编辑和登录态下载不计算内容摘要。ctime 是时间戳而不是单调变更计数器，因此不能单独证明文件未变；内容摘要保证同长度改写并恢复 mtime 时旧分享仍失效，Linux 对象身份保证内容相同的 inode 替换也失效。Agent 在公开流发送响应头前重新完成全量校验并将 fd rewind。公开 JSON 元数据只做 O(1) 的普通资源版本检查，因此同元数据改写后页面可能仍显示原文件描述，但 `/f/{token}` 在发送任何文件字节前必定 404。校验完成后，已打开 fd 若被宿主机其他特权进程并发原地改写，操作系统仍可能返回变化或混合的字节；KPanel 自身的原子替换会让后续请求失效，但已打开旧 fd 的在途请求仍可能完成，属于文件系统无法完全消除的并发边界。
+`resourceVersion` 继续保持 KPanel 既有并发语义，不影响现有文件编辑、预览和下载。分享专用的 `shareVersion v2` 从安全打开并完成 `fstat` / `SameFile` 复核的同一个 fd 全量计算 SHA-256，同时绑定 `resourceVersion` 及 Linux device、inode、ctime；普通 `Stat`、目录列表、编辑和登录态下载不计算内容摘要。ctime 是时间戳而不是单调变更计数器，因此不能单独证明文件未变；内容摘要保证同长度改写并恢复 mtime 时旧分享仍失效，Linux 对象身份保证内容相同的 inode 替换也失效。Agent 在公开流发送响应头前重新完成全量校验并将 fd rewind。公开 JSON 元数据只做 O(1) 的普通资源版本检查，因此同元数据改写后页面可能仍显示原文件描述，但 `/f/{token}` 在发送任何文件字节前必定 404。全量校验同时生成 64 KiB 分块摘要；发送前将每块读入私有缓冲并核对摘要，只有匹配的字节可以发送。源文件在传输中原地变化时，已验证缓冲可继续发送，但不匹配的新块会终止响应，客户端可能收到不完整文件；后续请求仍按版本失效。每个最大 10 GiB 分享约需 5 MiB 摘要和 64 KiB 数据缓冲，不生成同尺寸磁盘副本。
 
 ## API 契约
 
